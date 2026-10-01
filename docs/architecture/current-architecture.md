@@ -1,7 +1,18 @@
-# Current Architecture — M0
+# Current Architecture — M0 Runtime / M1 environment blocked
+
+M0 已封版并发布。M1 Windows Entry 当前 **BLOCKED / environment prerequisite**：
+本机没有 .NET SDK；尚无 Desktop 源码、UIA、hotkey、Runtime client 或 Windows protected credential storage。
+当前状态与恢复条件见 [STATUS](../STATUS.md)。下文描述现有真实 Runtime 实现。
+
+M1 计划在 `desktop/` 使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
+预期链路：用户主动 hotkey → selection capture → WPF → authenticated localhost Runtime →
+`translate.fast` → Ollama → 纯文本 result card。Desktop 不直连 Ollama。
+目前没有新增 pairing endpoint，也没有 per-client task ownership；仍为 single trust domain。
+候选方案为显式本机 token bootstrap 加 Windows protected storage，尚未实现或正式采用；
+采用后再以 ADR-002 记录具体决策。未安装 SDK，未将计划当作现有能力。
 
 单 Spring Boot application，Java 21，独立进程与 Maven artifact。
-没有 Maven 子模块、微服务、数据库或 UI。
+现有实现没有 Maven 子模块、微服务、数据库或 UI。
 
 ```mermaid
 flowchart LR

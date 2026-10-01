@@ -1,7 +1,14 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。当前只实现 M0 Translate foundation。
+独立、local-first 的共享 AI Runtime。当前已实现 M0 Translate foundation。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
+
+M1 Windows Assistant Entry 已完成基线核对，当前 **BLOCKED / environment prerequisite**：
+本机没有 .NET SDK，尚未创建 Desktop 项目。计划使用 .NET 10 LTS / 原生 WPF，
+代码放在 `desktop/`，通过认证后的 Runtime API 翻译，不直接访问 Ollama。
+需要先由用户安装 [正式 .NET 10 SDK（Windows x64）](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，
+随后用 `dotnet --info` / `dotnet --list-sdks` 确认 10.x SDK 可用；仅安装 Runtime 不满足构建要求。
+本轮没有安装 SDK。Java 与 Desktop 将分别使用 Maven Wrapper / dotnet CLI 验证。
 
 ## 启动
 
