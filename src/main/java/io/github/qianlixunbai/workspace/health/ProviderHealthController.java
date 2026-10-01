@@ -1,0 +1,19 @@
+package io.github.qianlixunbai.workspace.health;
+
+import io.github.qianlixunbai.workspace.model.*;
+import io.github.qianlixunbai.workspace.provider.*;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class ProviderHealthController {
+    private final ProfileResolver profiles;
+    private final ProviderRegistry providers;
+    public ProviderHealthController(ProfileResolver profiles, ProviderRegistry providers) {
+        this.profiles = profiles; this.providers = providers;
+    }
+    @GetMapping("/api/v1/providers/readiness")
+    public Provider.ProviderReadiness readiness() {
+        ModelProfile profile = profiles.resolve("translate.fast");
+        return providers.resolve(profile.provider()).readiness(profile);
+    }
+}

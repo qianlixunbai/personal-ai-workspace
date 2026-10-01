@@ -1,0 +1,61 @@
+server:
+  address: 127.0.0.1
+  port: 8765
+  max-http-request-header-size: 8KB
+  tomcat:
+    threads:
+      max: 20
+      min-spare: 2
+    max-connections: 64
+    accept-count: 16
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+spring:
+  application:
+    name: personal-ai-workspace
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState
+        liveness:
+          include: livenessState
+workspace:
+  security:
+    token-file: .runtime/client-token
+  ollama:
+    base-url: http://127.0.0.1:11434
+    connect-timeout: 2s
+    request-timeout: 120s
+    health-timeout: 3s
+    max-response-bytes: 1048576
+  tasks:
+    concurrency: 1
+    queue-capacity: 4
+    max-retained: 64
+    queue-timeout: 30s
+    execution-timeout: 150s
+    retention: 2m
+  translate:
+    id: translate.fast
+    provider: ollama
+    model: qwen3.5:4b
+    locality: LOCAL
+    version: m0-1
+    context-budget: 8192
+    output-budget: 2048
+    temperature: 0.1
+    max-text-characters: 4000
