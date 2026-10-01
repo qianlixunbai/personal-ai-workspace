@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj" />
+    <Project Path="src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -12,9 +12,10 @@ Phase 2 — Shared Runtime + Windows Entry。
 当前执行范围：**M1 — Windows Assistant Entry Vertical Slice**。
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**；以下 M0 验证记录保留为历史事实。
-M1 当前结论：**NO-GO — BLOCKED / environment prerequisite**。
-已核对 Git、源码、测试及环境，创建 `m1-windows-entry` 分支；未创建 Desktop 项目，未实现 Windows Entry。
-原因是本机没有可用 .NET SDK。按本轮要求，不自行安装 SDK，不将缺少 SDK 的状态写成已实现或已验收。
+M1 当前结论：**PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE**。
+SDK 环境阻塞已在用户明确授权后解除，Windows Entry 实现与自动验证已完成。
+仍等待用户真实 Notepad / Chrome selection → Runtime → Ollama → result、tray/lifecycle 与错误路径验收；
+未把代码、fixture 测试或 M0 Ollama smoke 当作 M1 的真实人工 PASS。
 
 ## M1 本轮真实核对
 
@@ -22,54 +23,108 @@ M1 当前结论：**NO-GO — BLOCKED / environment prerequisite**。
   均为 `5d71d11144fd6e066638f29ea2464fdc16ea332a`。
 - origin：`https://github.com/qianlixunbai/personal-ai-workspace.git`；M0 已成功发布到远端。
   这修正此前 Current Status 中“未配置 remote，未推送”的过时描述，不改变 M0 历史验收结果。
-- 环境：Windows 11 amd64；Java 21.0.7；Spring Boot 4.1.1（pom）；Maven Wrapper 3.9.16。
-- `dotnet --info`：Host 8.0.31 x64，`No SDKs were found`；`dotnet --list-sdks` 无输出。
-  PATH 仅找到系统 dotnet；系统 x64、系统 x86、当前用户 `.dotnet` 的常用 SDK 目录均不存在，
-  没有 DOTNET / MSBuildSDK 环境配置。已装 3.1/6/8 Runtime，不满足 .NET 10 WPF 构建前置条件。
-- 本轮重新执行 `.\mvnw.cmd clean verify`：**PASS**，14 tests，0 failures/errors/skipped，
-  BUILD SUCCESS，2026-10-01 19:41:49 +08:00。M0 源码与 HTTP 契约未修改。
-- `dotnet restore` / `dotnet build` / `dotnet test`：**NOT RUN — SDK missing / Desktop project absent**。
-- 文档 `git diff --check`：PASS；tracked build/cache/credential/log 文件 0，literal secret-pattern 文件 0。
-  本机 2 个私有 token 文件的值与 tracked 文件比对，泄漏匹配 0；检查时不输出 credential 值。
-  `git check-ignore` 确认 Runtime credential、Java build output 与验证日志被忽略。
-- M1 真实 Windows smoke：**UNVERIFIED**。本轮未重新执行 M0 真实 Ollama smoke；旧记录仅是 M0 历史证据。
+- 前置环境核对确实发现 SDK 缺失，并在 `80ccb53` 记录阻塞，没有自行安装。
+  用户随后明确授权安装正式 .NET 10 SDK 并继续同一分支；未 reset、重建分支或重启 milestone。
+- 安装前执行 `winget --version`（v1.29.380）与 `dotnet --list-sdks`（空）。
+  仅执行指定 `winget install --id Microsoft.DotNet.SDK.10 -e --source winget --accept-package-agreements --accept-source-agreements`。
+  下载官方 Microsoft installer，通过 WinGet hash 校验，安装成功；没有绕过 UAC。
+- 安装后 `dotnet --info` / `dotnet --list-sdks` / WinGet package list 确认正式 SDK **10.0.401 x64**，
+  Host 10.0.12，当前终端可用，无 PATH 刷新阻塞。SDK 包自带运行组件；没有单独安装 Desktop Runtime，
+  没有安装 Preview/RC、.NET 11、Visual Studio 或无关工具。
+- 环境：Windows 11 x64（10.0.26100）；Java 21.0.7；Spring Boot 4.1.1；Maven Wrapper 3.9.16。
+  没有修改 Java、Maven 或 Ollama 环境。Desktop 三个 project 均为 `net10.0-windows`。
+- M0 源码、pom、API 与 token/filter/task semantics 未修改。
 
-## M1 恢复条件与实施计划
+## M1 已实现
 
-先由用户安装 [正式 .NET 10 SDK（Windows x64）](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，
-在新的终端确认 `dotnet --info` / `dotnet --list-sdks` 可识别 10.x SDK 后继续本分支。
-目标为 `net10.0-windows` / WPF；尚无实际 project target。
-
-1. 在 `desktop/` 建立独立 solution 与 WPF 项目，保持 Maven / dotnet 两套构建。
-2. 建立 Runtime HTTP client，覆盖 202、状态轮询、DELETE cancel 与受控错误；代理和 redirect 禁用。
-3. 建立单实例、无主窗口托盘生命周期、RegisterHotKey 快捷键及资源释放。
-4. UIA first，仅用户主动触发读取 selection；隔离阻塞 provider，检查前台变化和 protected/password 控件。
-5. 实现保守 controlled-copy fallback：拒绝旧 clipboard、有限等待、安全恢复或明确保守限制；支持手动输入。
-6. 优先评估方案 B：用户首次显式选择 Runtime 私有 token 文件，验证本机权限后导入 Windows protected storage。
-   不新增网页可获取 credential 的 pairing endpoint；这只是候选方案，尚未实现，后续采用时新增 ADR-002。
-7. 建立纯文本 input/result card、translate/cancel/copy result 及分类错误 UX，不保存正文或历史。
-8. 补齐最小高价值 Desktop 契约/selection/lifecycle/privacy 测试，并验证 Java 回归。
-9. 完成下述真实人工 smoke，取得用户结果后才能评定 M1 GO。
+- `desktop/PersonalAiWorkspace.Desktop.slnx`：Core / WPF Desktop / Windows tests；与 Maven 独立。
+- 当前用户会话单实例（named mutex + activation event）、无主窗口运行、system tray 打开/检查/退出。
+- Ctrl+Alt+Shift+T：RegisterHotKey + MOD_NOREPEAT；明确冲突错误，退出注销；无 keyboard hook/logger。
+- 仅主动热键触发 UIA：当前 focused element、有界祖先保护检查、TextPattern.GetSelection；
+  MTA helper 进程，2s 超时可终止，捕获前后重验前台、native focus 和 UIA focused element。
+- password/protected、编辑/自定义控件保护属性无法确认、UIA exception/timeout、无 selection、超预算与前台变化 fail closed；
+  已知 Document/Text 与结构祖先允许属性不适用并检查祖先；这种路径不能授权 Copy fallback。
+  不把旧 input 留作新 capture 成功，不做后台 selection/clipboard monitoring。
+- Controlled-copy：仅验证过的原生 Edit/RichEdit 焦点；仅空/纯文本 clipboard snapshot；
+  等待快捷键释放最多 700ms，一次 Ctrl+C、新 sequence + 来源进程校验、600ms 新内容等待。
+  snapshot/read/restore 各在独立 STA helper，1.5s deadline；正文只经内存 pipe。
+  条件恢复 Unicode 纯文本；外部变化不覆盖，restore failure/late copy/ownership 不明有明确提示。
+- 纯 WPF input、目标语言、Translate、Cancel、queued/running、纯文本 result、Copy result 与 close-to-tray。
+  捕获成功自动 Translate，失败可手动输入；无 Markdown/chat/history/conversation。
+- 固定 Runtime HTTP client：POST 202 + Location、GET polling、DELETE cancel；所有终态与错误分类。
+  固定 127.0.0.1:8765、proxy/redirect 禁用、1 MiB response cap、严格 JSON/UUID/status/profile/result/error 校验。
+  Runtime health；offline、401、404、429、provider/model/policy、malformed response 分类 UX。
+- 用户显式本机私有 token file bootstrap；本机路径、owner、handle ACL、格式与读预算校验；
+  Windows Credential Manager 保存，仅当前用户本机后续登录可用。missing/invalid/unauthorized/forget 明确。
+  已采用方案 B，见 ADR-002；无 Runtime pairing endpoint 或 M0 breaking change。
+- 没有 Desktop 正文日志、selection/result/clipboard history、plaintext credential file；
+  DTO/exception 诊断不包含正文/token；窗口关闭/应用退出释放当前内容，cleanup 释放资源。
 
 当前仍是 **single trust domain remains**：没有 per-client credential 或 task ownership isolation。
-Desktop credential missing/invalid UX、DPAPI/Credential Manager、hotkey、selection 与 clipboard 恢复均未实现。
-不能把本计划当作已采用的安全能力或已通过的测试。
 
-## M1 真实 Windows acceptance checklist（待实现后执行）
+## M1 已执行验证
 
-先启动 Ollama、确认已有配置模型，再启动 Runtime 和后续 Desktop。
+命令均从仓库根目录执行。普通 Desktop 测试不启动真实 Ollama，也不读取用户当前 selection/clipboard。
+
+| 命令 / 方法 | 结果 |
+| --- | --- |
+| `dotnet --info` / `dotnet --list-sdks` | PASS，正式 SDK 10.0.401 x64 |
+| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，0 warnings/errors |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS，30 tests，0 failed/skipped |
+| `.\mvnw.cmd clean verify` | PASS，14 tests，0 failures/errors/skipped + package，21:03:15 +08:00 |
+| `.\scripts\real-local-smoke.ps1` | M0 REAL PASS，21:04:44 +08:00，task SUCCEEDED，resultLength 6 |
+| `git diff --check` / `git diff --cached --check` | PASS |
+| tracked build/cache/log/credential 与 secret-pattern scan | PASS，匹配 0；bin/obj/.vs/TestResults/Runtime credential/verification log 已忽略 |
+| 2 个本机 token 值比对（不输出值） | tracked files / private verification logs 泄漏匹配均 0 |
+| Desktop source privacy / boundary scan | 无正文 logger/persistence、Ollama endpoint、keyboard hook 或 clipboard subscription |
+
+Desktop 高价值覆盖：mock HTTP 提交/QUEUED→RUNNING→SUCCEEDED、提交期间取消、HTTP 401/404/429/403/503、
+200 failed envelope 与 timeout/cancel、offline/missing credential、重复字段/未知状态/错误 UUID/oversize/Location/redirect fail closed、
+脱敏 DTO/异常；copy 旧值/owner/丰富格式/恢复失败/取消恢复；native hotkey conflict + release；
+单实例激活/释放；WPF XAML/manual/cancel controls；隔离 WinCred roundtrip/forget、bootstrap 私有 ACL/malformed file；
+真实隐藏 UIA fixture 的 selected text/empty/PasswordBox/不支持保护属性拒绝；helper 进程启动与挂起 timeout/kill/reap。
+fixture 的测试内容为合成文本，只读取该隐藏 fixture；copy 测试用 fake port，不改动用户剪贴板。
+
+M0 新 smoke taskId：`bd37d699-bdba-45cf-9aae-9a760d63bfea`，loopback bind 与未认证 401 通过。
+这是 Runtime/Ollama 回归，不是 M1 Notepad/Chrome acceptance；过程日志/脱敏 evidence 在忽略的 `.verification/`。
+
+## M1 已知限制
+
+- UIA 随目标应用/provider/权限变化，真实 Notepad、Chrome、tray 和完整退出 UX **UNVERIFIED**。
+- Copy fallback 拒绝无法证明安全的 hosted/custom controls（包括浏览器 DOM fallback）、图片/富文本/大 clipboard；手动输入始终可用。
+- 只恢复 Unicode 纯文本，不保存原格式/ownership；来源应用迟到 Copy 或焦点/owner 变化时可能无法安全恢复，UI 明确提示。
+- 不控制 Windows 自身 clipboard history/同步；显式 Copy result 会进入系统剪贴板。
+- Cancel 不保证 GPU 立即停止。POST 通信失败可能已接受但尚未知 taskId；不能声称已取消，Runtime 自身 deadline 有界。
+- 凭据保护不隔离已攻陷的同用户进程；forget 不撤销 Runtime token；没有 per-client ownership 或自动 rotation。
+- 没有 installer、auto-start/update、Windows Service 或 Runtime/Ollama lifecycle manager。
+
+## M1 真实 Windows acceptance checklist（待用户返回结果）
+
+先确认 Ollama 与已有配置模型可用。在仓库根目录：
+
+```powershell
+java -jar target/personal-ai-workspace-0.1.0.jar
+# 另一个终端：
+dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
+```
+
+首次点击“导入 Runtime 凭据…”选择 `.runtime/client-token`，确认 credential valid。
+默认热键 Ctrl+Alt+Shift+T；在源应用触发前不要先激活 Assistant 窗口。
 每项返回 PASS/FAIL、应用版本/分支及受控错误分类，不提供选区、译文或 token 原文。
+Notepad 与 Chrome 的真实选区链路均需成功才能评定 M1 GO；Chrome UIA 不可用时的手动输入提示
+是保守错误行为，不能替代该场景的 selection acceptance PASS。
 
 | 场景 | 人工操作与预期 | 当前结果 |
 | --- | --- | --- |
 | 生命周期 | 启动两次仍只有一个实例；托盘打开/关闭窗口；托盘退出后热键和进程释放 | UNVERIFIED |
 | Notepad | 选中非敏感测试短句 → hotkey → input 填入 → Runtime Translate → result | UNVERIFIED |
-| Chrome/Chromium | 普通网页选中短句 → hotkey → UIA 或受控 fallback → result；不修改扩展 | UNVERIFIED |
+| Chrome/Chromium | 普通网页选中短句 → hotkey → UIA → result；UIA 不可用则明确手动输入，不强行 DOM copy；不修改扩展 | UNVERIFIED |
 | 无选区 | 不选中文字触发，明确提示；不能将旧 clipboard 当成当前选区 | UNVERIFIED |
 | Protected/password | 聚焦受保护输入触发，拒绝读取与复制 fallback | UNVERIFIED |
 | Clipboard | 先放入非敏感旧值，尝试 fallback，检查没有误用旧值且按所选保守策略恢复/提示 | UNVERIFIED |
 | Runtime offline | 停止 Runtime 后翻译，明确 Runtime unavailable；无 Ollama/cloud fallback | UNVERIFIED |
-| Provider offline | Runtime 保持运行、由用户停止 Ollama后翻译，明确 Provider unavailable | UNVERIFIED |
+| Provider offline | Runtime 保持运行、由用户停止 Ollama 后翻译，明确 Provider unavailable | UNVERIFIED |
 | Cancel | 较长请求点击 Cancel，展示 Runtime 返回的终态；不宣称 GPU 立即停止 | UNVERIFIED |
 | Privacy | 检查 Desktop logs、工作目录和 temp，没有选区、译文或明文 token；仅允许受保护 credential storage | UNVERIFIED |
 
@@ -138,19 +193,19 @@ Desktop credential missing/invalid UX、DPAPI/Credential Manager、hotkey、sele
 - Finance TEMPORARILY FROZEN / WAITING FOR REALITY SYNC；学校笔记本最新工作区 **UNVERIFIED**。
   不将 GitHub Remote 当作学校电脑最新事实。
 
-本轮仅授权 M1 Translate Windows Entry；当前因 SDK 缺失未实施。
+本轮仅实现 M1 Translate Windows Entry；等待真实 Windows acceptance。
 Deferred：Finance integration/Gateway、Memory/Conversation/SQLite、Knowledge/RAG/embedding、
 tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、Summarize/Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
 
-下一步：满足 .NET 10 SDK 前置条件后继续 M1，不开始下一 milestone。
+下一步：用户完成 M1 checklist 并返回结果，必要时修复后 Closing Review；不开始下一 milestone。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
 
 M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea332a`，
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
-当前 M1 工作分支为 `m1-windows-entry`，本轮仅修正文档并记录环境阻塞；没有 merge 或 push。
+当前 M1 工作分支为 `m1-windows-entry`，从 `80ccb53` 继续实现；没有 merge 或 push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

@@ -1,15 +1,40 @@
-# Current Architecture — M0 Runtime / M1 environment blocked
+# Current Architecture — M0 Runtime + M1 Windows Entry
 
-M0 已封版并发布。M1 Windows Entry 当前 **BLOCKED / environment prerequisite**：
-本机没有 .NET SDK；尚无 Desktop 源码、UIA、hotkey、Runtime client 或 Windows protected credential storage。
-当前状态与恢复条件见 [STATUS](../STATUS.md)。下文描述现有真实 Runtime 实现。
+M0 已封版并发布。M1 使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建；
+当前 PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE，详见 [STATUS](../STATUS.md)。
 
-M1 计划在 `desktop/` 使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
-预期链路：用户主动 hotkey → selection capture → WPF → authenticated localhost Runtime →
+Windows 用户主动 hotkey → selection capture → WPF → authenticated localhost Runtime →
 `translate.fast` → Ollama → 纯文本 result card。Desktop 不直连 Ollama。
-目前没有新增 pairing endpoint，也没有 per-client task ownership；仍为 single trust domain。
-候选方案为显式本机 token bootstrap 加 Windows protected storage，尚未实现或正式采用；
-采用后再以 ADR-002 记录具体决策。未安装 SDK，未将计划当作现有能力。
+没有新增 pairing endpoint 或 per-client task ownership；仍为 single trust domain。
+显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
+
+## Windows Desktop 边界
+
+| 目录 / 类 | 职责 |
+| --- | --- |
+| desktop/src/PersonalAiWorkspace.Core | 固定 loopback Runtime client、脱敏 DTO/错误、状态轮询/取消、selection/copy 安全决策 |
+| Desktop / AssistantApp、AssistantWindow | WPF result card、托盘、应用 lifetime、显式凭据导入；纯文本、无历史 |
+| Desktop / SingleInstance、HotkeyRegistration | 当前用户会话内 named mutex + activation event；RegisterHotKey + WM_HOTKEY；无 keyboard hook |
+| Desktop / SelectionWorker、HelperProcess | 同一可执行文件的隐藏 helper，匿名 pipe；UIA MTA、有界焦点/祖先、2s 硬 deadline |
+| Desktop / NativeCopyPort | 已验证原生编辑控件的一次 Ctrl+C；snapshot/read/restore STA helper 各 1.5s deadline |
+| Desktop / CredentialStore | 本机 owner-only token 文件显式导入、handle ACL 校验、Windows Credential Manager generic credential |
+| desktop/tests | mock HTTP、真实隐藏 UIA fixture、Win32 hotkey/credential、instance、copy 边界及 helper deadline 测试 |
+
+UIA 编辑/自定义/未知控件无法确认保护属性时拒绝；已知 Document/Text 及结构祖先允许属性不适用，仍检查祖先保护。
+这种属性不适用不能授权 Copy fallback。没有 ambient capture、clipboard subscription、OCR 或 accessibility tree 全量采集。
+Copy fallback 只在 UIA Unsupported 且原生编辑焦点已验证时启用，其他控件走手动输入。
+只保存空/Unicode 纯文本 snapshot；拒绝丰富格式，sequence/owner/焦点重验并条件恢复，外部更新不覆盖。
+超时/无法归属/恢复失败均向用户提示；不保证异步来源应用迟到 Copy 时的 clipboard ownership。
+正文只在 UI、HTTP 和 helper pipe 的有界内存中，不持久化 selection/result/clipboard。
+
+RuntimeClient 禁用 proxy/redirect；响应最大 1 MiB，严格校验状态、UUID、LOCAL profile、terminal/result/error 一致性、
+重复 JSON 字段、Location、错误分类；拒绝未知或不完整响应，不显示 raw body/stack trace。
+取消在 POST 完成取得 taskId 后发送 DELETE；取消已成功任务按 M0 返回 SUCCEEDED。
+190s 轮询总上限、8s HTTP/body 上限，异常/退出时对已知 taskId 尽力取消。
+POST 通信失败时可能无法知道是否已接受任务，不能宣称已取消；Runtime 自身仍有有界 deadline。
+退出注销热键、终止自己的 helper、取消工作、释放 tray/HWND/activation/HTTP/CTS；不终止 Ollama 或其他应用。
+
+## Java Runtime 边界
 
 单 Spring Boot application，Java 21，独立进程与 Maven artifact。
 现有实现没有 Maven 子模块、微服务、数据库或 UI。
@@ -91,4 +116,4 @@ Workspace 完全不引用、复制或修改 Finance / Local AI Assistant 代码�
 Finance PostgreSQL 长期仍由 Finance 独占；未来仅能通过 authenticated Gateway 访问业务查询服务。
 Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区，不据此进行集成。
 Browser 现有路径不变，B11/B12 保持 DEFERRED；本轮不处理扩展迁移。
-未建立 Memory、RAG、tool calling、Windows 或其他未来空框架。
+未建立 Memory、RAG、tool calling、完整 React/WebView2 Workspace 或其他未来空框架。

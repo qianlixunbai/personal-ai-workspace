@@ -38,3 +38,10 @@ build/
 .env
 *.log
 *.zip
+
+# Windows Desktop build and local verification outputs
+**/bin/
+**/obj/
+.vs/
+**/TestResults/
+*.trx

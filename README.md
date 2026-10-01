@@ -3,12 +3,9 @@
 独立、local-first 的共享 AI Runtime。当前已实现 M0 Translate foundation。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
 
-M1 Windows Assistant Entry 已完成基线核对，当前 **BLOCKED / environment prerequisite**：
-本机没有 .NET SDK，尚未创建 Desktop 项目。计划使用 .NET 10 LTS / 原生 WPF，
-代码放在 `desktop/`，通过认证后的 Runtime API 翻译，不直接访问 Ollama。
-需要先由用户安装 [正式 .NET 10 SDK（Windows x64）](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，
-随后用 `dotnet --info` / `dotnet --list-sdks` 确认 10.x SDK 可用；仅安装 Runtime 不满足构建要求。
-本轮没有安装 SDK。Java 与 Desktop 将分别使用 Maven Wrapper / dotnet CLI 验证。
+M1 Windows Assistant Entry 已实现 .NET 10 LTS / 原生 WPF 客户端，代码位于 `desktop/`。
+当前 **PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE**：自动测试通过，仍等待真实 Notepad / Chrome 选区验收。
+Java 与 Desktop 分别使用 Maven Wrapper / dotnet CLI 验证；Desktop 只调用 Runtime，不直接访问 Ollama。
 
 ## 启动
 
@@ -29,6 +26,58 @@ POSIX 权限为目录 0700 / 文件 0600，Windows ACL 仅允许文件所有者�
 不输出 token、不提交 token。客户端应从本机私有文件读取，避免复制到日志或共享终端。
 配置见 `src/main/resources/application.yml`。token-file 指向专用私有目录；
 Runtime 会收紧该目录及文件权限。不要将其配置为共享目录。
+
+## Windows Assistant（M1）
+
+需要 Windows 11 x64 和 [正式 .NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)。
+本机在用户授权后通过 WinGet `Microsoft.DotNet.SDK.10` 安装并验证了 SDK 10.0.401。
+没有单独安装 Desktop Runtime、Visual Studio、Preview/RC 或 .NET 11。
+SDK 自带的运行组件不属于额外安装包。根目录 `global.json` 仅接受正式 .NET 10 SDK，适用于下述根目录命令；不影响 Maven。
+
+在仓库根目录执行（Runtime 在另一个终端按上节启动）：
+
+```powershell
+dotnet --info
+dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx
+dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore
+dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore
+dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
+```
+
+首次启动打开最小 Assistant window。点击“导入 Runtime 凭据…”并选择当前用户的
+`.runtime/client-token` 文件；也可选择 Runtime 自定义配置的本机私有 token 文件。
+客户端校验本机路径、无 reparse point、文件所有者与私有 ACL，并检查打开文件 handle 的权限，
+将凭据保存到 Windows Credential Manager。后续启动无需重新读取文件或日常复制 token。
+导入后用认证 readiness 确认凭据；Runtime offline 时仍保留已导入凭据并明确提示。
+凭据 missing/invalid/unauthorized 可通过显式重新导入修复；“忘记凭据”只删除 Desktop 保存的副本。
+M1 保留 single trust domain，没有 per-client task ownership。详见 [ADR-002](docs/ADR/ADR-002-windows-client-credential.md)。
+
+日常使用：
+
+- 在其他应用选中文字，按 **Ctrl+Alt+Shift+T**；成功捕获后填入 input 并自动发起 Translate。
+- 没有选区、受保护控件、前台变化或 provider 不支持时，窗口显示分类提示；可手动输入/粘贴再点 Translate。
+- 默认目标语言 `zh-CN`，可选 `en` / `ja`。Cancel 向 Runtime 发送 DELETE，以实际终态为准。
+- 结果按纯文本显示，可显式 Copy result；关闭窗口继续在托盘运行。托盘可打开窗口、检查 Runtime 或退出。
+- 热键冲突有明确提示，仍可从托盘手动翻译；再次启动应用激活同一用户会话内的已有实例。
+
+选区只在主动热键后读取。UIA 在 MTA helper 进程读取当前焦点和最多 24 层祖先，2s 超时后终止 helper。
+password/protected、编辑/自定义控件保护属性无法确认、UIA 异常/超时以及前台/焦点变化均 fail closed。
+已知 Document/Text 和结构祖先允许该属性不适用，仍检查祖先保护状态；这不能授权 Copy fallback。
+不做 screenshot/OCR、键盘 hook、剪贴板订阅或后台选区监控。
+
+可关闭的 Copy fallback 采用保守边界：只对已通过保护检查且焦点身份稳定的
+`Edit` / `RichEdit20W` / `RICHEDIT50W` 原生控件发送一次 Ctrl+C；浏览器 DOM 等其他控件不强行复制。
+仅保存空或纯文本剪贴板的内存 snapshot（最多 65536 字符），拒绝图片/富文本/文件或自定义格式。
+读取/恢复分别在 STA helper 中，单次 1.5s 上限；等待新剪贴板最多 600ms。
+检查 sequence、来源进程和前台/焦点，拒绝旧文本；恢复仅在本次 sequence/来源仍匹配时进行。
+恢复为 Unicode 纯文本，不保证原格式/ownership；外部更新不覆盖，恢复失败明确提示并拒绝自动翻译。
+来源应用迟到 Copy、焦点变化或 clipboard ownership 无法确认时，可能无法安全恢复；UI 提示检查剪贴板并手动输入。
+这不是通用 clipboard history engine；Windows 自身的剪贴板历史/同步由用户系统设置控制。
+
+Desktop 不写正文日志或历史；helper 正文只通过匿名标准流 pipe 传递到父进程内存，
+不经 command line、文件或日志。Copy result 是用户显式向系统剪贴板写入结果。
+Runtime 地址固定 `http://127.0.0.1:8765`，禁止 proxy/redirect，无 cloud/Ollama fallback，
+不管理 Java、Ollama、模型下载或服务启动。
 
 ## API
 
@@ -99,8 +148,8 @@ Ollama URL 只允许显式端口的 `http://127.0.0.1` / `http://localhost`，�
 禁用代理与 HTTP redirect，避免向远程地址发送正文。
 
 loopback 不代替认证。拒绝带 Origin 或 cross-site Fetch Metadata 的 capability 请求，
-不启用 CORS。M0 是同一 token 信任域内的本机 API，尚未实现 Browser/Windows pairing、
-独立客户端权限或令牌轮换；未来客户端接入时需要明确演进此契约。
+不启用 CORS。Runtime 仍是同一 token 信任域内的本机 API；M1 Windows 使用显式本机文件 bootstrap。
+没有 Browser pairing endpoint、独立客户端权限或令牌轮换；未来独立凭据需要同时演进 ownership。
 同一 OS 用户能读取 token 是本地信任假设；不隔离已攻陷的同用户进程。
 Runtime 默认不记录正文、模型回答、token、provider body。
 
