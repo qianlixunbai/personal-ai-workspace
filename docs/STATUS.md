@@ -1,6 +1,6 @@
 # Personal AI Workspace — Current Status
 
-Updated: 2026-10-02 (Asia/Shanghai)
+Updated: 2026-10-03 (Asia/Shanghai)
 
 此文件是当前阶段、完成状态、验证证据与遗留项的唯一事实来源。
 README 负责启动/API 使用；ADR 负责已采用决策。
@@ -9,7 +9,10 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 Phase 2 — Shared Runtime + Windows Entry / M2 Browser Convergence。
 
-当前执行范围：**M2B-2A — Runtime Browser Batch Translation Contract**；不开始 M2B-2B。
+当前交付：**M2B-2B-R1 — Real Chrome GET Security Compatibility：CLOSED — GO**，仅 Runtime security compatibility patch。
+**M2B-2B：PARTIAL / AWAITING REAL CHROME ACCEPTANCE**。完整 Extension Closing / M2 未关闭，本轮不执行其余 Browser QA。
+Runtime 稳定基线 `main == origin/main == 25dc1dfc9a103b030267f18d93059316f0ce008d`。
+Patch 位于本地分支 `m2b2b-r1-chrome-get-security`，不 merge/push；Extension branch `m2b2b-runtime-migration` / `ddfa4a0` 未修改。
 
 M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`。
 
@@ -23,9 +26,44 @@ Provider unavailable / restart recovery、credential persistence 与 privacy/log
 本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
 M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；M1 发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
 
-## M2B-2A 实现与验证（2026-10-02）
+## M2B-2B-R1 实现与限定真实 Chrome 验证（2026-10-03）
 
-**CLOSED — GO / Runtime Batch Translation Contract Ready**。范围仅 Shared Runtime；M2B-2B / Extension migration 尚未开始。
+**CLOSED — GO**：修复已由 Chrome 154 确认的 Origin-absent GET 被误归 native → 401 问题。
+Browser bearer 验证与 Origin 校验最小分离；`br1` prefix 仅选择验证，仍需 registered clientId + constant-time SHA-256 verifier + 未 revoke。
+无 Origin Browser 只允许 GET Translate readiness / GET task UUID，要求完整精确 none/cors/empty、Translate capability 和 existing owner checks。
+Origin-present / pairing / mutating paths 保持 exact Origin，Originless POST/DELETE/未列入 GET 拒绝；Browser 不获得 native/Ask/Summarize/admin 权限。
+无 wildcard、伪 Origin header 或 Origin synthesis；无 Origin response 不返回 Access-Control-Allow-Origin，exact-Origin OPTIONS 保持。
+任务/AI/Prompt/Profile/Provider/Queue/Timeout/Concurrency/Ollama/Desktop 契约未修改。ADR-003 增加 evidence-based amendment，保留历史。
+
+| 验证 | 结果 |
+| --- | --- |
+| Maven clean verify | PASS：30 tests，0 failure/error/skipped |
+| Desktop restore/build/test | PASS：67 tests，0 failed/skipped；0 warnings/errors |
+| Native real-local smoke | REAL PASS：Translate / Summarize / Ask SUCCEEDED；native management 与 GET/DELETE 回归 PASS |
+| Synthetic Single / Batch security smoke | PASS：Originless readiness/owned polling、cross-owner 404、mutation 401、admin 403、revoke 401、restart；Batch 3 items/1 task/1 inference/3 mappings |
+| Exact Origin / metadata / deny matrix | PASS：wrong/unknown/web Origins；metadata missing/wrong；malformed/forged/revoked credential；Ask/Summarize/admin/unknown GET；Originless mutations |
+| Real Chrome 154.0.8037.59 exchange/storage | PASS：自然 exact Origin、none/cors/empty、无 Authorization，exchange 200；credential 保存、proof 清除、content script 读取拒绝 |
+| Real Chrome readiness GET | PASS：自然 Origin ABSENT + Browser credential + none/cors/empty；200，Extension 可读 |
+| Real Chrome Batch POST/task GET/result | PASS：POST 自然 exact Origin，202；polling GET 自然 Origin ABSENT，200；SUCCEEDED structured 2-item result 可读 |
+| Real Chrome task cross-client isolation | PASS：第二 synthetic browser/native 读取 Chrome task 均 404 TASK_NOT_FOUND |
+| CORS / secret / privacy / artifact audit | PASS：Originless GET 无 allow-origin；实际 token/browser/proof/content/result/source/build/archive/log/evidence 0 matches |
+| git diff --check | PASS |
+
+真实 Chrome 时间 00:51:29 +08:00，task `4ce73424-4b8c-414d-8b57-42cc6f075d19`，
+`translate.fast / m0-1 / LOCAL / translate-batch-v1`。生产 candidate 未修改，也没有 security-header override。
+真实 headless Chrome 使用实际 action popup pairing 与生产 worker Runtime client；由显式 isolated native dev authority 创建 proof，未重新验收 WPF GUI。
+Worker debugger 仅用于自然网络 evidence 的 metadata 投影；不宣称 MV3 idle/lifetime PASS。
+任务最后一次实际 GET 读到 SUCCEEDED；本轮没有刻意延长模型任务以观察每一个中间状态。
+只保存 header-presence/status/identity/count 等 metadata；不保存正文/结果/credential/proof，临时 profile 在关闭自有 Chrome 后清理。
+完整 28 项交付与 reproducible script 见 [R1 Closing Report](milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md)。
+
+Resume readiness：Runtime compatibility blocker 已解除，可以回到 Extension M2B-2B Closing Acceptance。
+MDN、Dynamic、Selection、Cache、Runtime/Provider offline、revoke/re-pair UX、MV3 30–45 秒仍未由本轮完成，M2B-2B 继续 PARTIAL。
+
+## M2B-2A 实现与验证（2026-10-02；历史 closing 记录）
+
+**CLOSED — GO / Runtime Batch Translation Contract Ready**。当时范围仅 Shared Runtime；M2B-2B / Extension migration 尚未开始。
+后续已 merge/push 至稳定基线 `25dc1df`，以下保留当时 closing 证据。
 开始时 main clean；fetch 后 `main == origin/main == d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
 分支 `m2b2a-runtime-batch-translate`，本地提交 `feat: add batch translate runtime contract`，不 merge/push。
 最小同步 M2B-1 当前已发布事实；M1.5 / M2A / M2B-1 Closing Reports 与 ADR-001/002/003 保留历史原文。
@@ -392,18 +430,18 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 本轮没有修改、复制或合并两个旧仓库，没有 Finance DB 访问。
 Local AI Assistant 本轮仅只读核验；Finance 状态仍来自项目输入，未实时核验：
 
-- Local AI Assistant v0.4.1 GO / RELEASED，main/remote main `75bede1`，PAUSED / MAINTENANCE MODE；B11/B12 仍 DEFERRED。
+- Local AI Assistant released main `75bede1` 为历史 v0.4.1；当前验证 candidate `m2b2b-runtime-migration` / `ddfa4a0`，M2B-2B PARTIAL。B11/B12 仍 DEFERRED。
 - Finance TEMPORARILY FROZEN / WAITING FOR REALITY SYNC；学校笔记本最新工作区 **UNVERIFIED**。
   不将 GitHub Remote 当作学校电脑最新事实。
 
 M1 Translate Windows Entry 已 CLOSED — GO；真实 Windows acceptance 全部 PASS，自动操作与用户确认来源见上表。
 Deferred：Finance integration/Gateway、Memory/Conversation/SQLite、Knowledge/RAG/embedding、
-tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、多轮 Chat、
+tool/agent framework、完整 WebView2/React Workspace、完整 Browser Closing Acceptance、cloud、streaming、多轮 Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
 
 M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验收证据保持不变。
-M1.5 / M2A / M2B-1 已 CLOSED — GO 且已 merge/push；本轮按用户授权实现 M2B-2A Runtime batch contract。
+M1.5 / M2A / M2B-1 / M2B-2A 已 CLOSED — GO 且已 merge/push；本轮完成 M2B-2B-R1 Runtime security compatibility，完整 M2B-2B 仍 PARTIAL。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
@@ -412,7 +450,8 @@ M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
 M1 closing commit `6d17ad7` 已 fast-forward merge 到 `main` 并成功 push；2026-10-02 fetch 确认本地 main 与 origin/main 一致。
 M1.5 implementation commit `22c45de` 已发布；M2A implementation commit `9d20a9a` 已发布，2026-10-02 fetch 确认 main / origin/main 一致。
-M2B-1 implementation commit `d606472` 已发布；本轮 fetch 确认 `main == origin/main == d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
-M2B-2A 在 `m2b2a-runtime-batch-translate` 本地交付，不 merge/push。
+M2B-1 implementation commit `d606472` 已发布。
+M2B-2A implementation commit `25dc1df` 已 merge/push；2026-10-03 本轮 fetch 确认 `main == origin/main == 25dc1dfc9a103b030267f18d93059316f0ce008d`。
+M2B-2B-R1 在 `m2b2b-r1-chrome-get-security` 仅本地提交，不 merge/push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

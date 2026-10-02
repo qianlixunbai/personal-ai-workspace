@@ -67,6 +67,39 @@ M2A 用受控 HTTP client 模拟 extension 验证 Runtime foundation。真实 Ch
 限制 content script 访问（例如 storage access level TRUSTED_CONTEXTS），不得传到 webpage/DOM/message bridge/log，
 不能复制 master token。Chrome 的 storage.local 并非 OS credential vault，不隔离同用户已攻陷进程。
 
+## Amendment — M2B-2B-R1 current behavior (2026-10-03)
+
+以上保留 M2A 历史决策与当时尚未真实 Chrome 验收的事实。M2B-2A 后增加 Translate-only readiness。
+随后未修改的 M2B-2B candidate `ddfa4a0` 在真实 Chrome/154.0.8037.59 成功 exchange，却以 Origin-absent GET readiness 被拒绝 401。
+自然 headers 为 none/cors/empty 和独立 Browser credential；显式 mode=cors 仍没有 Origin。
+根因是 Runtime 将所有无 Origin 请求归为 native，而不是 credential 错误、revoke 或 CORS fallback。
+本 amendment 基于该真实证据演进 admission，不删除前述 pairing/security/threat-model 历史上下文。
+
+- Native 原格式 token + Origin absent 仍使用原 native policy/owner，保留 Translate/Summarize/Ask/pairing/list/revoke。
+  Browser `br1` 只用于选择 credential verifier，绝不授予 native 权限；必须真正 lookup clientId 并以 constant-time 比较存储的 SHA-256 verifier。
+  注册删除即 revoke；没有无认证 GET 或 prefix-only trust。
+- Pairing exchange 继续 exact approved Origin + none/cors/empty + one-time proof，拒绝 Authorization。
+  Browser Origin-present 请求继续 valid chrome-extension Origin、exact registered client.origin、none/cors/empty、route allowlist、capability authorization。
+  wrong/unknown extension、普通 https webpage、缺失 metadata 都拒绝。
+- Real Chrome privileged GET 可能没有 Origin。兼容仅限 authenticated、未 revoke、Translate-authorized Browser 的
+  GET `/api/v1/capabilities/translate/readiness` 和 GET `/api/v1/tasks/{uuid}`，必须完整精确 none/cors/empty Fetch Metadata。
+  未明确列入的 GET、Ask/Summarize/admin、HEAD/OPTIONS 以及所有无 Origin POST/DELETE 均拒绝；mutating Browser requests 仍要求 exact Origin。
+- Browser identity 始终为 credential 对应的已注册 client。既有 TaskManager ownerClientId 检查保持，
+  Browser A→B/native 及 native→Browser task 都返回与不存在相同的 404 TASK_NOT_FOUND。
+- **不存在的 Origin 无法验证。** Browser credential 是最终认证的高熵 bearer secret；其身份绑定来自此前用户明确批准的 pairing。
+  有 Origin 时提供 additional origin binding；无 Origin GET 的组合为 explicit approved pairing、registered identity、bearer secret、
+  Fetch Metadata、exact GET allowlist、capability authorization、per-client task ownership。
+  不宣称 Originless GET 仍验证 exact Origin，不能把 Fetch Metadata 当作另一份 bearer 身份证明。
+- 不合成 Origin、不引入 X-Extension-Origin/X-Client-Origin/X-Browser-Origin，不让 Extension/webRequest 修改 security headers。
+  无 Origin response 不设置 Access-Control-Allow-Origin；没有 wildcard CORS，现有 exact-Origin OPTIONS policy 保持。
+  Chrome host_permission 自身控制 privileged fetch 的 response readability；本轮真实 Chrome 已成功读取 readiness 与 structured task result。
+- 普通网页仍拒绝。Origin/metadata 是浏览器边界，持有 bearer 的同 OS 用户恶意 native process 能伪造 HTTP headers，
+  仍在之前已说明的 Browser-origin isolation 保证之外；没有扩展为同 OS 用户进程隔离保证。
+
+Runtime patch **CLOSED — GO**，限定真实 Chrome security chain 的证据见
+[M2B-2B-R1 Closing Report](../milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md)。
+完整 Extension MDN/Dynamic/Selection/cache/offline/revoke/MV3 acceptance 仍待 M2B-2B，不能由该 amendment 推断 M2 CLOSED。
+
 ## References
 
 - [Chrome cross-origin requests and extension host permissions](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)

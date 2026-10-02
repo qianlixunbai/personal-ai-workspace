@@ -249,15 +249,72 @@ class RuntimeApiTest {
         for (String method : new String[]{"GET", "DELETE"})
             assertEquals(404, browser(method, "/api/v1/tasks/" + nativeId, null, credentialA, originA).statusCode());
         assertEquals(200, browser("DELETE", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
+        chromeOriginlessGetCompatibility(credentialA, originA, credentialB, id, nativeId, exchangeA);
         String clientId = a.path("client").path("clientId").asString();
         assertEquals(403, browser("DELETE", "/api/v1/security/clients/" + clientId, null, credentialB, originB).statusCode());
         batchContract(credentialA, originA, credentialB, originB, logs);
         assertEquals(204, send("DELETE", "/api/v1/security/clients/" + clientId, null, true).statusCode());
         assertEquals(401, browser("GET", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
         assertEquals(401, browser("GET", "/api/v1/capabilities/translate/readiness", null, credentialA, originA).statusCode());
+        assertEquals(401, browser("GET", "/api/v1/capabilities/translate/readiness", null, credentialA, null).statusCode());
+        assertEquals(401, browser("GET", "/api/v1/tasks/" + id, null, credentialA, null).statusCode());
         assertEquals(204, send("DELETE", "/api/v1/security/clients/" + b.path("client").path("clientId").asString(), null, true).statusCode());
         for (String secret : new String[]{credentialA, credentialB, sessionA.path("pairingSecret").asString(), originA, originB, token()})
             assertFalse(logs.getAll().contains(secret));
+    }
+    private void chromeOriginlessGetCompatibility(String credential, String origin, String otherCredential,
+                                                   String ownedId, String nativeId, String exchange) throws Exception {
+        String readiness = "/api/v1/capabilities/translate/readiness", owned = "/api/v1/tasks/" + ownedId;
+        for (String path : new String[]{readiness, owned}) {
+            var accepted = browser("GET", path, null, credential, null);
+            assertEquals(200, accepted.statusCode());
+            assertTrue(accepted.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+            assertEquals("no-store", accepted.headers().firstValue("Cache-Control").orElseThrow());
+        }
+        assertTrue(tree(browser("GET", readiness, null, credential, null)).path("available").asBoolean());
+        assertEquals("SUCCEEDED", tree(browser("GET", owned, null, credential, null)).path("status").asString());
+        var missing = browser("GET", "/api/v1/tasks/00000000-0000-0000-0000-000000000000", null, credential, null);
+        for (var denied : List.of(browser("GET", owned, null, otherCredential, null),
+                browser("GET", "/api/v1/tasks/" + nativeId, null, credential, null), send("GET", owned, null, true))) {
+            assertEquals(404, denied.statusCode()); assertEquals(missing.body(), denied.body());
+        }
+        for (String invalid : new String[]{null, "bad", "br1.malformed", "br1." + ownedId + "." + "z".repeat(43),
+                credential.substring(0, 41) + "z".repeat(43)})
+            assertEquals(401, browser("GET", readiness, null, invalid, null).statusCode());
+        String[] names = {"Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-Dest"};
+        String[][] invalidMetadata = {{null, "cross-site", "same-site", "same-origin"},
+                {null, "no-cors", "navigate"}, {null, "document", "script"}};
+        for (int index=0; index<names.length; index++) for (String value : invalidMetadata[index]) {
+            var request = browserRequest(readiness, null).header("Authorization", "Bearer " + credential);
+            if (value == null) {
+                // Build without the selected header; empty and absent must both fail closed.
+                request = HttpRequest.newBuilder(uri(readiness)).header("Authorization", "Bearer " + credential);
+                for (int i=0; i<names.length; i++) if (i != index)
+                    request.header(names[i], new String[]{"none", "cors", "empty"}[i]);
+            } else request.setHeader(names[index], value);
+            assertEquals(401, http.send(request.GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        for (String path : new String[]{"/api/v1/ask/tasks", "/api/v1/summarize/tasks", "/api/v1/security/clients",
+                "/api/v1/security/pairings", "/api/v1/security/pairings/exchange", "/api/v1/providers/readiness",
+                "/api/v1/future", "/api/v1/tasks/" + "-".repeat(36), readiness + "/", owned + "/extra"}) {
+            var denied = browser("GET", path, null, credential, null);
+            assertEquals(403, denied.statusCode()); assertEquals("POLICY_DENIED", tree(denied).path("code").asString());
+            assertTrue(denied.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        }
+        for (String path : new String[]{"/api/v1/translate/tasks", "/api/v1/ask/tasks", "/api/v1/summarize/tasks",
+                "/api/v1/security/pairings", "/api/v1/security/pairings/exchange"})
+            assertEquals(401, browser("POST", path, valid(), credential, null).statusCode());
+        for (String path : new String[]{owned, "/api/v1/security/clients/" + ownedId})
+            assertEquals(401, browser("DELETE", path, null, credential, null).statusCode());
+        assertEquals(401, browser("OPTIONS", readiness, null, credential, null).statusCode());
+        assertEquals(401, browser("HEAD", readiness, null, credential, null).statusCode());
+        assertEquals(401, browser("POST", "/api/v1/security/pairings/exchange", exchange, null, null).statusCode());
+        assertEquals(401, browser("POST", "/api/v1/security/pairings/exchange", exchange, credential, origin).statusCode());
+        // Origin-present authentication must remain bound even on the new GET allowlist.
+        for (String wrong : new String[]{"chrome-extension://" + "b".repeat(32), "chrome-extension://" + "c".repeat(32),
+                "https://example.com", ""})
+            assertEquals(401, browser("GET", readiness, null, credential, wrong).statusCode());
+        assertEquals(401, browser("GET", readiness, null, token(), origin).statusCode());
     }
     private void batchContract(String credential, String origin, String otherCredential, String otherOrigin, CapturedOutput logs) throws Exception {
         String endpoint = "/api/v1/translate/tasks", readiness = "/api/v1/capabilities/translate/readiness";

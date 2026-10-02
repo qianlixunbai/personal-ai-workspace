@@ -1,4 +1,4 @@
-# Current Architecture — Shared Runtime / Windows / Browser Batch Contract
+# Current Architecture — Shared Runtime / Windows / Browser Security Compatibility
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
@@ -12,12 +12,14 @@ Windows 主动 Translate hotkey 或手动 Translate / Summarize / Ask → WPF �
 M2A 增加 explicit browser pairing、独立 credential、精确 Origin 和 per-client task ownership；
 native token 持有人仍共享固定 `native-local` owner。当前安全决策见 [ADR-003](../ADR/ADR-003-browser-client-security.md)。
 M2A 已 merge/push，发布基线 `9d20a9a`。M2B-1 已 push feature branch、fast-forward merge main 并 push origin/main，稳定基线 `d606472`；它仅增加 Windows trusted native 配对/管理 UI。
-M2B-2A：Runtime Batch Translation Contract Ready，CLOSED — GO；本地分支 `m2b2a-runtime-batch-translate`，未 merge/push。
+M2B-2A：Runtime Batch Translation Contract Ready，CLOSED — GO；已 merge/push，稳定基线 `25dc1df`。
 同一 Translate 路径接收 Single 或 Batch；batch 只有一个 TaskManager task 和一次 provider execution。
+M2B-2B candidate `ddfa4a0`：PARTIAL，完整 Extension acceptance 待继续。
+M2B-2B-R1：CLOSED — GO，仅修复 Chrome 自然无 Origin 的 authenticated GET；真实 Chrome 154 readiness/polling/structured result 可读。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
 本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
 M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
-没有启动 Browser migration、Memory/RAG、多轮会话或工具框架。
+本轮只修改 Runtime security admission；Extension candidate 保持不变，未启动 Memory/RAG、多轮会话或工具框架。
 
 ## Windows Desktop 边界
 
@@ -62,7 +64,7 @@ Secret TextBox 禁用 undo；新建前清除旧显示，TTL 到期自动清除�
 显式 Copy Secret 进入系统剪贴板，Windows history/sync 不由应用控制；释放托管引用不保证所有内存字节立即擦除。
 窗口关闭不会删除 Runtime session，服务器 3 分钟 TTL / restart 控制 outstanding pairing；无 pairing history。
 Desktop 不执行 exchange、不生成/保存 browser credential、不直接访问 registry，不发送 master token 或 proof 到 Browser。
-Extension Origin 展示/真实 exchange/storage/Browser Runtime client/Translate migration 均待 M2B-2B，未开始。
+M2B-1 当时未执行 Extension migration；当前 M2B-2B candidate 已实现，仍 PARTIAL。本轮只验收限定 Chrome security chain，未重新验收 Desktop GUI。
 
 ## Java Runtime 边界
 
@@ -95,7 +97,7 @@ flowchart LR
 | provider | Provider、capability、execution、registry、readiness 契约 |
 | provider.ollama | 固定本地 HTTP、metadata/model 检查、JSON 校验、响应上限 |
 | task | UUID、有限执行/队列/保留容量、取消、deadline、终态提交 |
-| security | Native token、private registry、browser pairing/verifier、精确 Origin、stateless client identity |
+| security | Native token、private registry、browser credential/verifier、按 request type 校验 Origin/GET metadata/routes、stateless identity |
 | health | 认证后的 provider/model readiness，与 Actuator 隔离 |
 | config | 配置校验、loopback 启动约束 |
 | common | 脱敏 ApiError / WorkspaceException |
@@ -125,8 +127,8 @@ Public profile id/version/locality + promptVersion 支持未来 Browser cache id
 
 GET `/api/v1/capabilities/translate/readiness` 需 Translate authorization；只暴露 available 或受控 PROVIDER_UNAVAILABLE code。
 复用 profile/policy/provider metadata readiness，无 generation/task，不暴露 provider/model/detail。
-Browser filter 仅额外允许该精确 GET/preflight 路径；Origin/Fetch Metadata/credential/Translate-only 和 task ownership 不变。
-原 native provider readiness 与 Desktop 代码不变。Extension CHECK_CONNECTION 的替代接入待 M2B-2B。
+M2B-2A 当时仅额外允许该精确 GET/preflight 路径；本轮 Originless GET amendment 见下方，Fetch Metadata/credential/Translate-only/ownership 保持。
+原 native provider readiness 与 Desktop 代码不变。当前 Extension candidate CHECK_CONNECTION 使用此路径；完整 M2B-2B acceptance 待继续。
 真实 batch smoke 用仅验证 loopback relay 计数实际已有 Ollama chat 请求；该脚本不进入产品调用链。
 
 ## 任务生命周期
@@ -168,12 +170,27 @@ Provider request deadline 覆盖读取响应正文；connect/request/queue/execu
 
 API loopback-only，Bearer token 由专用私有目录持有；CORS 不承担认证职责。
 公开 Actuator health 仅包含进程状态。Provider readiness 不影响 Spring readiness。
-Native 拒绝 Origin/cross-site；browser 要求已注册 Origin、独立 credential、none/cors/empty Fetch Metadata。
+Native 拒绝 Origin/cross-site；browser 使用独立 credential、none/cors/empty Fetch Metadata，Origin-present 必须匹配已注册 Origin。
 BrowserClients 提供 native-authorized 3 分钟 single-use pairing、SHA-256 verifier、32-client bounded private atomic registry 和 revoke。
 Preflight 仅对精确允许 Origin/route/method/headers 回应，实际执行仍认证。普通网页/unknown extension 不允许。
 Browser 只授予 Translate；所有 task 由 admission 的 clientId 绑定 owner，查询/取消均检查，跨 owner 等同不存在。
 Native 与 browser 不互读 task。Windows token/credential target 不变，无需重新导入。
 仅 auth/security metadata 持久化；session/task 不跨 restart，已配对 credential/revoke 跨 restart。
+
+### M2B-2B-R1 authentication admission
+
+LocalClientFilter 不再把全部 Origin-absent 请求归为 native。`Bearer br1.` 仅选择 BrowserClients.authenticateCredential：
+严格格式、registered clientId lookup、SHA-256 verifier 的 constant-time comparison；删除注册即 revoke。
+Origin-present 路径继续 exact registered Origin + Fetch Metadata + route/capability policy；pairing exchange 仍为 exact Origin + one-time proof。
+Origin-absent Browser 仅允许 GET Translate readiness 和 GET `/api/v1/tasks/{uuid}`，必须有完整精确 none/cors/empty metadata 和 Translate capability。
+Authenticated Browser principal 进入既有 ClientIdentity.current()/TaskManager owner checks；cross-owner 仍 404 TASK_NOT_FOUND。
+其他 GET、Ask/Summarize/admin、任何 POST/DELETE/HEAD/OPTIONS 均不能走此兼容分支；native token 仍走原 native policy。
+不存在的 Origin 无法进行 exact-origin verification，服务器不会根据注册记录合成 Origin，也没有 X-Extension-Origin 一类 header。
+Originless response 不设置 Access-Control-Allow-Origin；Chrome host_permission 决定读取，真实 Chrome 154 已读取 readiness 与 structured task result。
+已有 exact-Origin preflight/CORS 保持，无 wildcard。Bearer secret 是认证材料；Origin 是实际发送时的额外绑定。
+同 OS 用户的恶意 native process 可伪造 HTTP metadata，仍在原 Browser-origin isolation 保证之外。
+唯一产品变化位于 LocalClientFilter/BrowserClients；task/AI/profile/provider/queue/Desktop 契约未修改。
+完整证据见 [R1 Closing Report](../milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md) 与 [ADR-003 amendment](../ADR/ADR-003-browser-client-security.md)。
 
 ## 其他仓库与长期边界
 
@@ -181,5 +198,5 @@ Workspace 完全不引用、复制或修改 Finance / Local AI Assistant 代码�
 没有 Finance DB credential、DB dependency、Tool Gateway 或 `/ai/ask` 改动。
 Finance PostgreSQL 长期仍由 Finance 独占；未来仅能通过 authenticated Gateway 访问业务查询服务。
 Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区，不据此进行集成。
-Browser 现有路径不变，B11/B12 保持 DEFERRED；本轮不处理扩展迁移。
+Extension candidate 未修改，B11/B12 保持 DEFERRED；本轮不执行完整 Extension Closing。
 未建立 Memory、RAG、tool calling、完整 React/WebView2 Workspace 或其他未来空框架。

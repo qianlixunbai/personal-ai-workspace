@@ -18,6 +18,23 @@ class BrowserClientsTest {
         return clients.exchange(session.pairingId(), session.pairingSecret(), ORIGIN);
     }
 
+    @Test void credentialAuthenticationDoesNotInventOriginBinding() {
+        try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
+            var issued = pair(clients);
+            String authorization = "Bearer " + issued.credential();
+            assertEquals(issued.client(), clients.authenticateCredential(authorization));
+            assertNull(clients.authenticate(authorization, null));
+            assertNull(clients.authenticate(authorization, "chrome-extension://" + "b".repeat(32)));
+            assertEquals(issued.client(), clients.authenticate(authorization, ORIGIN));
+            assertNull(clients.authenticateCredential(null));
+            assertNull(clients.authenticateCredential("Bearer br1.malformed"));
+            assertNull(clients.authenticateCredential("Bearer br1." + issued.client().clientId() + "." + "z".repeat(43)));
+            assertNull(clients.authenticateCredential("Bearer br1." + UUID.randomUUID() + "." + issued.credential().substring(41)));
+            clients.revoke(issued.client().clientId());
+            assertNull(clients.authenticateCredential(authorization));
+        }
+    }
+
     @Test void credentialAndRevocationSurviveRestartButPairingDoesNot() throws Exception {
         BrowserClients.Exchange issued; BrowserClients.Pairing pending;
         try (var clients = new BrowserClients(file(), Clock.systemUTC())) {

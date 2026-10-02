@@ -54,12 +54,14 @@ function Stop-SmokeRelay {
     if ($null -ne $relay -and -not $relay.HasExited) { Stop-Process -Id $relay.Id -Force }
     if ($null -ne $relay) { $relay.WaitForExit(5000) | Out-Null }
 }
-function Request([string]$Method, [string]$Path, $Body, [string]$Credential, [string]$Origin, [int]$Expected) {
+function Request([string]$Method, [string]$Path, $Body, [string]$Credential, [string]$Origin, [int]$Expected, [bool]$BrowserMetadata = $false) {
     $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), "$base$Path")
     try {
         if ($Credential) { $request.Headers.TryAddWithoutValidation('Authorization', 'Bearer ' + $Credential) | Out-Null }
         if ($Origin) {
             $request.Headers.TryAddWithoutValidation('Origin', $Origin) | Out-Null
+        }
+        if ($Origin -or $BrowserMetadata) {
             $request.Headers.TryAddWithoutValidation('Sec-Fetch-Site', 'none') | Out-Null
             $request.Headers.TryAddWithoutValidation('Sec-Fetch-Mode', 'cors') | Out-Null
             $request.Headers.TryAddWithoutValidation('Sec-Fetch-Dest', 'empty') | Out-Null
@@ -79,11 +81,11 @@ function Request([string]$Method, [string]$Path, $Body, [string]$Credential, [st
     } catch { throw 'Security smoke request failed; response bodies and credentials suppressed.' }
     finally { $request.Dispose() }
 }
-function Poll-Success($Task, [string]$Credential, [string]$Origin) {
+function Poll-Success($Task, [string]$Credential, [string]$Origin, [bool]$BrowserMetadata = $false) {
     $deadline = [DateTime]::UtcNow.AddSeconds(160)
     do {
         Start-Sleep -Milliseconds 250
-        $result = Request 'GET' "/api/v1/tasks/$($Task.taskId)" $null $Credential $Origin 200
+        $result = Request 'GET' "/api/v1/tasks/$($Task.taskId)" $null $Credential $Origin 200 $BrowserMetadata
     } while ($result.status -in @('QUEUED', 'RUNNING') -and [DateTime]::UtcNow -lt $deadline)
     if ($result.status -ne 'SUCCEEDED') { throw 'Real Ollama task did not succeed.' }
     if ($Task.promptVersion -eq 'translate-batch-v1') {
@@ -128,10 +130,20 @@ try {
     $credentialA = $a.credential; $credentialB = $b.credential
     $ready = Request 'GET' '/api/v1/capabilities/translate/readiness' $null $credentialA $originA 200
     if (-not $ready.available -or @($ready.PSObject.Properties.Name).Count -ne 1) { throw 'Sanitized Translate readiness assertion failed.' }
+    $originlessReady = Request 'GET' '/api/v1/capabilities/translate/readiness' $null $credentialA '' 200 $true
+    if (-not $originlessReady.available) { throw 'Originless readiness assertion failed.' }
     Request 'POST' '/api/v1/security/pairings/exchange' $exchangeA '' $originA 401 | Out-Null
     $browserBody = if ($Batch) { @{ items=@(@{ id=1; text='Hello' },@{ id=2; text='Settings' },@{ id=3; text='Load more' }); sourceLanguage='en'; targetLanguage='zh-CN'; profile='translate.fast' } } else { $body }
     if ($Batch) { $beforeBatch = (Invoke-RestMethod "http://127.0.0.1:$RelayPort/_smoke/counts").chatCalls }
     $taskA = Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA $originA 202
+    Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA '' 401 $true | Out-Null
+    Request 'DELETE' "/api/v1/tasks/$($taskA.taskId)" $null $credentialA '' 401 $true | Out-Null
+    Request 'GET' "/api/v1/tasks/$($taskA.taskId)" $null $credentialA $originA 200 | Out-Null
+    foreach ($cross in @(@{ task=$taskA.taskId; credential=$credentialB }, @{ task=$nativeTask.taskId; credential=$credentialA })) {
+        $denied = Request 'GET' "/api/v1/tasks/$($cross.task)" $null $cross.credential '' 404 $true
+        if ($denied.code -ne 'TASK_NOT_FOUND') { throw 'Originless ownership assertion failed.' }
+    }
+    Request 'GET' '/api/v1/security/clients' $null $credentialA '' 403 $true | Out-Null
     Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA $originB 401 | Out-Null
     Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA 'https://example.com' 401 | Out-Null
     foreach ($method in @('GET','DELETE')) {
@@ -140,7 +152,7 @@ try {
         Request $method "/api/v1/tasks/$($taskA.taskId)" $null $native '' 404 | Out-Null
         Request $method "/api/v1/tasks/$($nativeTask.taskId)" $null $credentialA $originA 404 | Out-Null
     }
-    $browserResult = Poll-Success $taskA $credentialA $originA
+    $browserResult = Poll-Success $taskA $credentialA '' $true
     if ($Batch) {
         $batchInferences = (Invoke-RestMethod "http://127.0.0.1:$RelayPort/_smoke/counts").chatCalls - $beforeBatch
         if ($batchInferences -ne 1) { throw 'One batch must cause exactly one real Ollama chat inference.' }
@@ -157,6 +169,7 @@ try {
     $restartResult = Poll-Success $afterRestart $credentialA $originA
     Request 'DELETE' "/api/v1/security/clients/$($a.client.clientId)" $null $native '' 204
     Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA $originA 401 | Out-Null
+    Request 'GET' '/api/v1/capabilities/translate/readiness' $null $credentialA '' 401 $true | Out-Null
     Stop-SmokeRuntime; Start-SmokeRuntime
     Request 'POST' '/api/v1/translate/tasks' $browserBody $credentialA $originA 401 | Out-Null
     Request 'DELETE' "/api/v1/security/clients/$($b.client.clientId)" $null $native '' 204
@@ -196,6 +209,10 @@ try {
     }
     $auditOutput | Set-Content -LiteralPath (Join-Path $runDirectory "$modeName-audit-evidence.json") -Encoding utf8
     $evidence = [ordered]@{ result='REAL PASS'; timestampUtc=[DateTime]::UtcNow.ToString('o'); bindAddress='127.0.0.1'; native='PASS'; pairing='PASS'; browserTranslate='PASS'; translateReadiness='PASS'; wrongOrigin=401; ordinaryWebOrigin=401; crossOwner=404; capabilities='Translate only'; credentialRestart='PASS'; revokeRestart='PASS'; clientA=$a.client.clientId; clientB=$b.client.clientId; secretAudit='PASS' }
+    $evidence.clientType='SYNTHETIC HTTP CLIENT (not Chrome acceptance)'
+    $evidence.originlessReadiness='PASS'; $evidence.originlessOwnedPolling='PASS'
+    $evidence.originlessCrossOwner=404; $evidence.originlessMutation=401; $evidence.originlessAdmin=403
+    $evidence.originlessRevoked=401; $evidence.originlessCors='No Access-Control-Allow-Origin'
     if ($Batch) {
         $evidence.batchPosts=1; $evidence.taskId=$taskA.taskId; $evidence.status=$browserResult.status; $evidence.itemCount=3
         $evidence.validMappings=@($browserResult.result.items).Count; $evidence.ollamaChatCalls=$batchInferences

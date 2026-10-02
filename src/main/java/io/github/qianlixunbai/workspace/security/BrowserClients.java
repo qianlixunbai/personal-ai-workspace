@@ -134,10 +134,16 @@ public final class BrowserClients implements AutoCloseable {
     }
 
     public synchronized ClientIdentity authenticate(String authorization, String origin) {
-        if (authorization == null || !authorization.matches("Bearer br1\\.[0-9a-f-]{36}\\.[A-Za-z0-9_-]{43}") || !validOrigin(origin)) return null;
+        ClientIdentity identity = authenticateCredential(authorization);
+        return identity != null && validOrigin(origin) && identity.origin().equals(origin) ? identity : null;
+    }
+
+    /** Authenticates the bearer secret only; HTTP admission must separately enforce Origin/metadata/routes. */
+    public synchronized ClientIdentity authenticateCredential(String authorization) {
+        if (authorization == null || !authorization.matches("Bearer br1\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.[A-Za-z0-9_-]{43}")) return null;
         String credential = authorization.substring(7); String id = credential.substring(4, 40);
         for (Registration entry : clients) {
-            if (entry.identity().clientId().equals(id) && entry.identity().origin().equals(origin)
+            if (entry.identity().clientId().equals(id)
                     && MessageDigest.isEqual(HexFormat.of().parseHex(entry.verifier()), digest(credential))) return entry.identity();
         }
         return null;

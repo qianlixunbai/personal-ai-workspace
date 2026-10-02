@@ -10,12 +10,16 @@ M1 closing commit 已 fast-forward merge 到 main 并 push 到 origin/main；发
 M1.5 — Assistant Core Capabilities：**CLOSED — GO**，新增 Summarize 与 single-turn stateless Ask AI。
 M1.5 已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
 M2A — Browser Runtime Access Foundation：**CLOSED — GO**，已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。
-完整证据见 [M2A Closing Report](docs/milestones/M2A-CLOSING-REPORT.md)；真实 Chrome 接入仍为 M2B deferred。
+完整历史证据见 [M2A Closing Report](docs/milestones/M2A-CLOSING-REPORT.md)；完整 Chrome acceptance 属于 M2B-2B。
 M2B-1 — Browser Pairing UX：**CLOSED — GO**，已 push feature branch、fast-forward merge main 并 push origin/main，发布基线 `d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
 验收与边界见 [M2B-1 Closing Report](docs/milestones/M2B-1-CLOSING-REPORT.md)，历史报告保留当时未 merge/push 的事实。
 M2B-2A — Runtime Browser Batch Translation Contract：**CLOSED — GO / Runtime Batch Translation Contract Ready**。
 同一 Translate API 支持一批 records → 一个共享任务 → 一次 provider inference → structured result。
-分支 `m2b2a-runtime-batch-translate` 仅本地提交；证据见 [M2B-2A Closing Report](docs/milestones/M2B-2A-CLOSING-REPORT.md)。Extension migration / Chrome acceptance 属于后续 M2B-2B。
+已 merge/push 的稳定基线为 `25dc1dfc9a103b030267f18d93059316f0ce008d`；[M2B-2A Closing Report](docs/milestones/M2B-2A-CLOSING-REPORT.md) 保留当时仅本地提交的事实。
+M2B-2B Extension candidate `ddfa4a0`：**PARTIAL / AWAITING REAL CHROME ACCEPTANCE**。
+M2B-2B-R1 — Real Chrome GET Security Compatibility：**CLOSED — GO**（2026-10-03），仅关闭 Runtime 安全兼容修复。
+真实 Chrome 154 已验证无 Origin readiness/task GET 可读、exact-Origin Batch POST 与 structured result；完整 Extension acceptance / M2 仍未关闭。
+证据与边界见 [M2B-2B-R1 Closing Report](docs/milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md)。
 
 ## 启动
 
@@ -224,8 +228,9 @@ M0 只允许 LOCAL Ollama。`LOCAL_ONLY`、`LOCAL_PREFERRED`、`CLOUD_OPTIONAL` 
 Ollama URL 只允许显式端口的 `http://127.0.0.1` / `http://localhost`，后者固定为 127.0.0.1。
 禁用代理与 HTTP redirect，避免向远程地址发送正文。
 
-loopback 不代替认证。Native 拒绝 Origin / cross-site 请求；Browser 必须匹配已注册精确扩展 Origin、
-独立 credential 与 Fetch Metadata。CORS 只响应精确允许的 Origin，不设 wildcard，也不代替认证。
+loopback 不代替认证。Native 拒绝 Origin / cross-site 请求；Browser 使用独立 credential 与 Fetch Metadata，
+Origin-present 请求必须匹配已注册精确扩展 Origin。Chrome 无 Origin 的 GET 仅允许下述两个显式路径。
+CORS 只响应请求实际携带且精确允许的 Origin；无 Origin 不生成 allow-origin，不设 wildcard，也不代替认证。
 Native 持有人共用 `native-local` owner；每个 Browser client 独立 owner，跨 owner GET/DELETE 返回 TASK_NOT_FOUND。
 同一 OS 用户能读取 token 是本地信任假设；不隔离已攻陷的同用户进程。
 Runtime 默认不记录正文、模型回答、token、provider body。
@@ -248,6 +253,14 @@ Browser 请求要求 `Sec-Fetch-Site: none`、`Sec-Fetch-Mode: cors`、`Sec-Fetc
 Browser 仅可 POST `/api/v1/translate/tasks`、GET Translate capability readiness 和 GET/DELETE 自己的 `/api/v1/tasks/{id}`。
 Ask/Summarize/管理 API 不授权 Browser。所有 capability 仍 LOCAL_ONLY，共用同一个 TaskManager。
 
+真实 Chrome privileged GET 可以不发送 Origin。Runtime 首先按 Authorization 类型选择 credential 验证路径，
+`br1` prefix 不授予权限；必须 lookup 已注册 clientId 并 constant-time 比较 credential 的 SHA-256 verifier，revoke 后拒绝。
+无 Origin Browser 请求只允许 GET `/api/v1/capabilities/translate/readiness` 与 GET `/api/v1/tasks/{uuid}`，
+同时要求完整精确 Fetch Metadata、Translate capability 和 task ownership。没有 Origin 时无法验证 exact Origin；
+Bearer secret 是认证材料，注册身份来自此前 explicit user-approved pairing。无 Origin 的 mutation/其他 route 一律拒绝。
+Pairing exchange 及所有 Origin-present 请求继续要求 exact Origin；POST/DELETE 必须带它。
+没有伪 Origin header、Origin synthesis 或 wildcard CORS；现有 exact-Origin OPTIONS policy 保持。
+
 Pairing 3 分钟、一次性；最多 8 sessions、每 session 5 次错误 proof、总 exchange 60 次/分钟。
 最多 32 个注册。已配对 credential 跨 Runtime restart 有效；未完成 pairing 在 restart 后失效。
 `browser-clients.json` 与 token 同属专用私有目录；只存安全 metadata 和 SHA-256 verifier，64 KiB 上限，
@@ -256,7 +269,8 @@ private permissions、exclusive writer lock、atomic replacement、corruption fa
 
 Future extension 必须从可信 extension context 访问 Runtime；自己保存 credential 并限制 content script storage 访问，
 不得传入 webpage/DOM/log。Extension local forget 仅删除副本；server revoke 须由 trusted native action 执行。
-真实 Chrome host permissions/Fetch Metadata/storage 接入待 M2B。完整决策与边界见 ADR-003。
+当前 candidate 已通过本轮限定的真实 Chrome security compatibility 验证；完整 Extension acceptance 仍待 M2B-2B。
+完整决策、真实证据 amendment 与同 OS 用户进程信任边界见 ADR-003。
 
 ## 验证
 
@@ -271,7 +285,11 @@ git diff --check
 自动测试使用 fake work 和 loopback HTTP mock server，不依赖本机 Ollama。
 M2B-2A：Java 29 / Desktop 67 PASS，native 三能力与 synthetic browser Single/Batch 安全 smoke REAL PASS。
 Batch smoke 使用 Python 3 标准库的仅验证 loopback relay 计数实际 Ollama `/api/chat`，证明 3 records / 1 POST / 1 task / 1 inference / 3 valid mappings。
-Relay 只在验证中转发到现有本机 Ollama，不是产品 Provider；不记录正文，不修改 Ollama。实际 Chrome 尚未验收。
+Relay 只在验证中转发到现有本机 Ollama，不是产品 Provider；不记录正文，不修改 Ollama。
+M2B-2B-R1：Java 30 / Desktop 67 PASS；native、synthetic Single/Batch 与真实 Chrome 154 限定安全链路 PASS。
+真实 Chrome 验证脚本 `scripts/chrome-get-security-smoke.js` 使用 Node 24、现有 Java/Chrome、未修改的 sibling Extension candidate。
+参数为实际 `java.exe`、`chrome.exe`、可选 Extension repo 路径；拒绝占用端口，使用隔离 dev authority/profile，验证后 revoke/停止自有进程并清理含 credential 的临时 profile。
+该脚本只验收 exchange/readiness/Batch/polling/result/security，不执行完整 Extension Closing 或 WPF GUI 验收。
 `scripts/privacy-audit.py` 从 stdin 接收内存中的临时凭据，扫描 source/build/archive/log/evidence，不保存或输出秘密。
 M1.5 验证（2026-10-02）：Java 16 / Desktop 40 tests 全部 PASS，build 0 warnings/errors；
 三种 capability 的真实 Runtime + Ollama smoke PASS。真实 WPF 主路径、热键、取消、离线/恢复与重启 PASS；

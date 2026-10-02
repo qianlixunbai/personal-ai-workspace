@@ -27,18 +27,28 @@ final class LocalClientFilter extends OncePerRequestFilter {
             reject(response, 401, ErrorCode.UNAUTHORIZED); return;
         }
         String origin = request.getHeader("Origin"), path = request.getServletPath(), method = request.getMethod();
+        String authorization = request.getHeader("Authorization");
         boolean exchange = path.equals("/api/v1/security/pairings/exchange");
         ClientIdentity identity;
-        if (origin == null) {
+        if (origin == null && authorization != null && authorization.startsWith("Bearer br1.")) {
+            // Chrome privileged GET can omit Origin. The prefix selects validation, never grants trust.
+            identity = clients.authenticateCredential(authorization);
+            if (identity == null || !method.equals("GET") || !browserMetadata(request)) {
+                reject(response, 401, ErrorCode.UNAUTHORIZED); return;
+            }
+            if (!browserGetRoute(path) || !identity.allowedCapabilities().contains("translate")) {
+                reject(response, 403, ErrorCode.POLICY_DENIED); return;
+            }
+            // No Origin exists to bind or echo; host permissions govern Chrome response readability.
+        } else if (origin == null) {
             if (exchange || "cross-site".equals(request.getHeader("Sec-Fetch-Site"))
-                    || !token.matches(request.getHeader("Authorization"))) {
+                    || !token.matches(authorization)) {
                 reject(response, 401, ErrorCode.UNAUTHORIZED); return;
             }
             identity = ClientIdentity.NATIVE;
         } else {
             // Privileged extension requests: none/cors/empty. Navigation, webpage and cross-site traffic fail closed.
-            if (!BrowserClients.validOrigin(origin) || !"none".equals(request.getHeader("Sec-Fetch-Site"))
-                    || !"cors".equals(request.getHeader("Sec-Fetch-Mode")) || !"empty".equals(request.getHeader("Sec-Fetch-Dest"))) {
+            if (!BrowserClients.validOrigin(origin) || !browserMetadata(request)) {
                 reject(response, 401, ErrorCode.UNAUTHORIZED); return;
             }
             if (method.equals("OPTIONS")) {
@@ -61,10 +71,12 @@ final class LocalClientFilter extends OncePerRequestFilter {
                 // This principal can only reach exchange, whose one-time proof is validated before issuance.
                 identity = new ClientIdentity("pairing", "pairing", "Pairing", origin, java.time.Instant.EPOCH, java.util.Set.of());
             } else {
-                identity = clients.authenticate(request.getHeader("Authorization"), origin);
+                identity = clients.authenticate(authorization, origin);
                 if (identity == null) { reject(response, 401, ErrorCode.UNAUTHORIZED); return; }
                 cors(response, origin);
-                if (!browserRoute(path, method, false)) { reject(response, 403, ErrorCode.POLICY_DENIED); return; }
+                if (!browserRoute(path, method, false) || !identity.allowedCapabilities().contains("translate")) {
+                    reject(response, 403, ErrorCode.POLICY_DENIED); return;
+                }
             }
             cors(response, origin);
         }
@@ -81,8 +93,21 @@ final class LocalClientFilter extends OncePerRequestFilter {
     private static boolean browserRoute(String path, String method, boolean exchange) {
         if (exchange) return "POST".equals(method);
         return path.equals("/api/v1/translate/tasks") && "POST".equals(method)
-                || path.equals("/api/v1/capabilities/translate/readiness") && "GET".equals(method)
-                || path.matches("/api/v1/tasks/[0-9a-fA-F-]{36}") && List.of("GET", "DELETE").contains(method == null ? "" : method);
+                || browserGetRoute(path) && "GET".equals(method)
+                || taskRoute(path) && "DELETE".equals(method);
+    }
+
+    private static boolean browserGetRoute(String path) {
+        return path.equals("/api/v1/capabilities/translate/readiness") || taskRoute(path);
+    }
+
+    private static boolean taskRoute(String path) {
+        return path.matches("/api/v1/tasks/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    }
+
+    private static boolean browserMetadata(HttpServletRequest request) {
+        return "none".equals(request.getHeader("Sec-Fetch-Site"))
+                && "cors".equals(request.getHeader("Sec-Fetch-Mode")) && "empty".equals(request.getHeader("Sec-Fetch-Dest"));
     }
 
     private static void cors(HttpServletResponse response, String origin) {
