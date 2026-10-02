@@ -38,26 +38,45 @@ public sealed class RuntimeClient : IDisposable
             || Property(root, "modelAvailable").ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw Invalid();
     }
 
-    public async Task<RuntimeTask> SubmitAsync(TranslateInput input, CancellationToken cancellationToken)
+    public Task<RuntimeTask> SubmitAsync(TranslateInput input, CancellationToken cancellationToken) => SubmitTranslateAsync(input, cancellationToken);
+
+    public Task<RuntimeTask> SubmitTranslateAsync(TranslateInput input, CancellationToken cancellationToken)
     {
         input.Validate();
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { text = input.Text, targetLanguage = input.TargetLanguage, profile = "translate.fast" });
-        using var body = await SendAsync(HttpMethod.Post, "/api/v1/translate/tasks", payload, true, HttpStatusCode.Accepted, cancellationToken,
+        return SubmitTaskAsync("translate", new { text = input.Text, targetLanguage = input.TargetLanguage, profile = "translate.fast" }, cancellationToken);
+    }
+    public Task<RuntimeTask> SubmitSummarizeAsync(SummarizeInput input, CancellationToken cancellationToken)
+    {
+        input.Validate();
+        return SubmitTaskAsync("summarize", new { text = input.Text, profile = "summarize.fast" }, cancellationToken);
+    }
+    public Task<RuntimeTask> SubmitAskAsync(AskInput input, CancellationToken cancellationToken)
+    {
+        input.Validate();
+        return SubmitTaskAsync("ask", new { question = input.Question, profile = "chat.balanced" }, cancellationToken);
+    }
+    private async Task<RuntimeTask> SubmitTaskAsync(string capability, object request, CancellationToken cancellationToken)
+    {
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(request);
+        using var body = await SendAsync(HttpMethod.Post, $"/api/v1/{capability}/tasks", payload, true, HttpStatusCode.Accepted, cancellationToken,
             (response, document) =>
             {
-                var task = ParseTask(document.RootElement, null);
+                var task = ParseTask(document.RootElement, null, capability);
                 if (response.Headers.Location?.OriginalString != $"/api/v1/tasks/{task.TaskId:D}") throw Invalid();
             });
-        return ParseTask(body.RootElement, null);
+        return ParseTask(body.RootElement, null, capability);
     }
 
-    public Task<RuntimeTask> GetAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken);
-    public Task<RuntimeTask> CancelAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken);
+    public Task<RuntimeTask> GetAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, null);
+    public Task<RuntimeTask> CancelAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken, null);
 
-    private async Task<RuntimeTask> TaskRequest(HttpMethod method, Guid id, CancellationToken cancellationToken)
+    internal Task<RuntimeTask> GetAsync(Guid taskId, string capability, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, capability);
+    internal Task<RuntimeTask> CancelAsync(Guid taskId, string capability, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken, capability);
+
+    private async Task<RuntimeTask> TaskRequest(HttpMethod method, Guid id, CancellationToken cancellationToken, string? capability)
     {
         using var body = await SendAsync(method, $"/api/v1/tasks/{id:D}", null, true, HttpStatusCode.OK, cancellationToken);
-        return ParseTask(body.RootElement, id);
+        return ParseTask(body.RootElement, id, capability);
     }
 
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
@@ -129,14 +148,16 @@ public sealed class RuntimeClient : IDisposable
         { throw new DesktopException(DesktopError.ClientTimeout); }
     }
 
-    private static RuntimeTask ParseTask(JsonElement root, Guid? expectedId)
+    private static RuntimeTask ParseTask(JsonElement root, Guid? expectedId, string? expectedCapability = null)
     {
-        if (!Guid.TryParseExact(String(root, "taskId"), "D", out var id) || id == Guid.Empty || (expectedId.HasValue && id != expectedId)
-            || String(root, "capability") != "translate") throw Invalid();
+        if (!Guid.TryParseExact(String(root, "taskId"), "D", out var id) || id == Guid.Empty || (expectedId.HasValue && id != expectedId)) throw Invalid();
+        string capability = String(root, "capability");
+        string profileId = capability switch { "translate" => "translate.fast", "summarize" => "summarize.fast", "ask" => "chat.balanced", _ => throw Invalid() };
+        if (expectedCapability is not null && capability != expectedCapability) throw Invalid();
         string state = String(root, "status");
         if (!Enum.TryParse<TaskState>(state, false, out var status) || !Enum.IsDefined(status) || status.ToString() != state) throw Invalid();
         var profile = Property(root, "profile");
-        if (String(profile, "id") != "translate.fast" || String(profile, "locality") != "LOCAL"
+        if (String(profile, "id") != profileId || String(profile, "locality") != "LOCAL"
             || string.IsNullOrWhiteSpace(String(profile, "version")) || string.IsNullOrWhiteSpace(String(root, "promptVersion"))) throw Invalid();
         if (!DateTimeOffset.TryParse(String(root, "createdAt"), out var created)) throw Invalid();
         var finished = Property(root, "finishedAt");
@@ -151,6 +172,8 @@ public sealed class RuntimeClient : IDisposable
         if (status == TaskState.SUCCEEDED)
         {
             if (result.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(result.GetString()) || error.ValueKind != JsonValueKind.Null) throw Invalid();
+            int outputBytes = capability == "summarize" ? 4096 : 8192;
+            if (System.Text.Encoding.UTF8.GetByteCount(result.GetString()!) > outputBytes) throw Invalid();
             return new RuntimeTask(id, status, result.GetString(), null);
         }
         if (result.ValueKind != JsonValueKind.Null) throw Invalid();

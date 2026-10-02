@@ -1,6 +1,6 @@
 namespace PersonalAiWorkspace.Core;
 
-public sealed class TranslationOperation(RuntimeClient client, TimeSpan? pollingInterval = null)
+public sealed class AssistantOperation(RuntimeClient client, TimeSpan? pollingInterval = null)
 {
     private readonly TaskCompletionSource cancelSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int cancelRequested;
@@ -10,14 +10,22 @@ public sealed class TranslationOperation(RuntimeClient client, TimeSpan? polling
         cancelSignal.TrySetResult();
     }
 
-    public async Task<RuntimeTask> RunAsync(TranslateInput input, Action<RuntimeTask> progress, CancellationToken lifetime)
+    public async Task<RuntimeTask> RunAsync(AssistantInput input, Action<RuntimeTask> progress, CancellationToken lifetime)
     {
         Guid? id = null;
         bool terminal = false;
         try
         {
             // User cancellation does not abort POST: first obtain identity, then cancel that task.
-            var task = await client.SubmitAsync(input, lifetime);
+            input.Validate();
+            string capability = input.Action switch { AssistantAction.Translate => "translate", AssistantAction.Summarize => "summarize", AssistantAction.Ask => "ask", _ => throw new DesktopException(DesktopError.InvalidRequest) };
+            var task = await (input.Action switch
+            {
+                AssistantAction.Translate => client.SubmitTranslateAsync(new(input.Text, input.TargetLanguage), lifetime),
+                AssistantAction.Summarize => client.SubmitSummarizeAsync(new(input.Text), lifetime),
+                AssistantAction.Ask => client.SubmitAskAsync(new(input.Text), lifetime),
+                _ => throw new DesktopException(DesktopError.InvalidRequest)
+            });
             id = task.TaskId;
             var started = System.Diagnostics.Stopwatch.StartNew();
             while (true)
@@ -26,14 +34,14 @@ public sealed class TranslationOperation(RuntimeClient client, TimeSpan? polling
                 if (task.Terminal) { terminal = true; return task; }
                 if (Volatile.Read(ref cancelRequested) != 0)
                 {
-                    task = await client.CancelAsync(id.Value, lifetime);
+                    task = await client.CancelAsync(id.Value, capability, lifetime);
                     if (!task.Terminal) throw new DesktopException(DesktopError.InvalidResponse);
                     continue;
                 }
                 if (started.Elapsed > TimeSpan.FromSeconds(190)) throw new DesktopException(DesktopError.ClientTimeout);
                 await Task.WhenAny(Task.Delay(pollingInterval ?? TimeSpan.FromMilliseconds(300), lifetime), cancelSignal.Task);
                 lifetime.ThrowIfCancellationRequested();
-                if (Volatile.Read(ref cancelRequested) == 0) task = await client.GetAsync(id.Value, lifetime);
+                if (Volatile.Read(ref cancelRequested) == 0) task = await client.GetAsync(id.Value, capability, lifetime);
             }
         }
         finally

@@ -30,10 +30,10 @@ public final class TaskManager {
         timer.scheduleWithFixedDelay(this::expire, 1, 1, TimeUnit.SECONDS);
     }
 
-    public synchronized TaskView submit(ModelProfile profile, String promptVersion, Work work) {
+    public synchronized TaskView submit(String capability, ModelProfile profile, String promptVersion, Work work) {
         expire();
         if (closed || tasks.size() >= settings.maxRetained()) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "ADMISSION");
-        Job job = new Job(profile.publicInfo(), promptVersion, work);
+        Job job = new Job(capability, profile.publicInfo(), promptVersion, work);
         tasks.put(job.id, job);
         job.deadline = timer.schedule(() -> timeout(job, TaskStatus.QUEUED, "QUEUE"),
                 settings.queueTimeout().toNanos(), TimeUnit.NANOSECONDS);
@@ -108,6 +108,7 @@ public final class TaskManager {
         final Instant createdAt = Instant.now();
         final ModelProfile.PublicProfile profile;
         final String promptVersion;
+        final String capability;
         final Cancellation cancellation = new Cancellation();
         TaskStatus status = TaskStatus.QUEUED;
         Work work;
@@ -117,8 +118,8 @@ public final class TaskManager {
         ScheduledFuture<?> deadline;
         boolean inWorker;
 
-        Job(ModelProfile.PublicProfile profile, String promptVersion, Work work) {
-            this.profile = profile; this.promptVersion = promptVersion; this.work = work;
+        Job(String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work) {
+            this.capability = capability; this.profile = profile; this.promptVersion = promptVersion; this.work = work;
         }
 
         public void run() {
@@ -161,7 +162,7 @@ public final class TaskManager {
         }
 
         TaskView view() {
-            return new TaskView(id, "translate", status, profile, promptVersion, createdAt, finishedAt,
+            return new TaskView(id, capability, status, profile, promptVersion, createdAt, finishedAt,
                     status == TaskStatus.SUCCEEDED ? result : null, error);
         }
     }

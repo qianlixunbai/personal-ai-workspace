@@ -1,17 +1,19 @@
-# Current Architecture — M0 Runtime + M1 Windows Entry
+# Current Architecture — M0 Runtime + M1 Windows Entry + M1.5 Capabilities
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
 2026-10-02 final closing 全量回归通过（Java 14 / Desktop 31 tests，Desktop build 0 warnings/errors），
 真实 Windows 验收全部 PASS，剩余场景由用户确认；证据来源与已知限制详见 [STATUS](../STATUS.md)。
-M1 仍在 `m1-windows-entry`，本次仅文档收口，未 merge/push；ADR-002 已为 Accepted，与实现一致，无需修改。
+M1 closing 已 fast-forward merge 到 main 并 push 到 origin/main，基线 `6d17ad7`；ADR-002 为 Accepted，与实现一致。
 
-Windows 用户主动 hotkey → selection capture → WPF → authenticated localhost Runtime →
-`translate.fast` → Ollama → 纯文本 result card。Desktop 不直连 Ollama。
+M1.5 — Assistant Core Capabilities：**CLOSED — GO**；当前实现分支 `m1.5-assistant-capabilities`，未 merge/push。
+Windows 主动 Translate hotkey 或手动 Translate / Summarize / Ask → WPF → authenticated localhost Runtime →
+`translate.fast` / `summarize.fast` / `chat.balanced` → Ollama → 单个纯文本 result card。Desktop 不直连 Ollama。
 没有新增 pairing endpoint 或 per-client task ownership；仍为 single trust domain。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
 本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
-没有新增 Runtime capability、重构 M0/M1 或修改旧仓库，也没有启动 Browser migration、Memory/RAG、Summarize/Chat。
+M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
+没有启动 Browser migration、Memory/RAG、多轮会话或工具框架。
 
 ## Windows Desktop 边界
 
@@ -31,6 +33,9 @@ Copy fallback 只在 UIA Unsupported 且原生编辑焦点已验证时启用，�
 只保存空/Unicode 纯文本 snapshot；拒绝丰富格式，sequence/owner/焦点重验并条件恢复，外部更新不覆盖。
 超时/无法归属/恢复失败均向用户提示；不保证异步来源应用迟到 Copy 时的 clipboard ownership。
 正文只在 UI、HTTP 和 helper pipe 的有界内存中，不持久化 selection/result/clipboard。
+Action 切换清空上一项输入/结果；执行期间禁用切换。原 Ctrl+Alt+Shift+T 在 capture 前强制选择 Translate。
+Ask 只接收 question，没有 context、messages/history/systemPrompt；prompt 属于 Runtime。
+不引入 conversation/history/DB、Markdown renderer 或新的 global hotkeys。
 
 RuntimeClient 禁用 proxy/redirect；响应最大 1 MiB，严格校验状态、UUID、LOCAL profile、terminal/result/error 一致性、
 重复 JSON 字段、Location、错误分类；拒绝未知或不完整响应，不显示 raw body/stack trace。
@@ -46,8 +51,8 @@ POST 通信失败时可能无法知道是否已接受任务，不能宣称已取
 
 ```mermaid
 flowchart LR
-    Client[Authenticated local client] --> API[Translate API]
-    API --> App[TranslateService]
+    Client[Authenticated local client] --> API[Translate / Summarize / Ask API]
+    API --> App[Capability services + TextTaskSubmission]
     App --> Profiles[Model Profile resolution]
     App --> Admission[Provider Policy]
     Admission --> Tasks[Bounded TaskManager]
@@ -63,7 +68,8 @@ flowchart LR
 | Package | 职责 |
 | --- | --- |
 | api | DTO 接入、HTTP 状态和安全错误映射、task GET/DELETE |
-| capability.translate | 正文预算、版本化翻译规则、应用编排 |
+| capability.translate / summarize / ask | 独立请求 DTO、版本化 prompt、具体应用编排 |
+| capability.TextTaskSubmission | 共享 profile/输入与 prompt 预算、LOCAL_ONLY admission/execution、输出校验 |
 | model | 配置 ModelProfile 和安全 PublicProfile |
 | policy | LOCAL/CLOUD 分类校验与无 fallback 策略 |
 | provider | Provider、capability、execution、registry、readiness 契约 |
@@ -75,7 +81,7 @@ flowchart LR
 | common | 脱敏 ApiError / WorkspaceException |
 
 Provider 错误复用 common 的稳定分类；Ollama 异常 cause / body 不跨适配边界。
-TranslateService 依赖 Provider，不依赖 Ollama 类型。Profile 来自 YAML，无数据库。
+三个 Capability Service 通过 TextTaskSubmission 依赖 Provider，不依赖 Ollama 类型。Profile 来自 YAML，无数据库。
 
 ## 任务生命周期
 
@@ -100,8 +106,13 @@ Ollama/GPU 的最终停止时间不受 Runtime 保证。
 
 Profile `translate.fast` 默认映射 `ollama / qwen3.5:4b / LOCAL / m0-1`。
 context 8192、output 2048、temperature 0.1；prompt 版本独立为 `translate-v1`。
+新增 `summarize.fast` / `chat.balanced` 同样解析到本机 Ollama / `qwen3.5:4b`，version `m1.5-1`；
+context 均为 8192，output 分别为 1024 / 2048，temperature 为 0.1 / 0.4；prompt 为 `summarize-v1` / `ask-v1`。
+Summarize 输入 6000 字符 / 6656 UTF-8 字节，Ask 3000 / 5632，Translate 保留 4000 / 5632；
+prompt 最多 512 字节，result 最多 outputBudget × 4 字节，HTTP body 32 KiB，provider response 1 MiB。
+这是保守字符/字节预算，不承诺精确 tokenizer 上限。
 Policy 在 admission、worker 执行及最终 Ollama model egress 重验。
-M0 任何 PrivacyMode 都拒绝 CLOUD；没有 cloud adapter 或 fallback 路径。
+三个 capability 固定 LOCAL_ONLY；当前任何 PrivacyMode 都拒绝 CLOUD；没有 cloud adapter 或 fallback 路径。
 
 HTTP 访问只到字面量 127.0.0.1，不使用系统 proxy、不跟随 redirect。
 tags 用于 provider/model availability；不自动安装模型。

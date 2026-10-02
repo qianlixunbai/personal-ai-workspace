@@ -6,7 +6,9 @@
 M1 Windows Assistant Entry 已实现 .NET 10 LTS / 原生 WPF 客户端，代码位于 `desktop/`。
 M1 — Windows Assistant Entry：**CLOSED — GO**。2026-10-02 全量回归通过，用户确认剩余真实 Windows 验收全部 PASS。
 Java 与 Desktop 分别使用 Maven Wrapper / dotnet CLI 验证；Desktop 只调用 Runtime，不直接访问 Ollama。
-本次 closing 仅同步文档并创建本地提交；未 merge main、未 push，未开始下一 milestone。
+M1 closing commit 已 fast-forward merge 到 main 并 push 到 origin/main；发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。
+M1.5 — Assistant Core Capabilities：**CLOSED — GO**，新增 Summarize 与 single-turn stateless Ask AI。
+本轮实现保存在 `m1.5-assistant-capabilities`，未 merge/push；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
 
 ## 启动
 
@@ -28,7 +30,7 @@ POSIX 权限为目录 0700 / 文件 0600，Windows ACL 仅允许文件所有者�
 配置见 `src/main/resources/application.yml`。token-file 指向专用私有目录；
 Runtime 会收紧该目录及文件权限。不要将其配置为共享目录。
 
-## Windows Assistant（M1）
+## Windows Assistant（M1 / M1.5）
 
 需要 Windows 11 x64 和 [正式 .NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)。
 本机在用户授权后通过 WinGet `Microsoft.DotNet.SDK.10` 安装并验证了 SDK 10.0.401。
@@ -57,7 +59,9 @@ M1 保留 single trust domain，没有 per-client task ownership。详见 [ADR-0
 
 - 在其他应用选中文字，按 **Ctrl+Alt+Shift+T**；成功捕获后填入 input 并自动发起 Translate。
 - 没有选区、受保护控件、前台变化或 provider 不支持时，窗口显示分类提示；可手动输入/粘贴再点 Translate。
-- 默认目标语言 `zh-CN`，可选 `en` / `ja`。Cancel 向 Runtime 发送 DELETE，以实际终态为准。
+- Action 默认 Translate，目标语言默认 `zh-CN`，可选 `en` / `ja`。原热键始终切回 Translate 再捕获选区。
+- Summarize：手动输入/粘贴文本，按源语言生成简洁摘要。Ask AI：输入单轮问题，得到纯文本回答。
+- 切换 Action 清空上一项 input/result；执行时不能切换。所有 Action 共用 Cancel，向 Runtime 发送 DELETE，以实际终态为准。
 - 结果按纯文本显示，可显式 Copy result；关闭窗口继续在托盘运行。托盘可打开窗口、检查 Runtime 或退出。
 - 热键冲突有明确提示，仍可从托盘手动翻译；再次启动应用激活同一用户会话内的已有实例。
 
@@ -92,7 +96,9 @@ Runtime 地址固定 `http://127.0.0.1:8765`，禁止 proxy/redirect，无 cloud
 | GET | `/actuator/health/readiness` | Runtime readiness，不依赖 Ollama |
 | GET | `/api/v1/providers/readiness` | 本地 provider / 配置模型可用性 |
 | POST | `/api/v1/translate/tasks` | 提交 Translate，202 + taskId + Location |
-| GET | `/api/v1/tasks/{taskId}` | 查询状态、成功结果或受控错误 |
+| POST | `/api/v1/summarize/tasks` | 提交 Summarize，202 + taskId + Location |
+| POST | `/api/v1/ask/tasks` | 提交单轮 Ask，202 + taskId + Location |
+| GET | `/api/v1/tasks/{taskId}` | 三种 capability 共用状态、成功结果或受控错误 |
 | DELETE | `/api/v1/tasks/{taskId}` | 取消 QUEUED / RUNNING；终态幂等返回 |
 
 提交示例：
@@ -101,12 +107,30 @@ Runtime 地址固定 `http://127.0.0.1:8765`，禁止 proxy/redirect，无 cloud
 {"text":"Hello, world!","sourceLanguage":"en","targetLanguage":"zh-CN","profile":"translate.fast"}
 ```
 
-`sourceLanguage` 可省略，`profile` 可省略并默认为 `translate.fast`。
+Translate 的 `sourceLanguage` 可省略，`profile` 可省略并默认为 `translate.fast`。
 语言参数是形如 `en`、`zh-CN` 的标签，不接受任意 prompt 指令。
-拒绝未知字段（包括 `model`）、空文本、未知 profile、超过字符或 UTF-8 输入预算的请求。
-HTTP body 最大 32 KiB，默认正文最多 4000 字符；另有 UTF-8 字节预算 5632，
-为 8192 context 预留 2048 output 和 512 instruction/template budget。
-这是一种保守输入限制，并非精确 tokenizer 计数。
+
+Summarize 请求：`{"text":"Synthetic source text","profile":"summarize.fast"}`。
+`profile` 默认 `summarize.fast`；可选 `targetLanguage`，省略时输出源语言摘要。
+Desktop 第一版使用源语言摘要，不额外提供样式选项。
+
+Ask 请求：`{"question":"What is 2 plus 3?","profile":"chat.balanced"}`。
+`profile` 默认 `chat.balanced`；这是 **single-turn stateless API**。
+不接受 context、messages、conversationId、history、memory、tools 或客户端 systemPrompt。
+所有 capability 拒绝未知字段（包括 `model`）、空输入、未知/跨 capability profile 与超预算请求。
+
+| Capability | Profile | 字符上限 | UTF-8 输入字节上限 | context / output | 输出字节上限 | Prompt version |
+| --- | --- | ---: | ---: | --- | ---: | --- |
+| Translate | translate.fast | 4000 | 5632 | 8192 / 2048 | 8192 | translate-v1 |
+| Summarize | summarize.fast | 6000 | 6656 | 8192 / 1024 | 4096 | summarize-v1 |
+| Ask | chat.balanced | 3000 | 5632 | 8192 / 2048 | 8192 | ask-v1 |
+
+HTTP body 最大 32 KiB，所有 prompt 最大 512 UTF-8 字节。
+输入字节上限 = context − output − 512；字符与字节限制同时生效，非精确 tokenizer 计数。
+Provider response 最大 1 MiB；实际 result 另按 profile output × 4 字节硬限制，超限安全失败，不静默截断。
+三个 profile 第一版均配置为 `ollama / qwen3.5:4b / LOCAL`，不下载新模型。
+Translate profile version 为 `m0-1`，新增 profile version 为 `m1.5-1`；temperature 分别为 0.1 / 0.1 / 0.4。
+具体模型只由 Runtime 配置解析，public task response 不暴露具体模型名。
 
 PowerShell 客户端示例（Runtime 已启动）：
 
@@ -134,7 +158,8 @@ Readiness 始终返回 200 的状态 envelope；读取 `available`、`modelAvail
 
 ## 执行与隐私边界
 
-调用链：API → TranslateService → TaskManager → ProviderPolicy / ProfileResolver → Provider → Ollama。
+调用链：API → Translate / Summarize / Ask Service → TextTaskSubmission → 共享 TaskManager → ProviderPolicy → Provider → Ollama。
+Capability 持有各自 prompt；TextTaskSubmission 只复用 profile resolution、预算、受控执行与输出校验。
 默认并发 1、等待队列 4、队列等待 30s、任务执行 150s、连接 2s、模型请求 120s、metadata 3s。
 输出/终态仅保存在有界内存中：最多 64 条，完成后约 2 分钟过期（1s 清理周期或查询时清理）。
 执行中的 worker 退出前仍占用执行容量，即使任务已经取消或超时。
@@ -144,7 +169,7 @@ HTTP cancel 不保证 GPU 立即停止；已提交 SUCCEEDED 的任务不会被�
 重启丢失所有任务，不支持会话或长期数据保存。
 
 M0 只允许 LOCAL Ollama。`LOCAL_ONLY`、`LOCAL_PREFERRED`、`CLOUD_OPTIONAL` 是策略概念，
-当前任何模式都禁止 cloud；Translate 固定 LOCAL_ONLY。无隐式 fallback。
+当前任何模式都禁止 cloud；三个 capability 均固定 LOCAL_ONLY。无隐式 fallback。
 Ollama URL 只允许显式端口的 `http://127.0.0.1` / `http://localhost`，后者固定为 127.0.0.1。
 禁用代理与 HTTP redirect，避免向远程地址发送正文。
 
@@ -163,6 +188,9 @@ git diff --check
 ```
 
 自动测试使用 fake work 和 loopback HTTP mock server，不依赖本机 Ollama。
+M1.5 验证（2026-10-02）：Java 16 / Desktop 40 tests 全部 PASS，build 0 warnings/errors；
+三种 capability 的真实 Runtime + Ollama smoke PASS。真实 WPF 主路径、热键、取消、离线/恢复与重启 PASS；
+实际 Ollama 停止/恢复由用户人工确认 PASS。详细证据来源及边界见 STATUS 和 Closing Report。
 M1 final closing regression（2026-10-02）：Java 14 tests、Desktop 31 tests 全部通过，0 failed/skipped；
 Desktop restore/build 通过，build 0 warnings/errors。真实 Windows 验收包含 Notepad/Chrome 选区、
 protected/password 拒绝、controlled-copy 与旧剪贴板保护、手动输入、cancel、Runtime/Provider offline 与 Provider 恢复、

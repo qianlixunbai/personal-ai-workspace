@@ -20,8 +20,8 @@ internal sealed class AssistantApp : Application, IAssistantController
     private Forms.ContextMenuStrip? trayMenu;
     private HwndSource? messages;
     private HotkeyRegistration? hotkey;
-    private TranslationOperation? operation;
-    private Task? activeTranslation;
+    private AssistantOperation? operation;
+    private Task? activeOperation;
     private Task? activeCapture;
     private bool capturing;
     private bool exitRequested;
@@ -86,6 +86,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     }
     private async Task CaptureAsync(IntPtr foreground)
     {
+        window.SelectTranslate();
         capturing = true;
         window.SetBusy(true);
         window.ResultText.Clear();
@@ -110,7 +111,7 @@ internal sealed class AssistantApp : Application, IAssistantController
             {
                 window.InputText.Text = selection.Text!;
                 capturing = false;
-                await TranslateAsync();
+                await SubmitAsync();
             }
             else
             {
@@ -123,21 +124,21 @@ internal sealed class AssistantApp : Application, IAssistantController
         catch (Exception) { if (!exitRequested) { ShowAssistant(); window.StatusText.Text = SelectionText.For(SelectionStatus.Failed); } }
         finally { capturing = false; if (!exitRequested) window.SetBusy(Busy); }
     }
-    public async Task TranslateAsync()
+    public async Task SubmitAsync()
     {
         if (Busy || exitRequested) return;
-        var input = new TranslateInput(window.InputText.Text, window.SelectedLanguage);
+        var input = new AssistantInput(window.SelectedAction, window.InputText.Text, window.SelectedLanguage);
         try { input.Validate(); }
         catch (DesktopException error) { window.StatusText.Text = error.Message; return; }
-        var current = new TranslationOperation(runtime);
+        var current = new AssistantOperation(runtime);
         operation = current;
         window.ResultText.Clear();
         window.CopyButton.IsEnabled = false;
         window.SetBusy(true);
-        activeTranslation = RunTranslationAsync(current, input);
-        await activeTranslation;
+        activeOperation = RunOperationAsync(current, input);
+        await activeOperation;
     }
-    private async Task RunTranslationAsync(TranslationOperation current, TranslateInput input)
+    private async Task RunOperationAsync(AssistantOperation current, AssistantInput input)
     {
         try
         {
@@ -146,8 +147,8 @@ internal sealed class AssistantApp : Application, IAssistantController
                 window.StatusText.Text = task.Status switch
                 {
                     TaskState.QUEUED => "Queued：等待本机 Runtime 执行…",
-                    TaskState.RUNNING => "Running：正在本机翻译…",
-                    TaskState.SUCCEEDED => "Succeeded：翻译完成。",
+                    TaskState.RUNNING => "Running：正在本机执行 " + input.Action + "…",
+                    TaskState.SUCCEEDED => "Succeeded：" + input.Action + " 完成。",
                     _ => ErrorText.For(task.Error ?? DesktopError.InternalError)
                 };
             }, lifetime.Token);
@@ -219,10 +220,10 @@ internal sealed class AssistantApp : Application, IAssistantController
         exitRequested = true;
         hotkey?.Dispose();
         operation?.RequestCancel();
-        if (activeTranslation is not null) await Task.WhenAny(activeTranslation, Task.Delay(5000));
+        if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
         lifetime.Cancel();
         if (activeCapture is not null) await Task.WhenAny(activeCapture, Task.Delay(3000));
-        if (activeTranslation is not null) await Task.WhenAny(activeTranslation, Task.Delay(2500));
+        if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(2500));
         Exiting = true;
         Shutdown();
     }

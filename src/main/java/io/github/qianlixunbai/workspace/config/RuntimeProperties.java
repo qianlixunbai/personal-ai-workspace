@@ -14,7 +14,9 @@ import java.time.Duration;
 public record RuntimeProperties(@Valid @NotNull Security security,
                                 @Valid @NotNull Ollama ollama,
                                 @Valid @NotNull Tasks tasks,
-                                @Valid @NotNull ModelProfile translate) {
+                                @Valid @NotNull ModelProfile translate,
+                                @Valid @NotNull ModelProfile summarize,
+                                @Valid @NotNull ModelProfile ask) {
     public record Security(@NotNull Path tokenFile) {}
     public record Ollama(@NotNull URI baseUrl, @NotNull Duration connectTimeout,
                          @NotNull Duration requestTimeout, @NotNull Duration healthTimeout,

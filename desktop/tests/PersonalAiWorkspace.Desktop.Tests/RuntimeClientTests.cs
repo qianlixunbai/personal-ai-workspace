@@ -53,7 +53,7 @@ public sealed class RuntimeClientTests
             return Response(HttpStatusCode.OK, Envelope(calls.Count == 2 ? "RUNNING" : "SUCCEEDED"));
         }), () => Token);
         var progress = new List<TaskState>();
-        var result = await new TranslationOperation(client, TimeSpan.FromMilliseconds(1)).RunAsync(new("private-input-marker", "zh-CN"),
+        var result = await new AssistantOperation(client, TimeSpan.FromMilliseconds(1)).RunAsync(new(AssistantAction.Translate, "private-input-marker", "zh-CN"),
             task => progress.Add(task.Status), CancellationToken.None);
         Assert.Equal(new[] { TaskState.QUEUED, TaskState.RUNNING, TaskState.SUCCEEDED }, progress);
         Assert.Equal("private-result-marker", result.Result);
@@ -77,8 +77,8 @@ public sealed class RuntimeClientTests
             deletes++;
             return Response(HttpStatusCode.OK, Envelope("CANCELLED", "TASK_CANCELLED"));
         }), () => Token);
-        var operation = new TranslationOperation(client);
-        var running = operation.RunAsync(new("x", "en"), _ => { }, CancellationToken.None);
+        var operation = new AssistantOperation(client);
+        var running = operation.RunAsync(new(AssistantAction.Translate, "x", "en"), _ => { }, CancellationToken.None);
         await admitted.Task;
         operation.RequestCancel();
         release.SetResult();

@@ -59,3 +59,23 @@ workspace:
     output-budget: 2048
     temperature: 0.1
     max-text-characters: 4000
+  summarize:
+    id: summarize.fast
+    provider: ollama
+    model: qwen3.5:4b
+    locality: LOCAL
+    version: m1.5-1
+    context-budget: 8192
+    output-budget: 1024
+    temperature: 0.1
+    max-text-characters: 6000
+  ask:
+    id: chat.balanced
+    provider: ollama
+    model: qwen3.5:4b
+    locality: LOCAL
+    version: m1.5-1
+    context-budget: 8192
+    output-budget: 2048
+    temperature: 0.4
+    max-text-characters: 3000

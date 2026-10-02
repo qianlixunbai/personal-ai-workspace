@@ -9,7 +9,9 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 Phase 2 — Shared Runtime + Windows Entry。
 
-当前执行范围：**M1 — Windows Assistant Entry Vertical Slice**。
+当前执行范围：**M1.5 — Assistant Core Capabilities**。
+
+M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；当前开发分支 `m1.5-assistant-capabilities`，尚未 merge/push。
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**；以下 M0 验证记录保留为历史事实。
 M1 — Windows Assistant Entry：**CLOSED — GO**。
@@ -19,7 +21,50 @@ tray/lifecycle、无选区、password、Runtime offline 与 Cancel 已通过 Win
 2026-10-02 用户明确确认剩余真实 Windows 验收没有问题，包括 controlled-copy、stale clipboard protection、
 Provider unavailable / restart recovery、credential persistence 与 privacy/log inspection。
 本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
-本次只更新收口文档、创建独立本地 closing commit；未新增功能、重构、merge、push 或开始下一 milestone。
+M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；当前发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
+
+## M1.5 本轮实现与验证（2026-10-02）
+
+- Reality check：main clean，fetch 后 `main == origin/main == 6d17ad7137665bbe6105c868db41edfbd9cf46be`。
+  从该 main 创建 `m1.5-assistant-capabilities`。最小同步 M1 已 fast-forward merge/push 的当前事实；历史 Closing Review 不改写。
+- Runtime 增加 Summarize / Ask HTTP task API、`summarize.fast` / `chat.balanced` profile 与 `summarize-v1` / `ask-v1` prompt。
+  共用原 TaskManager、线程池、queue/cancel/deadlines/短期保留及 error contract；所有 capability 固定 LOCAL_ONLY。
+  Desktop 共用同一 RuntimeClient / AssistantOperation，只访问 authenticated `127.0.0.1:8765`。
+- Summarize：6000 字符 / 6656 UTF-8 字节，context/output 8192/1024；Ask：3000 / 5632，8192/2048。
+  Translate 保留 4000 / 5632，8192/2048。prompt ≤512 字节，HTTP body ≤32 KiB，provider body ≤1 MiB，output ≤outputBudget×4 字节。
+  三个 profile 均使用已有 `qwen3.5:4b`；没有下载模型、cloud/fallback、任意 systemPrompt 或 context 接入。
+- WPF 最小 Action selector 默认 Translate。切换清空输入/结果，执行时禁用切换；所有 Action 共用单个纯文本结果卡与 Cancel。
+  原热键始终回到 Translate，selection/copy/credential/tray/hotkey 注册实现未重写。无 history、conversation、DB 或正文日志。
+
+| 验证 | 本轮结果 / 证据来源 |
+| --- | --- |
+| `.\mvnw.cmd clean verify` | PASS，Java 16，0 failures/errors/skipped；最终运行 16:34–16:35 +08:00 |
+| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS，正式 SDK 10.0.401 |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，0 warnings/errors |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS，Desktop 40，0 failed/skipped；包含现有 selection/copy/UIA/credential/lifecycle 回归 |
+| `.\scripts\real-local-smoke.ps1` | REAL PASS，三种 capability 均 SUCCEEDED；实际 Runtime + 已有 Ollama，未认证 401，listener loopback，smoke JVM 已清理 |
+| 真实 WPF 启动 / 手动三种 Action / 切换 | 自动 GUI PASS：由 UIA 操作真实 ComboBox、输入框、提交按钮并读取实际结果长度；不直接调用 controller |
+| 原热键 selection Translate | 自动 GUI PASS：外部合成 WinForms 原生 Edit 选区，发送实际 Ctrl+Alt+Shift+T，从 Ask 状态自动回到 Translate 并成功；本轮未声称重跑 Notepad/Chrome |
+| Cancel | 自动 GUI PASS：真实运行中的 Ask 长回答请求，经 WPF Cancel 得到 CANCELLED，结果为空 |
+| Runtime offline / recovery | 自动 GUI PASS：停止仅本轮启动的 Runtime，Summarize 显示 Runtime unavailable；恢复后 Ask 成功 |
+| Provider unreachable | 自动 GUI PASS：真实 Runtime 临时配置不可达 loopback Ollama endpoint，Ask 显示 Provider unavailable，恢复默认配置后成功；没有停止用户 Ollama |
+| 实际 Ollama 停止 / 恢复 | 用户本轮明确人工确认“已人工验证，全部 PASS”；独立于上述隔离端点自动证据 |
+| 重启 / 无历史 / credential | 自动 GUI PASS：终止仅本轮 Desktop 并启动新进程，input/result 为空，Action 默认 Translate，已保存 credential 仍支持成功翻译；不是 graceful tray exit 的新增证据 |
+| Security / privacy scan | PASS：tracked+新增 source secret patterns、4 个实际 token、验证日志正文/token、build token 与 tracked 产物扫描均 0 匹配；ignore checks PASS，非全系统磁盘审计 |
+| `git diff --check` | PASS |
+
+Real local smoke（仅保留元数据）：
+
+| Capability | taskId | Status | inputLength | outputLength | Profile / prompt |
+| --- | --- | --- | ---: | ---: | --- |
+| Translate | 58db4389-6201-42b1-a7bb-b273dd62f134 | SUCCEEDED | 13 | 6 | translate.fast / translate-v1 |
+| Summarize | 7ab88ca4-2106-49b9-8673-2e505da84369 | SUCCEEDED | 94 | 94 | summarize.fast / summarize-v1 |
+| Ask | 464350cd-2512-4e50-8eb8-4d8f45371d28 | SUCCEEDED | 49 | 1 | chat.balanced / ask-v1 |
+
+Private evidence：忽略的 `.verification/m1.5-*.log`、`real-smoke-evidence.json`、
+`m1.5-windows-evidence.jsonl`、`m1.5-scan-evidence.json`；不保存 prompt/answer 正文到日志或报告。
+本轮启动的 Desktop / Runtime / selection fixture 已清理，没有停止用户 Ollama。
+完整 22 项交付报告：[M1.5 Closing Report](milestones/M1.5-CLOSING-REPORT.md)。
 
 ## M1 Final Closing Review（2026-10-02）
 
@@ -222,7 +267,7 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 - 取消 HTTP 不保证 GPU 立即停止；不强制 kill 模型或管理 Ollama daemon。
 - 单 token 信任域，没有客户端配对、独立 ownership、token rotation、Browser origin allowlist。
 - 结果最多 64 条、完成后约 2 分钟保留；重启失效，没有持久化。
-- 模型质量只完成短句 smoke；未验证长文翻译质量、硬件吞吐/显存并发或生产可靠性。
+- 模型质量仅有合成短文本 Translate/Summarize/Ask smoke；不代表长文忠实度、通用回答正确性、硬件吞吐/显存并发或生产可靠性。
 - context 输入预算为保守 UTF-8 字节限制，未引入精确 tokenizer。
 - provider readiness 是 tags/model presence，不能证明模型加载、GPU 资源和推理质量。
 - CONNECT timeout 分类用合成 HTTP 异常验证；真实本地 socket 验证 connection refused，
@@ -241,18 +286,19 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 
 M1 Translate Windows Entry 已 CLOSED — GO；真实 Windows acceptance 全部 PASS，自动操作与用户确认来源见上表。
 Deferred：Finance integration/Gateway、Memory/Conversation/SQLite、Knowledge/RAG/embedding、
-tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、Summarize/Chat、
+tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、多轮 Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
 
-本次 M1 FINAL CLOSING REVIEW 已完成；具备 merge to main 的条件，等待用户后续交付指令。
-不自动 merge/push，不开始下一 milestone。
+M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验收证据保持不变。
+M1.5 已 CLOSED — GO，当前实现仅本地提交，Closing Review 后由用户决定 merge；不自行开始 M2。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
 
 M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea332a`，
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
-当前 M1 工作分支为 `m1-windows-entry`，从 `80ccb53` 继续实现并完成独立 closing commit；没有 merge 或 push。
+M1 closing commit `6d17ad7` 已 fast-forward merge 到 `main` 并成功 push；2026-10-02 fetch 确认本地 main 与 origin/main 一致。
+M1.5 当前分支 `m1.5-assistant-capabilities`，implementation commit 主题 `feat: add summarize and ask capabilities`；本轮不 merge/push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

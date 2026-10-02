@@ -27,7 +27,7 @@ public static class ErrorText
         DesktopError.ProviderUnavailable => "Provider unavailable：本机 Ollama 不可用。",
         DesktopError.ModelUnavailable => "Model unavailable：Runtime 配置的本机模型不可用。",
         DesktopError.PolicyDenied => "Policy denied：本地执行策略拒绝此次请求。",
-        DesktopError.InvalidRequest => "Invalid request：检查输入与目标语言；正文最多 4000 字符、5632 UTF-8 字节。",
+        DesktopError.InvalidRequest => "Invalid request：检查当前 Action 的输入、语言与预算。",
         DesktopError.InvalidResponse => "Malformed Runtime response：响应不符合契约，已停止处理。",
         DesktopError.TaskNotFound => "Task not found：任务已过期或 Runtime 已重启。",
         DesktopError.Cancelled => "Cancelled：任务已取消；这不保证 GPU 立即停止。",
@@ -60,4 +60,39 @@ public sealed record RuntimeTask(Guid TaskId, TaskState Status, string? Result, 
 public static class CredentialFormat
 {
     public static bool Valid(string? token) => token is not null && Regex.IsMatch(token, @"\A[A-Za-z0-9_-]{43}\z");
+}
+
+public enum AssistantAction { Translate, Summarize, Ask }
+
+public sealed record SummarizeInput(string Text)
+{
+    public void Validate() => InputBudget.Validate(Text, 6000, 6656);
+    public override string ToString() => "SummarizeInput[redacted]";
+}
+public sealed record AskInput(string Question)
+{
+    public void Validate() => InputBudget.Validate(Question, 3000, 5632);
+    public override string ToString() => "AskInput[redacted]";
+}
+internal static class InputBudget
+{
+    public static void Validate(string text, int characters, int bytes)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > characters || System.Text.Encoding.UTF8.GetByteCount(text) > bytes)
+            throw new DesktopException(DesktopError.InvalidRequest);
+    }
+}
+public sealed record AssistantInput(AssistantAction Action, string Text, string TargetLanguage = "zh-CN")
+{
+    public void Validate()
+    {
+        switch (Action)
+        {
+            case AssistantAction.Translate: new TranslateInput(Text, TargetLanguage).Validate(); break;
+            case AssistantAction.Summarize: new SummarizeInput(Text).Validate(); break;
+            case AssistantAction.Ask: new AskInput(Text).Validate(); break;
+            default: throw new DesktopException(DesktopError.InvalidRequest);
+        }
+    }
+    public override string ToString() => $"AssistantInput[action={Action},redacted]";
 }

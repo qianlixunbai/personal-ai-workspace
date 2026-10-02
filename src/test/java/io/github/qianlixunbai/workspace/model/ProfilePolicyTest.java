@@ -14,6 +14,8 @@ class ProfilePolicyTest {
     @Test void profileResolvesAndCloudIsDeniedInEveryMode() {
         RuntimeProperties settings = TestSettings.settings(URI.create("http://localhost:11434"));
         ProfileResolver profiles = new ProfileResolver(settings);
+        assertEquals(settings.summarize(), profiles.resolve("summarize.fast"));
+        assertEquals(settings.ask(), profiles.resolve("chat.balanced"));
         ModelProfile profile = profiles.resolve("translate.fast");
         assertEquals("ollama", profile.provider());
         assertEquals(ModelProfile.Locality.LOCAL, profile.locality());
@@ -41,7 +43,7 @@ class ProfilePolicyTest {
         }
         RuntimeProperties p = TestSettings.settings(URI.create("http://127.0.0.1:11434"));
         RuntimeProperties invalid = new RuntimeProperties(p.security(), p.ollama(),
-                TestSettings.tasks(java.time.Duration.ZERO, java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1)), p.translate());
+                TestSettings.tasks(java.time.Duration.ZERO, java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1)), p.translate(), p.summarize(), p.ask());
         assertThrows(IllegalArgumentException.class, () -> new RuntimeConfiguration(invalid));
     }
 }

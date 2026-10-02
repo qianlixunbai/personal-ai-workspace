@@ -15,17 +15,17 @@ class TaskManagerTest {
             TaskManager manager = scope.manager;
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
             AtomicBoolean queuedRan = new AtomicBoolean();
-            UUID running = manager.submit(TestSettings.profile(), "p1", cancellation -> {
+            UUID running = manager.submit("summarize", TestSettings.summarize(), "p1", cancellation -> {
                 entered.countDown(); await(release); exited.countDown(); return "late private answer";
             }).taskId();
             assertTrue(entered.await(2, TimeUnit.SECONDS));
-            UUID queued = manager.submit(TestSettings.profile(), "p1", cancellation -> {
+            UUID queued = manager.submit("ask", TestSettings.ask(), "p1", cancellation -> {
                 queuedRan.set(true); return "should not execute";
             }).taskId();
             assertEquals(ErrorCode.QUEUE_FULL, assertThrows(WorkspaceException.class,
-                    () -> manager.submit(TestSettings.profile(), "p1", c -> "overflow")).error().code());
+                    () -> manager.submit("translate", TestSettings.profile(), "p1", c -> "overflow")).error().code());
             assertEquals(TaskStatus.CANCELLED, manager.cancel(queued).status());
-            UUID replacement = manager.submit(TestSettings.profile(), "p1", c -> "replacement").taskId();
+            UUID replacement = manager.submit("translate", TestSettings.profile(), "p1", c -> "replacement").taskId();
             assertEquals(TaskStatus.CANCELLED, manager.cancel(running).status());
             release.countDown();
             assertTrue(exited.await(2, TimeUnit.SECONDS));
@@ -40,11 +40,11 @@ class TaskManagerTest {
     @Test void queueAndExecutionTimeoutsRemainDistinctAndLateResultsAreDiscarded() throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofMillis(60), Duration.ofMillis(150), Duration.ofSeconds(3))) {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            UUID running = scope.manager.submit(TestSettings.profile(), "p1", c -> {
+            UUID running = scope.manager.submit("ask", TestSettings.ask(), "p1", c -> {
                 entered.countDown(); await(release); return "late";
             }).taskId();
             assertTrue(entered.await(2, TimeUnit.SECONDS));
-            UUID queued = scope.manager.submit(TestSettings.profile(), "p1", c -> "queued").taskId();
+            UUID queued = scope.manager.submit("summarize", TestSettings.summarize(), "p1", c -> "queued").taskId();
             TaskView queueTimeout = terminal(scope.manager, queued);
             assertEquals(TaskStatus.TIMED_OUT, queueTimeout.status());
             assertEquals("QUEUE", queueTimeout.error().phase());
@@ -60,17 +60,17 @@ class TaskManagerTest {
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(400))) {
             UUID first = null;
             for (int n = 0; n < 4; n++) {
-                UUID id = scope.manager.submit(TestSettings.profile(), "p1", c -> "short lived").taskId();
+                UUID id = scope.manager.submit("translate", TestSettings.profile(), "p1", c -> "short lived").taskId();
                 if (first == null) first = id;
                 assertEquals(TaskStatus.SUCCEEDED, terminal(scope.manager, id).status());
             }
             assertEquals(ErrorCode.QUEUE_FULL, assertThrows(WorkspaceException.class,
-                    () -> scope.manager.submit(TestSettings.profile(), "p1", c -> "excess")).error().code());
+                    () -> scope.manager.submit("translate", TestSettings.profile(), "p1", c -> "excess")).error().code());
             Thread.sleep(450);
             UUID expired = first;
             assertEquals(ErrorCode.TASK_NOT_FOUND, assertThrows(WorkspaceException.class,
                     () -> scope.manager.get(expired)).error().code());
-            assertNotNull(scope.manager.submit(TestSettings.profile(), "p1", c -> "new"));
+            assertNotNull(scope.manager.submit("translate", TestSettings.profile(), "p1", c -> "new"));
         }
     }
 
@@ -81,7 +81,7 @@ class TaskManagerTest {
         assertThrows(WorkspaceException.class, () -> token.attach(() -> stopped.set(true)));
         assertTrue(stopped.get());
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
-            UUID id = scope.manager.submit(TestSettings.profile(), "p1", c -> {
+            UUID id = scope.manager.submit("translate", TestSettings.profile(), "p1", c -> {
                 throw new IllegalStateException("raw secret path private text");
             }).taskId();
             TaskView failure = terminal(scope.manager, id);
