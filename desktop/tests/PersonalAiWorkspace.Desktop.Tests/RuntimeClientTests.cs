@@ -167,6 +167,21 @@ public sealed class RuntimeClientTests
     }
 
     [Fact]
+    public async Task HealthNegotiatesJsonWithActuatorVendorDefault()
+    {
+        using var client = new RuntimeClient(new Handler((request, _) =>
+        {
+            Assert.Equal("/actuator/health", request.RequestUri!.AbsolutePath);
+            Assert.Null(request.Headers.Authorization);
+            var response = Response(HttpStatusCode.OK, "{\"status\":\"UP\"}");
+            if (!request.Headers.Accept.Any(value => value.MediaType == "application/json"))
+                response.Content.Headers.ContentType = new("application/vnd.spring-boot.actuator.v3+json");
+            return Task.FromResult(response);
+        }), () => throw new Xunit.Sdk.XunitException("Health must not read credentials"));
+        await client.CheckHealthAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task RedirectAndForeignLocationNeverRedirectOrAcceptTask()
     {
         using var redirected = new RuntimeClient(new Handler((_, _) => Task.FromResult(Response(HttpStatusCode.Redirect, "{}"))), () => Token);

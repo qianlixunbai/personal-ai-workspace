@@ -1,6 +1,6 @@
 # Personal AI Workspace — Current Status
 
-Updated: 2026-10-01 (Asia/Shanghai)
+Updated: 2026-10-02 (Asia/Shanghai)
 
 此文件是当前阶段、完成状态、验证证据与遗留项的唯一事实来源。
 README 负责启动/API 使用；ADR 负责已采用决策。
@@ -14,8 +14,9 @@ Phase 2 — Shared Runtime + Windows Entry。
 M0 — Shared Runtime Foundation：**CLOSED — GO**；以下 M0 验证记录保留为历史事实。
 M1 当前结论：**PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE**。
 SDK 环境阻塞已在用户明确授权后解除，Windows Entry 实现与自动验证已完成。
-仍等待用户真实 Notepad / Chrome selection → Runtime → Ollama → result、tray/lifecycle 与错误路径验收；
-未把代码、fixture 测试或 M0 Ollama smoke 当作 M1 的真实人工 PASS。
+用户授权 Codex 操作电脑后，真实 Notepad / Chrome selection → Runtime → Ollama → result、
+tray/lifecycle、无选区、password、Runtime offline 与 Cancel 已通过 Windows UI Automation 自动操作验收。
+仍待受控 Copy 的真实剪贴板验收与 Provider 停止场景；没有宣称人工验收或 M1 GO。
 
 ## M1 本轮真实核对
 
@@ -70,8 +71,8 @@ SDK 环境阻塞已在用户明确授权后解除，Windows Entry 实现与自�
 | --- | --- |
 | `dotnet --info` / `dotnet --list-sdks` | PASS，正式 SDK 10.0.401 x64 |
 | `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS |
-| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，0 warnings/errors |
-| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS，30 tests，0 failed/skipped |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，2026-10-02，0 warnings/errors |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS，2026-10-02，31 tests，0 failed/skipped |
 | `.\mvnw.cmd clean verify` | PASS，14 tests，0 failures/errors/skipped + package，21:03:15 +08:00 |
 | `.\scripts\real-local-smoke.ps1` | M0 REAL PASS，21:04:44 +08:00，task SUCCEEDED，resultLength 6 |
 | `git diff --check` / `git diff --cached --check` | PASS |
@@ -89,9 +90,15 @@ fixture 的测试内容为合成文本，只读取该隐藏 fixture；copy 测�
 M0 新 smoke taskId：`bd37d699-bdba-45cf-9aae-9a760d63bfea`，loopback bind 与未认证 401 通过。
 这是 Runtime/Ollama 回归，不是 M1 Notepad/Chrome acceptance；过程日志/脱敏 evidence 在忽略的 `.verification/`。
 
+2026-10-02 实际 GUI 操作发现并修复健康检查兼容问题：Actuator 在没有 Accept 时返回
+`application/vnd.spring-boot.actuator.v3+json`，Desktop 原先严格要求 `application/json`，误报 Malformed Runtime response。
+客户端现在显式请求 `Accept: application/json`；新增 Actuator content negotiation 回归测试，保持响应校验严格。
+真实窗口已显示 Runtime UP，真实手动输入翻译也通过。没有修改 M0 Runtime API 或配置文件。
+
 ## M1 已知限制
 
-- UIA 随目标应用/provider/权限变化，真实 Notepad、Chrome、tray 和完整退出 UX **UNVERIFIED**。
+- UIA 随目标应用/provider/权限变化。本机 Notepad 11.2504.62.0、Chrome 154.0.8037.59 与 tray 已自动操作通过；
+  Chrome 使用独立测试 profile、合成网页，未强制开启 accessibility。其他应用与版本尚未验证。
 - Copy fallback 拒绝无法证明安全的 hosted/custom controls（包括浏览器 DOM fallback）、图片/富文本/大 clipboard；手动输入始终可用。
 - 只恢复 Unicode 纯文本，不保存原格式/ownership；来源应用迟到 Copy 或焦点/owner 变化时可能无法安全恢复，UI 明确提示。
 - 不控制 Windows 自身 clipboard history/同步；显式 Copy result 会进入系统剪贴板。
@@ -99,7 +106,7 @@ M0 新 smoke taskId：`bd37d699-bdba-45cf-9aae-9a760d63bfea`，loopback bind 与
 - 凭据保护不隔离已攻陷的同用户进程；forget 不撤销 Runtime token；没有 per-client ownership 或自动 rotation。
 - 没有 installer、auto-start/update、Windows Service 或 Runtime/Ollama lifecycle manager。
 
-## M1 真实 Windows acceptance checklist（待用户返回结果）
+## M1 真实 Windows acceptance checklist（已执行与待验）
 
 先确认 Ollama 与已有配置模型可用。在仓库根目录：
 
@@ -117,16 +124,23 @@ Notepad 与 Chrome 的真实选区链路均需成功才能评定 M1 GO；Chrome 
 
 | 场景 | 人工操作与预期 | 当前结果 |
 | --- | --- | --- |
-| 生命周期 | 启动两次仍只有一个实例；托盘打开/关闭窗口；托盘退出后热键和进程释放 | UNVERIFIED |
-| Notepad | 选中非敏感测试短句 → hotkey → input 填入 → Runtime Translate → result | UNVERIFIED |
-| Chrome/Chromium | 普通网页选中短句 → hotkey → UIA → result；UIA 不可用则明确手动输入，不强行 DOM copy；不修改扩展 | UNVERIFIED |
-| 无选区 | 不选中文字触发，明确提示；不能将旧 clipboard 当成当前选区 | UNVERIFIED |
-| Protected/password | 聚焦受保护输入触发，拒绝读取与复制 fallback | UNVERIFIED |
+| 生命周期 | 启动两次仍只有一个实例；托盘打开/关闭窗口；托盘退出后热键和进程释放 | REAL PASS（自动操作）：托盘菜单打开/退出；关闭清空文本；退出后原热键可重新注册 |
+| Notepad | 选中非敏感测试短句 → hotkey → input 填入 → Runtime Translate → result | REAL PASS（自动操作）：真实 Notepad 合成文件选区，SendInput 触发正式热键；input 匹配，resultLength 6 |
+| Chrome/Chromium | 普通网页选中短句 → hotkey → UIA → result；UIA 不可用则明确手动输入，不强行 DOM copy；不修改扩展 | REAL PASS（自动操作）：真实 Chrome 独立 profile 合成网页 DOM 选区，正式热键 → resultLength 6；没有修改扩展 |
+| 无选区 | 不选中文字触发，明确提示；不能将旧 clipboard 当成当前选区 | REAL PASS（自动操作）：Notepad 将选区收为 caret 后触发，提示无选区，旧 input/result 均清空；未改动 clipboard |
+| Protected/password | 聚焦受保护输入触发，拒绝读取与复制 fallback | REAL PASS（自动操作）：Chrome 合成 password input，IsPassword=true；明确拒绝，input/result 均为空 |
 | Clipboard | 先放入非敏感旧值，尝试 fallback，检查没有误用旧值且按所选保守策略恢复/提示 | UNVERIFIED |
-| Runtime offline | 停止 Runtime 后翻译，明确 Runtime unavailable；无 Ollama/cloud fallback | UNVERIFIED |
-| Provider offline | Runtime 保持运行、由用户停止 Ollama 后翻译，明确 Provider unavailable | UNVERIFIED |
-| Cancel | 较长请求点击 Cancel，展示 Runtime 返回的终态；不宣称 GPU 立即停止 | UNVERIFIED |
-| Privacy | 检查 Desktop logs、工作目录和 temp，没有选区、译文或明文 token；仅允许受保护 credential storage | UNVERIFIED |
+| Runtime offline | 停止 Runtime 后翻译，明确 Runtime unavailable；无 Ollama/cloud fallback | REAL PASS（自动操作）：停止本轮启动的 Runtime，窗口提示 Runtime unavailable；随后恢复默认 Runtime |
+| Provider offline | Runtime 保持运行、由用户停止 Ollama 后翻译，明确 Provider unavailable | UNVERIFIED：临时 Runtime provider 地址覆盖测试被自动审批拒绝（blocked by policy），未执行；Ollama 与默认配置未变 |
+| Cancel | 较长请求点击 Cancel，展示 Runtime 返回的终态；不宣称 GPU 立即停止 | REAL PASS（自动操作）：真实 QUEUED → RUNNING 后点击 Cancel，返回 Cancelled，result 为空，保留 GPU 限制提示 |
+| Privacy | 检查 Desktop logs、工作目录和 temp，没有选区、译文或明文 token；仅允许受保护 credential storage | PASS（限定范围）：tracked files、根 verification logs 中 token 匹配 0，logs 合成正文匹配 0；产品 source 无 logger/file-write/hook；不是全系统磁盘审计 |
+
+上述 GUI 验收在 2026-10-02 13:37–13:57 +08:00 实际操作已运行的 Windows 程序，
+使用 Windows UI Automation 控件调用、合成页面/文件选区与 SendInput 正式热键；没有绕过客户端入口调用翻译 API。
+每项脱敏 evidence JSON 位于忽略的 `.verification/`，只记录状态、匹配布尔值、长度与版本，无捕获正文、译文或 token。
+合成输入 fixture 与测试 Chrome profile 也在该忽略目录中；它们是测试素材，不是 Desktop 保存的用户历史。
+测试 Chrome 窗口与 Notepad 合成标签页已关闭，Assistant 已重新启动并显示 Ready，input/result 为空；
+默认 Runtime 在 127.0.0.1:8765 运行。未把这些结果记为人工操作 PASS，也未把尚未执行的场景补成 PASS。
 
 ## M0 已实现（历史 Closing 事实）
 
@@ -193,13 +207,13 @@ Notepad 与 Chrome 的真实选区链路均需成功才能评定 M1 GO；Chrome 
 - Finance TEMPORARILY FROZEN / WAITING FOR REALITY SYNC；学校笔记本最新工作区 **UNVERIFIED**。
   不将 GitHub Remote 当作学校电脑最新事实。
 
-本轮仅实现 M1 Translate Windows Entry；等待真实 Windows acceptance。
+本轮仅实现 M1 Translate Windows Entry；真实 Windows acceptance 已部分自动操作通过，剩余场景待验。
 Deferred：Finance integration/Gateway、Memory/Conversation/SQLite、Knowledge/RAG/embedding、
 tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、Summarize/Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
 
-下一步：用户完成 M1 checklist 并返回结果，必要时修复后 Closing Review；不开始下一 milestone。
+下一步：完成 Clipboard 与 Provider offline 剩余验收，必要时修复后 Closing Review；不开始下一 milestone。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付

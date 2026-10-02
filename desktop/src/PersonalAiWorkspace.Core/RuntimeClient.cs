@@ -64,6 +64,8 @@ public sealed class RuntimeClient : IDisposable
         HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null)
     {
         using var request = new HttpRequestMessage(method, path);
+        // Actuator defaults to a vendor media type unless the client negotiates JSON.
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (authenticate)
         {
             var token = credential();
