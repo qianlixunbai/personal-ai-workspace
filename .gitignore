@@ -45,3 +45,6 @@ build/
 .vs/
 **/TestResults/
 *.trx
+
+# Python verification helpers
+__pycache__/

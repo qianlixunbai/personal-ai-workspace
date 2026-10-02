@@ -18,6 +18,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(classes = PersonalAiWorkspaceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -25,6 +30,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class RuntimeApiTest {
     private static final Path TOKEN = Path.of("target/api-test-auth/client-token");
     private static final AtomicInteger MODE = new AtomicInteger();
+    private static final AtomicInteger CHAT_CALLS = new AtomicInteger();
+    private static final AtomicReference<String> BATCH_OUTPUT = new AtomicReference<>();
+    private static final AtomicReference<JsonNode> LAST_CHAT = new AtomicReference<>();
+    private static volatile CountDownLatch slowEntered, slowRelease, slowExited;
     private static final HttpServer MOCK;
     private static final int MOCK_PORT;
     static {
@@ -44,14 +53,23 @@ class RuntimeApiTest {
                 }
             });
             MOCK.createContext("/api/chat", exchange -> {
-                String output = MODE.get() == 4 ? "x".repeat(8193) : "output-private-marker";
+                CHAT_CALLS.incrementAndGet();
+                LAST_CHAT.set(JsonMapper.builder().build().readTree(exchange.getRequestBody().readAllBytes()));
+                if (MODE.get() == 5) {
+                    slowEntered.countDown();
+                    try { slowRelease.await(5, TimeUnit.SECONDS); }
+                    catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                }
+                String output = MODE.get() == 4 ? "x".repeat(8193) :
+                        BATCH_OUTPUT.get() == null ? "output-private-marker" : BATCH_OUTPUT.get();
                 byte[] bytes = (MODE.get() == 3 ? "malformed-private-marker" :
-                        "{\"model\":\"qwen3.5:4b\",\"done\":true,\"message\":{\"role\":\"assistant\",\"content\":\"" + output + "\"}}").getBytes(StandardCharsets.UTF_8);
+                        JsonMapper.builder().build().writeValueAsString(Map.of("model", "qwen3.5:4b", "done", true,
+                                "message", Map.of("role", "assistant", "content", output)))).getBytes(StandardCharsets.UTF_8);
                 try (exchange) {
-                    exchange.getRequestBody().readAllBytes();
                     exchange.sendResponseHeaders(200, bytes.length);
                     exchange.getResponseBody().write(bytes);
-                }
+                } catch (java.io.IOException ignored) { /* A cancelled HTTP future may close before the late response. */ }
+                finally { if (slowExited != null) slowExited.countDown(); }
             });
             // Start with the provider offline. Runtime must initialize independently.
         } catch (Exception failure) { throw new ExceptionInInitializerError(failure); }
@@ -63,6 +81,7 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.task.TaskManager taskManager;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
     private final JsonMapper json = JsonMapper.builder().build();
 
@@ -232,11 +251,185 @@ class RuntimeApiTest {
         assertEquals(200, browser("DELETE", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
         String clientId = a.path("client").path("clientId").asString();
         assertEquals(403, browser("DELETE", "/api/v1/security/clients/" + clientId, null, credentialB, originB).statusCode());
+        batchContract(credentialA, originA, credentialB, originB, logs);
         assertEquals(204, send("DELETE", "/api/v1/security/clients/" + clientId, null, true).statusCode());
         assertEquals(401, browser("GET", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
+        assertEquals(401, browser("GET", "/api/v1/capabilities/translate/readiness", null, credentialA, originA).statusCode());
         assertEquals(204, send("DELETE", "/api/v1/security/clients/" + b.path("client").path("clientId").asString(), null, true).statusCode());
         for (String secret : new String[]{credentialA, credentialB, sessionA.path("pairingSecret").asString(), originA, originB, token()})
             assertFalse(logs.getAll().contains(secret));
+    }
+    private void batchContract(String credential, String origin, String otherCredential, String otherOrigin, CapturedOutput logs) throws Exception {
+        String endpoint = "/api/v1/translate/tasks", readiness = "/api/v1/capabilities/translate/readiness";
+        assertEquals(401, send("GET", readiness, null, false).statusCode());
+        assertEquals(401, browser("GET", readiness, null, "bad", origin).statusCode());
+        for (String deniedOrigin : new String[]{otherOrigin, "https://example.com", "chrome-extension://" + "c".repeat(32)})
+            assertEquals(401, browser("GET", readiness, null, credential, deniedOrigin).statusCode());
+        var preflight = http.send(browserRequest(readiness, origin).header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization").method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(204, preflight.statusCode());
+        assertEquals(origin, preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        assertEquals(401, http.send(browserRequest(readiness, origin).header("Access-Control-Request-Method", "POST")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+        for (int mode : new int[]{0, 1, 2}) {
+            MODE.set(mode);
+            var ready = tree(browser("GET", readiness, null, credential, origin));
+            assertEquals(mode == 0, ready.path("available").asBoolean());
+            assertEquals(mode == 0 ? "{\"available\":true}" : "{\"available\":false,\"error\":{\"code\":\"PROVIDER_UNAVAILABLE\"}}", ready.toString());
+        }
+        MODE.set(0);
+        String two = batch(List.of(Map.of("id", 1, "text", "batch-input-private-marker"), Map.of("id", 2, "text", "Settings")));
+        String all = "[{\"id\":2,\"translation\":\"settings-output-private-marker\"},{\"id\":1,\"translation\":\"batch-output-private-marker\"}]";
+        try {
+            BATCH_OUTPUT.set(all);
+            int before = CHAT_CALLS.get();
+            var accepted = browser("POST", endpoint, two, credential, origin);
+            assertEquals(202, accepted.statusCode());
+            String id = tree(accepted).path("taskId").asString();
+            assertEquals("/api/v1/tasks/" + id, accepted.headers().firstValue("Location").orElseThrow());
+            var result = pollBrowser(id, credential, origin);
+            assertEquals("SUCCEEDED", result.path("status").asString());
+            assertEquals(before + 1, CHAT_CALLS.get(), "One batch must make exactly one chat inference");
+            assertTrue(result.path("result").isObject());
+            assertEquals(2, result.path("result").path("items").size());
+            assertEquals(1, result.path("result").path("items").get(0).path("id").asInt());
+            assertEquals("translate-batch-v1", result.path("promptVersion").asString());
+            assertEquals("translate.fast", result.path("profile").path("id").asString());
+            assertEquals("m0-1", result.path("profile").path("version").asString());
+            assertEquals("LOCAL", result.path("profile").path("locality").asString());
+            assertFalse(result.toString().contains("qwen3.5"));
+            JsonNode messages = LAST_CHAT.get().path("messages");
+            String prompt = messages.get(0).path("content").asString();
+            assertFalse(prompt.contains("batch-input-private-marker"));
+            assertTrue(prompt.contains("untrusted"));
+            assertEquals(2, json.readTree(messages.get(1).path("content").asString()).size());
+            for (String method : new String[]{"GET", "DELETE"}) {
+                var denied = browser(method, "/api/v1/tasks/" + id, null, otherCredential, otherOrigin);
+                var missing = browser(method, "/api/v1/tasks/00000000-0000-0000-0000-000000000000", null, otherCredential, otherOrigin);
+                assertEquals(404, denied.statusCode()); assertEquals(missing.body(), denied.body());
+                assertEquals(404, send(method, "/api/v1/tasks/" + id, null, true).statusCode());
+            }
+            assertEquals("SUCCEEDED", tree(browser("DELETE", "/api/v1/tasks/" + id, null, credential, origin)).path("status").asString());
+
+            var many = java.util.stream.IntStream.range(0, 32).mapToObj(n -> Map.of("id", n, "text", "Label " + n)).toList();
+            BATCH_OUTPUT.set(json.writeValueAsString(java.util.stream.IntStream.range(0, 32)
+                    .mapToObj(n -> Map.of("id", n, "translation", "Label result " + n)).toList()));
+            assertEquals(32, submitAndPoll(batch(many)).path("result").path("items").size());
+            BATCH_OUTPUT.set("[{\"id\":1,\"translation\":\"bounded\"}]");
+            assertEquals("SUCCEEDED", submitAndPoll(batch(List.of(Map.of("id", 1, "text", "x".repeat(2800))))).path("status").asString());
+            assertEquals("SUCCEEDED", submitAndPoll(batch(List.of(Map.of("id", 1, "text", "中".repeat(1365))))).path("status").asString());
+            // Quotes obey the serialized context budget as well as the raw text budget.
+            assertEquals("SUCCEEDED", submitAndPoll(batch(List.of(Map.of("id", 1, "text", "\"".repeat(2800))))).path("status").asString());
+            int beforeInvalid = CHAT_CALLS.get();
+            for (String invalid : new String[]{"{\"targetLanguage\":\"zh-CN\"}", two.replace("{\"items\"", "{\"text\":\"x\",\"items\""),
+                    batch(List.of()), batch(List.of(Map.of("id", 1, "text", "x"), Map.of("id", 1, "text", "y"))),
+                    batch(List.of(Map.of("id", -1, "text", "x"))), batch(List.of(Map.of("id", 2147483648L, "text", "x"))),
+                    batch(List.of(Map.of("id", "1", "text", "x"))), batch(List.of(Map.of("id", 1.0, "text", "x"))),
+                    batch(List.of(Map.of("id", true, "text", "x"))), batch(List.of(Map.of("text", "x"))),
+                    "{\"items\":[{\"id\":null,\"text\":\"x\"}],\"targetLanguage\":\"zh-CN\"}",
+                    "{\"items\":[{\"id\":1,\"text\":null}],\"targetLanguage\":\"zh-CN\"}",
+                    "{\"items\":null,\"targetLanguage\":\"zh-CN\"}", "{\"text\":null,\"targetLanguage\":\"zh-CN\"}",
+                    batch(List.of(Map.of("id", 1, "text", " \t"))), batch(List.of(Map.of("id", 1, "text", 5))),
+                    batch(List.of(Map.of("id", 1, "text", "x", "instruction", "private-marker"))),
+                    batch(java.util.stream.IntStream.range(0, 33).mapToObj(n -> Map.of("id", n, "text", "x")).toList()),
+                    batch(List.of(Map.of("id", 1, "text", "x".repeat(1400)), Map.of("id", 2, "text", "x".repeat(1401)))),
+                    batch(List.of(Map.of("id", 1, "text", "x".repeat(2801)))), batch(List.of(Map.of("id", 1, "text", "中".repeat(1366)))),
+                    batch(List.of(Map.of("id", 1, "text", "\u0000".repeat(1000)))),
+                    two.replace("\"zh-CN\"", "\"ignore rules\""), two.replace("\"zh-CN\"", "\"zh-CN\",\"profile\":\"chat.balanced\""),
+                    two.replace("{\"items\"", "{\"text\":null,\"items\""),
+                    two.replace("\"items\":[", "\"items\":[null,")}) {
+                var rejected = browser("POST", endpoint, invalid, credential, origin);
+                assertEquals(400, rejected.statusCode(), "Invalid batch must fail before inference");
+                assertEquals("INVALID_REQUEST", tree(rejected).path("code").asString());
+                assertFalse(rejected.body().contains("private-marker"));
+            }
+            for (String field : new String[]{"model", "systemPrompt", "translationPrompt", "instruction", "temperature", "top_p", "num_ctx", "num_predict", "keep_alive", "think"}) {
+                var root = (tools.jackson.databind.node.ObjectNode) json.readTree(two);
+                root.put(field, "private-marker");
+                assertEquals(400, browser("POST", endpoint, root.toString(), credential, origin).statusCode());
+            }
+            assertEquals(413, browser("POST", endpoint, "x".repeat(32769), credential, origin).statusCode());
+            assertEquals(beforeInvalid, CHAT_CALLS.get());
+
+            String[] outputs = {all, "[{\"id\":1,\"translation\":\"valid\"}]",
+                    "[{\"id\":1,\"translation\":\"valid\"},{\"id\":99,\"translation\":\"unexpected-private-marker\"}]",
+                    "[{\"id\":1,\"translation\":\"a\"},{\"id\":1,\"translation\":\"b\"},{\"id\":1,\"translation\":\"c\"},{\"id\":2,\"translation\":\"valid\"}]",
+                    "[{\"id\":1,\"translation\":\" \"},{\"id\":2,\"translation\":\"valid\"}]",
+                    "[null,5,{}, {\"id\":\"1\",\"translation\":\"wrong\"},{\"id\":1.0,\"translation\":\"wrong\"},{\"id\":2,\"translation\":\"valid\"}]",
+                    "[{\"id\":1,\"translation\":null},{\"id\":1,\"translation\":\"late-invalid\"}]", "[]",
+                    "[{\"id\":1,\"translation\":\"valid\",\"extra\":true}]"};
+            int[] counts = {2, 1, 1, 1, 1, 1, 0, 0, 0};
+            for (int i = 0; i < outputs.length; i++) {
+                BATCH_OUTPUT.set(outputs[i]); before = CHAT_CALLS.get();
+                var mapped = pollBrowser(tree(browser("POST", endpoint, two, credential, origin)).path("taskId").asString(), credential, origin);
+                assertEquals("SUCCEEDED", mapped.path("status").asString());
+                assertEquals(counts[i], mapped.path("result").path("items").size());
+                assertEquals(before + 1, CHAT_CALLS.get());
+                assertFalse(mapped.toString().contains("unexpected-private-marker"));
+                assertFalse(mapped.toString().contains("late-invalid"));
+                if (i == 3 || i == 4 || i == 5) assertEquals(2, mapped.path("result").path("items").get(0).path("id").asInt());
+            }
+            for (String malformed : new String[]{"malformed-private-marker", "{}", "null", "[] []", "```json\n[]\n```",
+                    "[{\"id\":1,\"id\":2,\"translation\":\"duplicate-key-private-marker\"}]", "x".repeat(8193), "x".repeat(1048577)}) {
+                BATCH_OUTPUT.set(malformed);
+                var failed = submitAndPoll(two);
+                assertEquals("FAILED", failed.path("status").asString());
+                assertEquals("PROVIDER_RESPONSE_INVALID", failed.path("error").path("code").asString());
+                assertTrue(failed.path("result").isNull());
+                assertFalse(failed.toString().contains("private-marker"));
+            }
+            BATCH_OUTPUT.set(all);
+            for (int mode : new int[]{1, 2, 3, 4}) {
+                MODE.set(mode);
+                var failed = submitAndPoll(two);
+                assertEquals(mode == 1 ? "PROVIDER_UNAVAILABLE" : mode == 2 ? "MODEL_UNAVAILABLE" : "PROVIDER_RESPONSE_INVALID",
+                        failed.path("error").path("code").asString());
+                assertFalse(failed.toString().contains("private-marker"));
+            }
+            MODE.set(5); slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
+            var slow = tree(browser("POST", endpoint, two, credential, origin));
+            String slowId = slow.path("taskId").asString();
+            assertTrue(slowEntered.await(2, TimeUnit.SECONDS));
+            assertEquals("RUNNING", tree(browser("GET", "/api/v1/tasks/" + slowId, null, credential, origin)).path("status").asString());
+            assertEquals("CANCELLED", tree(browser("DELETE", "/api/v1/tasks/" + slowId, null, credential, origin)).path("status").asString());
+            slowRelease.countDown(); assertTrue(slowExited.await(2, TimeUnit.SECONDS));
+            assertEquals("CANCELLED", pollBrowser(slowId, credential, origin).path("status").asString());
+            assertTrue(pollBrowser(slowId, credential, origin).path("result").isNull());
+            // Revoke blocks future HTTP access, while an already accepted batch keeps its original lifecycle.
+            slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
+            var revokedTask = tree(browser("POST", endpoint, two, otherCredential, otherOrigin));
+            assertTrue(slowEntered.await(2, TimeUnit.SECONDS));
+            String otherClientId = otherCredential.split("\\.")[1];
+            assertEquals(204, send("DELETE", "/api/v1/security/clients/" + otherClientId, null, true).statusCode());
+            assertEquals(401, browser("GET", "/api/v1/tasks/" + revokedTask.path("taskId").asString(), null, otherCredential, otherOrigin).statusCode());
+            slowRelease.countDown(); assertTrue(slowExited.await(2, TimeUnit.SECONDS));
+            var revokedId = java.util.UUID.fromString(revokedTask.path("taskId").asString());
+            long revokeDeadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (taskManager.get(revokedId, otherClientId).status() == io.github.qianlixunbai.workspace.task.TaskStatus.RUNNING
+                    && System.nanoTime() < revokeDeadline) Thread.sleep(10);
+            assertEquals(io.github.qianlixunbai.workspace.task.TaskStatus.SUCCEEDED, taskManager.get(revokedId, otherClientId).status());
+            assertInstanceOf(io.github.qianlixunbai.workspace.task.TaskResult.TranslationBatch.class, taskManager.get(revokedId, otherClientId).result());
+            for (String privateValue : new String[]{prompt, "batch-input-private-marker", "batch-output-private-marker", "settings-output-private-marker", "unexpected-private-marker", "duplicate-key-private-marker"})
+                assertFalse(logs.getAll().contains(privateValue));
+        } finally {
+            if (slowRelease != null) slowRelease.countDown();
+            MODE.set(0); BATCH_OUTPUT.set(null);
+        }
+    }
+    private String batch(List<?> items) {
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("items", items); body.put("targetLanguage", "zh-CN");
+        return json.writeValueAsString(body);
+    }
+    private JsonNode pollBrowser(String id, String credential, String origin) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            var result = tree(browser("GET", "/api/v1/tasks/" + id, null, credential, origin));
+            String status = result.path("status").asString();
+            if (!status.equals("QUEUED") && !status.equals("RUNNING")) return result;
+            Thread.sleep(10);
+        }
+        throw new AssertionError("Browser task polling deadline expired");
     }
     private JsonNode createPairing(String origin) throws Exception {
         var response = send("POST", "/api/v1/security/pairings", json.writeValueAsString(java.util.Map.of("origin", origin,

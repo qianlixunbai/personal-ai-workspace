@@ -3,21 +3,26 @@ package io.github.qianlixunbai.workspace.task;
 import io.github.qianlixunbai.workspace.TestSettings;
 import io.github.qianlixunbai.workspace.common.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TaskManagerTest {
-    @Test void ownersIsolateRunningQueuedAndRetainedTasksAndOwnerCancellationWinsLateResult() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void ownersIsolateRunningQueuedAndRetainedTasksAndOwnerCancellationWinsLateResult(boolean batch) throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
             UUID running = scope.manager.submit("browser-a", "translate", TestSettings.profile(), "p1", c -> {
-                entered.countDown(); await(release); exited.countDown(); return "late private output";
+                entered.countDown(); await(release); exited.countDown(); return output(batch);
             }).taskId();
             assertTrue(entered.await(2, TimeUnit.SECONDS));
-            UUID queued = scope.manager.submit("browser-a", "translate", TestSettings.profile(), "p1", c -> "queued").taskId();
+            UUID queued = scope.manager.submit("browser-a", "translate", TestSettings.profile(), "p1", c -> output(batch)).taskId();
+            assertEquals(TaskStatus.QUEUED, scope.manager.get(queued, "browser-a").status());
             for (UUID id : new UUID[]{running, queued}) {
                 for (String wrongOwner : new String[]{"browser-b", "native-local"}) {
                     assertEquals(ErrorCode.TASK_NOT_FOUND, assertThrows(WorkspaceException.class, () -> scope.manager.get(id, wrongOwner)).error().code());
@@ -33,26 +38,30 @@ class TaskManagerTest {
             assertThrows(WorkspaceException.class, () -> scope.manager.get(running, "browser-b"));
         }
     }
-    @Test void boundedQueueCancellationAndLateSuccess() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void boundedQueueCancellationAndLateSuccess(boolean batch) throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
             TaskManager manager = scope.manager;
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
             AtomicBoolean queuedRan = new AtomicBoolean();
-            UUID running = manager.submit("summarize", TestSettings.summarize(), "p1", cancellation -> {
-                entered.countDown(); await(release); exited.countDown(); return "late private answer";
+            UUID running = manager.submit(batch ? "translate" : "summarize", batch ? TestSettings.profile() : TestSettings.summarize(), "p1", cancellation -> {
+                entered.countDown(); await(release); exited.countDown(); return output(batch);
             }).taskId();
             assertTrue(entered.await(2, TimeUnit.SECONDS));
-            UUID queued = manager.submit("ask", TestSettings.ask(), "p1", cancellation -> {
-                queuedRan.set(true); return "should not execute";
+            UUID queued = manager.submit(batch ? "translate" : "ask", batch ? TestSettings.profile() : TestSettings.ask(), "p1", cancellation -> {
+                queuedRan.set(true); return output(batch);
             }).taskId();
             assertEquals(ErrorCode.QUEUE_FULL, assertThrows(WorkspaceException.class,
-                    () -> manager.submit("translate", TestSettings.profile(), "p1", c -> "overflow")).error().code());
+                    () -> manager.submit("translate", TestSettings.profile(), "p1", c -> output(batch))).error().code());
             assertEquals(TaskStatus.CANCELLED, manager.cancel(queued).status());
-            UUID replacement = manager.submit("translate", TestSettings.profile(), "p1", c -> "replacement").taskId();
+            UUID replacement = manager.submit("translate", TestSettings.profile(), "p1", c -> output(batch)).taskId();
             assertEquals(TaskStatus.CANCELLED, manager.cancel(running).status());
             release.countDown();
             assertTrue(exited.await(2, TimeUnit.SECONDS));
-            assertEquals(TaskStatus.SUCCEEDED, terminal(manager, replacement).status());
+            var success = terminal(manager, replacement);
+            assertEquals(TaskStatus.SUCCEEDED, success.status());
+            assertEquals(output(batch), success.result());
+            assertEquals(success, manager.cancel(replacement));
             assertFalse(queuedRan.get());
             assertNull(manager.get(running).result());
             assertNull(manager.get(queued).result());
@@ -60,14 +69,15 @@ class TaskManagerTest {
         }
     }
 
-    @Test void queueAndExecutionTimeoutsRemainDistinctAndLateResultsAreDiscarded() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void queueAndExecutionTimeoutsRemainDistinctAndLateResultsAreDiscarded(boolean batch) throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofMillis(60), Duration.ofMillis(150), Duration.ofSeconds(3))) {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            UUID running = scope.manager.submit("ask", TestSettings.ask(), "p1", c -> {
-                entered.countDown(); await(release); return "late";
+            UUID running = scope.manager.submit(batch ? "translate" : "ask", batch ? TestSettings.profile() : TestSettings.ask(), "p1", c -> {
+                entered.countDown(); await(release); return output(batch);
             }).taskId();
             assertTrue(entered.await(2, TimeUnit.SECONDS));
-            UUID queued = scope.manager.submit("summarize", TestSettings.summarize(), "p1", c -> "queued").taskId();
+            UUID queued = scope.manager.submit(batch ? "translate" : "summarize", batch ? TestSettings.profile() : TestSettings.summarize(), "p1", c -> output(batch)).taskId();
             TaskView queueTimeout = terminal(scope.manager, queued);
             assertEquals(TaskStatus.TIMED_OUT, queueTimeout.status());
             assertEquals("QUEUE", queueTimeout.error().phase());
@@ -79,11 +89,12 @@ class TaskManagerTest {
         }
     }
 
-    @Test void resultRetentionIsBoundedAndExpires() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void resultRetentionIsBoundedAndExpires(boolean batch) throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofMillis(400))) {
             UUID first = null;
             for (int n = 0; n < 4; n++) {
-                UUID id = scope.manager.submit("translate", TestSettings.profile(), "p1", c -> "short lived").taskId();
+                UUID id = scope.manager.submit("translate", TestSettings.profile(), "p1", c -> output(batch)).taskId();
                 if (first == null) first = id;
                 assertEquals(TaskStatus.SUCCEEDED, terminal(scope.manager, id).status());
             }
@@ -113,6 +124,22 @@ class TaskManagerTest {
         }
     }
 
+    private static Object output(boolean batch) {
+        return batch ? new TaskResult.TranslationBatch(List.of(new TaskResult.Translation(1, "private translation"))) : "private text";
+    }
+    @Test void structuredResultIsImmutableAndDiagnosticsAreRedactedAndArbitraryObjectsAreRejected() throws Exception {
+        var mutable = new java.util.ArrayList<>(List.of(new TaskResult.Translation(1, "private translation")));
+        var batch = new TaskResult.TranslationBatch(mutable);
+        mutable.clear();
+        assertEquals(1, batch.items().size());
+        assertThrows(UnsupportedOperationException.class, () -> batch.items().clear());
+        assertFalse(batch.toString().contains("private"));
+        assertFalse(batch.items().getFirst().toString().contains("private"));
+        try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
+            var task = scope.manager.submit("translate", TestSettings.profile(), "p1", c -> java.util.Map.of("arbitrary", "private"));
+            assertEquals(ErrorCode.INTERNAL_ERROR, terminal(scope.manager, task.taskId()).error().code());
+        }
+    }
     public static TaskView terminal(TaskManager manager, UUID id) throws Exception {
         long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (System.nanoTime() < end) {

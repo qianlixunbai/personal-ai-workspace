@@ -11,8 +11,11 @@ M1.5 — Assistant Core Capabilities：**CLOSED — GO**，新增 Summarize 与 
 M1.5 已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
 M2A — Browser Runtime Access Foundation：**CLOSED — GO**，已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。
 完整证据见 [M2A Closing Report](docs/milestones/M2A-CLOSING-REPORT.md)；真实 Chrome 接入仍为 M2B deferred。
-M2B-1 — Browser Pairing UX：Windows Assistant 增加显式配对与 Revoke 入口，本地分支 `m2b-browser-pairing-ui`，不 merge/push。
-验收与边界见 [M2B-1 Closing Report](docs/milestones/M2B-1-CLOSING-REPORT.md)。本轮不执行 Extension exchange，不开始 M2B-2。
+M2B-1 — Browser Pairing UX：**CLOSED — GO**，已 push feature branch、fast-forward merge main 并 push origin/main，发布基线 `d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
+验收与边界见 [M2B-1 Closing Report](docs/milestones/M2B-1-CLOSING-REPORT.md)，历史报告保留当时未 merge/push 的事实。
+M2B-2A — Runtime Browser Batch Translation Contract：**CLOSED — GO / Runtime Batch Translation Contract Ready**。
+同一 Translate API 支持一批 records → 一个共享任务 → 一次 provider inference → structured result。
+分支 `m2b2a-runtime-batch-translate` 仅本地提交；证据见 [M2B-2A Closing Report](docs/milestones/M2B-2A-CLOSING-REPORT.md)。Extension migration / Chrome acceptance 属于后续 M2B-2B。
 
 ## 启动
 
@@ -121,7 +124,8 @@ M2A browser client 使用独立 Bearer credential；pairing exchange 使用短�
 | GET | `/actuator/health/liveness` | 进程 liveness |
 | GET | `/actuator/health/readiness` | Runtime readiness，不依赖 Ollama |
 | GET | `/api/v1/providers/readiness` | 本地 provider / 配置模型可用性 |
-| POST | `/api/v1/translate/tasks` | 提交 Translate，202 + taskId + Location |
+| GET | `/api/v1/capabilities/translate/readiness` | 认证且 Translate-authorized；仅安全 available/error.code |
+| POST | `/api/v1/translate/tasks` | Single 或 Batch Translate，202 + taskId + Location |
 | POST | `/api/v1/summarize/tasks` | 提交 Summarize，202 + taskId + Location |
 | POST | `/api/v1/ask/tasks` | 提交单轮 Ask，202 + taskId + Location |
 | GET | `/api/v1/tasks/{taskId}` | 三种 capability 共用状态、成功结果或受控错误 |
@@ -135,6 +139,27 @@ M2A browser client 使用独立 Bearer credential；pairing exchange 使用短�
 
 Translate 的 `sourceLanguage` 可省略，`profile` 可省略并默认为 `translate.fast`。
 语言参数是形如 `en`、`zh-CN` 的标签，不接受任意 prompt 指令。
+
+Batch 使用同一路径与 `translate.fast`，`text` / `items` 必须恰好提供一个，显式 null 输入也拒绝：
+
+```json
+{"items":[{"id":1,"text":"Hello"},{"id":2,"text":"Settings"},{"id":3,"text":"Load more"}],"sourceLanguage":"en","targetLanguage":"zh-CN","profile":"translate.fast"}
+```
+
+每批 1–32 项，id 为唯一整数 `0..2147483647`（拒绝 string / float / null）。每项 text 为非空字符串，最多 2800 字符；
+所有 text 合计最多 2800 UTF-16 字符 / 4096 UTF-8 字节。JSON 编码后的整批 input（含 id / escaping）还必须 ≤5632 UTF-8 字节，
+并遵守 profile 的字符/context 预算。HTTP body 仍 ≤32 KiB；超长 record 明确拒绝，不截断、拆分或提高模型预算。
+
+Batch 成功的任务返回原生 JSON object，例如 `"result":{"items":[{"id":1,"translation":"你好"}]}`，
+promptVersion 为 `translate-batch-v1`；Single Translate / Summarize / Ask 的 result 仍是 JSON string。
+只保留 requested、唯一且有效的 id；unexpected id 忽略，duplicate requested id 的所有结果失效，空/畸形项保持 missing。
+有效数组的 subset（包括空数组）可 SUCCEEDED；malformed top-level / 超预算输出为 PROVIDER_RESPONSE_INVALID。
+没有自动 item retry；后续 Browser 显式处理 partial/retry。DELETE 取消整个 Batch task。
+
+Batch 的安全 profile id/version/locality + promptVersion 可用于未来 cache identity，不返回 resolved model 或 generation settings。
+Runtime 拥有 batch prompt，客户端不能提交 prompt/model/generation 参数。
+Translate readiness 只返回 `{"available":true}` 或 `{"available":false,"error":{"code":"PROVIDER_UNAVAILABLE"}}`，
+不创建 task、不做 inference；模型缺失也折叠为不可用，不暴露模型/provider。旧 Browser CHECK_CONNECTION 的替代将在 M2B-2B 接入此路径。
 
 Summarize 请求：`{"text":"Synthetic source text","profile":"summarize.fast"}`。
 `profile` 默认 `summarize.fast`；可选 `targetLanguage`，省略时输出源语言摘要。
@@ -220,7 +245,7 @@ Pairing 由现有已认证本机操作显式批准；master token 不传给 Brow
 Origin 必须为 `chrome-extension://<32 lowercase a-p characters>`，无尾斜线。
 Browser 请求要求 `Sec-Fetch-Site: none`、`Sec-Fetch-Mode: cors`、`Sec-Fetch-Dest: empty`；
 未知 extension、普通网页、localhost Origin、缺失/不匹配 credential、cross-site/navigation 均拒绝。
-Browser 默认仅可 POST `/api/v1/translate/tasks` 和 GET/DELETE 自己的 `/api/v1/tasks/{id}`。
+Browser 仅可 POST `/api/v1/translate/tasks`、GET Translate capability readiness 和 GET/DELETE 自己的 `/api/v1/tasks/{id}`。
 Ask/Summarize/管理 API 不授权 Browser。所有 capability 仍 LOCAL_ONLY，共用同一个 TaskManager。
 
 Pairing 3 分钟、一次性；最多 8 sessions、每 session 5 次错误 proof、总 exchange 60 次/分钟。
@@ -239,10 +264,15 @@ Future extension 必须从可信 extension context 访问 Runtime；自己保存
 .\mvnw.cmd clean verify
 .\scripts\real-local-smoke.ps1
 .\scripts\browser-security-smoke.ps1
+.\scripts\browser-security-smoke.ps1 -Batch
 git diff --check
 ```
 
 自动测试使用 fake work 和 loopback HTTP mock server，不依赖本机 Ollama。
+M2B-2A：Java 29 / Desktop 67 PASS，native 三能力与 synthetic browser Single/Batch 安全 smoke REAL PASS。
+Batch smoke 使用 Python 3 标准库的仅验证 loopback relay 计数实际 Ollama `/api/chat`，证明 3 records / 1 POST / 1 task / 1 inference / 3 valid mappings。
+Relay 只在验证中转发到现有本机 Ollama，不是产品 Provider；不记录正文，不修改 Ollama。实际 Chrome 尚未验收。
+`scripts/privacy-audit.py` 从 stdin 接收内存中的临时凭据，扫描 source/build/archive/log/evidence，不保存或输出秘密。
 M1.5 验证（2026-10-02）：Java 16 / Desktop 40 tests 全部 PASS，build 0 warnings/errors；
 三种 capability 的真实 Runtime + Ollama smoke PASS。真实 WPF 主路径、热键、取消、离线/恢复与重启 PASS；
 实际 Ollama 停止/恢复由用户人工确认 PASS。详细证据来源及边界见 STATUS 和 Closing Report。

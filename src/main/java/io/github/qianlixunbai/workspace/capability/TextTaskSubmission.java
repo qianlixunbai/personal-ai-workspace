@@ -8,6 +8,7 @@ import io.github.qianlixunbai.workspace.task.*;
 import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Function;
 
 /** Shared execution for the three concrete text capabilities; prompts remain capability-owned. */
 @Service
@@ -20,12 +21,20 @@ public class TextTaskSubmission {
         this.profiles = profiles; this.providers = providers; this.policy = policy; this.tasks = tasks;
     }
     public TaskView submit(String capability, String profileId, String promptVersion, String system, String input) {
+        return submit(capability, profileId, promptVersion, system, input, input == null ? 0 : input.length(), output -> output);
+    }
+    public TaskView submitMapped(String capability, String profileId, String promptVersion, String system, String input,
+                                 int textCharacters, Function<String, TaskResult> mapping) {
+        return submit(capability, profileId, promptVersion, system, input, textCharacters, mapping);
+    }
+    private TaskView submit(String capability, String profileId, String promptVersion, String system, String input,
+                            int textCharacters, Function<String, ?> mapping) {
         var client = ClientIdentity.current();
         if (!client.allowedCapabilities().contains(capability))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = profiles.resolve(profileId);
         // Worst-case UTF-8 input bytes conservatively stand in for tokens; reserve template and output.
-        if (input == null || input.isBlank() || input.length() > profile.maxTextCharacters()
+        if (input == null || input.isBlank() || textCharacters > profile.maxTextCharacters()
                 || input.getBytes(StandardCharsets.UTF_8).length > profile.contextBudget() - profile.outputBudget() - 512)
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "INPUT_BUDGET");
         if (system.getBytes(StandardCharsets.UTF_8).length > 512)
@@ -41,7 +50,17 @@ public class TextTaskSubmission {
             if (output == null || output.isBlank()
                     || output.getBytes(StandardCharsets.UTF_8).length > profile.outputBudget() * 4)
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "OUTPUT_BUDGET");
-            return output;
+            return mapping.apply(output);
         });
+    }
+    public Provider.ProviderReadiness readiness(String capability, String profileId) {
+        if (!ClientIdentity.current().allowedCapabilities().contains(capability))
+            throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        ModelProfile profile = profiles.resolve(profileId);
+        Provider provider = providers.resolve(profile.provider());
+        policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
+        if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION))
+            throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        return provider.readiness(profile);
     }
 }

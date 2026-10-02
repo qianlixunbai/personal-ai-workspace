@@ -1,4 +1,4 @@
-# Current Architecture — Shared Runtime / Windows / Browser Pairing UX
+# Current Architecture — Shared Runtime / Windows / Browser Batch Contract
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
@@ -11,7 +11,9 @@ Windows 主动 Translate hotkey 或手动 Translate / Summarize / Ask → WPF �
 `translate.fast` / `summarize.fast` / `chat.balanced` → Ollama → 单个纯文本 result card。Desktop 不直连 Ollama。
 M2A 增加 explicit browser pairing、独立 credential、精确 Origin 和 per-client task ownership；
 native token 持有人仍共享固定 `native-local` owner。当前安全决策见 [ADR-003](../ADR/ADR-003-browser-client-security.md)。
-M2A 已 merge/push，稳定基线 `9d20a9a`。M2B-1 仅增加 Windows trusted native 配对/管理 UI，不改 Runtime 安全模型。
+M2A 已 merge/push，发布基线 `9d20a9a`。M2B-1 已 push feature branch、fast-forward merge main 并 push origin/main，稳定基线 `d606472`；它仅增加 Windows trusted native 配对/管理 UI。
+M2B-2A：Runtime Batch Translation Contract Ready，CLOSED — GO；本地分支 `m2b2a-runtime-batch-translate`，未 merge/push。
+同一 Translate 路径接收 Single 或 Batch；batch 只有一个 TaskManager task 和一次 provider execution。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
 本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
 M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
@@ -60,7 +62,7 @@ Secret TextBox 禁用 undo；新建前清除旧显示，TTL 到期自动清除�
 显式 Copy Secret 进入系统剪贴板，Windows history/sync 不由应用控制；释放托管引用不保证所有内存字节立即擦除。
 窗口关闭不会删除 Runtime session，服务器 3 分钟 TTL / restart 控制 outstanding pairing；无 pairing history。
 Desktop 不执行 exchange、不生成/保存 browser credential、不直接访问 registry，不发送 master token 或 proof 到 Browser。
-Extension Origin 展示/真实 exchange/storage/Browser Runtime client/Translate migration 均待 M2B-2，未开始。
+Extension Origin 展示/真实 exchange/storage/Browser Runtime client/Translate migration 均待 M2B-2B，未开始。
 
 ## Java Runtime 边界
 
@@ -100,6 +102,32 @@ flowchart LR
 
 Provider 错误复用 common 的稳定分类；Ollama 异常 cause / body 不跨适配边界。
 三个 Capability Service 通过 TextTaskSubmission 依赖 Provider，不依赖 Ollama 类型。Profile 来自 YAML，无数据库。
+
+## Batch Translate contract（M2B-2A）
+
+POST `/api/v1/translate/tasks` 的 `text` 与 `items` exactly one；原 Single contract 保留。
+Batch item id 为唯一非负 int（≤2147483647），拒绝数值/字符串 coercion；text 非空且严格为 string。
+TranslateBatch 限制每批 32 项、正文合计 2800 UTF-16 字符 / 4096 UTF-8 字节；每项同样 ≤2800 字符。
+TextTaskSubmission 同时检查序列化整批 JSON 的 context 输入字节预算（当前 ≤5632），包括结构及 escaping，
+并执行 profile 字符预算、≤512-byte Runtime prompt、LOCAL_ONLY admission/worker/final egress。
+复用 `translate.fast` 的 8192/2048 budgets 和已有模型配置，无新 profile/provider/scheduler。
+
+`translate-batch-v1` 要求不可信文本只翻译，保留 id、不执行指令/总结/解释/新增事实，仅输出严格 JSON mapping array。
+一个 queued Work 仅一次 provider.execute；同一共享输出预算 ≤8192 UTF-8 字节，provider HTTP body ≤1 MiB。
+Runtime 严格解析 JSON array（拒绝 fences、trailing tokens、duplicate JSON fields）；
+只保留 unique requested id + 非空 string translation，畸形项/未知 id 忽略，重复 requested id 的所有结果失效。
+结果按请求顺序返回；subset / 空数组为 SUCCEEDED partial，不编造 translation，不隐式 retry。
+
+TaskManager Work / TaskView 的内部 result 最小演进为受限 Object：String 或 sealed TaskResult.TranslationBatch。
+任意对象拒绝；batch/list/item 均不可变且 diagnostics 脱敏。HTTP Single 仍是 JSON string；Batch 为 `{"items":[...]}`。
+TaskResult 只有这个当前结构化 shape；无 generic future result framework。owner/cancel/deadline/retention 不变。
+Public profile id/version/locality + promptVersion 支持未来 Browser cache identity，无 model/settings/prompt 泄漏。
+
+GET `/api/v1/capabilities/translate/readiness` 需 Translate authorization；只暴露 available 或受控 PROVIDER_UNAVAILABLE code。
+复用 profile/policy/provider metadata readiness，无 generation/task，不暴露 provider/model/detail。
+Browser filter 仅额外允许该精确 GET/preflight 路径；Origin/Fetch Metadata/credential/Translate-only 和 task ownership 不变。
+原 native provider readiness 与 Desktop 代码不变。Extension CHECK_CONNECTION 的替代接入待 M2B-2B。
+真实 batch smoke 用仅验证 loopback relay 计数实际已有 Ollama chat 请求；该脚本不进入产品调用链。
 
 ## 任务生命周期
 

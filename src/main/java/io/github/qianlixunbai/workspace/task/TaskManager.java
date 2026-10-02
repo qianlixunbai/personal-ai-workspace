@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 
 @Component
 public final class TaskManager {
-    @FunctionalInterface public interface Work { String execute(Cancellation cancellation); }
+    @FunctionalInterface public interface Work { Object execute(Cancellation cancellation); }
     private final RuntimeProperties.Tasks settings;
     private final ThreadPoolExecutor workers;
     private final ScheduledExecutorService timer;
@@ -92,7 +92,7 @@ public final class TaskManager {
         tasks.values().removeIf(job -> job.finishedAt != null && !job.inWorker && job.finishedAt.isBefore(cutoff));
     }
 
-    private void finish(Job job, TaskStatus status, String result, ApiError error) {
+    private void finish(Job job, TaskStatus status, Object result, ApiError error) {
         job.status = status;
         job.result = result;
         job.error = error;
@@ -125,7 +125,7 @@ public final class TaskManager {
         final Cancellation cancellation = new Cancellation();
         TaskStatus status = TaskStatus.QUEUED;
         Work work;
-        String result;
+        Object result;
         ApiError error;
         Instant finishedAt;
         ScheduledFuture<?> deadline;
@@ -150,7 +150,9 @@ public final class TaskManager {
             }
             try {
                 cancellation.check();
-                String output = execution.execute(cancellation);
+                Object output = execution.execute(cancellation);
+                if (!(output instanceof String || output instanceof TaskResult))
+                    throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "RESULT_TYPE");
                 synchronized (TaskManager.this) {
                     if (status == TaskStatus.RUNNING) finish(this, TaskStatus.SUCCEEDED, output, null);
                 }

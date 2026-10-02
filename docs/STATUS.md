@@ -9,7 +9,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 Phase 2 — Shared Runtime + Windows Entry / M2 Browser Convergence。
 
-当前执行范围：**M2B-1 — Browser Pairing UX**；本轮不开始 M2B-2。
+当前执行范围：**M2B-2A — Runtime Browser Batch Translation Contract**；不开始 M2B-2B。
 
 M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`。
 
@@ -23,9 +23,48 @@ Provider unavailable / restart recovery、credential persistence 与 privacy/log
 本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
 M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；M1 发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
 
+## M2B-2A 实现与验证（2026-10-02）
+
+**CLOSED — GO / Runtime Batch Translation Contract Ready**。范围仅 Shared Runtime；M2B-2B / Extension migration 尚未开始。
+开始时 main clean；fetch 后 `main == origin/main == d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
+分支 `m2b2a-runtime-batch-translate`，本地提交 `feat: add batch translate runtime contract`，不 merge/push。
+最小同步 M2B-1 当前已发布事实；M1.5 / M2A / M2B-1 Closing Reports 与 ADR-001/002/003 保留历史原文。
+
+- 只读核对 Local AI Assistant main / remote main `75bede161e7e81d2e7c0fa8e62ac2d05a7248c83`，v0.4.1 GO / RELEASED；工作树 clean，未修改。
+  确认 viewport-first 1000 / normal 2800 chars、一次 inference、id mapping、partial/retry、model/prompt/settings cache；B11/B12 DEFERRED。
+- 同一路径 POST Translate，`text/items` exactly one；Batch 每批 1–32 项，id 唯一非负 int，正文合计 ≤2800 chars / 4096 UTF-8 bytes。
+  序列化 JSON（含 escaping/id）仍需满足 profile 的当前 5632-byte context 输入预算，body ≤32 KiB。
+- 一个 Batch → 一个 shared TaskManager task → 一次 provider.execute / Ollama chat；仍 translate / translate.fast / LOCAL_ONLY。
+  String 或唯一当前 sealed structured result shape；Single 三能力 result 仍为 JSON string，Batch 为 object/items array。
+- Runtime `translate-batch-v1` + 严格 JSON parser；只返回 unique valid requested ids；duplicate id 全失效，unexpected/empty/malformed item 保持 missing。
+  有效 subset / empty array 可 SUCCEEDED partial；malformed top-level / 8192-byte output 超限受控失败，无自动 item retry。
+- Translate-only sanitized readiness；精确 GET/preflight 路由扩展，无 provider/model/raw diagnostics。原 auth/origin/ownership/revoke/cancel 保持。
+  Desktop source/UI/token/WinCred 不变，无需重新导入凭据；没有扩展 storage/cache/DOM 修改或新 ADR。
+
+| 验证 | 本轮结果 |
+| --- | --- |
+| `.\mvnw.cmd clean verify` | PASS：29 tests，0 failures/errors/skipped；22:56 +08:00 |
+| Desktop restore / build / test | PASS：67 tests，0 failed/skipped，0 warnings/errors |
+| `.\scripts\real-local-smoke.ps1` | REAL PASS：native Translate / Summarize / Ask 全部 SUCCEEDED；22:51 +08:00 |
+| `.\scripts\browser-security-smoke.ps1 -Batch` | REAL PASS：22:58 +08:00，3 records / 1 POST / 1 task / 1 actual Ollama chat / 3 valid mappings |
+| Synthetic browser security smoke | PASS：pairing/exchange、single、Translate readiness、wrong Origin/web 401、cross-owner 404、Ask/Summarize 403、restart/revoke |
+| Whole batch DELETE | 真实 smoke CANCELLED；受控 slow HTTP integration 另验证 RUNNING cancellation 与 late output rejection |
+| Secret/body/build/archive/evidence audit | PASS：实际 native/browser/proof 仅 stdin/内存比较，0 匹配、0 tracked build artifacts；最终数量见 Closing Report |
+| `git diff --check` | PASS |
+
+RuntimeApiTest 扩展现有 loopback HTTP mock：严格 types/limits、structured result、partial mapping、一次 chat 计数、ownership、readiness、
+whole batch cancel、revoke 不取消 accepted batch、脱敏错误与 CapturedOutput 隐私检查。
+TaskManagerTest 在原队列/deadline/cancel/retention 测试同时运行 String 和 immutable batch result，未建立第二套 Batch task test universe。
+真实 smoke 的 verification-only relay 仅转发已有本机 Ollama 并计数，不保存正文、不进入产品 Provider，不停止用户 Ollama。
+首次 smoke 的尾部审计先后遇到 Windows relay log file sharing、PowerShell UTF-16 surrogate 输入，以及测试名 GenerationSettings 的短词匹配；
+已修正 cleanup/encoding/实际 captured-output 扫描，以上只记录最终完整成功退出证据。
+真实 WPF 手动 GUI 未重新验收；本轮证据为 67 Desktop tests + native actual Runtime/Ollama smoke，历史 GUI PASS 不改写为本轮新证据。
+实际 Chrome headers/host permissions/exchange/storage/DOM/cache **UNVERIFIED / M2B-2B DEFERRED**。
+完整 23 项交付见 [M2B-2A Closing Report](milestones/M2B-2A-CLOSING-REPORT.md)。
+
 ## M2B-1 实现与验证（2026-10-02）
 
-M2B-1 — Browser Pairing UX：**CLOSED — GO**。本地分支 `m2b-browser-pairing-ui`，不 merge/push，不开始 M2B-2。
+M2B-1 — Browser Pairing UX：**CLOSED — GO**。已 push feature branch、fast-forward merge main 并 push origin/main，发布基线 `d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。历史 Closing Report 保留当时未 merge/push 的事实。
 基于干净且 fetch 后一致的 `main == origin/main == 9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。
 
 - Assistant 最小 Pair Browser 入口；只在显式点击创建后 POST `/api/v1/security/pairings`，沿用 native WinCred。
@@ -351,9 +390,9 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 ## 现有仓库与 Deferred Scope
 
 本轮没有修改、复制或合并两个旧仓库，没有 Finance DB 访问。
-以下旧仓库状态来自项目输入，本轮未实时核验：
+Local AI Assistant 本轮仅只读核验；Finance 状态仍来自项目输入，未实时核验：
 
-- Local AI Assistant v0.4.1，PAUSED / MAINTENANCE MODE；B11/B12 仍 DEFERRED。
+- Local AI Assistant v0.4.1 GO / RELEASED，main/remote main `75bede1`，PAUSED / MAINTENANCE MODE；B11/B12 仍 DEFERRED。
 - Finance TEMPORARILY FROZEN / WAITING FOR REALITY SYNC；学校笔记本最新工作区 **UNVERIFIED**。
   不将 GitHub Remote 当作学校电脑最新事实。
 
@@ -364,7 +403,7 @@ voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/con
 backup/migration engine、同步及其他超出 M1 的能力。
 
 M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验收证据保持不变。
-M1.5 / M2A 已 CLOSED — GO 且已 merge/push；本轮按用户授权实现 M2B-1 Browser Pairing UX。
+M1.5 / M2A / M2B-1 已 CLOSED — GO 且已 merge/push；本轮按用户授权实现 M2B-2A Runtime batch contract。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
@@ -373,6 +412,7 @@ M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
 M1 closing commit `6d17ad7` 已 fast-forward merge 到 `main` 并成功 push；2026-10-02 fetch 确认本地 main 与 origin/main 一致。
 M1.5 implementation commit `22c45de` 已发布；M2A implementation commit `9d20a9a` 已发布，2026-10-02 fetch 确认 main / origin/main 一致。
-M2B-1 在 `m2b-browser-pairing-ui` 本地交付，不 merge/push。
+M2B-1 implementation commit `d606472` 已发布；本轮 fetch 确认 `main == origin/main == d60647273a8dcf63b71e985bd8ba4e63ad5d64a9`。
+M2B-2A 在 `m2b2a-runtime-batch-translate` 本地交付，不 merge/push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

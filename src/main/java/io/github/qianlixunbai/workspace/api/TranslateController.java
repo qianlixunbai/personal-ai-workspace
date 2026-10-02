@@ -8,11 +8,12 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/v1/translate")
 public class TranslateController {
     private final TranslateService translate;
     public TranslateController(TranslateService translate) { this.translate = translate; }
-    @PostMapping("/tasks")
+    @GetMapping("/api/v1/capabilities/translate/readiness")
+    public TranslateReadiness readiness() { return translate.readiness(); }
+    @PostMapping("/api/v1/translate/tasks")
     public ResponseEntity<TaskView> submit(@Valid @RequestBody TranslateRequest request) {
         TaskView task = translate.submit(request);
         return ResponseEntity.accepted().location(URI.create("/api/v1/tasks/" + task.taskId())).body(task);

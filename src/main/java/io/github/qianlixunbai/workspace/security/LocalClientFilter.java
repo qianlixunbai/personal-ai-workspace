@@ -81,6 +81,7 @@ final class LocalClientFilter extends OncePerRequestFilter {
     private static boolean browserRoute(String path, String method, boolean exchange) {
         if (exchange) return "POST".equals(method);
         return path.equals("/api/v1/translate/tasks") && "POST".equals(method)
+                || path.equals("/api/v1/capabilities/translate/readiness") && "GET".equals(method)
                 || path.matches("/api/v1/tasks/[0-9a-fA-F-]{36}") && List.of("GET", "DELETE").contains(method == null ? "" : method);
     }
 
