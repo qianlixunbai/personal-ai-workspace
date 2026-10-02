@@ -45,7 +45,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        window = new AssistantWindow(this);
+        window = new AssistantWindow(this, runtime);
         MainWindow = window;
         messages = new HwndSource(new HwndSourceParameters("Personal AI Assistant messages")
         { ParentWindow = new IntPtr(-3), WindowStyle = 0, Width = 0, Height = 0 });
@@ -218,6 +218,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     {
         if (exitRequested) return;
         exitRequested = true;
+        window.CloseBrowserPairing();
         hotkey?.Dispose();
         operation?.RequestCancel();
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
@@ -236,6 +237,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     {
         if (cleanedUp) return;
         cleanedUp = true;
+        window?.CloseBrowserPairing();
         single.StopListening();
         lifetime.Cancel();
         hotkey?.Dispose();

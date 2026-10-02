@@ -9,8 +9,10 @@ Java 与 Desktop 分别使用 Maven Wrapper / dotnet CLI 验证；Desktop 只调
 M1 closing commit 已 fast-forward merge 到 main 并 push 到 origin/main；发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。
 M1.5 — Assistant Core Capabilities：**CLOSED — GO**，新增 Summarize 与 single-turn stateless Ask AI。
 M1.5 已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
-M2A — Browser Runtime Access Foundation：**CLOSED — GO**，本地分支 `m2a-browser-runtime-access`，未 merge/push。
+M2A — Browser Runtime Access Foundation：**CLOSED — GO**，已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。
 完整证据见 [M2A Closing Report](docs/milestones/M2A-CLOSING-REPORT.md)；真实 Chrome 接入仍为 M2B deferred。
+M2B-1 — Browser Pairing UX：Windows Assistant 增加显式配对与 Revoke 入口，本地分支 `m2b-browser-pairing-ui`，不 merge/push。
+验收与边界见 [M2B-1 Closing Report](docs/milestones/M2B-1-CLOSING-REPORT.md)。本轮不执行 Extension exchange，不开始 M2B-2。
 
 ## 启动
 
@@ -86,6 +88,26 @@ Desktop 不写正文日志或历史；helper 正文只通过匿名标准流 pipe
 不经 command line、文件或日志。Copy result 是用户显式向系统剪贴板写入结果。
 Runtime 地址固定 `http://127.0.0.1:8765`，禁止 proxy/redirect，无 cloud/Ollama fallback，
 不管理 Java、Ollama、模型下载或服务启动。
+
+## Windows Browser Pairing（M2B-1）
+
+在 Assistant 点击 **Pair Browser…**，输入 `chrome-extension://` 加 32 个 a-p 小写字符（无尾斜线）。
+核对扩展身份后，明确点击 **创建一次性配对**，Desktop 使用已有 Windows Credential Manager native 凭据调用
+`POST /api/v1/security/pairings`，提交 `origin`、固定 displayName `Chrome Extension`、`userApproved: true`。
+打开窗口、修改输入或启动应用不会创建配对；Desktop validation 只用于 UX，Runtime 是最终 authority。
+
+成功后临时显示 Pairing ID、One-time pairing secret、Expires at（本机时区），可显式 **Copy Pairing ID / Copy Secret**。
+Secret 不写文件、日志、telemetry、Credential Manager 或历史；重新创建前清除旧值，窗口关闭或过期时清除显示引用，
+关闭时取消 HTTP 等待并拒绝迟到响应回填。托管内存释放引用不等于强制擦除所有内存副本。
+复制会进入系统剪贴板；其历史/同步由 Windows 设置控制。窗口关闭不撤销服务器 session，它将按 Runtime 3 分钟 TTL 过期。
+网络失败时服务端可能已经创建 session；不要把 UI 失败当成服务端未接受。
+
+**Paired Browsers → 刷新列表** 只显示 displayName、origin、createdAt、allowedCapabilities。
+选择后点击 **Revoke selected**，成功 204 后移除条目；失败保留条目并提示，通信失败后刷新确认实际状态。
+未 exchange 的 session 不在列表中。Revoke 阻止后续 browser credential 请求，不取消已接受任务。
+
+本轮 Extension 尚未修改，Desktop 只创建 pairing，不调用 exchange、不生成或保存 browser credential、不修改 registry。
+真实 Chrome pairing、扩展 storage/Runtime client/Translate migration 等仍 deferred；不能据此宣称 Chrome acceptance PASS。
 
 ## API
 

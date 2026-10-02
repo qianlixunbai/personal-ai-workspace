@@ -21,9 +21,12 @@ internal interface IAssistantController
 public partial class AssistantWindow : Window
 {
     private readonly IAssistantController app;
-    internal AssistantWindow(IAssistantController app)
+    private readonly RuntimeClient? runtime;
+    private BrowserPairingWindow? pairingWindow;
+    internal AssistantWindow(IAssistantController app, RuntimeClient? runtime = null)
     {
         this.app = app;
+        this.runtime = runtime;
         InitializeComponent();
         Closing += HideOnClose;
     }
@@ -36,6 +39,7 @@ public partial class AssistantWindow : Window
         ActionSelector.IsEnabled = !busy;
         ImportButton.IsEnabled = !busy;
         ForgetButton.IsEnabled = !busy;
+        PairBrowserButton.IsEnabled = !busy && runtime is not null;
         CancelButton.IsEnabled = busy;
         CopyButton.IsEnabled = !busy && ResultText.Text.Length != 0;
     }
@@ -45,6 +49,7 @@ public partial class AssistantWindow : Window
     }
     private void HideOnClose(object? sender, CancelEventArgs e)
     {
+        CloseBrowserPairing();
         if (app.Exiting) return;
         e.Cancel = true;
         Hide();
@@ -85,4 +90,12 @@ public partial class AssistantWindow : Window
         catch (ExternalException) { StatusText.Text = "Clipboard unavailable：请稍后重试复制。"; }
     }
     private void CloseToTray(object sender, RoutedEventArgs e) => Close();
+    private void PairBrowser(object sender, RoutedEventArgs e)
+    {
+        if (app.Busy || app.Exiting || runtime is null || pairingWindow is not null) return;
+        pairingWindow = new BrowserPairingWindow(runtime) { Owner = this };
+        try { pairingWindow.ShowDialog(); }
+        finally { pairingWindow = null; }
+    }
+    internal void CloseBrowserPairing() => pairingWindow?.Close();
 }

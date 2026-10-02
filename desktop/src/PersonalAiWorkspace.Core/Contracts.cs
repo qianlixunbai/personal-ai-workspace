@@ -6,7 +6,8 @@ public enum DesktopError
 {
     RuntimeUnavailable, Unauthorized, CredentialMissing, CredentialInvalid, CredentialStorage,
     QueueFull, ProviderUnavailable, ModelUnavailable, PolicyDenied, InvalidRequest,
-    InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError
+    InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError,
+    InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -34,6 +35,11 @@ public static class ErrorText
         DesktopError.TimedOut => "Timed out：任务超出 Runtime 时间预算。",
         DesktopError.ClientTimeout => "Runtime response timed out：通信超时，请检查 Runtime。",
         DesktopError.ProviderResponseInvalid => "Provider response invalid：本机模型响应无效。",
+        DesktopError.InvalidExtensionOrigin => "Invalid extension origin：请输入 chrome-extension:// 加 32 个 a-p 小写字符，无尾斜线。",
+        DesktopError.PairingCapacityFull => "Pairing capacity full：配对或注册容量已满，请等待配对过期或撤销不用的客户端。",
+        DesktopError.SecurityStateError => "Security state error：Runtime 无法更新安全状态，请检查 Runtime 后重试。",
+        DesktopError.PairingCreationFailed => "Pairing creation failed：未能创建配对，请检查 Runtime 后显式重试。",
+        DesktopError.BrowserManagementFailed => "Browser management failed：未确认列表或撤销结果，请刷新后检查。",
         _ => "Runtime internal error：Runtime 未能完成此次请求。"
     };
 }

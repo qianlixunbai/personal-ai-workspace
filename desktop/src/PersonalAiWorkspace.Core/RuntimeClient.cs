@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace PersonalAiWorkspace.Core;
 
-public sealed class RuntimeClient : IDisposable
+public sealed partial class RuntimeClient : IDisposable
 {
     public static readonly Uri Endpoint = new("http://127.0.0.1:8765");
     private readonly HttpClient http;
@@ -80,7 +80,8 @@ public sealed class RuntimeClient : IDisposable
     }
 
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
-        HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null)
+        HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
+        Func<JsonElement, DesktopError>? errorMap = null)
     {
         using var request = new HttpRequestMessage(method, path);
         // Actuator defaults to a vendor media type unless the client negotiates JSON.
@@ -104,6 +105,12 @@ public sealed class RuntimeClient : IDisposable
             deadline.CancelAfter(TimeSpan.FromSeconds(8));
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (response.StatusCode == HttpStatusCode.Unauthorized) throw new DesktopException(DesktopError.Unauthorized);
+            if (expected == HttpStatusCode.NoContent && response.StatusCode == expected)
+            {
+                using var empty = await response.Content.ReadAsStreamAsync(deadline.Token);
+                if (await empty.ReadAsync(new byte[1], deadline.Token) != 0) throw Invalid();
+                return JsonDocument.Parse("{}");
+            }
             if (response.Content.Headers.ContentType?.MediaType != "application/json"
                 || response.Content.Headers.ContentLength > MaximumResponse) throw Invalid();
             using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
@@ -134,7 +141,7 @@ public sealed class RuntimeClient : IDisposable
                         _ => false
                     };
                     if (!validStatus) throw Invalid();
-                    throw new DesktopException(MapError(code));
+                    throw new DesktopException(errorMap is null ? MapError(code) : errorMap(body.RootElement));
                 }
                 validate?.Invoke(response, body);
                 return body;

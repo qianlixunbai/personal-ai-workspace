@@ -9,7 +9,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 Phase 2 — Shared Runtime + Windows Entry / M2 Browser Convergence。
 
-当前执行范围：**M2A — Browser Runtime Access Foundation**。
+当前执行范围：**M2B-1 — Browser Pairing UX**；本轮不开始 M2B-2。
 
 M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`。
 
@@ -23,11 +23,44 @@ Provider unavailable / restart recovery、credential persistence 与 privacy/log
 本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
 M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；M1 发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
 
+## M2B-1 实现与验证（2026-10-02）
+
+M2B-1 — Browser Pairing UX：**CLOSED — GO**。本地分支 `m2b-browser-pairing-ui`，不 merge/push，不开始 M2B-2。
+基于干净且 fetch 后一致的 `main == origin/main == 9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。
+
+- Assistant 最小 Pair Browser 入口；只在显式点击创建后 POST `/api/v1/security/pairings`，沿用 native WinCred。
+- Origin 格式检查仅为 UX；Runtime 为最终 authority。显示 ID / secret / 本机时区 expiry，提供显式 Copy。
+- Secret 不持久化、不记录日志、不进入 diagnostic DTO/异常；禁用 undo，新建前/过期/关闭时清除显示引用。
+  关闭取消等待，迟到响应不能回填。显式剪贴板复制受 Windows history/sync 设置影响，托管引用清理不保证物理擦除。
+- 手动刷新 Paired Browsers 安全 metadata；native DELETE 成功 204 后移除所选客户端，失败不伪装成功。
+- 原 RuntimeClient HTTP/凭据/限制共用；Runtime Java、AI capabilities、Provider、TaskManager、profile/prompt/timeout 未改。
+- M2A 当前发布状态已修正；M2A 历史 Closing Report 与 ADR-003 不改，无新长期安全决策/ADR-004。
+
+| 验证 | 本轮结果 |
+| --- | --- |
+| `.\mvnw.cmd clean verify` | PASS：Java 23，0 failures/errors/skipped；20:49 +08:00 |
+| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，0 warnings/errors |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS：67，0 failed/skipped；既有 40 tests 源码未改 |
+| 真实 WPF Pair Browser | PASS：invalid Origin 提示、显式创建两次、ID/43-character secret/expiry、metadata refresh、关闭再打开无历史 |
+| 真实 WPF Native 三能力 | PASS：Translate / Summarize / Ask，经真实 Runtime + 已有 Ollama，输出长度分别 6 / 76 / 1 |
+| 实际 pairing proof / native token 泄漏检查 | PASS：两份当前 proof 与 native token 对比 source/log/build outputs，404 文件，无匹配 |
+| 仓库 secret/token/log/build/archive/ignore 审计与 `git diff --check` | PASS：1075 文件 / 33522 byte+archive checks / 127 archives / 5 个 actual native tokens，0 匹配、0 tracked build artifacts |
+
+真实 Windows 自动操作在 20:54 +08:00，通过 UI Automation 调用真实 WPF controls；不绕过 UI 直接创建 pairing 或提交 AI task。
+未执行 exchange，随后关闭配对 UI；本轮启动的 Desktop/Runtime 已清理。截图仅在 secret 区域已清除后生成。
+自动验收脚本曾因 UTF-8/BOM、owned-window automation tree、collapsed controls 调整后重跑；以上为最终完整成功记录。
+Revoke 的 HTTP/错误/列表行为由 mock + WPF tests 验证；本轮没有 exchange 或真实已注册客户端 revoke 的新增端到端证据。
+测试覆盖错误分类、response validation、capacity/security error、replacement、close/in-flight cancellation 与迟到响应。
+真实 Chrome pairing / host permissions / Fetch Metadata / storage / Browser Translate **UNVERIFIED / DEFERRED**。
+完整交付见 [M2B-1 Closing Report](milestones/M2B-1-CLOSING-REPORT.md)。
+
 ## M2A 实现与验证（2026-10-02）
 
 M2A：**CLOSED — GO**（Runtime Browser Access Foundation）。不代表 Chrome Extension acceptance 或 M2 convergence complete。
 分支 `m2a-browser-runtime-access`；基于干净且 fetch 后一致的 `main == origin/main == 22c45de4ff2ff2996960ca93817914af1da73baa`。
-本轮不 merge/push，不开始 M2B。M1.5 历史 Closing Report 保留当时未发布事实，Current Status 已同步实际发布状态。
+M2A 已 push feature branch、fast-forward merge main 并 push origin/main；M2B-1 开始时 fetch 确认
+`main == origin/main == 9d20a9a4a138b9df3583e54eea8c3a1c78a8785e`。历史 M2A Closing Report 保留当时未 merge/push 的事实。
 
 - Native bootstrap authority、token 格式、Credential Manager target 与所有 Desktop 文件不变，无需重新导入。
 - Native 显式批准精确 `chrome-extension://<id>`，3 分钟 single-use proof，restart 丢弃 outstanding pairing。
@@ -331,7 +364,7 @@ voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/con
 backup/migration engine、同步及其他超出 M1 的能力。
 
 M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验收证据保持不变。
-M1.5 已 CLOSED — GO 且已 merge/push；本轮按用户授权开始 M2A Runtime access foundation。
+M1.5 / M2A 已 CLOSED — GO 且已 merge/push；本轮按用户授权实现 M2B-1 Browser Pairing UX。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
@@ -339,6 +372,7 @@ Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任�
 M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea332a`，
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
 M1 closing commit `6d17ad7` 已 fast-forward merge 到 `main` 并成功 push；2026-10-02 fetch 确认本地 main 与 origin/main 一致。
-M1.5 implementation commit `22c45de` 已发布；2026-10-02 fetch 确认 main / origin/main 一致。M2A 在 `m2a-browser-runtime-access` 实现，不 merge/push。
+M1.5 implementation commit `22c45de` 已发布；M2A implementation commit `9d20a9a` 已发布，2026-10-02 fetch 确认 main / origin/main 一致。
+M2B-1 在 `m2b-browser-pairing-ui` 本地交付，不 merge/push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

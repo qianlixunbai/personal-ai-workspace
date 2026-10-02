@@ -1,4 +1,4 @@
-# Current Architecture — Shared Runtime / Windows / M2A Browser Access
+# Current Architecture — Shared Runtime / Windows / Browser Pairing UX
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
@@ -11,6 +11,7 @@ Windows 主动 Translate hotkey 或手动 Translate / Summarize / Ask → WPF �
 `translate.fast` / `summarize.fast` / `chat.balanced` → Ollama → 单个纯文本 result card。Desktop 不直连 Ollama。
 M2A 增加 explicit browser pairing、独立 credential、精确 Origin 和 per-client task ownership；
 native token 持有人仍共享固定 `native-local` owner。当前安全决策见 [ADR-003](../ADR/ADR-003-browser-client-security.md)。
+M2A 已 merge/push，稳定基线 `9d20a9a`。M2B-1 仅增加 Windows trusted native 配对/管理 UI，不改 Runtime 安全模型。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
 本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
 M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
@@ -22,6 +23,7 @@ M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择�
 | --- | --- |
 | desktop/src/PersonalAiWorkspace.Core | 固定 loopback Runtime client、脱敏 DTO/错误、状态轮询/取消、selection/copy 安全决策 |
 | Desktop / AssistantApp、AssistantWindow | WPF result card、托盘、应用 lifetime、显式凭据导入；纯文本、无历史 |
+| Desktop / BrowserPairingWindow | 显式批准 Origin 后创建短期 pairing；安全 metadata 列表与 server revoke；无 exchange/credential persistence |
 | Desktop / SingleInstance、HotkeyRegistration | 当前用户会话内 named mutex + activation event；RegisterHotKey + WM_HOTKEY；无 keyboard hook |
 | Desktop / SelectionWorker、HelperProcess | 同一可执行文件的隐藏 helper，匿名 pipe；UIA MTA、有界焦点/祖先、2s 硬 deadline |
 | Desktop / NativeCopyPort | 已验证原生编辑控件的一次 Ctrl+C；snapshot/read/restore STA helper 各 1.5s deadline |
@@ -44,6 +46,21 @@ RuntimeClient 禁用 proxy/redirect；响应最大 1 MiB，严格校验状态、
 190s 轮询总上限、8s HTTP/body 上限，异常/退出时对已知 taskId 尽力取消。
 POST 通信失败时可能无法知道是否已接受任务，不能宣称已取消；Runtime 自身仍有有界 deadline。
 退出注销热键、终止自己的 helper、取消工作、释放 tray/HWND/activation/HTTP/CTS；不终止 Ollama 或其他应用。
+
+M2B-1 在现有 Assistant 添加 Pair Browser 按钮和独立小型 WPF modal。只有显式点击创建按钮才发送
+`POST /api/v1/security/pairings`（origin / 固定 ASCII displayName / userApproved=true）。客户端 Origin 格式校验属于 UX，
+最终授权仍由 Runtime 的 LocalClientFilter / BrowserClients 完成。复用同一 RuntimeClient 实例、native credential callback、
+loopback address、proxy/redirect 限制、HTTP/body deadline、大小限制、重复字段与受控错误处理；不建立第二套 HTTP stack。
+新增 security DTO 采用字段 allowlist；listing 拒绝 credential/verifier/未知字段，最多 32 条，仅接受当前 Translate capability。
+Revoke 要求 native DELETE 返回无 body 的 204，确认后更新列表；未知/失败结果不宣称成功。
+
+Pairing proof 仅存在请求处理和当前窗口的短期内存中；DTO ToString 脱敏，无 logger/file/telemetry/WinCred/history 写入。
+Secret TextBox 禁用 undo；新建前清除旧显示，TTL 到期自动清除，窗口关闭清除文本/metadata、停止 timer、取消等待。
+关闭后的迟到响应不能恢复 UI；Assistant 关闭、托盘退出和应用 cleanup 同样关闭配对窗口。
+显式 Copy Secret 进入系统剪贴板，Windows history/sync 不由应用控制；释放托管引用不保证所有内存字节立即擦除。
+窗口关闭不会删除 Runtime session，服务器 3 分钟 TTL / restart 控制 outstanding pairing；无 pairing history。
+Desktop 不执行 exchange、不生成/保存 browser credential、不直接访问 registry，不发送 master token 或 proof 到 Browser。
+Extension Origin 展示/真实 exchange/storage/Browser Runtime client/Translate migration 均待 M2B-2，未开始。
 
 ## Java Runtime 边界
 
