@@ -1,4 +1,4 @@
-# Current Architecture — M0 Runtime + M1 Windows Entry + M1.5 Capabilities
+# Current Architecture — Shared Runtime / Windows / M2A Browser Access
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
@@ -6,10 +6,11 @@ M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生
 真实 Windows 验收全部 PASS，剩余场景由用户确认；证据来源与已知限制详见 [STATUS](../STATUS.md)。
 M1 closing 已 fast-forward merge 到 main 并 push 到 origin/main，基线 `6d17ad7`；ADR-002 为 Accepted，与实现一致。
 
-M1.5 — Assistant Core Capabilities：**CLOSED — GO**；当前实现分支 `m1.5-assistant-capabilities`，未 merge/push。
+M1.5 — Assistant Core Capabilities：**CLOSED — GO**；已 merge/push，发布基线 `22c45de`。
 Windows 主动 Translate hotkey 或手动 Translate / Summarize / Ask → WPF → authenticated localhost Runtime →
 `translate.fast` / `summarize.fast` / `chat.balanced` → Ollama → 单个纯文本 result card。Desktop 不直连 Ollama。
-没有新增 pairing endpoint 或 per-client task ownership；仍为 single trust domain。
+M2A 增加 explicit browser pairing、独立 credential、精确 Origin 和 per-client task ownership；
+native token 持有人仍共享固定 `native-local` owner。当前安全决策见 [ADR-003](../ADR/ADR-003-browser-client-security.md)。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
 本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
 M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
@@ -75,7 +76,7 @@ flowchart LR
 | provider | Provider、capability、execution、registry、readiness 契约 |
 | provider.ollama | 固定本地 HTTP、metadata/model 检查、JSON 校验、响应上限 |
 | task | UUID、有限执行/队列/保留容量、取消、deadline、终态提交 |
-| security | 自动本地 token、私有文件权限、stateless authentication |
+| security | Native token、private registry、browser pairing/verifier、精确 Origin、stateless client identity |
 | health | 认证后的 provider/model readiness，与 Actuator 隔离 |
 | config | 配置校验、loopback 启动约束 |
 | common | 脱敏 ApiError / WorkspaceException |
@@ -122,8 +123,12 @@ Provider request deadline 覆盖读取响应正文；connect/request/queue/execu
 
 API loopback-only，Bearer token 由专用私有目录持有；CORS 不承担认证职责。
 公开 Actuator health 仅包含进程状态。Provider readiness 不影响 Spring readiness。
-拒绝 Origin/cross-site capability 请求，未来 pairing 需显式设计客户端 origin/权限规则。
-全局只有一个本地客户端信任域，不做 per-client task ownership。
+Native 拒绝 Origin/cross-site；browser 要求已注册 Origin、独立 credential、none/cors/empty Fetch Metadata。
+BrowserClients 提供 native-authorized 3 分钟 single-use pairing、SHA-256 verifier、32-client bounded private atomic registry 和 revoke。
+Preflight 仅对精确允许 Origin/route/method/headers 回应，实际执行仍认证。普通网页/unknown extension 不允许。
+Browser 只授予 Translate；所有 task 由 admission 的 clientId 绑定 owner，查询/取消均检查，跨 owner 等同不存在。
+Native 与 browser 不互读 task。Windows token/credential target 不变，无需重新导入。
+仅 auth/security metadata 持久化；session/task 不跨 restart，已配对 credential/revoke 跨 restart。
 
 ## 其他仓库与长期边界
 

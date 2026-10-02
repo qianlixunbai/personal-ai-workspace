@@ -5,6 +5,7 @@ import io.github.qianlixunbai.workspace.model.*;
 import io.github.qianlixunbai.workspace.policy.*;
 import io.github.qianlixunbai.workspace.provider.*;
 import io.github.qianlixunbai.workspace.task.*;
+import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 
@@ -19,6 +20,9 @@ public class TextTaskSubmission {
         this.profiles = profiles; this.providers = providers; this.policy = policy; this.tasks = tasks;
     }
     public TaskView submit(String capability, String profileId, String promptVersion, String system, String input) {
+        var client = ClientIdentity.current();
+        if (!client.allowedCapabilities().contains(capability))
+            throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = profiles.resolve(profileId);
         // Worst-case UTF-8 input bytes conservatively stand in for tokens; reserve template and output.
         if (input == null || input.isBlank() || input.length() > profile.maxTextCharacters()
@@ -31,7 +35,7 @@ public class TextTaskSubmission {
         if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         Provider.ProviderExecution execution = new Provider.ProviderExecution(profile, PrivacyMode.LOCAL_ONLY, system, input);
-        return tasks.submit(capability, profile, promptVersion, cancellation -> {
+        return tasks.submit(client.clientId(), capability, profile, promptVersion, cancellation -> {
             policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
             String output = provider.execute(execution, cancellation);
             if (output == null || output.isBlank()

@@ -10,6 +10,29 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TaskManagerTest {
+    @Test void ownersIsolateRunningQueuedAndRetainedTasksAndOwnerCancellationWinsLateResult() throws Exception {
+        try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
+            CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
+            UUID running = scope.manager.submit("browser-a", "translate", TestSettings.profile(), "p1", c -> {
+                entered.countDown(); await(release); exited.countDown(); return "late private output";
+            }).taskId();
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            UUID queued = scope.manager.submit("browser-a", "translate", TestSettings.profile(), "p1", c -> "queued").taskId();
+            for (UUID id : new UUID[]{running, queued}) {
+                for (String wrongOwner : new String[]{"browser-b", "native-local"}) {
+                    assertEquals(ErrorCode.TASK_NOT_FOUND, assertThrows(WorkspaceException.class, () -> scope.manager.get(id, wrongOwner)).error().code());
+                    assertEquals(ErrorCode.TASK_NOT_FOUND, assertThrows(WorkspaceException.class, () -> scope.manager.cancel(id, wrongOwner)).error().code());
+                }
+            }
+            assertEquals(TaskStatus.RUNNING, scope.manager.get(running, "browser-a").status());
+            assertEquals(TaskStatus.CANCELLED, scope.manager.cancel(queued, "browser-a").status());
+            assertEquals(TaskStatus.CANCELLED, scope.manager.cancel(running, "browser-a").status());
+            release.countDown(); assertTrue(exited.await(2, TimeUnit.SECONDS));
+            assertNull(scope.manager.get(running, "browser-a").result());
+            assertEquals(TaskStatus.CANCELLED, scope.manager.get(running, "browser-a").status());
+            assertThrows(WorkspaceException.class, () -> scope.manager.get(running, "browser-b"));
+        }
+    }
     @Test void boundedQueueCancellationAndLateSuccess() throws Exception {
         try (ManagerScope scope = new ManagerScope(Duration.ofSeconds(3), Duration.ofSeconds(3), Duration.ofSeconds(3))) {
             TaskManager manager = scope.manager;

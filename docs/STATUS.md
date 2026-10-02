@@ -7,11 +7,11 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## 阶段与结论
 
-Phase 2 — Shared Runtime + Windows Entry。
+Phase 2 — Shared Runtime + Windows Entry / M2 Browser Convergence。
 
-当前执行范围：**M1.5 — Assistant Core Capabilities**。
+当前执行范围：**M2A — Browser Runtime Access Foundation**。
 
-M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；当前开发分支 `m1.5-assistant-capabilities`，尚未 merge/push。
+M1.5：**CLOSED — GO**（2026-10-02），实现与本轮验证完成；已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`。
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**；以下 M0 验证记录保留为历史事实。
 M1 — Windows Assistant Entry：**CLOSED — GO**。
@@ -21,7 +21,47 @@ tray/lifecycle、无选区、password、Runtime offline 与 Cancel 已通过 Win
 2026-10-02 用户明确确认剩余真实 Windows 验收没有问题，包括 controlled-copy、stale clipboard protection、
 Provider unavailable / restart recovery、credential persistence 与 privacy/log inspection。
 本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
-M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；当前发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
+M1 closing 后已 fast-forward merge 到 main 并 push 到 origin/main；M1 发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。历史 Closing Review 记录保留当时事实。
+
+## M2A 实现与验证（2026-10-02）
+
+M2A：**CLOSED — GO**（Runtime Browser Access Foundation）。不代表 Chrome Extension acceptance 或 M2 convergence complete。
+分支 `m2a-browser-runtime-access`；基于干净且 fetch 后一致的 `main == origin/main == 22c45de4ff2ff2996960ca93817914af1da73baa`。
+本轮不 merge/push，不开始 M2B。M1.5 历史 Closing Report 保留当时未发布事实，Current Status 已同步实际发布状态。
+
+- Native bootstrap authority、token 格式、Credential Manager target 与所有 Desktop 文件不变，无需重新导入。
+- Native 显式批准精确 `chrome-extension://<id>`，3 分钟 single-use proof，restart 丢弃 outstanding pairing。
+- Browser 随机 clientId、独立 256-bit credential、SHA-256 verifier / constant-time comparison；默认 Translate only。
+- Loopback + exact Origin + none/cors/empty Fetch Metadata + proof/credential；普通 webpage、未知扩展、错 origin/credential 拒绝。
+  精确受控 preflight；无 wildcard CORS，不用 CORS 代替认证。
+- 共享 TaskManager 绑定 owner；跨 browser/native GET/DELETE 与不存在任务等同 404 TASK_NOT_FOUND。
+  Cancel、queue、deadline、late-result protection、retention 不重写。
+- Token private directory 中的小型 security registry：64 KiB / 32 clients / 8 sessions，上限 5 proof failures/session、60 exchanges/minute。
+  Owner-only permissions、exclusive writer lock、atomic replace、严格 schema、corruption fail closed。
+  Credential/revoke 跨 restart，session/task 不跨 restart；只保存 auth metadata/verifier。
+- Native list/revoke protected APIs；revoke 原子删除注册/verifier，后续请求拒绝；不自动取消已接受任务。
+- Provider/profile/prompt/concurrency/timeouts 未改，三种 capability 均 LOCAL_ONLY，无 remote/cloud fallback。
+
+| 验证 | 本轮结果 |
+| --- | --- |
+| `.\mvnw.cmd clean verify` | PASS：Java 23，0 failures/errors/skipped；最终 17:13 +08:00 |
+| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS，SDK 10.0.401 |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，0 warnings/errors |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS：40，0 failed/skipped |
+| `.\scripts\real-local-smoke.ps1` | REAL PASS：Translate/Summarize/Ask 均 SUCCEEDED，未认证 401，loopback listener |
+| `.\scripts\browser-security-smoke.ps1` | REAL PASS：native、synthetic pairing、Translate、wrong-origin/web-origin 401、cross-owner 404、restart persistence/revoke |
+| Secret/log/build/evidence audit、`git diff --check` | PASS；实际 token/ephemeral credentials 无泄漏，private auth/build/evidence ignored |
+
+普通 API 测试覆盖 exact/missing/unknown/web/wildcard Origin、错/畸形/缺失 credential、Fetch Metadata、single-use/replay、
+Translate allowed、Ask/Summarize/管理 APIs denied、受控 preflight、安全 client metadata、无 token/credential/Origin 日志。
+Registry 测试覆盖 TTL、失败/总量 budgets、bounded registry、reload/revoke、corrupt/oversized/duplicate/unknown format、
+private ACL、exclusive lock、atomic-write failure 与 stale-pending recovery。任务测试覆盖 owner 隔离、running/queued cancel、late-result 拒绝，
+既有 queue/full/timeout/retention 回归通过。
+
+本轮没有重新做 WPF 人工 GUI 验收；沿用 M1/M1.5 已确认的 GUI 证据，Desktop source 无变化，40 自动测试和 native 三能力真实 smoke 回归通过。
+真实 Chrome extension headers/host permissions/storage/DOM/UI **UNVERIFIED / M2B DEFERRED**；不将 synthetic HTTP client 当作 Chrome 验收。
+POSIX 平台、unsupported permission filesystem 和任意断电 durability 未做实机验证；当前 Windows ACL/restart/atomic failure 已验证。
+完整决策见 [ADR-003](ADR/ADR-003-browser-client-security.md)，完整交付见 [M2A Closing Report](milestones/M2A-CLOSING-REPORT.md)。
 
 ## M1.5 本轮实现与验证（2026-10-02）
 
@@ -129,7 +169,7 @@ Private evidence：忽略的 `.verification/m1.5-*.log`、`real-smoke-evidence.j
 - 没有 Desktop 正文日志、selection/result/clipboard history、plaintext credential file；
   DTO/exception 诊断不包含正文/token；窗口关闭/应用退出释放当前内容，cleanup 释放资源。
 
-当前仍是 **single trust domain remains**：没有 per-client credential 或 task ownership isolation。
+以上为 M1 历史边界。M2A 已按 ADR-003 演进为独立 browser credential / owner；native 持有人仍共用 native owner。
 
 ## M1 已执行验证
 
@@ -265,7 +305,7 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 ## 已知限制
 
 - 取消 HTTP 不保证 GPU 立即停止；不强制 kill 模型或管理 Ollama daemon。
-- 单 token 信任域，没有客户端配对、独立 ownership、token rotation、Browser origin allowlist。
+- Native token 持有人仍共享 native owner；Browser 有独立 pairing/credential/Origin/owner。没有自动轮换。
 - 结果最多 64 条、完成后约 2 分钟保留；重启失效，没有持久化。
 - 模型质量仅有合成短文本 Translate/Summarize/Ask smoke；不代表长文忠实度、通用回答正确性、硬件吞吐/显存并发或生产可靠性。
 - context 输入预算为保守 UTF-8 字节限制，未引入精确 tokenizer。
@@ -291,7 +331,7 @@ voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/con
 backup/migration engine、同步及其他超出 M1 的能力。
 
 M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验收证据保持不变。
-M1.5 已 CLOSED — GO，当前实现仅本地提交，Closing Review 后由用户决定 merge；不自行开始 M2。
+M1.5 已 CLOSED — GO 且已 merge/push；本轮按用户授权开始 M2A Runtime access foundation。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
@@ -299,6 +339,6 @@ Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任�
 M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea332a`，
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
 M1 closing commit `6d17ad7` 已 fast-forward merge 到 `main` 并成功 push；2026-10-02 fetch 确认本地 main 与 origin/main 一致。
-M1.5 当前分支 `m1.5-assistant-capabilities`，implementation commit 主题 `feat: add summarize and ask capabilities`；本轮不 merge/push。
+M1.5 implementation commit `22c45de` 已发布；2026-10-02 fetch 确认 main / origin/main 一致。M2A 在 `m2a-browser-runtime-access` 实现，不 merge/push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

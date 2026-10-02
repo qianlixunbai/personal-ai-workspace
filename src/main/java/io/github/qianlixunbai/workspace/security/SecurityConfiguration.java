@@ -12,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Configuration
 public class SecurityConfiguration {
     @Bean
-    SecurityFilterChain security(HttpSecurity http, LocalClientToken token) throws Exception {
+    SecurityFilterChain security(HttpSecurity http, LocalClientToken token, BrowserClients clients) throws Exception {
         JsonMapper json = JsonMapper.builder().build();
         return http.csrf(csrf -> csrf.disable()).cors(cors -> cors.disable())
                 .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable())
@@ -26,7 +26,7 @@ public class SecurityConfiguration {
                     response.setStatus(401); response.setContentType("application/json");
                     response.getOutputStream().write(json.writeValueAsBytes(ApiError.of(ErrorCode.UNAUTHORIZED, "HTTP")));
                 }))
-                .addFilterBefore(new LocalClientFilter(token), UsernamePasswordAuthenticationFilter.class).build();
+                .addFilterBefore(new LocalClientFilter(token, clients), UsernamePasswordAuthenticationFilter.class).build();
     }
 
     @Bean

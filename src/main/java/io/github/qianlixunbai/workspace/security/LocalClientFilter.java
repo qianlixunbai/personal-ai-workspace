@@ -13,26 +13,81 @@ import java.util.List;
 
 final class LocalClientFilter extends OncePerRequestFilter {
     private final LocalClientToken token;
+    private final BrowserClients clients;
     private final JsonMapper json = JsonMapper.builder().build();
-    LocalClientFilter(LocalClientToken token) { this.token = token; }
+    LocalClientFilter(LocalClientToken token, BrowserClients clients) { this.token = token; this.clients = clients; }
 
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         boolean health = request.getMethod().equals("GET") && List.of("/actuator/health",
                 "/actuator/health/liveness", "/actuator/health/readiness").contains(request.getServletPath());
         if (health) { chain.doFilter(request, response); return; }
-        if (request.getHeader("Origin") != null || "cross-site".equals(request.getHeader("Sec-Fetch-Site"))
-                || !token.matches(request.getHeader("Authorization"))) {
+        response.setHeader("Cache-Control", "no-store");
+        if (!List.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1").contains(request.getRemoteAddr())) {
             reject(response, 401, ErrorCode.UNAUTHORIZED); return;
         }
+        String origin = request.getHeader("Origin"), path = request.getServletPath(), method = request.getMethod();
+        boolean exchange = path.equals("/api/v1/security/pairings/exchange");
+        ClientIdentity identity;
+        if (origin == null) {
+            if (exchange || "cross-site".equals(request.getHeader("Sec-Fetch-Site"))
+                    || !token.matches(request.getHeader("Authorization"))) {
+                reject(response, 401, ErrorCode.UNAUTHORIZED); return;
+            }
+            identity = ClientIdentity.NATIVE;
+        } else {
+            // Privileged extension requests: none/cors/empty. Navigation, webpage and cross-site traffic fail closed.
+            if (!BrowserClients.validOrigin(origin) || !"none".equals(request.getHeader("Sec-Fetch-Site"))
+                    || !"cors".equals(request.getHeader("Sec-Fetch-Mode")) || !"empty".equals(request.getHeader("Sec-Fetch-Dest"))) {
+                reject(response, 401, ErrorCode.UNAUTHORIZED); return;
+            }
+            if (method.equals("OPTIONS")) {
+                String requestedMethod = request.getHeader("Access-Control-Request-Method");
+                String headers = request.getHeader("Access-Control-Request-Headers");
+                boolean safeHeaders = headers == null || java.util.Arrays.stream(headers.split(","))
+                        .allMatch(h -> List.of("authorization", "content-type").contains(h.strip().toLowerCase(java.util.Locale.ROOT)));
+                if (!clients.allowsOrigin(origin, exchange) || !browserRoute(path, requestedMethod, exchange) || !safeHeaders) {
+                    reject(response, 401, ErrorCode.UNAUTHORIZED); return;
+                }
+                cors(response, origin);
+                response.setHeader("Access-Control-Allow-Methods", requestedMethod);
+                response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+                response.setStatus(204); return;
+            }
+            if (exchange) {
+                if (!method.equals("POST") || !clients.allowsOrigin(origin, true) || request.getHeader("Authorization") != null) {
+                    reject(response, 401, ErrorCode.UNAUTHORIZED); return;
+                }
+                // This principal can only reach exchange, whose one-time proof is validated before issuance.
+                identity = new ClientIdentity("pairing", "pairing", "Pairing", origin, java.time.Instant.EPOCH, java.util.Set.of());
+            } else {
+                identity = clients.authenticate(request.getHeader("Authorization"), origin);
+                if (identity == null) { reject(response, 401, ErrorCode.UNAUTHORIZED); return; }
+                cors(response, origin);
+                if (!browserRoute(path, method, false)) { reject(response, 403, ErrorCode.POLICY_DENIED); return; }
+            }
+            cors(response, origin);
+        }
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
-                "local-client", null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
+                identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (request.getMethod().equals("POST")) {
             byte[] body = request.getInputStream().readNBytes(32769);
             if (body.length > 32768) { reject(response, 413, ErrorCode.INVALID_REQUEST); return; }
             request = new BufferedRequest(request, body);
         }
         chain.doFilter(request, response);
+    }
+
+    private static boolean browserRoute(String path, String method, boolean exchange) {
+        if (exchange) return "POST".equals(method);
+        return path.equals("/api/v1/translate/tasks") && "POST".equals(method)
+                || path.matches("/api/v1/tasks/[0-9a-fA-F-]{36}") && List.of("GET", "DELETE").contains(method == null ? "" : method);
+    }
+
+    private static void cors(HttpServletResponse response, String origin) {
+        response.setHeader("Access-Control-Allow-Origin", origin);
+        response.setHeader("Vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+        response.setHeader("Access-Control-Expose-Headers", "Location");
     }
 
     private void reject(HttpServletResponse response, int status, ErrorCode code) throws IOException {

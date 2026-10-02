@@ -4,6 +4,7 @@ import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.config.RuntimeProperties;
 import io.github.qianlixunbai.workspace.model.ModelProfile;
 import jakarta.annotation.PreDestroy;
+import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.*;
@@ -31,9 +32,14 @@ public final class TaskManager {
     }
 
     public synchronized TaskView submit(String capability, ModelProfile profile, String promptVersion, Work work) {
+        return submit(ClientIdentity.NATIVE_OWNER, capability, profile, promptVersion, work);
+    }
+
+    public synchronized TaskView submit(String ownerClientId, String capability, ModelProfile profile, String promptVersion, Work work) {
+        Objects.requireNonNull(ownerClientId);
         expire();
         if (closed || tasks.size() >= settings.maxRetained()) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "ADMISSION");
-        Job job = new Job(capability, profile.publicInfo(), promptVersion, work);
+        Job job = new Job(ownerClientId, capability, profile.publicInfo(), promptVersion, work);
         tasks.put(job.id, job);
         job.deadline = timer.schedule(() -> timeout(job, TaskStatus.QUEUED, "QUEUE"),
                 settings.queueTimeout().toNanos(), TimeUnit.NANOSECONDS);
@@ -47,10 +53,16 @@ public final class TaskManager {
         return job.view();
     }
 
-    public synchronized TaskView get(UUID id) { return find(id).view(); }
+    public synchronized TaskView get(UUID id) { return get(id, ClientIdentity.NATIVE_OWNER); }
 
     public synchronized TaskView cancel(UUID id) {
-        Job job = find(id);
+        return cancel(id, ClientIdentity.NATIVE_OWNER);
+    }
+
+    public synchronized TaskView get(UUID id, String ownerClientId) { return find(id, ownerClientId).view(); }
+
+    public synchronized TaskView cancel(UUID id, String ownerClientId) {
+        Job job = find(id, ownerClientId);
         if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
             finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "CANCELLATION"));
             workers.remove(job);
@@ -68,10 +80,10 @@ public final class TaskManager {
         job.cancellation.cancel();
     }
 
-    private Job find(UUID id) {
+    private Job find(UUID id, String ownerClientId) {
         expire();
         Job job = tasks.get(id);
-        if (job == null) throw new WorkspaceException(ErrorCode.TASK_NOT_FOUND, "TASK");
+        if (job == null || !job.ownerClientId.equals(ownerClientId)) throw new WorkspaceException(ErrorCode.TASK_NOT_FOUND, "TASK");
         return job;
     }
 
@@ -109,6 +121,7 @@ public final class TaskManager {
         final ModelProfile.PublicProfile profile;
         final String promptVersion;
         final String capability;
+        final String ownerClientId;
         final Cancellation cancellation = new Cancellation();
         TaskStatus status = TaskStatus.QUEUED;
         Work work;
@@ -118,7 +131,8 @@ public final class TaskManager {
         ScheduledFuture<?> deadline;
         boolean inWorker;
 
-        Job(String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work) {
+        Job(String ownerClientId, String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work) {
+            this.ownerClientId = ownerClientId;
             this.capability = capability; this.profile = profile; this.promptVersion = promptVersion; this.work = work;
         }
 

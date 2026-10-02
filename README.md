@@ -8,7 +8,9 @@ M1 — Windows Assistant Entry：**CLOSED — GO**。2026-10-02 全量回归通�
 Java 与 Desktop 分别使用 Maven Wrapper / dotnet CLI 验证；Desktop 只调用 Runtime，不直接访问 Ollama。
 M1 closing commit 已 fast-forward merge 到 main 并 push 到 origin/main；发布基线为 `6d17ad7137665bbe6105c868db41edfbd9cf46be`。
 M1.5 — Assistant Core Capabilities：**CLOSED — GO**，新增 Summarize 与 single-turn stateless Ask AI。
-本轮实现保存在 `m1.5-assistant-capabilities`，未 merge/push；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
+M1.5 已 fast-forward merge 到 main 并 push 到 origin/main，发布基线 `22c45de4ff2ff2996960ca93817914af1da73baa`；完整证据见 STATUS 与 [M1.5 Closing Report](docs/milestones/M1.5-CLOSING-REPORT.md)。
+M2A — Browser Runtime Access Foundation：**CLOSED — GO**，本地分支 `m2a-browser-runtime-access`，未 merge/push。
+完整证据见 [M2A Closing Report](docs/milestones/M2A-CLOSING-REPORT.md)；真实 Chrome 接入仍为 M2B deferred。
 
 ## 启动
 
@@ -53,7 +55,8 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 将凭据保存到 Windows Credential Manager。后续启动无需重新读取文件或日常复制 token。
 导入后用认证 readiness 确认凭据；Runtime offline 时仍保留已导入凭据并明确提示。
 凭据 missing/invalid/unauthorized 可通过显式重新导入修复；“忘记凭据”只删除 Desktop 保存的副本。
-M1 保留 single trust domain，没有 per-client task ownership。详见 [ADR-002](docs/ADR/ADR-002-windows-client-credential.md)。
+M2A 将现有 native token 持有人映射为 `native-local` owner，不改变 Windows 凭据。
+Browser 使用独立 credential / Origin / owner，详见 [ADR-003](docs/ADR/ADR-003-browser-client-security.md)。
 
 日常使用：
 
@@ -86,7 +89,8 @@ Runtime 地址固定 `http://127.0.0.1:8765`，禁止 proxy/redirect，无 cloud
 
 ## API
 
-所有 `/api/v1/**` 请求需要 `Authorization: Bearer <local-token>`。
+Native `/api/v1/**` 请求继续使用 `Authorization: Bearer <local-token>`。
+M2A browser client 使用独立 Bearer credential；pairing exchange 使用短时一次性 proof。
 公开健康接口只返回 Runtime 状态；provider readiness 需要认证。
 
 | 方法 | 路径 | 语义 |
@@ -173,17 +177,46 @@ M0 只允许 LOCAL Ollama。`LOCAL_ONLY`、`LOCAL_PREFERRED`、`CLOUD_OPTIONAL` 
 Ollama URL 只允许显式端口的 `http://127.0.0.1` / `http://localhost`，后者固定为 127.0.0.1。
 禁用代理与 HTTP redirect，避免向远程地址发送正文。
 
-loopback 不代替认证。拒绝带 Origin 或 cross-site Fetch Metadata 的 capability 请求，
-不启用 CORS。Runtime 仍是同一 token 信任域内的本机 API；M1 Windows 使用显式本机文件 bootstrap。
-没有 Browser pairing endpoint、独立客户端权限或令牌轮换；未来独立凭据需要同时演进 ownership。
+loopback 不代替认证。Native 拒绝 Origin / cross-site 请求；Browser 必须匹配已注册精确扩展 Origin、
+独立 credential 与 Fetch Metadata。CORS 只响应精确允许的 Origin，不设 wildcard，也不代替认证。
+Native 持有人共用 `native-local` owner；每个 Browser client 独立 owner，跨 owner GET/DELETE 返回 TASK_NOT_FOUND。
 同一 OS 用户能读取 token 是本地信任假设；不隔离已攻陷的同用户进程。
 Runtime 默认不记录正文、模型回答、token、provider body。
+
+## Browser Runtime Access Foundation（M2A）
+
+M2A 只实现 Runtime contract，未修改 Chrome Extension，不代表 Chrome acceptance。
+Pairing 由现有已认证本机操作显式批准；master token 不传给 Browser。
+
+| 方法 | 路径 | 权限 / 语义 |
+| --- | --- | --- |
+| POST | `/api/v1/security/pairings` | Native；`origin`、ASCII `displayName`、`userApproved: true`；返回 pairingId/secret/expiresAt |
+| POST | `/api/v1/security/pairings/exchange` | 匹配扩展 Origin + pairingId/pairingSecret；只返回本客户端 metadata 和 credential |
+| GET | `/api/v1/security/clients` | Native；安全 metadata，无 credential/verifier |
+| DELETE | `/api/v1/security/clients/{clientId}` | Native；204 幂等 revoke/server forget，持久化删除 verifier |
+
+Origin 必须为 `chrome-extension://<32 lowercase a-p characters>`，无尾斜线。
+Browser 请求要求 `Sec-Fetch-Site: none`、`Sec-Fetch-Mode: cors`、`Sec-Fetch-Dest: empty`；
+未知 extension、普通网页、localhost Origin、缺失/不匹配 credential、cross-site/navigation 均拒绝。
+Browser 默认仅可 POST `/api/v1/translate/tasks` 和 GET/DELETE 自己的 `/api/v1/tasks/{id}`。
+Ask/Summarize/管理 API 不授权 Browser。所有 capability 仍 LOCAL_ONLY，共用同一个 TaskManager。
+
+Pairing 3 分钟、一次性；最多 8 sessions、每 session 5 次错误 proof、总 exchange 60 次/分钟。
+最多 32 个注册。已配对 credential 跨 Runtime restart 有效；未完成 pairing 在 restart 后失效。
+`browser-clients.json` 与 token 同属专用私有目录；只存安全 metadata 和 SHA-256 verifier，64 KiB 上限，
+private permissions、exclusive writer lock、atomic replacement、corruption fail closed。
+不删除损坏 registry 来静默重置；本轮无 Memory/正文持久化。Revoke 不取消先前已接受的 task。
+
+Future extension 必须从可信 extension context 访问 Runtime；自己保存 credential 并限制 content script storage 访问，
+不得传入 webpage/DOM/log。Extension local forget 仅删除副本；server revoke 须由 trusted native action 执行。
+真实 Chrome host permissions/Fetch Metadata/storage 接入待 M2B。完整决策与边界见 ADR-003。
 
 ## 验证
 
 ```powershell
 .\mvnw.cmd clean verify
 .\scripts\real-local-smoke.ps1
+.\scripts\browser-security-smoke.ps1
 git diff --check
 ```
 

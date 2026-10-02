@@ -43,7 +43,7 @@ public final class LocalClientToken {
         }
     }
 
-    private static void restrict(Path path, boolean directory) throws java.io.IOException {
+    static void restrict(Path path, boolean directory) throws java.io.IOException {
         PosixFileAttributeView posix = Files.getFileAttributeView(path, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
         if (posix != null) {
             posix.setPermissions(PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------"));

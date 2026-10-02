@@ -16,6 +16,7 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> controlled(WorkspaceException failure) {
         HttpStatus status = switch (failure.error().code()) {
             case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
+            case UNAUTHORIZED -> HttpStatus.UNAUTHORIZED;
             case POLICY_DENIED -> HttpStatus.FORBIDDEN;
             case TASK_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case QUEUE_FULL -> HttpStatus.TOO_MANY_REQUESTS;

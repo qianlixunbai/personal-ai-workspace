@@ -165,6 +165,99 @@ class RuntimeApiTest {
         assertFalse(logs.getAll().contains("output-private-marker"));
         assertFalse(logs.getAll().contains("raw-error-private-marker"));
         assertFalse(logs.getAll().contains(token()));
+        browserSecurity(logs);
+    }
+    private void browserSecurity(CapturedOutput logs) throws Exception {
+        MODE.set(0);
+        String originA = "chrome-extension://" + "a".repeat(32), originB = "chrome-extension://" + "b".repeat(32);
+        String unknown = "chrome-extension://" + "c".repeat(32);
+        assertEquals(400, send("POST", "/api/v1/security/pairings", json.writeValueAsString(java.util.Map.of(
+                "origin", originA, "displayName", "Test", "userApproved", false)), true).statusCode());
+        JsonNode sessionA = createPairing(originA), sessionB = createPairing(originB);
+        String exchangeA = exchangeBody(sessionA), exchangeB = exchangeBody(sessionB);
+        for (String origin : new String[]{"https://example.com", unknown, originB})
+            assertEquals(401, browser("POST", "/api/v1/security/pairings/exchange", exchangeA, null, origin).statusCode());
+        var preflight = http.send(browserRequest("/api/v1/security/pairings/exchange", originA)
+                .header("Access-Control-Request-Method", "POST").header("Access-Control-Request-Headers", "content-type")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(204, preflight.statusCode());
+        assertEquals(originA, preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        var responseA = browser("POST", "/api/v1/security/pairings/exchange", exchangeA, null, originA);
+        assertEquals(200, responseA.statusCode());
+        assertEquals("no-store", responseA.headers().firstValue("Cache-Control").orElseThrow());
+        JsonNode a = tree(responseA), b = tree(browser("POST", "/api/v1/security/pairings/exchange", exchangeB, null, originB));
+        String credentialA = a.path("credential").asString(), credentialB = b.path("credential").asString();
+        assertTrue(credentialA.startsWith("br1."));
+        assertNotEquals(a.path("client").path("clientId").asString(), b.path("client").path("clientId").asString());
+        assertEquals(401, browser("POST", "/api/v1/security/pairings/exchange", exchangeA, null, originA).statusCode());
+        for (String origin : new String[]{originB, unknown, "https://example.com", "http://localhost:8765", "null", "*"}) {
+            var denied = browser("POST", "/api/v1/translate/tasks", valid(), credentialA, origin);
+            assertEquals(401, denied.statusCode()); assertTrue(denied.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        }
+        for (String credential : new String[]{"bad", "br1.malformed", token(), "br1." + a.path("client").path("clientId").asString() + "." + "z".repeat(43)})
+            assertEquals(401, browser("POST", "/api/v1/translate/tasks", valid(), credential, originA).statusCode());
+        assertEquals(401, browser("POST", "/api/v1/translate/tasks", valid(), null, originA).statusCode());
+        assertEquals(401, browser("POST", "/api/v1/translate/tasks", valid(), credentialA, null).statusCode());
+        for (String site : new String[]{"cross-site", "same-site", "same-origin", "missing"}) {
+            var request = HttpRequest.newBuilder(uri("/api/v1/translate/tasks"))
+                    .header("Origin", originA).header("Authorization", "Bearer " + credentialA).header("Content-Type", "application/json");
+            if (!site.equals("missing")) request.header("Sec-Fetch-Site", site);
+            assertEquals(401, http.send(request.POST(HttpRequest.BodyPublishers.ofString(valid())).build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        for (String endpoint : new String[]{"/api/v1/ask/tasks", "/api/v1/summarize/tasks", "/api/v1/security/pairings", "/api/v1/security/clients", "/api/v1/providers/readiness"})
+            assertEquals(403, browser("POST", endpoint, "{}", credentialA, originA).statusCode());
+        String metadata = send("GET", "/api/v1/security/clients", null, true).body();
+        assertFalse(metadata.contains(credentialA)); assertFalse(metadata.contains("verifier")); assertFalse(metadata.contains(token()));
+        var accepted = browser("POST", "/api/v1/translate/tasks", valid(), credentialA, originA);
+        assertEquals(202, accepted.statusCode());
+        assertEquals(originA, accepted.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        String id = tree(accepted).path("taskId").asString();
+        JsonNode result = null;
+        for (int i=0; i<100; i++) {
+            result = tree(browser("GET", "/api/v1/tasks/" + id, null, credentialA, originA));
+            if (result.path("status").asString().equals("SUCCEEDED")) break;
+            Thread.sleep(10);
+        }
+        assertEquals("SUCCEEDED", result.path("status").asString());
+        var missing = browser("GET", "/api/v1/tasks/00000000-0000-0000-0000-000000000000", null, credentialB, originB);
+        for (String method : new String[]{"GET", "DELETE"}) {
+            var denied = browser(method, "/api/v1/tasks/" + id, null, credentialB, originB);
+            assertEquals(404, denied.statusCode()); assertEquals(missing.body(), denied.body());
+            assertEquals(404, send(method, "/api/v1/tasks/" + id, null, true).statusCode());
+        }
+        String nativeId = submitAndPoll(valid()).path("taskId").asString();
+        assertEquals(200, send("GET", "/api/v1/tasks/" + nativeId, null, true).statusCode());
+        for (String method : new String[]{"GET", "DELETE"})
+            assertEquals(404, browser(method, "/api/v1/tasks/" + nativeId, null, credentialA, originA).statusCode());
+        assertEquals(200, browser("DELETE", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
+        String clientId = a.path("client").path("clientId").asString();
+        assertEquals(403, browser("DELETE", "/api/v1/security/clients/" + clientId, null, credentialB, originB).statusCode());
+        assertEquals(204, send("DELETE", "/api/v1/security/clients/" + clientId, null, true).statusCode());
+        assertEquals(401, browser("GET", "/api/v1/tasks/" + id, null, credentialA, originA).statusCode());
+        assertEquals(204, send("DELETE", "/api/v1/security/clients/" + b.path("client").path("clientId").asString(), null, true).statusCode());
+        for (String secret : new String[]{credentialA, credentialB, sessionA.path("pairingSecret").asString(), originA, originB, token()})
+            assertFalse(logs.getAll().contains(secret));
+    }
+    private JsonNode createPairing(String origin) throws Exception {
+        var response = send("POST", "/api/v1/security/pairings", json.writeValueAsString(java.util.Map.of("origin", origin,
+                "displayName", "Synthetic client", "userApproved", true)), true);
+        assertEquals(200, response.statusCode()); return tree(response);
+    }
+    private String exchangeBody(JsonNode session) {
+        return json.writeValueAsString(java.util.Map.of("pairingId", session.path("pairingId").asString(),
+                "pairingSecret", session.path("pairingSecret").asString()));
+    }
+    private HttpRequest.Builder browserRequest(String path, String origin) {
+        var request = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(5));
+        if (origin != null) request.header("Origin", origin);
+        return request.header("Sec-Fetch-Site", "none").header("Sec-Fetch-Mode", "cors").header("Sec-Fetch-Dest", "empty");
+    }
+    private HttpResponse<String> browser(String method, String path, String body, String credential, String origin) throws Exception {
+        var request = browserRequest(path, origin);
+        if (credential != null) request.header("Authorization", "Bearer " + credential);
+        if (body != null) request.header("Content-Type", "application/json");
+        return http.send(request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
     @AfterAll static void closeMock() { MOCK.stop(0); }
     private JsonNode submitAndPoll(String body) throws Exception {
