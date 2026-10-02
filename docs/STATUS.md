@@ -12,11 +12,34 @@ Phase 2 — Shared Runtime + Windows Entry。
 当前执行范围：**M1 — Windows Assistant Entry Vertical Slice**。
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**；以下 M0 验证记录保留为历史事实。
-M1 当前结论：**PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE**。
+M1 — Windows Assistant Entry：**CLOSED — GO**。
 SDK 环境阻塞已在用户明确授权后解除，Windows Entry 实现与自动验证已完成。
 用户授权 Codex 操作电脑后，真实 Notepad / Chrome selection → Runtime → Ollama → result、
 tray/lifecycle、无选区、password、Runtime offline 与 Cancel 已通过 Windows UI Automation 自动操作验收。
-仍待受控 Copy 的真实剪贴板验收与 Provider 停止场景；没有宣称人工验收或 M1 GO。
+2026-10-02 用户明确确认剩余真实 Windows 验收没有问题，包括 controlled-copy、stale clipboard protection、
+Provider unavailable / restart recovery、credential persistence 与 privacy/log inspection。
+本次 M1 FINAL CLOSING REVIEW 重新执行全部回归并复核架构、安全与 Git 交付，正式收口为 CLOSED — GO。
+本次只更新收口文档、创建独立本地 closing commit；未新增功能、重构、merge、push 或开始下一 milestone。
+
+## M1 Final Closing Review（2026-10-02）
+
+- 收口前执行 `git status`、`git branch --show-current`、`git rev-parse HEAD`、`git log -5 --oneline`：
+  工作树干净，分支 `m1-windows-entry`，reviewed implementation HEAD `d8e8281040578311c0a77978d0e2aaaeaacf9a70`。
+  提交序列为 `d8e8281`（JSON health negotiation）、`c98704a`（Windows entry）、`80ccb53`（SDK prerequisite）、`5d71d11`（M0）。
+- 2026-10-02 15:45–15:47 +08:00 重新执行 Maven clean verify、Desktop restore/build/test 与 `git diff --check`，全部 PASS；
+  精确命令与数量见下表。此次没有重跑 M0 real-local-smoke；其既有 REAL PASS 保留为历史证据。
+- 收口扫描覆盖全部 tracked files 的 secret patterns、实际本机 token 值泄漏、tracked build/cache/log/credential 输出，
+  并检查 `.verification/` 与本次 Maven test logs 中的实际 token 泄漏；均无匹配，不输出 secret/token 原值。
+  2026-10-02 15:50:54 +08:00：76 个 tracked files，3 个实际 token、12 个验证/测试日志文件，
+  secret/token/tracked artifact 匹配均 0，7 项产物/凭据 ignore 规则检查全部通过；
+  脱敏报告位于忽略的 `.verification/m1-final-closing-scan.json`。
+  这是仓库和验证输出范围的检查，不宣称全系统磁盘审计；真实 privacy/log 验收由用户确认。
+- 架构复核：Desktop 固定调用 authenticated `127.0.0.1:8765` Runtime，Runtime 统一调用本机 Ollama；
+  UIA first / user-triggered only / conservative copy / protected fail closed / manual input、无正文日志或历史保持不变。
+  相对 M0 基线，`src/`、`pom.xml` 与 `scripts/` 无变更；本次 closing 仅三个 Markdown 文档变化。
+- ADR-002 `Accepted` 与实际 Windows Credential Manager / 显式文件 bootstrap / single trust domain 一致，无需同步修改。
+- Closing commit：`docs: close M1 Windows assistant entry`。提交的最终 SHA 以 `git rev-parse HEAD` 与 closing report 为准，
+  不将文档自身的 commit SHA 写回造成递归提交。工作树应干净；具备 merge to main 的条件，但本次不执行 merge/push。
 
 ## M1 本轮真实核对
 
@@ -70,14 +93,14 @@ tray/lifecycle、无选区、password、Runtime offline 与 Cancel 已通过 Win
 | 命令 / 方法 | 结果 |
 | --- | --- |
 | `dotnet --info` / `dotnet --list-sdks` | PASS，正式 SDK 10.0.401 x64 |
-| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | PASS |
-| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | PASS，2026-10-02，0 warnings/errors |
-| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | PASS，2026-10-02，31 tests，0 failed/skipped |
-| `.\mvnw.cmd clean verify` | PASS，14 tests，0 failures/errors/skipped + package，21:03:15 +08:00 |
-| `.\scripts\real-local-smoke.ps1` | M0 REAL PASS，21:04:44 +08:00，task SUCCEEDED，resultLength 6 |
+| `dotnet restore desktop/PersonalAiWorkspace.Desktop.slnx` | Final closing PASS，2026-10-02，exit 0 |
+| `dotnet build desktop/PersonalAiWorkspace.Desktop.slnx --no-restore` | Final closing PASS，2026-10-02，0 warnings/errors，exit 0 |
+| `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-build --no-restore` | Final closing PASS，2026-10-02，31 tests，0 failed/skipped，exit 0 |
+| `.\mvnw.cmd clean verify` | Final closing PASS，14 tests，0 failures/errors/skipped + package，2026-10-02 15:45:11 +08:00，exit 0 |
+| `.\scripts\real-local-smoke.ps1` | 既有 M0 REAL PASS（2026-10-01 21:04:44 +08:00），task SUCCEEDED，resultLength 6；本次未重跑 |
 | `git diff --check` / `git diff --cached --check` | PASS |
-| tracked build/cache/log/credential 与 secret-pattern scan | PASS，匹配 0；bin/obj/.vs/TestResults/Runtime credential/verification log 已忽略 |
-| 2 个本机 token 值比对（不输出值） | tracked files / private verification logs 泄漏匹配均 0 |
+| tracked build/cache/log/credential 与 secret-pattern scan | Final closing PASS，76 tracked files，匹配 0；bin/obj/.vs/TestResults/Runtime credential/verification log 已忽略 |
+| 3 个实际本机 token 值比对（不输出值） | Final closing PASS，76 tracked files / 12 verification 与 Maven test logs 泄漏匹配均 0；此前 2-token 扫描也通过 |
 | Desktop source privacy / boundary scan | 无正文 logger/persistence、Ollama endpoint、keyboard hook 或 clipboard subscription |
 
 Desktop 高价值覆盖：mock HTTP 提交/QUEUED→RUNNING→SUCCEEDED、提交期间取消、HTTP 401/404/429/403/503、
@@ -106,7 +129,7 @@ M0 新 smoke taskId：`bd37d699-bdba-45cf-9aae-9a760d63bfea`，loopback bind 与
 - 凭据保护不隔离已攻陷的同用户进程；forget 不撤销 Runtime token；没有 per-client ownership 或自动 rotation。
 - 没有 installer、auto-start/update、Windows Service 或 Runtime/Ollama lifecycle manager。
 
-## M1 真实 Windows acceptance checklist（已执行与待验）
+## M1 真实 Windows acceptance（Final：全部 PASS）
 
 先确认 Ollama 与已有配置模型可用。在仓库根目录：
 
@@ -118,29 +141,38 @@ dotnet run --project desktop/src/PersonalAiWorkspace.Desktop --no-build
 
 首次点击“导入 Runtime 凭据…”选择 `.runtime/client-token`，确认 credential valid。
 默认热键 Ctrl+Alt+Shift+T；在源应用触发前不要先激活 Assistant 窗口。
-每项返回 PASS/FAIL、应用版本/分支及受控错误分类，不提供选区、译文或 token 原文。
-Notepad 与 Chrome 的真实选区链路均需成功才能评定 M1 GO；Chrome UIA 不可用时的手动输入提示
-是保守错误行为，不能替代该场景的 selection acceptance PASS。
+2026-10-02 用户在本次 closing 指令中明确确认剩余真实 Windows 验收没有问题。
+下表记录最终 PASS 与证据来源；用户确认的场景不伪装为 Codex 在本次 review 中重新自动执行。
+此前 Provider 地址覆盖测试曾被自动审批拒绝并未执行，Copy fallback 当时未完成真实验收；
+这两个历史事实保持不变，本次通过用户真实验收确认补齐，不是重新解释此前未执行的测试。
+不记录用户选区、译文、clipboard 正文或 token 原文；用户没有提供逐项时间/应用版本，不补造这些信息。
 
-| 场景 | 人工操作与预期 | 当前结果 |
+| 真实 Windows 验收 | 最终结果 | 验收证据来源 / 预期边界 |
 | --- | --- | --- |
-| 生命周期 | 启动两次仍只有一个实例；托盘打开/关闭窗口；托盘退出后热键和进程释放 | REAL PASS（自动操作）：托盘菜单打开/退出；关闭清空文本；退出后原热键可重新注册 |
-| Notepad | 选中非敏感测试短句 → hotkey → input 填入 → Runtime Translate → result | REAL PASS（自动操作）：真实 Notepad 合成文件选区，SendInput 触发正式热键；input 匹配，resultLength 6 |
-| Chrome/Chromium | 普通网页选中短句 → hotkey → UIA → result；UIA 不可用则明确手动输入，不强行 DOM copy；不修改扩展 | REAL PASS（自动操作）：真实 Chrome 独立 profile 合成网页 DOM 选区，正式热键 → resultLength 6；没有修改扩展 |
-| 无选区 | 不选中文字触发，明确提示；不能将旧 clipboard 当成当前选区 | REAL PASS（自动操作）：Notepad 将选区收为 caret 后触发，提示无选区，旧 input/result 均清空；未改动 clipboard |
-| Protected/password | 聚焦受保护输入触发，拒绝读取与复制 fallback | REAL PASS（自动操作）：Chrome 合成 password input，IsPassword=true；明确拒绝，input/result 均为空 |
-| Clipboard | 先放入非敏感旧值，尝试 fallback，检查没有误用旧值且按所选保守策略恢复/提示 | UNVERIFIED |
-| Runtime offline | 停止 Runtime 后翻译，明确 Runtime unavailable；无 Ollama/cloud fallback | REAL PASS（自动操作）：停止本轮启动的 Runtime，窗口提示 Runtime unavailable；随后恢复默认 Runtime |
-| Provider offline | Runtime 保持运行、由用户停止 Ollama 后翻译，明确 Provider unavailable | UNVERIFIED：临时 Runtime provider 地址覆盖测试被自动审批拒绝（blocked by policy），未执行；Ollama 与默认配置未变 |
-| Cancel | 较长请求点击 Cancel，展示 Runtime 返回的终态；不宣称 GPU 立即停止 | REAL PASS（自动操作）：真实 QUEUED → RUNNING 后点击 Cancel，返回 Cancelled，result 为空，保留 GPU 限制提示 |
-| Privacy | 检查 Desktop logs、工作目录和 temp，没有选区、译文或明文 token；仅允许受保护 credential storage | PASS（限定范围）：tracked files、根 verification logs 中 token 匹配 0，logs 合成正文匹配 0；产品 source 无 logger/file-write/hook；不是全系统磁盘审计 |
+| Notepad selection | PASS | Codex 真实自动操作 + 用户确认；正式 hotkey → input 匹配 → Runtime/Ollama → resultLength 6 |
+| Chrome selection | PASS | Codex 真实自动操作 + 用户确认；独立 profile 合成网页 DOM 选区 → 正式 hotkey → resultLength 6，未修改扩展 |
+| password/protected text rejection | PASS | Codex 真实自动操作 + 用户确认；Chrome password IsPassword=true，拒绝 capture/copy，input/result 为空 |
+| controlled-copy fallback | PASS | 用户真实 Windows 验收确认；一次受控 Copy 获取新文本，按原生控件/纯文本保守策略恢复或提示 |
+| stale clipboard protection | PASS | 用户真实 Windows 验收确认；不将旧剪贴板当作本次选区 |
+| manual input | PASS | Codex 真实自动操作 + 用户确认；手动输入 → Translate → 真实结果 |
+| cancel | PASS | Codex 真实自动操作 + 用户确认；QUEUED → RUNNING 后 Cancel 返回 Cancelled、result 为空，不承诺 GPU 立即停止 |
+| Runtime unavailable | PASS | Codex 真实自动操作 + 用户确认；Runtime 停止时明确 Runtime unavailable，无直接 Ollama/cloud fallback |
+| Provider unavailable | PASS | 用户真实 Windows 验收确认；Runtime 正常而 Ollama offline 时明确 Provider unavailable |
+| Provider restart recovery | PASS | 用户真实 Windows 验收确认；Provider 恢复后可重新 Translate |
+| tray exit | PASS | Codex 真实自动操作 + 用户确认；托盘退出后应用进程退出 |
+| global hotkey release | PASS | Codex 真实自动操作 + 用户确认；退出后同一 hotkey 可重新注册 |
+| credential persistence | PASS | 用户真实 Windows 验收确认；重启后沿用 Windows Credential Manager 凭据，无需日常复制 token |
+| privacy/log inspection | PASS | 用户真实 Windows 验收确认 + Codex 仓库/验证日志限定扫描；无正文或明文 token 泄漏 |
+| 无选区 | PASS | Codex 真实自动操作；Notepad selection 收为 caret 后提示无选区、清空旧 input/result，未改动 clipboard |
+| 单实例 / 窗口生命周期 | PASS | Codex 真实自动操作；重复启动一个实例，托盘打开/关闭窗口，关闭清空文本 |
 
-上述 GUI 验收在 2026-10-02 13:37–13:57 +08:00 实际操作已运行的 Windows 程序，
+此前由 Codex 自动操作的 GUI 验收在 2026-10-02 13:37–13:57 +08:00 实际操作已运行的 Windows 程序，
 使用 Windows UI Automation 控件调用、合成页面/文件选区与 SendInput 正式热键；没有绕过客户端入口调用翻译 API。
-每项脱敏 evidence JSON 位于忽略的 `.verification/`，只记录状态、匹配布尔值、长度与版本，无捕获正文、译文或 token。
+自动操作场景的脱敏 evidence JSON 位于忽略的 `.verification/`，只记录状态、匹配布尔值、长度与版本，无捕获正文、译文或 token。
 合成输入 fixture 与测试 Chrome profile 也在该忽略目录中；它们是测试素材，不是 Desktop 保存的用户历史。
 测试 Chrome 窗口与 Notepad 合成标签页已关闭，Assistant 已重新启动并显示 Ready，input/result 为空；
-默认 Runtime 在 127.0.0.1:8765 运行。未把这些结果记为人工操作 PASS，也未把尚未执行的场景补成 PASS。
+默认 Runtime 在 127.0.0.1:8765 运行（该段为当时操作记录，不是本次 closing 的进程状态检查）。
+上述自动操作保持原证据来源，剩余真实验收以本次用户确认补齐；全部 required acceptance 已 PASS。
 
 ## M0 已实现（历史 Closing 事实）
 
@@ -207,19 +239,20 @@ Notepad 与 Chrome 的真实选区链路均需成功才能评定 M1 GO；Chrome 
 - Finance TEMPORARILY FROZEN / WAITING FOR REALITY SYNC；学校笔记本最新工作区 **UNVERIFIED**。
   不将 GitHub Remote 当作学校电脑最新事实。
 
-本轮仅实现 M1 Translate Windows Entry；真实 Windows acceptance 已部分自动操作通过，剩余场景待验。
+M1 Translate Windows Entry 已 CLOSED — GO；真实 Windows acceptance 全部 PASS，自动操作与用户确认来源见上表。
 Deferred：Finance integration/Gateway、Memory/Conversation/SQLite、Knowledge/RAG/embedding、
 tool/agent framework、完整 WebView2/React Workspace、Browser migration、cloud、streaming、Summarize/Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
 
-下一步：完成 Clipboard 与 Provider offline 剩余验收，必要时修复后 Closing Review；不开始下一 milestone。
+本次 M1 FINAL CLOSING REVIEW 已完成；具备 merge to main 的条件，等待用户后续交付指令。
+不自动 merge/push，不开始下一 milestone。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
 ## Git 交付
 
 M0 远端基线：`main` / `origin/main` = `5d71d11144fd6e066638f29ea2464fdc16ea332a`，
 提交主题 `feat: bootstrap personal AI workspace runtime`，已推送到上述 origin。
-当前 M1 工作分支为 `m1-windows-entry`，从 `80ccb53` 继续实现；没有 merge 或 push。
+当前 M1 工作分支为 `m1-windows-entry`，从 `80ccb53` 继续实现并完成独立 closing commit；没有 merge 或 push。
 精确当前 HEAD 与工作树状态通过 `git rev-parse HEAD` / `git status --short` 获取。
 生成的 credential、验证日志及 build outputs 被忽略，不进入 Git。

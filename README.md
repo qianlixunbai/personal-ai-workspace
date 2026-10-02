@@ -1,11 +1,12 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。当前已实现 M0 Translate foundation。
+独立、local-first 的共享 AI Runtime。M0 — Shared Runtime Foundation：**CLOSED — GO**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
 
 M1 Windows Assistant Entry 已实现 .NET 10 LTS / 原生 WPF 客户端，代码位于 `desktop/`。
-当前 **PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE**：自动测试通过，仍等待真实 Notepad / Chrome 选区验收。
+M1 — Windows Assistant Entry：**CLOSED — GO**。2026-10-02 全量回归通过，用户确认剩余真实 Windows 验收全部 PASS。
 Java 与 Desktop 分别使用 Maven Wrapper / dotnet CLI 验证；Desktop 只调用 Runtime，不直接访问 Ollama。
+本次 closing 仅同步文档并创建本地提交；未 merge main、未 push，未开始下一 milestone。
 
 ## 启动
 
@@ -162,6 +163,11 @@ git diff --check
 ```
 
 自动测试使用 fake work 和 loopback HTTP mock server，不依赖本机 Ollama。
+M1 final closing regression（2026-10-02）：Java 14 tests、Desktop 31 tests 全部通过，0 failed/skipped；
+Desktop restore/build 通过，build 0 warnings/errors。真实 Windows 验收包含 Notepad/Chrome 选区、
+protected/password 拒绝、controlled-copy 与旧剪贴板保护、手动输入、cancel、Runtime/Provider offline 与 Provider 恢复、
+tray exit/热键释放、凭据持久化及隐私日志检查，全部 PASS。自动操作与用户确认的证据来源详见 STATUS。
+secret/token/tracked build-output scan 与 Git whitespace 检查通过；这些扫描限于仓库和本地验证输出，不是全系统磁盘审计。
 smoke 脚本启动单独 Runtime、调用真实本地模型、检查监听地址和认证，并仅输出脱敏证据；
 最后停止自己启动的进程。Ollama / 模型不可用时失败，不会自动 pull 或修改配置。
 `.verification/` 中的过程日志与 smoke 私有 token 被 Git 忽略。

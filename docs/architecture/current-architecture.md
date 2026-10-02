@@ -1,12 +1,17 @@
 # Current Architecture — M0 Runtime + M1 Windows Entry
 
-M0 已封版并发布。M1 使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建；
-当前 PARTIAL / AWAITING REAL WINDOWS ACCEPTANCE，详见 [STATUS](../STATUS.md)。
+M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
+M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
+2026-10-02 final closing 全量回归通过（Java 14 / Desktop 31 tests，Desktop build 0 warnings/errors），
+真实 Windows 验收全部 PASS，剩余场景由用户确认；证据来源与已知限制详见 [STATUS](../STATUS.md)。
+M1 仍在 `m1-windows-entry`，本次仅文档收口，未 merge/push；ADR-002 已为 Accepted，与实现一致，无需修改。
 
 Windows 用户主动 hotkey → selection capture → WPF → authenticated localhost Runtime →
 `translate.fast` → Ollama → 纯文本 result card。Desktop 不直连 Ollama。
 没有新增 pairing endpoint 或 per-client task ownership；仍为 single trust domain。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
+本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
+没有新增 Runtime capability、重构 M0/M1 或修改旧仓库，也没有启动 Browser migration、Memory/RAG、Summarize/Chat。
 
 ## Windows Desktop 边界
 
