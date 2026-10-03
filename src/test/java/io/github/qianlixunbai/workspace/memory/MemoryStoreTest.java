@@ -69,7 +69,7 @@ class MemoryStoreTest {
             created = store.create(Type.PREFERENCE, "  private-title  ", "  private-content\r\n中文  ");
             assertEquals(1, created.revision()); assertEquals(Source.MANUAL, created.source());
             assertEquals(created.createdAt(), created.updatedAt());
-            assertEquals(1, scalar("PRAGMA user_version"));
+            assertEquals(2, scalar("PRAGMA user_version"));
             assertFalse(created.toString().contains("private-title"));
             assertFalse(created.toString().contains("private-content"));
         }
@@ -191,13 +191,13 @@ class MemoryStoreTest {
         byte[] newer = Files.readAllBytes(data().resolve("memory.db"));
         code(ErrorCode.MEMORY_SCHEMA_UNSUPPORTED, this::open);
         assertArrayEquals(newer, Files.readAllBytes(data().resolve("memory.db")));
-        sql("PRAGMA user_version=1");
+        sql("PRAGMA user_version=2");
         // Break a derived shadow table: transactional startup rebuild fails after dropping derived objects.
         sql("DROP TABLE memory_fts");
         sql("CREATE TABLE memory_fts_data(sentinel TEXT)");
         sql("INSERT INTO memory_fts_data VALUES('private-preserved')");
         code(ErrorCode.MEMORY_STORAGE_UNAVAILABLE, this::open);
-        assertEquals(1, scalar("PRAGMA user_version"));
+        assertEquals(2, scalar("PRAGMA user_version"));
         assertEquals(1, scalar("SELECT count(*) FROM memory_items"));
         assertEquals(1, scalar("SELECT count(*) FROM memory_fts_data"));
         sql("DROP TABLE memory_fts_data");

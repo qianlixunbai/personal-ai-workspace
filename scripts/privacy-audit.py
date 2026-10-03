@@ -43,6 +43,7 @@ def encodings(value):
 
 needles = [encoded for value in secrets if value for encoded in encodings(value)]
 private_bodies = payload.get('logBodies', []) + [
+    'conversation-private-title', 'conversation-private-user', 'conversation-private-assistant',
     'private-memory-title', 'private-memory-context', 'private-memory-question',
     'Synthetic Project Context', 'What is the synthetic project codename?',
     'memory-title-private-marker', 'memory-content-private-marker', 'memory-query-private-marker',
@@ -77,7 +78,7 @@ def scan(data, label, patterns_on, privacy_on, depth=0):
 
 
 files = set(root / name for name in sources)
-for folder in ['target', 'desktop', '.verification']:
+for folder in ['target', 'desktop', '.verification', '.runtime']:
     files.update(p for p in (root / folder).rglob('*') if p.is_file() and p.resolve() not in token_paths and p.suffix != '.png')
 for path in sorted(files):
     if path.is_file():
@@ -92,9 +93,10 @@ for path in sorted(files):
             for node in ET.parse(path).getroot().iter():
                 if node.tag in ['system-out', 'system-err', 'failure', 'error']:
                     scan(ET.tostring(node, encoding='utf-8'), label + ':' + node.tag, False, True)
-artifacts = [name for name in tracked if re.search(r'(^|/)(target|bin|obj|\.runtime|\.verification|\.vs|TestResults)(/|$)|\.(log|jar|dll|exe|zip|trx)$', name)]
+artifacts = [name for name in tracked if re.search(r'(^|/)(target|bin|obj|\.runtime|\.verification|\.vs|TestResults)(/|$)|\.(log|jar|dll|exe|zip|trx|db|sqlite|sqlite3)(-(wal|shm|journal))?$', name)]
 ignore_ok = all(subprocess.run(['git', '-C', str(root), 'check-ignore', '-q', name]).returncode == 0 for name in [
     '.runtime/client-token', '.verification/browser-batch-smoke-evidence.json', 'target/personal-ai-workspace-0.1.0.jar',
+    'memory.db', 'memory.db-wal', 'memory.db-shm', 'memory.db-journal',
     'desktop/src/PersonalAiWorkspace.Desktop/bin/check.dll', 'desktop/src/PersonalAiWorkspace.Desktop/obj/check.json',
     'desktop/tests/PersonalAiWorkspace.Desktop.Tests/TestResults/check.trx'])
 report = dict(result='PASS' if not matches and not artifacts and ignore_ok else 'FAIL', sourceFiles=len(sources),

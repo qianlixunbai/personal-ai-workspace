@@ -29,7 +29,7 @@ public final class MemoryBackupService {
             var directoryIdentity = existed ? Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class,
                     LinkOption.NOFOLLOW_LINKS) : null;
             staging = Files.createTempDirectory(parent, ".memory-restore-");
-            try (var store = new MemoryStore(staging, token)) { store.reconstruct(backup.items()); }
+            try (var store = new MemoryStore(staging, token, false)) { store.reconstruct(backup.items()); }
             beforePublish.run();
             // Recheck after the potentially slow reconstruction. Unknown states are never replaced.
             PrivateMemoryDirectory.noLinks(target); emptyOrNew(target);

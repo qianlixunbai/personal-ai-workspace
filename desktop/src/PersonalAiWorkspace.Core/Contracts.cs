@@ -11,7 +11,8 @@ public enum DesktopError
     MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported,
     MemorySelectionStale, MemoryAskBudget,
     MemoryBackupInvalid, MemoryBackupUnsupported, MemoryBackupTooLarge, MemoryRestoreTargetNotEmpty,
-    MemoryExportFailed, MemoryRestoreFailed, MemoryBackupFileUnavailable
+    MemoryExportFailed, MemoryRestoreFailed, MemoryBackupFileUnavailable,
+    ConversationNotFound, ConversationInvalid, ConversationConflict, ConversationLimitExceeded, ConversationStorageUnavailable
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -23,6 +24,11 @@ public static class ErrorText
 {
     public static string For(DesktopError error) => error switch
     {
+        DesktopError.ConversationNotFound => "Conversation or turn does not exist.",
+        DesktopError.ConversationInvalid => "Conversation request is invalid.",
+        DesktopError.ConversationConflict => "Conversation or turn state does not allow this operation.",
+        DesktopError.ConversationLimitExceeded => "Conversation capacity or size limit exceeded.",
+        DesktopError.ConversationStorageUnavailable => "Conversation storage is unavailable.",
         DesktopError.RuntimeUnavailable => "Runtime unavailable：请先启动本机 Runtime。",
         DesktopError.Unauthorized => "Unauthorized：凭据已失效，请显式重新导入 Runtime token。",
         DesktopError.CredentialMissing => "Credential missing：请首次导入本机 Runtime 的私有 token 文件。",

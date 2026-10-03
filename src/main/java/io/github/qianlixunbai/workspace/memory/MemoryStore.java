@@ -1,6 +1,7 @@
 package io.github.qianlixunbai.workspace.memory;
 
 import io.github.qianlixunbai.workspace.common.*;
+import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
 import java.nio.file.Path;
 import java.sql.*;
 import java.time.Instant;
@@ -9,15 +10,23 @@ import static io.github.qianlixunbai.workspace.memory.MemoryLimits.*;
 
 /** Small file-backed store. One connection per Runtime; SQLite arbitrates other processes. */
 public final class MemoryStore implements AutoCloseable {
+    /** Memory source / logical backup version; Workspace DB user_version is versioned separately. */
     public static final int SCHEMA_VERSION = 1;
+    private Path databaseFile;
     private Connection connection;
     public record Page(List<MemoryItem> items, long total, int page, int limit) {
         public Page { items = List.copyOf(items); }
     }
 
     public MemoryStore(Path directory, Path tokenFile) {
+        this(directory, tokenFile, true);
+    }
+
+    // ADR-006: maintenance restore still constructs a fresh Memory-only schema v1.
+    MemoryStore(Path directory, Path tokenFile, boolean workspaceUpgrade) {
         try {
             Path file = PrivateMemoryDirectory.prepare(directory, tokenFile);
+            databaseFile = file;
             connection = DriverManager.getConnection("jdbc:sqlite:" + file);
             execute("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MS);
             execute("PRAGMA foreign_keys = ON");
@@ -27,7 +36,8 @@ public final class MemoryStore implements AutoCloseable {
             }
             transaction(true, () -> {
                 long version = number("PRAGMA user_version");
-                if (version > SCHEMA_VERSION || version < 0) throw error(ErrorCode.MEMORY_SCHEMA_UNSUPPORTED);
+                if (version > (workspaceUpgrade ? WorkspaceSchema.VERSION : SCHEMA_VERSION) || version < 0)
+                    throw error(ErrorCode.MEMORY_SCHEMA_UNSUPPORTED);
                 if (version == 0) {
                     // v0 is an empty database only. Never infer or overwrite an unversioned existing schema.
                     if (number("SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'") != 0)
@@ -40,6 +50,7 @@ public final class MemoryStore implements AutoCloseable {
                     execute("SELECT id,type,title,content,status,revision,source,created_at,updated_at FROM memory_items LIMIT 0");
                     rebuildIndex();
                 }
+                if (workspaceUpgrade) WorkspaceSchema.upgrade(connection, version);
                 return null;
             });
             try (var statement = connection.createStatement(); var result = statement.executeQuery("PRAGMA journal_mode = DELETE")) {
@@ -51,6 +62,9 @@ public final class MemoryStore implements AutoCloseable {
             close(); throw error(ErrorCode.MEMORY_STORAGE_UNAVAILABLE);
         }
     }
+
+    /** Already validated account-private shared SQLite location, never returned in the HTTP contract. */
+    public Path databaseFile() { return databaseFile; }
 
     private void createSource() throws SQLException {
         execute("""

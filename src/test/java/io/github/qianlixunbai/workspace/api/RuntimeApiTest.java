@@ -839,6 +839,77 @@ class RuntimeApiTest {
     private JsonNode tree(HttpResponse<String> response) { return json.readTree(response.body()); }
     private String valid() { return "{\"text\":\"input-private-marker\",\"targetLanguage\":\"zh-CN\",\"profile\":\"translate.fast\"}"; }
 
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.conversation.ConversationStore conversations;
+
+    @Test void conversationNativeLifecycleOrderedDetailAndSecurityPrivacy(CapturedOutput logs) throws Exception {
+        String base = "/api/v1/conversations";
+        var created = send("POST", base, "{}", true); assertEquals(201, created.statusCode());
+        String id = tree(created).path("id").asString(), path = base + "/" + id;
+        assertEquals(path, created.headers().firstValue("Location").orElseThrow());
+        assertEquals("ACTIVE", tree(created).path("status").asString());
+        assertEquals("New conversation", tree(created).path("title").asString());
+        assertEquals("no-store", created.headers().firstValue("Cache-Control").orElseThrow());
+        try {
+            privateValues.add("conversation-private-title"); privateValues.add("conversation-private-user"); privateValues.add("conversation-private-assistant");
+            assertEquals(200,send("PATCH",path,"{\"title\":\" conversation-private-title \"}",true).statusCode());
+            var turn = conversations.createTurnWithUserMessage(java.util.UUID.fromString(id), "conversation-private-user");
+            conversations.completeTurnWithAssistantMessage(java.util.UUID.fromString(id),turn.id(),"conversation-private-assistant");
+            var detail = tree(send("GET",path,null,true));
+            assertEquals("conversation-private-title",detail.path("conversation").path("title").asString());
+            assertEquals(1,detail.path("totalTurns").asInt()); assertEquals(1,detail.path("turns").get(0).path("sequence").asInt());
+            assertEquals("USER",detail.path("turns").get(0).path("userMessage").path("role").asString());
+            assertEquals("ASSISTANT",detail.path("turns").get(0).path("assistantMessage").path("role").asString());
+            assertEquals(200,send("GET",base,null,true).statusCode());
+            assertEquals("ARCHIVED",tree(send("POST",path+"/archive",null,true)).path("status").asString());
+            assertEquals("ACTIVE",tree(send("POST",path+"/unarchive",null,true)).path("status").asString());
+            assertEquals(400,send("PATCH",path,"{\"title\":\" \"}",true).statusCode());
+            assertEquals(400,send("PATCH",path,"{\"title\":null}",true).statusCode());
+            assertEquals(400,send("POST",base,"{\"title\":\""+"x".repeat(161)+"\"}",true).statusCode());
+            for (String suffix : List.of("?limit=11","?page=-1")) assertEquals(400,send("GET",path+suffix,null,true).statusCode());
+            assertEquals(400,send("GET",base+"/bad-id",null,true).statusCode());
+            assertEquals(400,send("GET",base+"?status=UNKNOWN",null,true).statusCode());
+            assertEquals(400,send("POST",base,"{\"title\":\"x\",\"role\":\"SYSTEM\"}",true).statusCode());
+            for (String suffix : List.of("/messages","/turns","/regenerate","/branches")) {
+                assertEquals(404,send("POST",path+suffix,"{}",true).statusCode());
+                assertEquals(404,send("PATCH",path+suffix,"{}",true).statusCode());
+            }
+            assertEquals(401,send("GET",base,null,false).statusCode());
+            var client = pairBrowser("chrome-extension://"+"o".repeat(32));
+            for (String method : List.of("GET","POST","PATCH","DELETE")) {
+                assertEquals(403,browser(method,path,method.equals("PATCH")?"{}":null,client.credential(),client.origin()).statusCode());
+                assertTrue(List.of(401,403).contains(browser(method,path,null,client.credential(),null).statusCode()));
+            }
+            assertEquals(401,browser("OPTIONS",base,null,null,client.origin()).statusCode());
+            assertEquals(401,browser("GET",path,null,token(),"https://example.com").statusCode());
+            assertEquals(204,send("DELETE",path,null,true).statusCode());
+            var missing = send("GET",path,null,true); assertEquals(404,missing.statusCode());
+            assertEquals("CONVERSATION_NOT_FOUND",tree(missing).path("code").asString());
+            assertFalse(logs.getAll().contains("conversation-private"));
+        } finally { try { conversations.delete(java.util.UUID.fromString(id)); } catch (io.github.qianlixunbai.workspace.common.WorkspaceException ignored) { } }
+    }
+
+    @Test void conversationStorageErrorDoesNotLeakInternalsAndBoundedEscapedHistory() throws Exception {
+        var c = conversations.create(null);
+        try {
+            String maximumEscaping = "\u0001".repeat(8192);
+            for (int i=0;i<11;i++) {
+                var t = conversations.createTurnWithUserMessage(c.id(), maximumEscaping);
+                conversations.completeTurnWithAssistantMessage(c.id(),t.id(),maximumEscaping);
+            }
+            var response = send("GET","/api/v1/conversations/"+c.id(),null,true);
+            assertEquals(200,response.statusCode()); assertTrue(response.body().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 1024*1024);
+            assertEquals(10,tree(response).path("turns").size());
+            try (var db = java.sql.DriverManager.getConnection("jdbc:sqlite:"+MEMORY.resolve("memory.db")); var s = db.createStatement()) {
+                s.execute("CREATE TRIGGER conversation_fault BEFORE UPDATE ON conversations BEGIN SELECT RAISE(ABORT,'private SQL failure'); END");
+                try {
+                    var failure = send("PATCH","/api/v1/conversations/"+c.id(),"{\"title\":\"safe\"}",true);
+                    assertEquals(503,failure.statusCode()); assertEquals("CONVERSATION_STORAGE_UNAVAILABLE",tree(failure).path("code").asString());
+                    assertFalse(failure.body().contains("SQL")); assertFalse(failure.body().contains(MEMORY.toString()));
+                } finally { s.execute("DROP TRIGGER conversation_fault"); }
+            }
+        } finally { conversations.delete(c.id()); }
+    }
+
     @Test void backupNativeHttpRestoreSecurityBoundsAndPrivacy(CapturedOutput logs) throws Exception {
         String export = "/api/v1/memory/backup", restore = export + "/restore";
         var client = pairBrowser("chrome-extension://" + "m".repeat(32));

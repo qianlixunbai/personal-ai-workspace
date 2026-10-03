@@ -18,7 +18,8 @@ class MemoryBackupTest {
     private final JsonMapper json = JsonMapper.builder().build();
     private Path source() { return temporary.resolve("source"); }
     private Path token() { return temporary.resolve("auth/client-token"); }
-    private MemoryStore open(Path path) { return new MemoryStore(path, token()); }
+    // ADR-006 maintenance reconstruction is intentionally Memory-only schema v1.
+    private MemoryStore open(Path path) { return new MemoryStore(path, token(), false); }
     private MemoryBackupService service() { return new MemoryBackupService(source(), token()); }
     private static void code(ErrorCode expected, org.junit.jupiter.api.function.Executable work) {
         var error = assertThrows(WorkspaceException.class, work); assertEquals(expected, error.error().code());

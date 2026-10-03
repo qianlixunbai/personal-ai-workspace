@@ -3,6 +3,11 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case CONVERSATION_NOT_FOUND -> "Conversation or turn does not exist.";
+            case CONVERSATION_INVALID -> "Conversation request is invalid.";
+            case CONVERSATION_CONFLICT -> "Conversation or turn state does not allow this operation.";
+            case CONVERSATION_LIMIT_EXCEEDED -> "Conversation capacity or size limit exceeded.";
+            case CONVERSATION_STORAGE_UNAVAILABLE -> "Conversation storage is unavailable.";
             case PROVIDER_UNAVAILABLE -> "Local provider is unavailable.";
             case MODEL_UNAVAILABLE -> "The configured local model is not installed.";
             case TASK_CANCELLED -> "Task was cancelled.";
