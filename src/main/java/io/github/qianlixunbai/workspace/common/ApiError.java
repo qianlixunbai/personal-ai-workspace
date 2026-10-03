@@ -20,6 +20,7 @@ public record ApiError(ErrorCode code, String message, String phase) {
             case MEMORY_INVALID -> "Memory request is invalid.";
             case MEMORY_STORAGE_UNAVAILABLE -> "Memory storage is unavailable.";
             case MEMORY_SCHEMA_UNSUPPORTED -> "Memory schema version is unsupported.";
+            case MEMORY_SELECTION_STALE -> "Selected Memory changed. Review and select Memory again.";
         };
         return new ApiError(code, message, phase);
     }

@@ -179,6 +179,27 @@ public final class MemoryStore implements AutoCloseable {
         });
     }
 
+    /** All references are resolved in request order in one SQLite read transaction, before task admission. */
+    public synchronized List<MemorySnapshot> snapshotForAsk(List<MemoryReference> references) {
+        MemoryReference.validate(references);
+        var selection = List.copyOf(references);
+        return transaction(false, () -> {
+            List<MemorySnapshot> snapshot = new ArrayList<>();
+            for (var reference : selection) {
+                MemoryItem item;
+                try { item = read(reference.id()); }
+                catch (WorkspaceException failure) {
+                    if (failure.error().code() == ErrorCode.MEMORY_NOT_FOUND) throw error(ErrorCode.MEMORY_SELECTION_STALE);
+                    throw failure;
+                }
+                if (item.status() != MemoryItem.Status.ACTIVE || item.revision() != reference.revision())
+                    throw error(ErrorCode.MEMORY_SELECTION_STALE);
+                snapshot.add(new MemorySnapshot(item.id(), item.type(), item.title(), item.content(), item.revision()));
+            }
+            return List.copyOf(snapshot);
+        });
+    }
+
     private void checkRevision(UUID id, long expectedRevision) throws SQLException {
         if (read(id).revision() != expectedRevision) throw error(ErrorCode.MEMORY_REVISION_CONFLICT);
     }

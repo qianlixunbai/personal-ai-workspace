@@ -70,13 +70,13 @@ public sealed partial class RuntimeClient : IDisposable
     public Task<RuntimeTask> GetAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, null);
     public Task<RuntimeTask> CancelAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken, null);
 
-    internal Task<RuntimeTask> GetAsync(Guid taskId, string capability, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, capability);
-    internal Task<RuntimeTask> CancelAsync(Guid taskId, string capability, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken, capability);
+    internal Task<RuntimeTask> GetAsync(Guid taskId, string capability, CancellationToken cancellationToken, string? promptVersion = null) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, capability, promptVersion);
+    internal Task<RuntimeTask> CancelAsync(Guid taskId, string capability, CancellationToken cancellationToken, string? promptVersion = null) => TaskRequest(HttpMethod.Delete, taskId, cancellationToken, capability, promptVersion);
 
-    private async Task<RuntimeTask> TaskRequest(HttpMethod method, Guid id, CancellationToken cancellationToken, string? capability)
+    private async Task<RuntimeTask> TaskRequest(HttpMethod method, Guid id, CancellationToken cancellationToken, string? capability, string? promptVersion = null)
     {
         using var body = await SendAsync(method, $"/api/v1/tasks/{id:D}", null, true, HttpStatusCode.OK, cancellationToken);
-        return ParseTask(body.RootElement, id, capability);
+        return ParseTask(body.RootElement, id, capability, promptVersion);
     }
 
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
@@ -158,7 +158,7 @@ public sealed partial class RuntimeClient : IDisposable
         { throw new DesktopException(DesktopError.ClientTimeout); }
     }
 
-    private static RuntimeTask ParseTask(JsonElement root, Guid? expectedId, string? expectedCapability = null)
+    private static RuntimeTask ParseTask(JsonElement root, Guid? expectedId, string? expectedCapability = null, string? expectedPromptVersion = null)
     {
         if (!Guid.TryParseExact(String(root, "taskId"), "D", out var id) || id == Guid.Empty || (expectedId.HasValue && id != expectedId)) throw Invalid();
         string capability = String(root, "capability");
@@ -168,7 +168,8 @@ public sealed partial class RuntimeClient : IDisposable
         if (!Enum.TryParse<TaskState>(state, false, out var status) || !Enum.IsDefined(status) || status.ToString() != state) throw Invalid();
         var profile = Property(root, "profile");
         if (String(profile, "id") != profileId || String(profile, "locality") != "LOCAL"
-            || string.IsNullOrWhiteSpace(String(profile, "version")) || string.IsNullOrWhiteSpace(String(root, "promptVersion"))) throw Invalid();
+            || string.IsNullOrWhiteSpace(String(profile, "version"))
+            || String(root, "promptVersion") != (expectedPromptVersion ?? capability + "-v1")) throw Invalid();
         if (!DateTimeOffset.TryParse(String(root, "createdAt"), out var created)) throw Invalid();
         var finished = Property(root, "finishedAt");
         bool terminal = status is not (TaskState.QUEUED or TaskState.RUNNING);

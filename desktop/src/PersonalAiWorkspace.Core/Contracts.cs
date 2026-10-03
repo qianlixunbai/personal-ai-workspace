@@ -8,7 +8,8 @@ public enum DesktopError
     QueueFull, ProviderUnavailable, ModelUnavailable, PolicyDenied, InvalidRequest,
     InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError,
     InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed,
-    MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported
+    MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported,
+    MemorySelectionStale, MemoryAskBudget
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -41,6 +42,8 @@ public static class ErrorText
         DesktopError.SecurityStateError => "Security state error：Runtime 无法更新安全状态，请检查 Runtime 后重试。",
         DesktopError.PairingCreationFailed => "Pairing creation failed：未能创建配对，请检查 Runtime 后显式重试。",
         DesktopError.BrowserManagementFailed => "Browser management failed：未确认列表或撤销结果，请刷新后检查。",
+        DesktopError.MemorySelectionStale => "Selected Memory changed. Review and select Memory again.",
+        DesktopError.MemoryAskBudget => "Combined input exceeds the budget or is invalid. Reduce selected Memory or shorten the question/Memory.",
         DesktopError.MemoryNotFound => "Memory 已不存在；请新建或刷新列表。",
         DesktopError.MemoryRevisionConflict => "Memory 自加载后已被修改。请重新加载最新版本后再保存。",
         DesktopError.MemoryLimitExceeded => "Memory 容量或输入长度超限；请检查输入或删除不用的条目。",

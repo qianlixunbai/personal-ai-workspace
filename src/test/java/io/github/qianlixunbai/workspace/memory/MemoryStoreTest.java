@@ -27,6 +27,42 @@ class MemoryStoreTest {
         assertEquals(expected.name(), failure.getMessage());
     }
 
+    @Test void askSnapshotIsOrderedImmutableExactAndAllOrNothingAcrossMutations() {
+        try (var store = open()) {
+            var first = store.create(Type.PROJECT_NOTE, "first", "old first");
+            var second = store.create(Type.PREFERENCE, "second", "old second");
+            var references = List.of(new MemoryReference(second.id(), 1), new MemoryReference(first.id(), 1));
+            var snapshot = store.snapshotForAsk(references);
+            assertEquals(List.of(second.id(), first.id()), snapshot.stream().map(MemorySnapshot::id).toList());
+            assertThrows(UnsupportedOperationException.class, () -> snapshot.clear());
+            store.update(first.id(), 1, Type.PROJECT_NOTE, "changed", "new first");
+            code(ErrorCode.MEMORY_SELECTION_STALE, () -> store.snapshotForAsk(references));
+            var current = List.of(new MemoryReference(second.id(), 1), new MemoryReference(first.id(), 2));
+            store.archive(second.id(), 1);
+            code(ErrorCode.MEMORY_SELECTION_STALE, () -> store.snapshotForAsk(current));
+            code(ErrorCode.MEMORY_SELECTION_STALE, () -> store.snapshotForAsk(List.of(new MemoryReference(second.id(), 2))));
+            store.delete(first.id(), 2);
+            code(ErrorCode.MEMORY_SELECTION_STALE, () -> store.snapshotForAsk(current));
+            assertEquals("old first", snapshot.get(1).content());
+            assertEquals("old second", snapshot.get(0).content());
+            assertEquals(1, snapshot.get(1).revision());
+            assertFalse(snapshot.toString().contains("old first"));
+        }
+    }
+
+    @Test void askReferencesRejectInvalidSelectionsBeforeStorageAccess() {
+        try (var store = open()) {
+            var ref = new MemoryReference(UUID.randomUUID(), 1);
+            for (var refs : List.of(List.<MemoryReference>of(), List.of(ref, ref),
+                    List.of(new MemoryReference(ref.id(), 0)), List.of(new MemoryReference(ref.id(), -1)),
+                    List.of(new MemoryReference(new UUID(0, 0), 1)), List.of(new MemoryReference(null, 1)),
+                    java.util.stream.IntStream.range(0, 5).mapToObj(i -> new MemoryReference(UUID.randomUUID(), 1)).toList(),
+                    Arrays.asList((MemoryReference)null)))
+                code(ErrorCode.INVALID_REQUEST, () -> store.snapshotForAsk(refs));
+            code(ErrorCode.INVALID_REQUEST, () -> store.snapshotForAsk(null));
+        }
+    }
+
     @Test void realFileRestartCrudAndRevisionLifecycle() throws Exception {
         MemoryItem created;
         try (var store = open()) {

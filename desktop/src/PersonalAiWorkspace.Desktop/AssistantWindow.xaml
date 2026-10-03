@@ -41,6 +41,14 @@
       <TextBlock Text="备用复制仅支持已验证原生编辑控件及空/纯文本剪贴板；其他控件请手动输入。无正文日志或历史记录。"
                  Foreground="#475569" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,6"/>
       <TextBlock x:Name="InputLabel" Text="Input · 可手动输入或粘贴" FontWeight="SemiBold"/>
+      <StackPanel x:Name="MemoryAskPanel" Visibility="Collapsed" Margin="0,6,0,0">
+        <WrapPanel>
+          <Button x:Name="UseMemoryButton" Content="Use Memory…" Click="UseMemory"/>
+          <Button x:Name="ClearMemoryButton" Content="Clear Memory" Click="ClearMemory" IsEnabled="False"/>
+          <TextBlock x:Name="MemoryCountText" Text="Memory: 0 selected" VerticalAlignment="Center"/>
+        </WrapPanel>
+        <TextBlock x:Name="MemorySelectionText" TextWrapping="Wrap" Margin="0,4,0,0"/>
+      </StackPanel>
     </StackPanel>
     <TextBox Grid.Row="3" x:Name="InputText" AcceptsReturn="True" MaxLength="4000"/>
     <WrapPanel Grid.Row="4" Margin="0,12,0,8">

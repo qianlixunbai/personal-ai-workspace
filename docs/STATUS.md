@@ -10,6 +10,20 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 **M3 — User-Controlled Memory Foundation：IN PROGRESS**。
 **M3A — Memory Storage Foundation：CLOSED — GO**。
 **M3B — Desktop Memory Management：CLOSED — GO（implementation acceptance；等待 Closing Review）**。
+**M3C-1 — Explicit Memory Ask：IMPLEMENTED — GO（验收通过；等待 Closing Review）**。
+
+M3C-1 从 clean main `6568b75623e7283d653892344cd2e6ef231b1e14` 开始，`HEAD == origin/main`；基线 Java46 / Desktop84 PASS。
+分支 `m3c1-explicit-memory-ask`：逐次主动选择1–4条 ACTIVE Memory、完整预览、只提交 ID/revision；
+Runtime 单个 SQLite read transaction 在 admission 前取得 exact-revision immutable snapshot。
+独立 native-only `/api/v1/memory/ask/tasks`，仍用 capability ask / chat.balanced / shared TaskManager，promptVersion memory-ask-v1。
+普通 Ask 的 question/profile、ask-v1、no memory 行为保持不变；没有自动检索/注入/保存。
+stale 整体409拒绝，Desktop 必须显式 reselect 或 clear；实际组合 JSON 输入由既有预算拒绝超限，无 truncate/drop/扩容。
+每轮 terminal、切换Action、Clear/close/exit 清除 selection；pre-admission失败保留，accepted后通信失败也清除。
+最终 Java **54 PASS**（46 existing + 8 new）/ Desktop **94 PASS**（84 existing + 10 new），0 fail/skip。
+真实 Windows WPF selector/controls → packaged Runtime HTTP → isolated SQLite → shared TaskManager → real local Ollama **PASS**，
+synthetic context 使用、普通Ask isolation、edited/archived stale、Browser deny、SQLite byte/row/privacy及清理均PASS；WinCred与用户Memory未使用。
+报告：[M3C-1 Report](milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md)；长期边界：[ADR-005](ADR/ADR-005-explicit-memory-context.md)。
+M3整体保持 IN PROGRESS，export/restore 未实现；无 merge/push/tag/release。
 
 基于 `1f987402533bf108aa18f0eed4e90de6973c7060` 的 clean main，已在
 `m3a-memory-storage-foundation` 实现独立 Runtime-owned SQLite Memory、schema v1、CRUD/lifecycle/revision、
@@ -20,7 +34,7 @@ Browser deny、body bounds、事务/并发/schema failure、private Windows ACL 
 
 配置 `workspace.data-directory`，默认 `${user.home}/.personal-ai-workspace/data`，与认证文件分离。
 SQLite currently stores local plaintext data protected by OS account/filesystem boundary；owner-only ACL 不是加密。
-M3A 当时不含 Desktop UI；M3B 现已完成独立原生 WPF Memory 管理，Memory Ask、export/restore、Conversation/RAG/automatic memory 仍未实现。
+M3A 当时不含 Desktop UI；M3B 已完成独立原生 WPF Memory 管理，M3C-1 现已完成显式 Memory Ask；export/restore、Conversation/RAG/automatic memory 仍未实现。
 M3A 已成为正式 main `a5d442bb9dfaf08117f90baa59dca0e312b1edd3`；M3B 起始 reality check：main/HEAD/origin/main 一致且 clean。
 M3B 位于 `m3b-desktop-memory-management`，本地交付，不 merge/push/tag/release。
 完整证据：[M3A Report](milestones/M3A-MEMORY-STORAGE-REPORT.md)；决策：[ADR-004](ADR/ADR-004-user-controlled-memory-storage.md)。
@@ -54,9 +68,10 @@ Windows Native 拥有 Translate / Summarize / Ask；Browser 仅拥有 Translate�
 | M2B-2B — Chrome Extension → Shared Runtime Migration | CLOSED — GO | [Browser Closing Report §41](https://github.com/qianlixunbai/local-ai-assistant/blob/b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0/docs/M2B-2B-RUNTIME-MIGRATION-REPORT.md#41-final-closing--real-chrome-acceptance--2026-10-03) |
 | M2 — Browser Convergence | CLOSED — GO | [M2 Closing Report](milestones/M2-CLOSING-REPORT.md) |
 | Post-M2 Test Suite Simplification | CLOSED — GO | [Closing Report](audits/POST-M2-TEST-SIMPLIFICATION-CLOSING.md) |
-| M3 — User-Controlled Memory Foundation | IN PROGRESS | M3A/M3B complete；Memory Ask / export/restore 未完成 |
+| M3 — User-Controlled Memory Foundation | IN PROGRESS | M3A/M3B/M3C-1 implemented；export/restore 未完成 |
 | M3A — Memory Storage Foundation | CLOSED — GO | [M3A Report](milestones/M3A-MEMORY-STORAGE-REPORT.md) |
 | M3B — Desktop Memory Management | CLOSED — GO；等待 Closing Review | [M3B Report](milestones/M3B-DESKTOP-MEMORY-MANAGEMENT-REPORT.md) |
+| M3C-1 — Explicit Memory Ask | IMPLEMENTED — GO；等待 Closing Review | [M3C-1 Report](milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md) |
 
 M2 closing 历史发布基线（当时 docs-only closing 前）：
 
@@ -525,7 +540,7 @@ Local AI Assistant 本轮仅只读核验；Finance 状态仍来自项目输入�
   不将 GitHub Remote 当作学校电脑最新事实。
 
 M1 Translate Windows Entry 已 CLOSED — GO；真实 Windows acceptance 全部 PASS，自动操作与用户确认来源见上表。
-Deferred：Finance integration/Gateway、Memory Ask / export/restore、Conversation、Knowledge/RAG/embedding、
+Deferred：Finance integration/Gateway、Memory export/restore、Conversation、Knowledge/RAG/embedding、
 tool/agent framework、完整 WebView2/React Workspace、Browser Ask/Summarize、cloud、streaming、多轮 Chat、
 voice/vision/OCR、installer/auto-update/Windows Service、clipboard history/continuous monitoring、
 backup/migration engine、同步及其他超出 M1 的能力。
@@ -534,9 +549,13 @@ M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验
 M1.5 / M2A / M2B-1 / M2B-2A / M2B-2B-R1 / M2B-2B 均 CLOSED — GO；M2 — Browser Convergence 正式 CLOSED — GO。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
-当前下一步骤：M3B Closing Review。本轮不开始 M3C / Memory Ask 或 export/restore。
+当前下一步骤：M3C-1 Closing Review。M3 保持 IN PROGRESS；不开始 export/restore、Conversation 或 RAG。
 
 ## Git 交付
+
+M3B 正式 main / origin/main 基线为 `6568b75623e7283d653892344cd2e6ef231b1e14`。
+M3C-1 从该 clean main 创建 `m3c1-explicit-memory-ask`；提交主题 `feat: add explicit memory ask`，仅本地交付，等待 Closing Review；未 merge/push/tag/release。
+以下 M3A/M3B Git 段落为当时交付记录。
 
 M3A 正式 main / origin/main 基线为 `a5d442bb9dfaf08117f90baa59dca0e312b1edd3`，提交 `feat: add durable memory storage foundation`。
 M3B 从该 clean main 创建 `m3b-desktop-memory-management`；提交主题 `feat: add desktop memory management`，仅本地交付，等待 Closing Review；未 merge/push/tag/release。

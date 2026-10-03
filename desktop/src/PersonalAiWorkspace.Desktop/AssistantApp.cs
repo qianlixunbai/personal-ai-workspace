@@ -127,6 +127,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     public async Task SubmitAsync()
     {
         if (Busy || exitRequested) return;
+        if (window.MemoryNeedsReview) { window.StatusText.Text = ErrorText.For(DesktopError.MemorySelectionStale); return; }
         var input = new AssistantInput(window.SelectedAction, window.InputText.Text, window.SelectedLanguage);
         try { input.Validate(); }
         catch (DesktopException error) { window.StatusText.Text = error.Message; return; }
@@ -151,15 +152,20 @@ internal sealed class AssistantApp : Application, IAssistantController
                     TaskState.SUCCEEDED => "Succeeded：" + input.Action + " 完成。",
                     _ => ErrorText.For(task.Error ?? DesktopError.InternalError)
                 };
-            }, lifetime.Token);
+            }, lifetime.Token, window.MemoryReferences);
             if (result.Status == TaskState.SUCCEEDED) window.ResultText.Text = result.Result!;
         }
-        catch (DesktopException error) { window.StatusText.Text = error.Message; }
+        catch (DesktopException error)
+        {
+            window.StatusText.Text = error.Message;
+            if (!current.Accepted) window.MemoryAdmissionFailed(error.Error);
+        }
         catch (OperationCanceledException) { window.StatusText.Text = "应用关闭中；取消已尽力发送，未确认的 Runtime 状态不能视为已取消。"; }
         catch (Exception) { window.StatusText.Text = ErrorText.For(DesktopError.InternalError); }
         finally
         {
             operation = null;
+            window.MemoryOperationEnded(current.Accepted);
             if (!exitRequested) window.SetBusy(Busy);
             if (!window.IsVisible) window.ClearText();
         }
@@ -219,6 +225,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         if (exitRequested) return;
         if (!window.CloseMemory()) return;
         exitRequested = true;
+        window.CloseMemorySelector(); window.ClearMemorySelection();
         window.CloseBrowserPairing();
         hotkey?.Dispose();
         operation?.RequestCancel();
@@ -239,6 +246,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         if (cleanedUp) return;
         cleanedUp = true;
         window?.CloseBrowserPairing();
+        window?.CloseMemorySelector();
         single.StopListening();
         lifetime.Cancel();
         hotkey?.Dispose();

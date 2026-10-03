@@ -1,0 +1,50 @@
+<Window x:Class="PersonalAiWorkspace.Desktop.MemorySelectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Use Memory · This Ask only" Width="850" Height="700" MinWidth="700" MinHeight="550"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="18">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TextBlock Text="Active only · Preview, then explicitly add 1–4 Memory. Reselecting replaces this Ask's previous selection.&#10;Four is a selection limit; combined content may still exceed the input budget." TextWrapping="Wrap"/>
+    <WrapPanel Grid.Row="1" Margin="0,10">
+      <TextBox x:Name="SearchBox" Width="240" IsUndoEnabled="False" MaxLength="320" KeyDown="SearchKeyDown"/>
+      <Button x:Name="SearchButton" Content="Search" Click="Search" Margin="8,0" Padding="12,5"/>
+      <ComboBox x:Name="TypeFilter" Width="150" SelectedIndex="0" SelectionChanged="FilterChanged">
+        <ComboBoxItem Content="All types"/><ComboBoxItem Content="Preference"/><ComboBoxItem Content="Project note"/>
+      </ComboBox>
+      <Button x:Name="PreviousButton" Content="Previous" Click="Previous" Margin="8,0"/>
+      <Button x:Name="NextButton" Content="Next" Click="Next"/>
+      <TextBlock x:Name="PageText" Margin="8,0" VerticalAlignment="Center"/>
+    </WrapPanel>
+    <Grid Grid.Row="2">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid Margin="0,0,12,0">
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="140"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ListBox x:Name="MemoryList" SelectionChanged="ItemSelected">
+          <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4">
+            <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
+            <TextBlock><Run Text="{Binding Type, Mode=OneWay}"/><Run Text=" · Revision "/><Run Text="{Binding Revision, Mode=OneWay}"/></TextBlock>
+            <TextBlock Text="{Binding UpdatedAt}" FontSize="11"/>
+          </StackPanel></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="1" x:Name="SelectedCountText" Text="Selected: 0 / 4" Margin="0,8"/>
+        <ListBox Grid.Row="2" x:Name="SelectedList" DisplayMemberPath="Title" SelectionChanged="SelectedPreview"/>
+        <WrapPanel Grid.Row="3" Margin="0,8,0,0">
+          <Button x:Name="AddButton" Content="Add previewed Memory" Click="Add" Padding="10,5"/>
+          <Button x:Name="RemoveButton" Content="Remove selected" Click="Remove" Margin="8,0"/>
+        </WrapPanel>
+      </Grid>
+      <Grid Grid.Column="1">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBlock Text="Preview · user-provided context" FontWeight="SemiBold"/>
+        <TextBox Grid.Row="1" x:Name="PreviewTitle" IsReadOnly="True" IsUndoEnabled="False" TextWrapping="Wrap" Margin="0,8"/>
+        <TextBox Grid.Row="2" x:Name="PreviewContent" IsReadOnly="True" IsUndoEnabled="False" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+      </Grid>
+    </Grid>
+    <TextBlock Grid.Row="3" x:Name="StatusText" TextWrapping="Wrap" Margin="0,10"/>
+    <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+      <Button x:Name="UseButton" Content="Use selected" Click="Use" Padding="14,7"/>
+      <Button Content="Cancel" Click="Cancel" Padding="14,7" Margin="8,0,0,0"/>
+    </WrapPanel>
+  </Grid>
+</Window>

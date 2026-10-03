@@ -15,11 +15,11 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
-Post-M2 Test Suite Simplification 已 CLOSED — GO；当前下一步是 M3B Closing Review。
+Post-M2 Test Suite Simplification 已 CLOSED — GO；M3C-1 Explicit Memory Ask 已实现并通过验收，等待 Closing Review；M3 整体保持 IN PROGRESS。
 
 ## M3A — Native Memory API
 
-Runtime 已有独立 SQLite Memory persistence；Desktop 已支持显式 Memory 管理。Memory Ask、export/restore 未实现。
+Runtime 已有独立 SQLite Memory persistence；Desktop 已支持显式 Memory 管理与 M3C-1 逐次选择 Memory Ask。export/restore 未实现。
 普通 Translate / Summarize / Ask 保持原契约，Ask 仍 single-turn / no history / no memory / no tools。
 验收：[M3A Report](docs/milestones/M3A-MEMORY-STORAGE-REPORT.md)；决策：[ADR-004](docs/ADR/ADR-004-user-controlled-memory-storage.md)。
 
@@ -57,16 +57,18 @@ title/content 去空白检查非空，但保存原始正文/换行。搜索 quer
 python scripts/memory-storage-smoke.py
 ```
 
-当前 Java **46** / Desktop **84** PASS（既有 62 + M3B 新增 22）；M3A 真实重启 smoke 与 M3B 真实 WPF/HTTP/SQLite acceptance PASS。M3整体仍未完成。
+当前 Java **54** / Desktop **94** PASS（保留原 Java46 / Desktop84）；M3C-1 真实 WPF/HTTP/SQLite/Ollama acceptance PASS。M3整体仍未完成。
 
 ## M3B — Desktop Memory Management
+
+M3B 管理窗口的行为和独立验收如下；M3C-1 的 Ask selector 与管理窗口职责分离。
 
 Assistant 的 **Memory…** 按钮打开独立单实例 WPF modal。默认 Active，支持 Archived/type filters、显式 Search/Enter、
 每页20条和 Previous/Next；列表只显示 title/type/status/updatedAt/revision，选择后 GET 完整条目。
 New 与编辑输入不会写入 Runtime；只有 **Save** 才创建/更新。Archive/Restore 是显式按钮，保留未保存编辑；Delete 需确认，
 删除不保证磁盘取证级擦除。切换条目、New、Reload、关闭时保护未保存修改。
 revision conflict 保留本地文本并禁止继续修改服务器；须显式 Reload，有未保存编辑时先确认丢弃，不自动重试或覆盖。
-关闭取消 HTTP、清除 title/content/query/list；不建立 Desktop history/cache，不将 Memory 送入 Ask。
+关闭取消 HTTP、清除 title/content/query/list；不建立 Desktop history/cache。管理窗口不向 Ask 传递 Memory；逐次选择使用独立只读 selector。
 
 报告：[M3B Desktop Memory Management Report](docs/milestones/M3B-DESKTOP-MEMORY-MANAGEMENT-REPORT.md)。
 真实验收使用临时数据与测试凭据，不访问 Windows Credential Manager 或用户 Memory；不需要 Ollama。
@@ -79,7 +81,47 @@ python scripts/desktop-memory-smoke.py
 
 验收 harness 位于 `desktop/acceptance/`，不属于产品入口或默认 solution tests；脚本自动 build，再驱动真实 WPF controls。
 
-## Milestone 状态
+## M3C-1 — Explicit Memory Ask
+
+仅在 **Ask AI** 显示 **Use Memory…**。只读 selector 默认 Active，支持显式 Search/type filter/Previous/Next。
+逐条查看完整 title/content 后 Add（最多4条），再 **Use selected**；Ask 显示本次 selected count、title/type/revision，支持 **Review / Change Memory…** 和 **Clear Memory**。
+Review / Change 从新选择开始；Cancel 保留 Ask 原选择。Translate/Summarize 不显示该入口。
+
+有 selection 调用独立 native-only `POST /api/v1/memory/ask/tasks`，正文示例：
+
+```json
+{
+  "question": "What is the synthetic project codename?",
+  "memories": [{ "id": "b58ab357-456f-4c44-950b-a9c083e8ba8a", "revision": 1 }],
+  "profile": "chat.balanced"
+}
+```
+
+ID 为示例，必须是实际已保存的1–4条唯一ACTIVE Memory，revision须>0；不能附带title/content/status/source。
+profile省略/null使用chat.balanced，其他值拒绝。202返回现有Task envelope与Location，capability仍ask，promptVersion为memory-ask-v1；GET/DELETE沿用`/api/v1/tasks/{id}`。
+0条请求拒绝；Desktop 0 selection继续原`/api/v1/ask/tasks`，body仅question/profile，prompt仍ask-v1。
+
+Runtime在admission前一个SQLite读事务中逐条核对exact revision；任一编辑/归档/删除→409 `MEMORY_SELECTION_STALE`，整体不接收任务。
+提示 **Selected Memory changed. Review and select Memory again.**；不会偷偷替代、partial使用或retry，须显式reselect或Clear。
+accepted task uses admission-time Memory snapshot；后续Memory改变不修改或cancel已接收任务。
+
+question+Memory+JSON wrapper/escaping共同进入原chat.balanced预算：3000 UTF-16单位及5632 UTF-8字节保守输入上限，system<=512字节。
+即使1条也可能超限；4条短内容可以通过。超限400 INVALID_REQUEST，须减少selection或缩短内容，不truncate/drop/summarize/扩大预算。
+Memory作为untrusted user-authored reference data放在JSON user input，不进入system。结构和policy边界降低instruction confusion，不保证prompt injection免疫或事实正确。
+
+每轮terminal、Clear、Action切换、窗口close/cleanup/exit清除selection；admission失败可保留，stale锁定submit至重新选择。
+已接收任务的通信失败也清除selection。问题/回答/selection/snapshot/prompt/provider payload不持久化，无正文日志，Task短期存内存且重启消失。
+Browser仍Translate-only，不能调用Memory Ask。没有自动Memory检索/选择/注入/保存/提取，没有Conversation或RAG。
+
+报告：[M3C-1 Report](docs/milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md)；决策：[ADR-005](docs/ADR/ADR-005-explicit-memory-context.md)。
+真实验收要求既有本机Ollama与配置模型可用、8765空闲；使用隔离synthetic Memory与临时凭据，不访问用户Memory/WinCred：
+
+```powershell
+.\mvnw.cmd package -DskipTests
+python scripts/desktop-memory-ask-smoke.py
+```
+
+## Milestone 状态（历史记录）
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**。
 
