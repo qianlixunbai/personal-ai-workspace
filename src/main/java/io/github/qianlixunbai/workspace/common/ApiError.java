@@ -14,6 +14,12 @@ public record ApiError(ErrorCode code, String message, String phase) {
             case INTERNAL_ERROR -> "Runtime could not complete the request.";
             case UNAUTHORIZED -> "Local client authentication is required.";
             case TASK_NOT_FOUND -> "Task does not exist or has expired.";
+            case MEMORY_NOT_FOUND -> "Memory item does not exist.";
+            case MEMORY_REVISION_CONFLICT -> "Memory revision has changed. Read the item again.";
+            case MEMORY_LIMIT_EXCEEDED -> "Memory capacity or size limit exceeded.";
+            case MEMORY_INVALID -> "Memory request is invalid.";
+            case MEMORY_STORAGE_UNAVAILABLE -> "Memory storage is unavailable.";
+            case MEMORY_SCHEMA_UNSUPPORTED -> "Memory schema version is unsupported.";
         };
         return new ApiError(code, message, phase);
     }

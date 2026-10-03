@@ -43,6 +43,8 @@ def encodings(value):
 
 needles = [encoded for value in secrets if value for encoded in encodings(value)]
 private_bodies = payload.get('logBodies', []) + [
+    'memory-title-private-marker', 'memory-content-private-marker', 'memory-query-private-marker',
+    'synthetic-corrupt-private-bytes', 'private SQL failure',
     'batch-input-private-marker', 'batch-output-private-marker', 'settings-output-private-marker',
     'unexpected-private-marker', 'duplicate-key-private-marker', 'input-private-marker',
     'output-private-marker', 'malformed-private-marker', 'raw-error-private-marker']

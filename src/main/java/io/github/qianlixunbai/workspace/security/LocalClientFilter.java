@@ -82,7 +82,7 @@ final class LocalClientFilter extends OncePerRequestFilter {
         }
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
-        if (request.getMethod().equals("POST")) {
+        if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
             byte[] body = request.getInputStream().readNBytes(32769);
             if (body.length > 32768) { reject(response, 413, ErrorCode.INVALID_REQUEST); return; }
             request = new BufferedRequest(request, body);

@@ -1,8 +1,40 @@
-# Current Architecture — M2 Browser Convergence
+# Current Architecture — M3A Memory Storage Foundation
+
+**M3 overall：IN PROGRESS；M3A：CLOSED — GO（implementation acceptance；等待 Closing Review）**。
+
+M3A 增加独立 Runtime-owned Memory：native bearer → MemoryController → MemoryStore → private `memory.db`。
+SQLite `memory_items` 为 source of truth，`PRAGMA user_version=1`；FTS5 case-sensitive trigram 为可重建 derived index。
+仅显式 MANUAL 保存 PREFERENCE / PROJECT_NOTE，ACTIVE / ARCHIVED lifecycle，UUID、revision 和 timestamps。
+Update/archive/restore/delete 要求 expectedRevision，write transaction 在 BEGIN IMMEDIATE 后检查 revision/capacity。
+触发器在相同事务更新 FTS；单 JDBC connection 串行化本 Runtime 请求，SQLite 处理其他实例竞争。
+`foreign_keys=ON`、`busy_timeout=3000ms`、`journal_mode=DELETE`；busy/失败为受控 storage error，绝不重置损坏/未知 schema。
+支持空 v0 → v1 的事务初始化；启动及 native rebuild 从 source 重建 FTS，不修改 source/revision。
+
+List/search 默认 ACTIVE，可指定 ARCHIVED/type；literal case-sensitive title/content substring：
+>=3 Unicode code points 用 escaped FTS phrase，短查询 parameterized instr；稳定 updated_at DESC/id ASC，page 从 0 起，limit 默认20/最大100。
+限制集中：total1000、title160 code points、content2000 UTF-16 units AND8KiB UTF-8 bytes。
+正文保留原始空白/换行；空白/NUL/非法 Unicode 拒绝，大小超限拒绝，不 truncate/evict。
+
+`workspace.data-directory` 默认 `${user.home}/.personal-ai-workspace/data`，独立于项目、build/logs 和 auth registry/token。
+启动验证账户归属与私有权限，Windows current-account-only inheritable ACL / POSIX 0700 directory、0600 DB file。
+SQLite DB 和任何 WAL/SHM/journal 都属于敏感个人数据边界。
+**SQLite currently stores local plaintext data protected by OS account/filesystem boundary；ACL 不是数据库加密。**
+Same-account process / administrator 不在此隔离保证内；delete 不保证 forensic erasure。
+
+API `/api/v1/memory/items` CRUD/lifecycle/pagination/search 与 `/api/v1/memory/index/rebuild` 只允许 native。
+现有 Browser Translate-only allowlist 不扩展，Memory 所有 method/Origin-less GET/preflight 均拒绝。
+LocalClientFilter 将现有32KiB body保护扩展到 POST/PUT/PATCH/DELETE；Memory errors 不带正文/query/path/SQL/cause。
+无 raw Memory 日志；诊断 toString 只含 metadata。Memory 不接入 Provider/TaskManager 或普通 Ask。
+Desktop Memory UI/Memory Ask/export/restore 尚未实现；不涉及 Finance、Conversation、RAG、automatic extraction。
+
+M3A 起始稳定 main `1f987402533bf108aa18f0eed4e90de6973c7060`；基线37Java/62Desktop，最终46Java/62Desktop PASS；
+真实 packaged Runtime restart smoke PASS。见 [M3A Report](../milestones/M3A-MEMORY-STORAGE-REPORT.md)、[ADR-004](../ADR/ADR-004-user-controlled-memory-storage.md)。
+
+以下 M0/M1/M2 内容保留既有 AI/Browser 架构和历史证据。
 
 **M2 — Browser Convergence：CLOSED — GO**。Browser Translator v0.5.0 — GO / M2B-2B — CLOSED — GO。
 
-最终发布基线（本次 docs-only closing 前）：
+M2 closing 历史发布基线（当时 docs-only closing 前）：
 
 - Personal AI Workspace：`ad6e8995cf482517be11602c795b1d6331b68e4b`。
 - Local AI Assistant：`b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0`。
@@ -226,7 +258,8 @@ BrowserClients 提供 native-authorized 3 分钟 single-use pairing、SHA-256 ve
 Preflight 仅对精确允许 Origin/route/method/headers 回应，实际执行仍认证。普通网页/unknown extension 不允许。
 Browser 只授予 Translate；所有 task 由 admission 的 clientId 绑定 owner，查询/取消均检查，跨 owner 等同不存在。
 Native 与 browser 不互读 task。Windows token/credential target 不变，无需重新导入。
-仅 auth/security metadata 持久化；session/task 不跨 restart，已配对 credential/revoke 跨 restart。
+auth/security metadata 独立持久化；session/task 不跨 restart，已配对 credential/revoke 跨 restart。
+M3A 另在独立私有 data directory 持久化用户显式保存的 Memory；不进入 token/credential registry。
 
 ### M2B-2B-R1 authentication admission
 
@@ -261,5 +294,5 @@ Finance PostgreSQL 长期仍由 Finance 独占；未来仅能通过 authenticate
 Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区，不据此进行集成。
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
-未建立 Memory、RAG、tool calling、完整 React/WebView2 Workspace 或其他未来空框架。
-下一维护步骤仅记录 **Post-M2 Test Suite Simplification / Minimal High-Value Testing**；本次不删除测试或开始 M3。
+M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
+Post-M2 Test Suite Simplification 已 CLOSED — GO；当前等待 M3A Closing Review，不开始 Desktop Memory UI 或 Memory Ask。

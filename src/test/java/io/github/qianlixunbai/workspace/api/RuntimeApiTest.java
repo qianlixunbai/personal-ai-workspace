@@ -36,6 +36,11 @@ import static org.junit.jupiter.api.Assertions.*;
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class RuntimeApiTest {
     private static final Path TOKEN = Path.of("target/api-test-auth", java.util.UUID.randomUUID().toString(), "client-token");
+    private static final Path MEMORY = temporaryMemoryDirectory();
+    private static Path temporaryMemoryDirectory() {
+        try { return Files.createTempDirectory("workspace-api-memory-"); }
+        catch (java.io.IOException failure) { throw new ExceptionInInitializerError(failure); }
+    }
     private static final AtomicInteger MODE = new AtomicInteger();
     private static final AtomicInteger CHAT_CALLS = new AtomicInteger();
     private static final AtomicReference<String> BATCH_OUTPUT = new AtomicReference<>();
@@ -108,6 +113,7 @@ class RuntimeApiTest {
     }
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
         registry.add("workspace.security.token-file", () -> TOKEN.toString());
+        registry.add("workspace.data-directory", () -> MEMORY.toString());
         registry.add("workspace.ollama.base-url", () -> "http://127.0.0.1:" + MOCK_PORT);
         registry.add("workspace.ollama.health-timeout", () -> "200ms");
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
@@ -117,6 +123,78 @@ class RuntimeApiTest {
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.config.RuntimeProperties settings;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
     private final JsonMapper json = JsonMapper.builder().build();
+
+    @Test void nativeMemoryCrudContractAndPrivateErrors() throws Exception {
+        String title = "memory-title-private-marker", content = "memory-content-private-marker 中文项目";
+        privateValues.add(title); privateValues.add(content); privateValues.add("memory-query-private-marker");
+        String endpoint = "/api/v1/memory/items";
+        String body = json.writeValueAsString(Map.of("type", "PROJECT_NOTE", "title", title, "content", content));
+        var accepted = send("POST", endpoint, body, true);
+        assertEquals(201, accepted.statusCode());
+        JsonNode item = tree(accepted); String path = endpoint + "/" + item.path("id").asString();
+        assertEquals(path, accepted.headers().firstValue("Location").orElseThrow());
+        assertEquals("no-store", accepted.headers().firstValue("Cache-Control").orElseThrow());
+        assertEquals(1, item.path("revision").asLong());
+        assertEquals("MANUAL", item.path("source").asString());
+        assertEquals(content, tree(send("GET", path, null, true)).path("content").asString());
+        assertEquals(1, tree(send("GET", endpoint + "?query=" + URLEncoder.encode("中文项", StandardCharsets.UTF_8), null, true)).path("total").asLong());
+        assertEquals(20, tree(send("GET", endpoint, null, true)).path("limit").asInt());
+        assertEquals(0, tree(send("GET", endpoint + "?query=memory-query-private-marker", null, true)).path("total").asLong());
+        String update = json.writeValueAsString(Map.of("expectedRevision",1,"type","PREFERENCE","title",title,"content",content));
+        assertEquals(2, tree(send("PUT", path, update, true)).path("revision").asLong());
+        for (String[] command : List.of(new String[]{"PUT",path,update},new String[]{"POST",path+"/archive","{\"expectedRevision\":1}"},
+                new String[]{"DELETE",path,"{\"expectedRevision\":1}"})) {
+            var response = send(command[0],command[1],command[2],true);
+            assertEquals(409,response.statusCode()); assertEquals("MEMORY_REVISION_CONFLICT",tree(response).path("code").asString());
+            assertFalse(response.body().contains(title)); assertFalse(response.body().contains(content));
+            assertFalse(response.body().contains("memory.db"));
+        }
+        assertEquals(3,tree(send("POST",path+"/archive","{\"expectedRevision\":2}",true)).path("revision").asLong());
+        assertEquals(0,tree(send("GET",endpoint,null,true)).path("total").asLong());
+        assertEquals(1,tree(send("GET",endpoint+"?status=ARCHIVED&type=PREFERENCE",null,true)).path("total").asLong());
+        assertEquals(204,send("POST","/api/v1/memory/index/rebuild",null,true).statusCode());
+        assertEquals(4,tree(send("POST",path+"/restore","{\"expectedRevision\":3}",true)).path("revision").asLong());
+        assertEquals(204,send("DELETE",path,"{\"expectedRevision\":4}",true).statusCode());
+        assertEquals(404,send("GET",path,null,true).statusCode());
+        for (String bad : List.of("{}", "null", "{broken", body.replace("PROJECT_NOTE","FINANCE"),body.replace("}",",\"source\":\"AUTO\"}"),
+                body.replace("}",",\"history\":[]}"))) {
+            var response=send("POST",endpoint,bad,true);
+            assertEquals(400,response.statusCode()); assertFalse(response.body().contains(title));
+        }
+        assertEquals(400,send("PUT",path,json.writeValueAsString(Map.of("type","PREFERENCE","title",title,"content",content)),true).statusCode());
+        assertEquals(400,send("GET",endpoint+"?limit=101",null,true).statusCode());
+        assertEquals(400,send("GET",endpoint+"?status=DELETED",null,true).statusCode());
+        assertEquals(0,CHAT_CALLS.get()); // Memory is independent of AI execution.
+    }
+
+    @Test void memoryAuthorizationAndEveryMutationBodyAreBounded() throws Exception {
+        var client = pairBrowser("chrome-extension://" + "c".repeat(32));
+        String root="/api/v1/memory", collection=root+"/items", item=collection+"/00000000-0000-0000-0000-000000000000";
+        List<String[]> routes=List.of(new String[]{"GET",collection},new String[]{"GET",item},new String[]{"POST",collection},
+                new String[]{"PUT",item},new String[]{"PATCH",item},new String[]{"POST",item+"/archive"},
+                new String[]{"POST",item+"/restore"},new String[]{"DELETE",item},new String[]{"POST",root+"/index/rebuild"});
+        for (String[] route : routes) {
+            String body=route[0].equals("GET") ? null : "{}";
+            assertEquals(401,send(route[0],route[1],body,false).statusCode());
+            assertEquals(403,browser(route[0],route[1],body,client.credential(),client.origin()).statusCode());
+            assertTrue(List.of(401,403).contains(browser(route[0],route[1],body,client.credential(),null).statusCode()));
+            var web=http.send(HttpRequest.newBuilder(uri(route[1])).header("Origin","https://untrusted.example")
+                    .header("Authorization","Bearer "+token()).method(route[0],HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString());
+            assertEquals(401,web.statusCode());
+            var preflight=http.send(browserRequest(route[1],client.origin()).header("Access-Control-Request-Method",route[0])
+                    .method("OPTIONS",HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString());
+            assertEquals(401,preflight.statusCode());
+            assertTrue(preflight.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+            if (!route[0].equals("GET")) {
+                // Unknown-length streaming body: check actual bytes rather than trust Content-Length.
+                var oversized=HttpRequest.newBuilder(uri(route[1])).header("Authorization","Bearer "+token())
+                        .header("Content-Type","application/json").method(route[0],HttpRequest.BodyPublishers.ofInputStream(
+                                () -> new java.io.ByteArrayInputStream("x".repeat(32769).getBytes(StandardCharsets.UTF_8)))).build();
+                assertEquals(413,http.send(oversized,HttpResponse.BodyHandlers.ofString()).statusCode());
+            }
+        }
+        assertEquals(0,CHAT_CALLS.get());
+    }
 
     @Test void runtimeHealthRemainsIndependentOfOfflineProvider() throws Exception {
         // The fixture remains unbound: this exercises connection refusal and offline startup.

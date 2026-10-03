@@ -15,10 +15,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(WorkspaceException.class)
     ResponseEntity<ApiError> controlled(WorkspaceException failure) {
         HttpStatus status = switch (failure.error().code()) {
-            case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
+            case INVALID_REQUEST, MEMORY_INVALID -> HttpStatus.BAD_REQUEST;
             case UNAUTHORIZED -> HttpStatus.UNAUTHORIZED;
             case POLICY_DENIED -> HttpStatus.FORBIDDEN;
-            case TASK_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case TASK_NOT_FOUND, MEMORY_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case MEMORY_REVISION_CONFLICT, MEMORY_LIMIT_EXCEEDED -> HttpStatus.CONFLICT;
+            case MEMORY_STORAGE_UNAVAILABLE, MEMORY_SCHEMA_UNSUPPORTED -> HttpStatus.SERVICE_UNAVAILABLE;
             case QUEUE_FULL -> HttpStatus.TOO_MANY_REQUESTS;
             case PROVIDER_UNAVAILABLE, MODEL_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             case TASK_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;

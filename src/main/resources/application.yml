@@ -34,6 +34,7 @@ management:
         liveness:
           include: livenessState
 workspace:
+  data-directory: ${user.home}/.personal-ai-workspace/data
   security:
     token-file: .runtime/client-token
   ollama:

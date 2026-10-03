@@ -1,20 +1,63 @@
 # Personal AI Workspace
 
 独立、local-first 的共享 AI Runtime。**M2 — Browser Convergence：CLOSED — GO**。
+**M3 — User-Controlled Memory Foundation：IN PROGRESS；M3A — Memory Storage Foundation：CLOSED — GO（等待 Closing Review）**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
 
 Windows Assistant 与 Browser Extension 已收敛到同一 authenticated Personal AI Runtime。
 Windows Native 拥有 Translate / Summarize / Ask；Browser Translator v0.5.0 仅拥有 Translate（含 Batch Translate）。
 Provider Policy、prompt、model profile、generation config 与 AI execution 均由 Runtime 管理，最终使用本机 Ollama。
 
-最终发布基线（本次 docs-only closing 前）：
+M2 closing 历史发布基线（当时 docs-only closing 前）：
 
 - Personal AI Workspace：`ad6e8995cf482517be11602c795b1d6331b68e4b`。
 - Local AI Assistant：`b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0`；**Browser Translator v0.5.0 — GO / M2B-2B — CLOSED — GO**。
 
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
-本次只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
-下一步：**Post-M2 Test Suite Simplification**，目标 **Minimal High-Value Testing**。
+M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
+Post-M2 Test Suite Simplification 已 CLOSED — GO；当前下一步是 M3A Closing Review。
+
+## M3A — Native Memory API
+
+Runtime 已有独立 SQLite Memory persistence；Desktop Memory UI、Memory Ask、export/restore 未实现。
+普通 Translate / Summarize / Ask 保持原契约，Ask 仍 single-turn / no history / no memory / no tools。
+验收：[M3A Report](docs/milestones/M3A-MEMORY-STORAGE-REPORT.md)；决策：[ADR-004](docs/ADR/ADR-004-user-controlled-memory-storage.md)。
+
+配置 `workspace.data-directory`（环境变量 `WORKSPACE_DATA_DIRECTORY`），默认 `${user.home}/.personal-ai-workspace/data`。
+目录必须专用于个人数据，位于项目、build/logs、token/Browser credential registry 之外；Runtime 启动时收紧并验证账户私有权限。
+`memory.db` 和 SQLite 的任何 WAL/SHM/journal 均为敏感个人数据。
+**SQLite currently stores local plaintext data protected by OS account/filesystem boundary.** Owner-only ACL 不是加密。
+
+所有 Memory 路由只接受 native bearer，无 web Origin；Browser credential/Memory preflight 一律拒绝。
+原 body cap 32KiB 同时保护 POST/PUT/PATCH/DELETE。显式保存只接受 MANUAL source、PREFERENCE / PROJECT_NOTE type。
+
+| API | JSON body / query |
+| --- | --- |
+| POST `/api/v1/memory/items` | `{ "type": "PROJECT_NOTE", "title": "Synthetic note", "content": "Synthetic text" }`；201 + item/Location |
+| GET `/api/v1/memory/items/{id}` | 单条读取 |
+| GET `/api/v1/memory/items` | `status=ACTIVE`（默认）、`type`、`query`、`page=0`、`limit=20`（max100）；items/total/page/limit |
+| PUT `/api/v1/memory/items/{id}` | `{ "expectedRevision": 1, "type": "PROJECT_NOTE", "title": "Updated note", "content": "Updated text" }` |
+| POST `/api/v1/memory/items/{id}/archive` | `{ "expectedRevision": 2 }` |
+| POST `/api/v1/memory/items/{id}/restore` | `{ "expectedRevision": 3 }` |
+| DELETE `/api/v1/memory/items/{id}` | `{ "expectedRevision": 4 }`；204 |
+| POST `/api/v1/memory/index/rebuild` | 无需正文；204，source records/revisions 不变 |
+
+修改/归档/恢复每次 revision+1（重复 lifecycle command 也增加），过期 revision →409 MEMORY_REVISION_CONFLICT；
+不存在→404 MEMORY_NOT_FOUND；容量/大小超限→409 MEMORY_LIMIT_EXCEEDED；非法值→400 MEMORY_INVALID；
+storage/schema不可用→503受控 Memory code。JSON/binding错误保留 INVALID_REQUEST。
+总 ACTIVE+ARCHIVED1000，title160 code points，content2000 UTF-16 units AND8KiB UTF-8 bytes；不截断/淘汰。
+title/content 去空白检查非空，但保存原始正文/换行。搜索 query<=160 code points，literal case-sensitive substring；
+>=3 code points 用FTS5 trigram，短查询instr。归档仅通过 `status=ARCHIVED` 返回；稳定排序 updatedAt DESC/id ASC。
+删除后新请求不可查询/搜索到；不承诺 forensic erasure 或 revision history。
+
+真实 packaged restart smoke 不需要 Ollama，自动使用隔离临时 Memory/auth 目录和合成文本：
+
+```powershell
+.\mvnw.cmd clean test package
+python scripts/memory-storage-smoke.py
+```
+
+当前 Java46 / Desktop62 PASS；真实重启CRUD/search/rebuild/privacy smoke PASS。M3整体仍未完成。
 
 ## Milestone 状态
 
@@ -285,7 +328,8 @@ Pairing 3 分钟、一次性；最多 8 sessions、每 session 5 次错误 proof
 最多 32 个注册。已配对 credential 跨 Runtime restart 有效；未完成 pairing 在 restart 后失效。
 `browser-clients.json` 与 token 同属专用私有目录；只存安全 metadata 和 SHA-256 verifier，64 KiB 上限，
 private permissions、exclusive writer lock、atomic replacement、corruption fail closed。
-不删除损坏 registry 来静默重置；无 Memory/正文持久化。Revoke 不取消先前已接受的 task。
+不删除损坏 registry 来静默重置；该 registry 不存 Memory/正文，M3A Memory 在独立私有 data directory 中持久化。
+Revoke 不取消先前已接受的 task。
 
 Browser v0.5.0 从可信 worker context 访问 Runtime；storage 在任何读写前限制为 `TRUSTED_CONTEXTS`，
 credential 不进入 content script / webpage / DOM / log。Extension local forget 仅删除副本；server revoke 由 Windows trusted native action 执行。

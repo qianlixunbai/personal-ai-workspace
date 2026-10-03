@@ -37,6 +37,10 @@ build/
 .verification/
 .env
 *.log
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 *.zip
 
 # Windows Desktop build and local verification outputs
