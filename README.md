@@ -1,8 +1,16 @@
 # Personal AI Workspace
 
 独立、local-first 的共享 AI Runtime。**M2 — Browser Convergence：CLOSED — GO**。
-**M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO；M3C-2：GO（本地交付，等待 Closing Review）**。
+**M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
+**M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
+
+Published main: `c4e6c669088bed437e10af3db4c11e508714a911`（final closing commit）。
+Implementation: `9d04b4a0c139ff2ccb9126f89ff8e96061eb46ad`。
+main 已 fast-forward / pushed，feature branch 已 pushed；publication 完成时 working tree clean；no tag/release。
+Java **63 PASS** / Desktop **106 PASS**；Real Recovery **PASS**；M3 Integrated Acceptance **PASS**。
+No GitHub Actions CI configured. workflows = 0；published main SHA runs = 0。
+Finance Reality Sync remains a separate prerequisite.
 
 Windows Assistant 与 Browser Extension 已收敛到同一 authenticated Personal AI Runtime。
 Windows Native 拥有 Translate / Summarize / Ask；Browser Translator v0.5.0 仅拥有 Translate（含 Batch Translate）。
@@ -15,7 +23,7 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
-Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 记录本轮综合验收与边界。未 merge/push/tag/release。
+Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 保留形成当时的综合验收、边界与 Git 状态；当前 M3 publication 已完成。
 
 ## M3A — Native Memory API
 

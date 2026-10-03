@@ -1,6 +1,14 @@
 # Current Architecture — M3 User-Controlled Memory Foundation
 
-**M3 overall / M3A / M3B / M3C-1：CLOSED — GO；M3C-2：GO（本地交付，等待 Closing Review）**。
+**M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
+**M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
+
+Published main: `c4e6c669088bed437e10af3db4c11e508714a911`（final closing commit）。
+Implementation: `9d04b4a0c139ff2ccb9126f89ff8e96061eb46ad`。
+main 已 fast-forward / pushed，feature branch 已 pushed；publication 完成时 working tree clean；no tag/release。
+Java **63 PASS** / Desktop **106 PASS**；Real Recovery **PASS**；M3 Integrated Acceptance **PASS**。
+No GitHub Actions CI configured. workflows = 0；published main SHA runs = 0。
+Finance Reality Sync remains a separate prerequisite.
 
 M3C-2 maintenance：MemoryWindow → MemoryBackupWindow → explicit native file choices → Runtime-owned logical export/validation/restore。
 `memory_items` 唯一truth；UTF-8 format `personal-ai-workspace.memory-backup`，formatVersion1 / schemaVersion1独立版本。
@@ -345,4 +353,4 @@ Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区�
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
-Post-M2 Test Suite Simplification / M3已CLOSED — GO；M3C-2与整体closing等待Closing Review。Finance frozen，不开始Conversation/RAG。
+Post-M2 Test Suite Simplification / M3C-2 / M3已CLOSED — GO；M3 publication 已完成。Finance frozen，M4未开始。
