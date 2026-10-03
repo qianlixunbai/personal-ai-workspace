@@ -9,3 +9,4 @@
 | [ADR-003](ADR-003-browser-client-security.md) | Accepted | Browser explicit pairing、独立凭据、精确 Origin、Translate-only 与 task ownership；演进 single trust domain |
 | [ADR-004](ADR-004-user-controlled-memory-storage.md) | Accepted | Runtime-owned explicit Memory、SQLite truth、derived FTS、revision、native-only、plaintext + OS boundary |
 | [ADR-005](ADR-005-explicit-memory-context.md) | Accepted | Per-turn explicit context、ACTIVE exact-revision admission snapshot、combined budget、ordinary Ask isolation |
+| [ADR-006](ADR-006-logical-memory-backup-restore.md) | Accepted | Versioned logical source backup、canonical digest、plaintext、new/empty target、fresh schema/FTS rebuild、no active DB replacement |

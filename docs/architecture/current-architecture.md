@@ -1,7 +1,25 @@
-# Current Architecture — M3C-1 Explicit Memory Ask
+# Current Architecture — M3 User-Controlled Memory Foundation
 
-**M3 overall：IN PROGRESS；M3A：CLOSED — GO；M3B：CLOSED — GO（implementation acceptance；等待 Closing Review）**。
-**M3C-1：IMPLEMENTED — GO；等待 Closing Review**。
+**M3 overall / M3A / M3B / M3C-1：CLOSED — GO；M3C-2：GO（本地交付，等待 Closing Review）**。
+
+M3C-2 maintenance：MemoryWindow → MemoryBackupWindow → explicit native file choices → Runtime-owned logical export/validation/restore。
+`memory_items` 唯一truth；UTF-8 format `personal-ai-workspace.memory-backup`，formatVersion1 / schemaVersion1独立版本。
+export单read transaction获取ACTIVE+ARCHIVED、id ASC；metadata+九个source fields，required canonical SHA-256；不含FTS/auth/task/AI/Ask历史。
+digest按排序source和metadata的length-prefixed UTF-8 binary serialization定义，不依赖JSONorder/whitespace/escaping；非签名/加密。
+restore只允许new/empty绝对路径，parent已存在，位于current data、项目/build/logs/auth之外，无links/reparse points。
+private task-owned sibling staging → fresh schema v1 → transactional original-field reconstruction → FTS rebuild →
+source equality / source-index consistency / every-row search / FTS integrity / schema / quick_check → commit / connection close → no-replace publication。
+new target目录rename；已有空target保留目录、同FileStore no-replace发布完整DB；不删除用户目录，不merge/hot replace或切换active store。
+这是真实Windows local filesystem下的完整DB发布策略，不声称通用atomic directory replace或power-loss metadata durability。
+Desktop负责文件IO、原生overwrite prompt、cancel/late-response隔离及明确plaintext/保护个人文件提示；不读SQLite。
+GET `/api/v1/memory/backup`和POST `/api/v1/memory/backup/restore`只允许native；Browser routes/capabilities/CORS保留。
+document/file14,948,096bytes、restore envelope15,013,632bytes且nested backup原始字节单独限额。
+只有exact native restore body / successful export response用大预算；普通32KiB body / 1MiB Desktop response和error预算保留。
+unknown/malformed/duplicate/version/digest拒绝全部；不输出正文/path/SQL/rawcause；restore不影响current DB。
+真实synthetic Windows Save/restart/Manage/explicit realOllama Ask/Export/new-or-empty recovery/newRuntime/Manage/Ask/cleanup PASS。
+最终Java63/Desktop106 PASS；[M3C-2 Report](../milestones/M3C-2-MEMORY-EXPORT-RESTORE-REPORT.md)、[M3 Closing](../milestones/M3-CLOSING-REPORT.md)、[ADR-006](../ADR/ADR-006-logical-memory-backup-restore.md)。
+
+以下保留已采用的 M3A/M3B/M3C-1 架构细节与各 gate 历史验收计数。
 
 显式上下文路径：Ask AI → Use Memory… → 独立只读 MemorySelectionWindow → native-only `/api/v1/memory/ask/tasks`。
 用户逐条 GET 完整预览后 Add（最多4条ACTIVE），Use selected 返回 immutable ID/revision/title/type；Cancel 保留原Ask selection。
@@ -16,7 +34,7 @@ combined JSON input（含wrapper/escaping）完整进入TextTaskSubmission统一
 普通AskRequest(question,profile)/ask-v1/input原样保留，无Memory lookup；Desktop提交和GET/DELETE按调用路径严格匹配expected prompt version。
 selection仅当前一次Ask；terminal、Action change、Clear、close/cleanup/exit清除；pre-admission失败可保留，stale须review，accepted后通信失败清除。
 问题/回答/selection/snapshot/serialized prompt/provider payload没有新增persistence或raw日志；短期task重启消失。
-BrowserClients/LocalClientFilter/CORS allowlists均未修改，Browser继续Translate-only，Memory Ask拒绝所有Browser入口。
+BrowserClients / Browser routes/capabilities/CORS allowlists保留；LocalClientFilter在M3C-2仅增加exact native restore body预算，Browser继续Translate-only。
 Java54/Desktop94 PASS，真实Windows WPF→HTTP→SQLite→TaskManager→real Ollama PASS；[M3C-1 Report](../milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md)、[ADR-005](../ADR/ADR-005-explicit-memory-context.md)。
 
 M3A 增加独立 Runtime-owned Memory：native bearer → MemoryController → MemoryStore → private `memory.db`。
@@ -42,13 +60,13 @@ API `/api/v1/memory/items` CRUD/lifecycle/pagination/search 与 `/api/v1/memory/
 现有 Browser Translate-only allowlist 不扩展，Memory 所有 method/Origin-less GET/preflight 均拒绝。
 LocalClientFilter 将现有32KiB body保护扩展到 POST/PUT/PATCH/DELETE；Memory errors 不带正文/query/path/SQL/cause。
 无 raw Memory 日志；诊断 toString 只含安全 metadata或redacted。M3C-1显式Memory Ask使用admission snapshot进入Provider/TaskManager；普通Ask不读Memory。
-Desktop Memory管理及显式Memory Ask已完成；export/restore尚未实现；不涉及 Finance、Conversation、RAG、automatic extraction。
+Desktop Memory管理、显式Memory Ask及logical export/restore均已完成；不涉及Finance、Conversation、RAG、automatic extraction。
 
 M3B 路径：AssistantWindow 的 Memory… → 独立单实例 MemoryWindow modal → 共用 RuntimeClient native HTTP → M3A API。
 维持 code-behind 风格，只有小型 injectable confirmation boundary；无 WebView2/React/navigation/MVVM framework。
 Core contracts 的 ToString 只含 metadata。Memory endpoint-specific status/code 和字段 allowlists 不放宽 AI/security 验证；
 响应检查 UUID/type/status/source/revision/Unicode limits/ISO timestamps/page consistency/duplicates，拒绝未知字段与 raw error 回显。
-HTTP stack 仍固定127.0.0.1:8765、无proxy/redirect/cookies、8秒deadline、1MiB响应上限、native bearer，无Origin。
+HTTP stack仍固定127.0.0.1:8765、无proxy/redirect/cookies、8秒deadline、普通/error响应1MiB，export success独立预算、native bearer，无Origin。
 列表 metadata-only display，每页20；GET 选择条目，Search/Enter 显式查询，filters/new search 回到page0，空尾页安全回退。
 New/编辑不发 mutation；显式 Save 使用已加载 expectedRevision，成功只使用服务端 item。
 Archive/Restore 更新服务端 metadata 并保留未保存编辑；Delete 明确确认且不承诺 forensic erase。
@@ -327,4 +345,4 @@ Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区�
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
-Post-M2 Test Suite Simplification / M3A 已 CLOSED — GO；M3C-1验收通过，等待Closing Review；M3保持IN PROGRESS，不开始export/restore或Conversation/RAG。
+Post-M2 Test Suite Simplification / M3已CLOSED — GO；M3C-2与整体closing等待Closing Review。Finance frozen，不开始Conversation/RAG。

@@ -1,7 +1,7 @@
 # Personal AI Workspace
 
 独立、local-first 的共享 AI Runtime。**M2 — Browser Convergence：CLOSED — GO**。
-**M3 — User-Controlled Memory Foundation：IN PROGRESS；M3A — Memory Storage Foundation：CLOSED — GO；M3B — Desktop Memory Management：CLOSED — GO（验收通过，等待 Closing Review）**。
+**M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO；M3C-2：GO（本地交付，等待 Closing Review）**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
 
 Windows Assistant 与 Browser Extension 已收敛到同一 authenticated Personal AI Runtime。
@@ -15,11 +15,11 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
-Post-M2 Test Suite Simplification 已 CLOSED — GO；M3C-1 Explicit Memory Ask 已实现并通过验收，等待 Closing Review；M3 整体保持 IN PROGRESS。
+Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 记录本轮综合验收与边界。未 merge/push/tag/release。
 
 ## M3A — Native Memory API
 
-Runtime 已有独立 SQLite Memory persistence；Desktop 已支持显式 Memory 管理与 M3C-1 逐次选择 Memory Ask。export/restore 未实现。
+Runtime 已有独立 SQLite Memory persistence；Desktop 支持显式 Memory 管理、逐次选择 Memory Ask、versioned logical Export / Restore。
 普通 Translate / Summarize / Ask 保持原契约，Ask 仍 single-turn / no history / no memory / no tools。
 验收：[M3A Report](docs/milestones/M3A-MEMORY-STORAGE-REPORT.md)；决策：[ADR-004](docs/ADR/ADR-004-user-controlled-memory-storage.md)。
 
@@ -29,7 +29,7 @@ Runtime 已有独立 SQLite Memory persistence；Desktop 已支持显式 Memory 
 **SQLite currently stores local plaintext data protected by OS account/filesystem boundary.** Owner-only ACL 不是加密。
 
 所有 Memory 路由只接受 native bearer，无 web Origin；Browser credential/Memory preflight 一律拒绝。
-原 body cap 32KiB 同时保护 POST/PUT/PATCH/DELETE。显式保存只接受 MANUAL source、PREFERENCE / PROJECT_NOTE type。
+普通 body cap 32KiB 保护 POST/PUT/PATCH/DELETE；仅 native backup restore 有独立预算，见下文。显式保存只接受 MANUAL source、PREFERENCE / PROJECT_NOTE type。
 
 | API | JSON body / query |
 | --- | --- |
@@ -57,7 +57,7 @@ title/content 去空白检查非空，但保存原始正文/换行。搜索 quer
 python scripts/memory-storage-smoke.py
 ```
 
-当前 Java **54** / Desktop **94** PASS（保留原 Java46 / Desktop84）；M3C-1 真实 WPF/HTTP/SQLite/Ollama acceptance PASS。M3整体仍未完成。
+当前 Java **63** / Desktop **106** PASS（保留原 Java54 / Desktop94）；M3 最终真实 WPF/HTTP/SQLite/Ollama / logical recovery 综合验收 PASS。
 
 ## M3B — Desktop Memory Management
 
@@ -120,6 +120,62 @@ Browser仍Translate-only，不能调用Memory Ask。没有自动Memory检索/选
 .\mvnw.cmd package -DskipTests
 python scripts/desktop-memory-ask-smoke.py
 ```
+
+## M3C-2 — Logical Memory Export / Restore
+
+Memory… 管理窗口的 **Export / Restore…** 打开独立小型 maintenance modal。
+**Export Memory…** 显式打开 SaveFileDialog；它导出全部已保存 ACTIVE + ARCHIVED source records，
+不包含未保存编辑、索引、credentials、tasks、问题/回答/selection/prompt 或历史。
+覆盖文件由 OS overwrite prompt 确认；cancel 不导出，后台不自动备份。
+
+**Export contains your Memory text in plaintext. Protect this file like other personal documents.**
+本轮没有加密、密码或 secure archive；checksum 不是签名，修改者仍可重算 digest。
+
+**Restore Memory Backup…** 显式选择 backup 文件和新的/空的 data directory。
+Restore creates a NEW data directory. It does not merge or overwrite current Memory.
+目标须位于已有 parent 中、项目/build/logs/auth/current data 之外，不得含文件或 links/reparse points。
+验证整个 logical document 后，Runtime 在 task-owned sibling staging 中创建 fresh schema v1、事务插入
+原 source fields、重建 FTS、核对数据/索引/search/schema/quick_check，再发布完整 closed DB。
+新目标采用 no-replace directory rename；已有空目标保留目录，仅 no-replace 发布完整 DB。
+当前运行的数据库、IDs/revisions/status/timestamps 不被恢复操作修改；恢复不自动切换 Runtime。
+成功提示 **Start Runtime with the restored data directory to use it.**
+
+使用恢复后的目录时，先停止当前 Runtime，然后以实际选择的目录启动：
+
+```powershell
+java -jar target/personal-ai-workspace-0.1.0.jar "--workspace.data-directory=D:\PersonalData\restored-memory"
+```
+
+| Native-only API | Contract |
+| --- | --- |
+| GET `/api/v1/memory/backup` | source-only UTF-8 JSON；format `personal-ai-workspace.memory-backup`；formatVersion 1 / schemaVersion 1；required itemCount / contentDigest |
+| POST `/api/v1/memory/backup/restore` | 严格 envelope：`backup` logical document + `targetDirectory` native 选择的 absolute path；返回 versions/count/digest |
+
+每条保持 `id,type,title,content,status,revision,source,createdAt,updatedAt`，以 lowercase UUID 排序。
+时间须是 canonical UTC、精确毫秒；unknown fields / duplicate JSON keys / IDs / incompatible versions /
+invalid enums/revisions/times/source/text/Unicode/NUL / corrupt JSON / digest mismatch 整体拒绝。
+SHA-256 使用明确的 length-prefixed UTF-8 canonical binary serialization，不依赖 JSON escaping/order/whitespace。
+文档/文件上限 **14,948,096 bytes**；restore envelope **15,013,632 bytes**，且嵌套 backup 仍受文档上限约束。
+预算由 1000 items × 最坏 JSON escaped record bytes 推导。仅 export success response 扩大 Desktop cap；
+普通/error response 保留1MiB，普通API body保留32KiB。Browser / web Origin / missing auth / preflight 拒绝。
+
+稳定错误：400 `MEMORY_BACKUP_INVALID` / `MEMORY_BACKUP_UNSUPPORTED`；413 `MEMORY_BACKUP_TOO_LARGE`；
+409 `MEMORY_RESTORE_TARGET_NOT_EMPTY`；500 `MEMORY_EXPORT_FAILED` / `MEMORY_RESTORE_FAILED`。
+消息不含正文、文件路径、SQL 或 raw exception。关闭取消 local IO/HTTP并忽略late results；
+server 已接收的 restore 不能被撤回，通信结果不明确时检查所选目标后再显式重试。
+
+真实 Windows synthetic-only integrated acceptance（要求8765空闲、本机Ollama/configured model可用）：
+
+```powershell
+.\mvnw.cmd package -DskipTests
+python scripts/desktop-memory-backup-smoke.py
+```
+
+自动验收注入 native picker choices，并使用真实 WPF controls、file IO、HTTP、SQLite 和 Ollama。
+不访问用户 Memory/WinCred，不停止用户 Runtime；test-owned source/auth/backup/targets 全部清理。
+完整报告：[M3C-2 Report](docs/milestones/M3C-2-MEMORY-EXPORT-RESTORE-REPORT.md)；
+长期 contract / publication limitations：[ADR-006](docs/ADR/ADR-006-logical-memory-backup-restore.md)。
+Finance 保持冻结；Finance Reality Sync 仍是独立前置条件。
 
 ## Milestone 状态（历史记录）
 
