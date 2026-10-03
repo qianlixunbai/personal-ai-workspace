@@ -589,3 +589,36 @@ B11/B12仍是deferredlimitations，不新增“已修复”的corecase承诺；�
 - Browser 仍在 `main`，HEAD 仍为 `b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0`，working tree clean，tracked 文件无 diff。
 - 本报告的相对本地文件链接全部存在；Java6套件 invocation 总数30、Desktop7文件 expanded cases总数67、Browser29/70/5与独立13 static口径已核对。
 - Git tracked diff whitespace check 和本报告单文件 whitespace check 通过。没有创建 branch / commit / push，没有删除 ignored 历史工具或验收产物。
+
+## Implementation Batch 1 Result
+
+本节追加实现记录；以上原审计结论保持不变。删除前已核对下表的共享调用路径；没有替代证明的边界保留。
+
+| Removed / merged old case | Replacement path | Why same fault is still caught |
+| --- | --- | --- |
+| D2 pending POST cancel：Summarize / Ask ×2 | D1 `CancelWhilePostPendingWaitsForIdentityThenDeletesAcceptedTask`；D2 submit / polling identity | `AssistantOperation` 在取得 ID 后的 cancel 分支没有 action 分叉；同一 capability 变量同时用于 GET / DELETE，二者共用 `TaskRequest` / `ParseTask`。保留每能力请求与结果身份，完整 pending lifecycle 只证明一次。 |
+| D2 shared HTTP errors：401 / provider / model / queue，每能力各一组 | D1 `HttpErrorsAreCategorizedAndRawBodyTokenNeverEnterException`，改由 `AssistantOperation.RunAsync` 触发 POST | 与旧 case 同经 `RunAsync` → capability submit → `SubmitTaskAsync` → `SendAsync`；继续逐 code 验证 DesktopError、body/token redaction 与无 inner exception。 |
+| D2 offline ×2 | D1 `OfflineIsControlledAndCredentialMissingNeverSendsHttp`，offline 经 `RunAsync` | 同一个 `SendAsync` 的 HttpRequestException mapper；RunAsync 不得吞掉或改写错误。 |
+| D2 generic malformed JSON / CLOUD locality ×2 | D1 `MalformedUnknownDuplicateMismatchedAndOversizeResponsesFailClosed` | 同一 JSON / duplicate parser 与 `ParseTask` locality guard，无 action-specific 分支；D2 保留独有 identity / prompt / output 校验。 |
+| D2 empty prompt / 8193-byte result ×2 | D2 `CapabilityResponsesRejectInvalidIdentityPromptAndOutput` named rows | 原输入继续存在；另区分 Summarize 4096-byte 与 Ask 8192-byte 上限，覆盖 UTF8 预算及 wrong submit capability / profile。 |
+| D2 repeated QUEUED → RUNNING → SUCCEEDED progress ×2 | D1 `SubmitPollAndSuccessFollowM0ContractWithoutModelOrBodyInDiagnostics`；D2 `SubmissionAndPollingUseCapabilityRouteBodyAndResultIdentity` 与 wrong-capability polling | 共享 loop/progress 仍精确断言状态序列；每能力仍经过 RunAsync，验证 route/body/profile、成功轮询的 ID/status/result，polling 错身份不得展示。 |
+| D3 unauthorized HTTP row | D1 HTTP 401 row；D3 `FailedReplacementClearsPreviousProofAndRevokeOnlyRemovesConfirmedClient` | 401 在共享 `SendAsync` 中先于 security mapper 处理；pairing 实际 POST 401 仍验证旧 proof 清空、敏感值不进状态、控件恢复。其他 pairing-specific HTTP rows 全部保留。 |
+| D3 missing credential subcase | D1 credential-missing no-send；D3 native authenticated pairing contract | 同一 `authenticate=true` credential gate；缺失 credential 必须在进入 handler 前失败。D3 仍保留 pairing offline redaction 与 caller cancellation wiring。 |
+| D3 `InvalidPairingResponseFailsClosed` ×4 + `ProofShapeExpiryExtraFieldsAndResponseLimitsAreValidated` 的4个内部输入 | D3 `MalformedPairingResponsesFailClosed` named table | 原8个输入逐一保留并标名；补独立 malformed JSON、null root、wrong-type ID、invalid ID / duplicate key。invalid expiry 保留；expired proof 的显示边界仍由原 WPF expiry test 独立保护。 |
+| D3 English status fragments | 原 WPF tests 中的 hidden-proof、copy / create / revoke 状态、client retention/removal、safe nonempty status | 不绑定英语句子；失败不得残留 proof，敏感值不得进状态，failed revoke 保留 client，confirmed revoke 删除。 |
+
+**Result: GO.** 基线经 fetch 确认为 `main = origin/main = 6aa76b4f9c58bcbcec3c89d42f95aa595cff62f2`；起始唯一未跟踪文件是本报告。分支 `post-m2-test-simplification-1`，先独立提交原审计，再提交测试简化；不 merge / push，不启动 Batch 2 / M3。
+
+| Desktop suite | Methods before → after | Expanded cases before → after |
+| --- | --- | --- |
+| RuntimeClientTests | 9 → 10 | 18 → 20 |
+| AssistantCapabilitiesTests | 5 → 4 | 9 → 7 |
+| BrowserPairingTests | 13 → 12 | 27 → 22 |
+| Windows boundary (4 files) | 13 → 13 | 13 → 13 |
+| Total (7 files) | **40 → 39** | **67 → 62** |
+
+- Baseline **67 PASS / 0 failed / 0 skipped**，runner **941 ms**；after **62 PASS / 0 failed / 0 skipped**，runner **954 ms**。基线命令含 build，工具 wall time 2.776 s；after `--no-build --no-restore` 命令 wall time 2.224 s，含额外 TRX logger。执行方式不同且只有单次采样，不据此宣称提速。
+- 命名 pairing malformed table 将原5个 runner cases 合并为1个方法，实际输入 **8 → 14**，原8个不删；capability identity/prompt/output named table 每能力6行。收益是减少 generic matrix / cancel setup 重复、明确 caseName 与解除英语文案耦合，不是减少安全输入。
+- W-Core8 全保留：HTTP/accepted envelope errors 与 redaction；pending POST cancel；capability identity / budgets；health vendor MIME；native approval / safe list / DELETE 204；proof clear-before-await / replacement / close / late discard；failed revoke retention。五个指定 WPF UX 方法均在 TRX 中 PASS。新增确定性 client-timeout / IO mapper rows；未声称测试真实8秒 deadline。
+- W-Core7 的 `CredentialTests`、`HelperProcessTests`、`SelectionAndLifecycleTests`、`UiaTests` 与基线完全无 diff，13 cases 全 PASS；production / Core / Java / Browser 均未修改。反射属性安全断言及 pairing 专用403/500分支保留。
+- `dotnet restore`、`dotnet build --no-restore`（0 warning/error）、`dotnet test --no-build --no-restore --logger "console;verbosity=minimal"`（额外 TRX logger）、`git diff --check` 均 PASS。实现只改3个授权测试文件与本追加节；其他审计建议 DEFERRED，须另行授权。

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -81,8 +82,12 @@ public sealed class RuntimeClientTests
         var running = operation.RunAsync(new(AssistantAction.Translate, "x", "en"), _ => { }, CancellationToken.None);
         await admitted.Task;
         operation.RequestCancel();
+        Assert.False(running.IsCompleted);
+        Assert.Equal(0, deletes);
         release.SetResult();
-        Assert.Equal(TaskState.CANCELLED, (await running).Status);
+        var cancelled = await running;
+        Assert.Equal(TaskState.CANCELLED, cancelled.Status);
+        Assert.Equal(DesktopError.Cancelled, cancelled.Error);
         Assert.Equal(1, deletes);
     }
 
@@ -97,7 +102,8 @@ public sealed class RuntimeClientTests
     {
         using var client = new RuntimeClient(new Handler((_, _) => Task.FromResult(Response((HttpStatusCode)status,
             JsonSerializer.Serialize(new { code, message = "private-input-marker " + Token, phase = "HTTP" })))), () => Token);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => client.GetAsync(Id, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client)
+            .RunAsync(new(AssistantAction.Translate, "private-input-marker", "en"), _ => { }, CancellationToken.None));
         Assert.Equal(expected, error.Error);
         Assert.DoesNotContain("private-input-marker", error.ToString());
         Assert.DoesNotContain(Token, error.ToString());
@@ -124,12 +130,33 @@ public sealed class RuntimeClientTests
     public async Task OfflineIsControlledAndCredentialMissingNeverSendsHttp()
     {
         using var client = new RuntimeClient(new Handler((_, _) => throw new HttpRequestException("private-token-secret")), () => Token);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => client.GetAsync(Id, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client)
+            .RunAsync(new(AssistantAction.Translate, "x", "en"), _ => { }, CancellationToken.None));
         Assert.Equal(DesktopError.RuntimeUnavailable, error.Error);
         Assert.DoesNotContain("private-token-secret", error.ToString());
         using var unpaired = new RuntimeClient(new Handler((_, _) => throw new Xunit.Sdk.XunitException("Must not send")), () => null);
         Assert.Equal(DesktopError.CredentialMissing,
             (await Assert.ThrowsAsync<DesktopException>(() => unpaired.GetAsync(Id, CancellationToken.None))).Error);
+    }
+
+    [Theory]
+    [InlineData("client-timeout", DesktopError.ClientTimeout)]
+    [InlineData("io-failure", DesktopError.RuntimeUnavailable)]
+    public async Task ControlledTransportFailuresAreMappedWithoutRawDetails(string caseName, DesktopError expected)
+    {
+        Exception failure = caseName switch
+        {
+            "client-timeout" => new OperationCanceledException("private-transport-body " + Token),
+            "io-failure" => new IOException("private-transport-body " + Token),
+            _ => throw new ArgumentOutOfRangeException(nameof(caseName))
+        };
+        using var client = new RuntimeClient(new Handler((_, _) => Task.FromException<HttpResponseMessage>(failure)), () => Token);
+        var error = await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client)
+            .RunAsync(new(AssistantAction.Translate, "x", "en"), _ => { }, CancellationToken.None));
+        Assert.Equal(expected, error.Error);
+        Assert.DoesNotContain("private-transport-body", error.ToString());
+        Assert.DoesNotContain(Token, error.ToString());
+        Assert.Null(error.InnerException);
     }
 
     [Fact]

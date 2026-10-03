@@ -74,7 +74,6 @@ public sealed class BrowserPairingTests
     }
 
     [Theory]
-    [InlineData(401, "UNAUTHORIZED", "AUTH", DesktopError.Unauthorized)]
     [InlineData(400, "INVALID_REQUEST", "PAIRING", DesktopError.InvalidExtensionOrigin)]
     [InlineData(429, "QUEUE_FULL", "PAIRING", DesktopError.PairingCapacityFull)]
     [InlineData(500, "INTERNAL_ERROR", "SECURITY_STATE", DesktopError.SecurityStateError)]
@@ -92,40 +91,48 @@ public sealed class BrowserPairingTests
     }
 
     [Fact]
-    public async Task OfflineMissingCredentialAndCancellationRemainControlled()
+    public async Task PairingTransportFailureIsControlledAndCallerCancellationPropagates()
     {
         using var offline = new RuntimeClient(new Handler((_, _) => throw new HttpRequestException(Secret)), () => Token);
         var error = await Assert.ThrowsAsync<DesktopException>(() => offline.CreateBrowserPairingAsync(Origin, CancellationToken.None));
         Assert.Equal(DesktopError.RuntimeUnavailable, error.Error);
         Assert.DoesNotContain(Secret, error.ToString());
-        using var missing = new RuntimeClient(new Handler((_, _) => throw new Xunit.Sdk.XunitException("No credential")), () => null);
-        Assert.Equal(DesktopError.CredentialMissing, (await Assert.ThrowsAsync<DesktopException>(() => missing.CreateBrowserPairingAsync(Origin, CancellationToken.None))).Error);
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
         using var client = new RuntimeClient(new Handler((_, ct) => Task.FromCanceled<HttpResponseMessage>(ct)), () => Token);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CreateBrowserPairingAsync(Origin, cancelled.Token));
     }
 
-    [Theory]
-    [InlineData("{\"pairingId\":\"bad\",\"pairingSecret\":\"bad\",\"expiresAt\":\"bad\"}")]
-    [InlineData("{\"pairingId\":null}")]
-    [InlineData("{\"pairingId\":1,\"pairingId\":2}")]
-    [InlineData("<private-provider-body>")]
-    public async Task InvalidPairingResponseFailsClosed(string json)
-    {
-        using var client = Client(json);
-        Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.CreateBrowserPairingAsync(Origin, CancellationToken.None))).Error);
-    }
-
     [Fact]
-    public async Task ProofShapeExpiryExtraFieldsAndResponseLimitsAreValidated()
+    public async Task MalformedPairingResponsesFailClosed()
     {
-        foreach (string json in new[] { Pairing("bad"), JsonSerializer.Serialize(new { pairingId = Id, pairingSecret = Secret, expiresAt = "bad" }),
-            Pairing()[..^1] + ",\"credential\":\"should-never-be-displayed\"}", new string('x', 1024 * 1024 + 1) })
+        string valid = Pairing();
+        (string CaseName, string Json)[] malformed =
+        [
+            ("invalid-proof-fields", "{\"pairingId\":\"bad\",\"pairingSecret\":\"bad\",\"expiresAt\":\"bad\"}"),
+            ("incomplete-null-id", "{\"pairingId\":null}"),
+            ("duplicate-wrong-type-id", "{\"pairingId\":1,\"pairingId\":2}"),
+            ("non-json-body", "<private-provider-body>"),
+            ("malformed-json", "{broken"),
+            ("null-root", "null"),
+            ("null-proof-id", valid.Replace($"\"{Id:D}\"", "null")),
+            ("wrong-proof-id-type", valid.Replace($"\"{Id:D}\"", "1")),
+            ("invalid-proof-id", valid.Replace($"\"{Id:D}\"", "\"bad\"")),
+            ("duplicate-proof-id", valid.Replace("\"pairingId\":", $"\"pairingId\":\"{Id:D}\",\"pairingId\":")),
+            ("invalid-secret", Pairing("bad")),
+            ("invalid-expiry", JsonSerializer.Serialize(new { pairingId = Id, pairingSecret = Secret, expiresAt = "bad" })),
+            ("extra-secret-bearing-field", valid[..^1] + ",\"credential\":\"should-never-be-displayed\"}"),
+            ("oversized-response", new string('x', 1024 * 1024 + 1))
+        ];
+        foreach (var (caseName, json) in malformed)
         {
             using var client = Client(json);
-            Assert.Equal(DesktopError.InvalidResponse,
-                (await Assert.ThrowsAsync<DesktopException>(() => client.CreateBrowserPairingAsync(Origin, CancellationToken.None))).Error);
+            var error = await Record.ExceptionAsync(() => client.CreateBrowserPairingAsync(Origin, CancellationToken.None));
+            Assert.True(error is DesktopException { Error: DesktopError.InvalidResponse },
+                $"{caseName}: expected InvalidResponse; actual {error?.GetType().Name ?? "no exception"}.");
+            Assert.True(new[] { Secret, Token, "private-provider-body", "should-never-be-displayed" }
+                .All(marker => !error!.ToString().Contains(marker, StringComparison.Ordinal)),
+                $"{caseName}: error exposed sensitive response content.");
         }
     }
 
@@ -190,9 +197,8 @@ public sealed class BrowserPairingTests
             Assert.Equal(new string('b', 43), window.PairingSecretText.Text);
             Assert.Equal(2, calls);
             window.Close();
-            Assert.Empty(window.PairingSecretText.Text); Assert.Empty(window.PairingIdText.Text);
-            Assert.Empty(window.ExpiresAtText.Text); Assert.Empty(window.OriginText.Text);
-            Assert.False(window.CopySecretButton.IsEnabled);
+            AssertProofHidden(window);
+            Assert.Empty(window.OriginText.Text);
             await window.CreatePairingAsync();
             Assert.Equal(2, calls);
         });
@@ -216,8 +222,7 @@ public sealed class BrowserPairingTests
             Assert.True(requestToken.IsCancellationRequested);
             response.SetResult(Response(HttpStatusCode.OK, Pairing()));
             await pending;
-            Assert.Empty(window.PairingSecretText.Text);
-            Assert.Equal(Visibility.Collapsed, window.PairingDetails.Visibility);
+            AssertProofHidden(window);
         });
     }
 
@@ -240,16 +245,20 @@ public sealed class BrowserPairingTests
             await window.CreatePairingAsync();
             Assert.NotEmpty(window.PairingSecretText.Text);
             await window.CreatePairingAsync();
-            Assert.Empty(window.PairingSecretText.Text);
-            Assert.Contains("Unauthorized", window.PairingStatusText.Text);
+            AssertProofHidden(window);
+            AssertSafeStatus(window);
+            Assert.True(window.CreatePairingButton.IsEnabled);
             await window.RefreshClientsAsync();
             Assert.Single(window.ClientsList.Items.Cast<BrowserClientMetadata>());
             window.ClientsList.SelectedIndex = 0;
             await window.RevokeSelectedAsync();
             Assert.Single(window.ClientsList.Items.Cast<BrowserClientMetadata>());
-            Assert.Contains("Security state error", window.PairingStatusText.Text);
+            Assert.Equal(Id, ((BrowserClientMetadata)window.ClientsList.SelectedItem).ClientId);
+            Assert.True(window.RevokeClientButton.IsEnabled);
+            AssertSafeStatus(window);
             await window.RevokeSelectedAsync();
             Assert.Empty(window.ClientsList.Items);
+            Assert.False(window.RevokeClientButton.IsEnabled);
             window.Close();
         });
     }
@@ -270,13 +279,14 @@ public sealed class BrowserPairingTests
             window.OriginText.Text = Origin + "/";
             await window.CreatePairingAsync();
             Assert.Equal(0, calls);
-            Assert.Contains("Invalid extension origin", window.PairingStatusText.Text);
+            AssertProofHidden(window);
+            AssertSafeStatus(window);
+            Assert.True(window.CreatePairingButton.IsEnabled);
             window.OriginText.Text = Origin;
             await window.CreatePairingAsync();
             Assert.Equal(1, calls);
-            Assert.Empty(window.PairingSecretText.Text);
-            Assert.Equal(Visibility.Collapsed, window.PairingDetails.Visibility);
-            Assert.False(window.CopySecretButton.IsEnabled);
+            AssertProofHidden(window);
+            AssertSafeStatus(window);
             window.Close();
         });
     }
@@ -295,13 +305,30 @@ public sealed class BrowserPairingTests
             await window.CreatePairingAsync();
             Assert.Equal(Secret, window.PairingSecretText.Text);
             var pending = window.CreatePairingAsync();
-            Assert.Empty(window.PairingSecretText.Text);
-            Assert.False(window.CopySecretButton.IsEnabled);
+            AssertProofHidden(window);
+            Assert.False(window.CreatePairingButton.IsEnabled);
             response.SetResult(Response(HttpStatusCode.OK, Pairing(new string('r', 43))));
             await pending;
             Assert.Equal(new string('r', 43), window.PairingSecretText.Text);
             window.Close();
         });
+    }
+
+    private static void AssertProofHidden(BrowserPairingWindow window)
+    {
+        Assert.Empty(window.PairingSecretText.Text);
+        Assert.Empty(window.PairingIdText.Text);
+        Assert.Empty(window.ExpiresAtText.Text);
+        Assert.Equal(Visibility.Collapsed, window.PairingDetails.Visibility);
+        Assert.False(window.CopySecretButton.IsEnabled);
+        Assert.False(window.CopyPairingIdButton.IsEnabled);
+    }
+
+    private static void AssertSafeStatus(BrowserPairingWindow window)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(window.PairingStatusText.Text));
+        Assert.DoesNotContain(Secret, window.PairingStatusText.Text);
+        Assert.DoesNotContain(Token, window.PairingStatusText.Text);
     }
 
     private static Task StaAsync(Func<Task> action)
