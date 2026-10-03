@@ -1,7 +1,24 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。M0 — Shared Runtime Foundation：**CLOSED — GO**。
+独立、local-first 的共享 AI Runtime。**M2 — Browser Convergence：CLOSED — GO**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
+
+Windows Assistant 与 Browser Extension 已收敛到同一 authenticated Personal AI Runtime。
+Windows Native 拥有 Translate / Summarize / Ask；Browser Translator v0.5.0 仅拥有 Translate（含 Batch Translate）。
+Provider Policy、prompt、model profile、generation config 与 AI execution 均由 Runtime 管理，最终使用本机 Ollama。
+
+最终发布基线（本次 docs-only closing 前）：
+
+- Personal AI Workspace：`ad6e8995cf482517be11602c795b1d6331b68e4b`。
+- Local AI Assistant：`b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0`；**Browser Translator v0.5.0 — GO / M2B-2B — CLOSED — GO**。
+
+收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
+本次只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
+下一步：**Post-M2 Test Suite Simplification**，目标 **Minimal High-Value Testing**。
+
+## Milestone 状态
+
+M0 — Shared Runtime Foundation：**CLOSED — GO**。
 
 M1 Windows Assistant Entry 已实现 .NET 10 LTS / 原生 WPF 客户端，代码位于 `desktop/`。
 M1 — Windows Assistant Entry：**CLOSED — GO**。2026-10-02 全量回归通过，用户确认剩余真实 Windows 验收全部 PASS。
@@ -16,10 +33,12 @@ M2B-1 — Browser Pairing UX：**CLOSED — GO**，已 push feature branch、fas
 M2B-2A — Runtime Browser Batch Translation Contract：**CLOSED — GO / Runtime Batch Translation Contract Ready**。
 同一 Translate API 支持一批 records → 一个共享任务 → 一次 provider inference → structured result。
 已 merge/push 的稳定基线为 `25dc1dfc9a103b030267f18d93059316f0ce008d`；[M2B-2A Closing Report](docs/milestones/M2B-2A-CLOSING-REPORT.md) 保留当时仅本地提交的事实。
-M2B-2B Extension candidate `ddfa4a0`：**PARTIAL / AWAITING REAL CHROME ACCEPTANCE**。
-M2B-2B-R1 — Real Chrome GET Security Compatibility：**CLOSED — GO**（2026-10-03），仅关闭 Runtime 安全兼容修复。
-真实 Chrome 154 已验证无 Origin readiness/task GET 可读、exact-Origin Batch POST 与 structured result；完整 Extension acceptance / M2 仍未关闭。
+M2B-2B-R1 — Real Chrome GET Security Compatibility：**CLOSED — GO**（2026-10-03），已 merge/push，Workspace 稳定基线为 `ad6e8995cf482517be11602c795b1d6331b68e4b`。
+真实 Chrome 154 已验证无 Origin readiness/task GET 可读、exact-Origin Batch POST 与 structured result。
 证据与边界见 [M2B-2B-R1 Closing Report](docs/milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md)。
+M2B-2B — Chrome Extension → Shared Runtime Migration：**CLOSED — GO**；最终真实 Chrome 证据见
+[Browser Closing Report §41](https://github.com/qianlixunbai/local-ai-assistant/blob/b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0/docs/M2B-2B-RUNTIME-MIGRATION-REPORT.md#41-final-closing--real-chrome-acceptance--2026-10-03)。
+M2 — Browser Convergence：**CLOSED — GO**；历史报告保留各阶段当时的 Git / 验收状态，当前基线以上述最终 SHA 为准。
 
 ## 启动
 
@@ -113,8 +132,9 @@ Secret 不写文件、日志、telemetry、Credential Manager 或历史；重新
 选择后点击 **Revoke selected**，成功 204 后移除条目；失败保留条目并提示，通信失败后刷新确认实际状态。
 未 exchange 的 session 不在列表中。Revoke 阻止后续 browser credential 请求，不取消已接受任务。
 
-本轮 Extension 尚未修改，Desktop 只创建 pairing，不调用 exchange、不生成或保存 browser credential、不修改 registry。
-真实 Chrome pairing、扩展 storage/Runtime client/Translate migration 等仍 deferred；不能据此宣称 Chrome acceptance PASS。
+Desktop 只创建 pairing，不调用 exchange、不生成或保存 browser credential、不修改 registry。
+Browser v0.5.0 自行 exchange，并在 trusted-only extension storage 保存独立 credential；不接收 master/native token。
+真实 Windows GUI pairing / revoke / re-pair 与 Chrome readiness / Translate 已在 Browser 最终 Closing Report §41 验收 PASS。
 
 ## API
 
@@ -160,10 +180,10 @@ promptVersion 为 `translate-batch-v1`；Single Translate / Summarize / Ask 的 
 有效数组的 subset（包括空数组）可 SUCCEEDED；malformed top-level / 超预算输出为 PROVIDER_RESPONSE_INVALID。
 没有自动 item retry；后续 Browser 显式处理 partial/retry。DELETE 取消整个 Batch task。
 
-Batch 的安全 profile id/version/locality + promptVersion 可用于未来 cache identity，不返回 resolved model 或 generation settings。
+Batch 的安全 profile id/version/locality + promptVersion 已用于 Browser cache identity，不返回 resolved model 或 generation settings。
 Runtime 拥有 batch prompt，客户端不能提交 prompt/model/generation 参数。
 Translate readiness 只返回 `{"available":true}` 或 `{"available":false,"error":{"code":"PROVIDER_UNAVAILABLE"}}`，
-不创建 task、不做 inference；模型缺失也折叠为不可用，不暴露模型/provider。旧 Browser CHECK_CONNECTION 的替代将在 M2B-2B 接入此路径。
+不创建 task、不做 inference；模型缺失也折叠为不可用，不暴露模型/provider。Browser v0.5.0 的 CHECK_CONNECTION 已使用此路径。
 
 Summarize 请求：`{"text":"Synthetic source text","profile":"summarize.fast"}`。
 `profile` 默认 `summarize.fast`；可选 `targetLanguage`，省略时输出源语言摘要。
@@ -235,9 +255,9 @@ Native 持有人共用 `native-local` owner；每个 Browser client 独立 owner
 同一 OS 用户能读取 token 是本地信任假设；不隔离已攻陷的同用户进程。
 Runtime 默认不记录正文、模型回答、token、provider body。
 
-## Browser Runtime Access Foundation（M2A）
+## Browser Runtime Access（M2）
 
-M2A 只实现 Runtime contract，未修改 Chrome Extension，不代表 Chrome acceptance。
+M2A 的 Runtime foundation、M2B-1 的 Windows pairing UI、M2B-2A 的 Batch contract、R1 的 Chrome GET 兼容和 M2B-2B 的真实 Chrome migration 均已 CLOSED — GO。
 Pairing 由现有已认证本机操作显式批准；master token 不传给 Browser。
 
 | 方法 | 路径 | 权限 / 语义 |
@@ -265,14 +285,23 @@ Pairing 3 分钟、一次性；最多 8 sessions、每 session 5 次错误 proof
 最多 32 个注册。已配对 credential 跨 Runtime restart 有效；未完成 pairing 在 restart 后失效。
 `browser-clients.json` 与 token 同属专用私有目录；只存安全 metadata 和 SHA-256 verifier，64 KiB 上限，
 private permissions、exclusive writer lock、atomic replacement、corruption fail closed。
-不删除损坏 registry 来静默重置；本轮无 Memory/正文持久化。Revoke 不取消先前已接受的 task。
+不删除损坏 registry 来静默重置；无 Memory/正文持久化。Revoke 不取消先前已接受的 task。
 
-Future extension 必须从可信 extension context 访问 Runtime；自己保存 credential 并限制 content script storage 访问，
-不得传入 webpage/DOM/log。Extension local forget 仅删除副本；server revoke 须由 trusted native action 执行。
-当前 candidate 已通过本轮限定的真实 Chrome security compatibility 验证；完整 Extension acceptance 仍待 M2B-2B。
+Browser v0.5.0 从可信 worker context 访问 Runtime；storage 在任何读写前限制为 `TRUSTED_CONTEXTS`，
+credential 不进入 content script / webpage / DOM / log。Extension local forget 仅删除副本；server revoke 由 Windows trusted native action 执行。
+Chrome → authenticated Shared Runtime → Translate / Batch Translate → Shared TaskManager → `translate.fast` → local Provider。
+Browser 已移除 direct Ollama endpoint、model/system prompt/generation config ownership、provider parser、direct provider retry/fallback。
+Browser 保留 DOM extraction、Viewport First、Dynamic Content、Restore、Selection、frame/document boundaries、sidebar/nested scroll、page-lifetime cache 与 UX。
 完整决策、真实证据 amendment 与同 OS 用户进程信任边界见 ADR-003。
 
 ## 验证
+
+以下命令和结果为开发验证入口及既有历史证据；本次 M2 Final Cross-Repo Closing 只执行 Git 文档检查。
+Browser 最终 §41 记录 pairing/readiness、Batch/task polling、full page、Dynamic、Restore、Selection/frame/privacy、cache、
+Runtime/Provider offline recovery、Windows GUI revoke/re-pair 与 MV3 全部 PASS。
+MV3 为 **38.231 秒**：35 秒 verification relay delay 后真实 inference，popup 已关闭，worker debugger 已断开，最终成功。
+复杂页面验收使用等价 guide + sidebar/nested scroll，未使用真实 MDN 网站；不据此扩大版本/平台或翻译质量保证。
+详细历史来源见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 
 ```powershell
 .\mvnw.cmd clean verify

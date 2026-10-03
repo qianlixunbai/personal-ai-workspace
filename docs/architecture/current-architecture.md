@@ -1,4 +1,30 @@
-# Current Architecture — Shared Runtime / Windows / Browser Security Compatibility
+# Current Architecture — M2 Browser Convergence
+
+**M2 — Browser Convergence：CLOSED — GO**。Browser Translator v0.5.0 — GO / M2B-2B — CLOSED — GO。
+
+最终发布基线（本次 docs-only closing 前）：
+
+- Personal AI Workspace：`ad6e8995cf482517be11602c795b1d6331b68e4b`。
+- Local AI Assistant：`b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0`。
+
+```text
+Windows Assistant ─┐
+                   ├─→ Personal AI Runtime
+Browser Extension ─┘
+                         ↓
+                   Provider Policy
+                         ↓
+                   translate.fast /
+                   summarize.fast /
+                   chat.balanced
+                         ↓
+                       Ollama
+```
+
+Windows Native 拥有 Translate / Summarize / Ask；Browser 仅拥有 Translate（Single / Batch）。
+图中的三个 profile 为 Runtime 整体能力，不给 Browser 授予 Ask/Summarize。
+两个客户端只调用 authenticated Shared Runtime，Provider Policy 与 AI execution 由 Runtime 统一负责。
+完整收口和历史证据来源见 [M2 Closing Report](../milestones/M2-CLOSING-REPORT.md) 与 [STATUS](../STATUS.md)。
 
 M0 — Shared Runtime Foundation：**CLOSED — GO**，已发布 M0 基线。
 M1 — Windows Assistant Entry：**CLOSED — GO**，使用 .NET 10 LTS / 原生 WPF，以独立 dotnet CLI 构建。
@@ -14,12 +40,11 @@ native token 持有人仍共享固定 `native-local` owner。当前安全决策�
 M2A 已 merge/push，发布基线 `9d20a9a`。M2B-1 已 push feature branch、fast-forward merge main 并 push origin/main，稳定基线 `d606472`；它仅增加 Windows trusted native 配对/管理 UI。
 M2B-2A：Runtime Batch Translation Contract Ready，CLOSED — GO；已 merge/push，稳定基线 `25dc1df`。
 同一 Translate 路径接收 Single 或 Batch；batch 只有一个 TaskManager task 和一次 provider execution。
-M2B-2B candidate `ddfa4a0`：PARTIAL，完整 Extension acceptance 待继续。
-M2B-2B-R1：CLOSED — GO，仅修复 Chrome 自然无 Origin 的 authenticated GET；真实 Chrome 154 readiness/polling/structured result 可读。
+M2B-2B-R1：**CLOSED — GO**，已 merge/push 至上述 Workspace 基线；Chrome 自然无 Origin 的 authenticated GET 兼容已验证。
+M2B-2B：**CLOSED — GO**，Browser v0.5.0 已在上述 Browser main 基线完成真实 Chrome migration acceptance。
 显式本机 token bootstrap + Windows Credential Manager 决策见 [ADR-002](../ADR/ADR-002-windows-client-credential.md)。
-本次复核确认上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变；
-M1.5 仅增加 Summarize / Ask 两个受控 capability 与最小 Action 选择；没有修改旧仓库，
-本轮只修改 Runtime security admission；Extension candidate 保持不变，未启动 Memory/RAG、多轮会话或工具框架。
+上述调用链、loopback-only、LOCAL_ONLY、用户主动采集与无正文持久化边界保持不变。
+本次只同步文档，没有修改 Runtime/Desktop/Browser implementation；历史测试与验收不在本次重跑。
 
 ## Windows Desktop 边界
 
@@ -64,7 +89,31 @@ Secret TextBox 禁用 undo；新建前清除旧显示，TTL 到期自动清除�
 显式 Copy Secret 进入系统剪贴板，Windows history/sync 不由应用控制；释放托管引用不保证所有内存字节立即擦除。
 窗口关闭不会删除 Runtime session，服务器 3 分钟 TTL / restart 控制 outstanding pairing；无 pairing history。
 Desktop 不执行 exchange、不生成/保存 browser credential、不直接访问 registry，不发送 master token 或 proof 到 Browser。
-M2B-1 当时未执行 Extension migration；当前 M2B-2B candidate 已实现，仍 PARTIAL。本轮只验收限定 Chrome security chain，未重新验收 Desktop GUI。
+M2B-1 当时未执行 Extension migration；后续 M2B-2B 已完成真实 Windows GUI pairing/revoke/re-pair 与 Chrome 最终验收。
+历史证据见 Browser Closing Report §41；本次没有重新执行 Desktop GUI acceptance。
+
+## Browser Client 边界（v0.5.0）
+
+```text
+Chrome Extension → authenticated Shared Runtime :8765
+→ Translate / Batch Translate → Shared TaskManager → translate.fast → local Provider
+```
+
+Browser 保留 DOM extraction、Viewport First、Dynamic Content、Restore、Selection、frame/document boundaries、
+sidebar/nested scroll、page-lifetime cache 和 Browser UX。不存在 Chrome → Ollama 直连路径。
+direct Ollama endpoint、model ownership、system prompt ownership、generation config ownership、provider parser、
+direct provider retry 和 direct provider fallback 均已移除；模型、prompt、解析和生成设置由 Runtime 管理。
+客户端只消费 public profile identity 与受控错误，不显示 model/provider/raw diagnostics。
+
+用户经 Windows 显式批准 exact extension Origin；worker 自行 exchange 并保存独立 Browser credential。
+`chrome.storage.local` 在访问前限制为 `TRUSTED_CONTEXTS`，content script 不可读取 credential，
+master/native token 不进入 Extension。Forget 只删除本地副本；Windows GUI server revoke 后需重新配对。
+Manifest 的唯一 host permission 为 `http://127.0.0.1:8765/*`；没有 Provider 权限或其他 AI capability。
+
+Cache key 为 normalized text + targetLanguage + profile.id + profile.version + promptVersion，Batch/Single identity 分开学习。
+cache hit 仍检查认证/readiness，不绕过 offline/revoke；仅页面/content-script 生命周期内内存，不跨页/重启持久化。
+POST/exchange 不自动重放；已知 task GET 网络失败最多两次重试，与已移除的 direct provider retry 不同。
+Restore 作废旧 generation、停止 watcher、保留成功 cache；partial 仅显式重试失败 records。
 
 ## Java Runtime 边界
 
@@ -123,12 +172,14 @@ Runtime 严格解析 JSON array（拒绝 fences、trailing tokens、duplicate JS
 TaskManager Work / TaskView 的内部 result 最小演进为受限 Object：String 或 sealed TaskResult.TranslationBatch。
 任意对象拒绝；batch/list/item 均不可变且 diagnostics 脱敏。HTTP Single 仍是 JSON string；Batch 为 `{"items":[...]}`。
 TaskResult 只有这个当前结构化 shape；无 generic future result framework。owner/cancel/deadline/retention 不变。
-Public profile id/version/locality + promptVersion 支持未来 Browser cache identity，无 model/settings/prompt 泄漏。
+Public profile id/version/locality + promptVersion 已用于 Browser cache identity，无 model/settings/prompt 泄漏。
 
 GET `/api/v1/capabilities/translate/readiness` 需 Translate authorization；只暴露 available 或受控 PROVIDER_UNAVAILABLE code。
 复用 profile/policy/provider metadata readiness，无 generation/task，不暴露 provider/model/detail。
-M2B-2A 当时仅额外允许该精确 GET/preflight 路径；本轮 Originless GET amendment 见下方，Fetch Metadata/credential/Translate-only/ownership 保持。
-原 native provider readiness 与 Desktop 代码不变。当前 Extension candidate CHECK_CONNECTION 使用此路径；完整 M2B-2B acceptance 待继续。
+M2B-2A 当时仅额外允许该精确 GET/preflight 路径；当前 R1 Originless GET amendment 见下方，Fetch Metadata/credential/Translate-only/ownership 保持。
+原 native provider readiness 与 Desktop 代码不变。Browser v0.5.0 CHECK_CONNECTION 已使用此路径；M2B-2B acceptance 已关闭。
+Browser normal batch 只有一个 task/inference；超出 Batch 但在 Single 4000 chars / 5632 UTF-8 bytes 预算内的完整 record 使用 Single。
+再超预算则受控失败，不截断/拆句或增加模型预算。Runtime 对 serialized input/body/profile 预算仍有最终 authority。
 真实 batch smoke 用仅验证 loopback relay 计数实际已有 Ollama chat 请求；该脚本不进入产品调用链。
 
 ## 任务生命周期
@@ -189,8 +240,18 @@ Authenticated Browser principal 进入既有 ClientIdentity.current()/TaskManage
 Originless response 不设置 Access-Control-Allow-Origin；Chrome host_permission 决定读取，真实 Chrome 154 已读取 readiness 与 structured task result。
 已有 exact-Origin preflight/CORS 保持，无 wildcard。Bearer secret 是认证材料；Origin 是实际发送时的额外绑定。
 同 OS 用户的恶意 native process 可伪造 HTTP metadata，仍在原 Browser-origin isolation 保证之外。
-唯一产品变化位于 LocalClientFilter/BrowserClients；task/AI/profile/provider/queue/Desktop 契约未修改。
+R1 当时的产品变化位于 LocalClientFilter/BrowserClients；task/AI/profile/provider/queue/Desktop 契约未修改。
 完整证据见 [R1 Closing Report](../milestones/M2B-2B-R1-CHROME-GET-SECURITY-REPORT.md) 与 [ADR-003 amendment](../ADR/ADR-003-browser-client-security.md)。
+
+## 真实 Chrome 最终证据与限制
+
+历史证据来源：[Browser Closing Report §41](https://github.com/qianlixunbai/local-ai-assistant/blob/b4c3a71ea7e85b8aee9fa779ad38bf448d5d47a0/docs/M2B-2B-RUNTIME-MIGRATION-REPORT.md#41-final-closing--real-chrome-acceptance--2026-10-03)。
+Pairing/readiness、Batch/task polling、full page/Viewport First/sidebar/nested scroll、Dynamic、Restore、Selection/frame/privacy、
+cache、Runtime/Provider offline recovery、Windows GUI revoke/re-pair 与 real MV3 long task 全部 PASS。
+MV3 实测 **38.231 秒**：35 秒 verification relay delay 后真实 inference，popup 已关闭，worker debugger 在提交前断开并全程未附加，最终成功。
+没有 offscreen/keepalive ping/alarms/daemon/WebSocket 产品机制；verification relay 不属于产品 Provider。
+复杂网页用等价 guide（18 段 + sidebar/Footer），未使用真实 MDN；Provider outage 用停止 relay 模拟，未停止实际 Provider。
+当前 Windows / Chrome 154.0.8037.59 的验收不扩大为其他平台/版本或普遍模型质量保证；本次只同步证据，没有重跑测试。
 
 ## 其他仓库与长期边界
 
@@ -198,5 +259,7 @@ Workspace 完全不引用、复制或修改 Finance / Local AI Assistant 代码�
 没有 Finance DB credential、DB dependency、Tool Gateway 或 `/ai/ask` 改动。
 Finance PostgreSQL 长期仍由 Finance 独占；未来仅能通过 authenticated Gateway 访问业务查询服务。
 Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区，不据此进行集成。
-Extension candidate 未修改，B11/B12 保持 DEFERRED；本轮不执行完整 Extension Closing。
+本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
+**B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 未建立 Memory、RAG、tool calling、完整 React/WebView2 Workspace 或其他未来空框架。
+下一维护步骤仅记录 **Post-M2 Test Suite Simplification / Minimal High-Value Testing**；本次不删除测试或开始 M3。
