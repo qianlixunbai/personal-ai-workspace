@@ -7,6 +7,40 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## 阶段与结论
 
+**M4A — Conversation Domain & Persistence：CLOSED — GO**。
+**M4 — User-Controlled Conversation Foundation：OPEN**。
+
+2026-10-04起始reality check：main/HEAD/origin/main均为`dd069ec5ec4e053a85e8f2f6de6940940cf9f83e`。
+两个untracked启动脚本触发STOP；用户确认来源并批准继续后，独立提交`c90359f425c13cc272c80dd57442ce5cb95ee101`，
+clean local main安全领先origin/main一个已解释commit，再创建`m4a-conversation-domain`。
+重新fetch确认无远端未知变化；源码baseline Java63/Desktop106 PASS。
+
+M4A实现独立Conversation domain、ACTIVE/ARCHIVED lifecycle、manual bounded title、物理cascade delete、
+Turn/Message persistence、stable unique sequence和immutable message。
+Workspace SQLite迁移v1→v2，原Memory source不变；Memory逻辑backup仍format1/schema1，restore仍生成v1，
+下一次Runtime启动迁移v2且Conversation为空。当前Memory export不覆盖Conversation个人数据。
+native-only CRUD/分页详情，list/detail limit1–10；internal-onlyJava Turn操作，不开放Assistant写入HTTP。
+Desktop仅Core DTO/client支撑，WPF无ConversationUI；Browser仍Translate-only。
+普通Ask仍single-turn/stateless；没有M4B execution/context assembly、automatic Memory/retrieval、
+RAG、Knowledge、Agent、Finance、React/WebView2、edit/regenerate/branching或Conversation backup/restore/recovery。
+
+Implementation：`03591f9fe74f3a3db18ca062ae168f21cb668a49`，本地分支`m4a-conversation-domain`；未merge/push/tag/release。
+完整`.\mvnw.cmd clean verify`：Java **75 PASS**（63 baseline +12），0fail/error/skip。
+Desktop restore/build/test：**111 PASS**（106 baseline +5），0fail/skip，build0warning/error。
+Conversation packaged四进程restart smoke **PASS**：实际M3 v1输入、事务升级、原Memory逐字段保持、
+create/rename/list、SUCCEEDED/TIMED_OUT两轮、sequence/roles/正文、archive/restart、unarchive/delete/restart和cascade清理。
+Memory-storage三进程restart **PASS**；真实Windows WPF/HTTP/SQLite/Ollama M3 export/restore integrated regression **PASS**。
+既有real-local Translate/Summarize/stateless Ask与Browser Batch Translate/security/restart/revoke smoke **PASS**；
+Browser是synthetic HTTP client回归，不声称重跑Chrome GUI acceptance。
+全部smoke使用隔离synthetic data；未读取用户Memory/WinCred。为释放构建锁，按用户授权停止Assistant与本仓库Runtime；Ollama保留。
+privacy/security扫描源码、tracked secrets、actual local credentials、build/archive、logs、verification artifacts与DB tracking **PASS**；
+0matches、0tracked build/data artifacts，DB及sidecar ignore checks PASS。`git diff --check` PASS。
+**M4A CLOSED — GO ≠ M4 CLOSED — GO**。M4整体OPEN，M4 Final Closing仍被
+**M4C Conversation Backup / Restore Gate** 阻塞；本轮不开始M4B/M4C。
+详细证据及29项closing说明见 [M4A Closing Report](milestones/M4A-CLOSING-REPORT.md)。
+
+以下为M3及更早阶段的历史closing证据；历史数字不代表M4A最终测试数。
+
 **M3 — User-Controlled Memory Foundation：CLOSED — GO**。
 **M3A — Memory Storage Foundation：CLOSED — GO**。
 **M3B — Desktop Memory Management：CLOSED — GO**。
@@ -15,7 +49,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 M3 CLOSED — GO：最终 Java **63 PASS**（54 existing + 9 new）/ Desktop **106 PASS**（94 existing + 12 new），0 failure/skip。
 M3C-2 开始时从 clean main `ef4d6e8e17d045883a4be58d45dc2e963749042f` 出发，成功 fetch 后 HEAD/origin/main 完全一致；当时基线54/94通过。
-Published main: `c4e6c669088bed437e10af3db4c11e508714a911`（final closing commit）。
+Published M3 main: `dd069ec5ec4e053a85e8f2f6de6940940cf9f83e`（status sync）；closing commit `c4e6c669088bed437e10af3db4c11e508714a911`。
 Implementation: `9d04b4a0c139ff2ccb9126f89ff8e96061eb46ad`。
 main 已 fast-forward / pushed，feature branch 已 pushed；publication 完成时 working tree clean；no tag/release。
 Real Recovery **PASS**；M3 Integrated Acceptance **PASS**。
@@ -32,7 +66,7 @@ brand-new Runtime on restored target → exact source fields / FTS / Manage / re
 existing empty target恢复及corrupt/nonempty/unsupported negative recovery **PASS**；source与current maintenance DB bytes不变。
 privacy/log/staging/temporary-data清理PASS，WinCred与用户Memory未使用。文件选择由自动验收注入，真实WPF/file IO/HTTP/SQLite/Ollama执行。
 报告：[M3C-2](milestones/M3C-2-MEMORY-EXPORT-RESTORE-REPORT.md)、[M3 Closing](milestones/M3-CLOSING-REPORT.md)；决策：[ADR-006](ADR/ADR-006-logical-memory-backup-restore.md)。
-Finance frozen；Finance Reality Sync remains a separate prerequisite. Conversation/RAG/embeddings/vector DB/Agent/automatic Memory/sync/cloud/encryption/scheduler均未开始。
+M3 closing当时：Finance frozen；Finance Reality Sync remains a separate prerequisite. Conversation/RAG/embeddings/vector DB/Agent/automatic Memory/sync/cloud/encryption/scheduler均未开始；M4A当前进展见开头。
 
 以下 M3A/M3B/M3C-1 摘要保留各 gate 当时验收事实；当前状态以上方 M3 closing 为准。
 
@@ -574,7 +608,7 @@ M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验
 M1.5 / M2A / M2B-1 / M2B-2A / M2B-2B-R1 / M2B-2B 均 CLOSED — GO；M2 — Browser Convergence 正式 CLOSED — GO。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
-M3C-2 与 M3 均 CLOSED — GO，publication 已完成。Finance Reality Sync 仍是独立前置条件；Finance仍冻结，M4未开始。
+M3C-2与M3均CLOSED — GO，publication已完成。Finance Reality Sync仍是独立前置条件；Finance仍冻结，M4A状态见开头，M4整体OPEN。
 
 ## Git 交付
 

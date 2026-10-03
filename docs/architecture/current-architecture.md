@@ -1,9 +1,60 @@
-# Current Architecture — M3 User-Controlled Memory Foundation
+# Current Architecture — M4A Conversation Domain & Persistence
+
+**M4A：CLOSED — GO；M4 overall：OPEN**。M4A只建立durable Conversation数据域；
+普通Ask仍single-turn/stateless。没有multi-turn AI execution、context assembly、automatic Memory/retrieval、
+RAG、Knowledge、Agent、Finance、React/WebView2 Main Workspace、Browser Conversation access、
+edit/regenerate/branching、Conversation logical backup/export、restore或portable recovery。
+
+## M4A current domain and persistence decisions
+
+本地implementation`03591f9fe74f3a3db18ca062ae168f21cb668a49`，branch`m4a-conversation-domain`，未merge/push。
+Java75/Desktop111 PASS；packaged four-process restart、M3 integrated real WPF/Ollama recovery、
+native AI及synthetic Browser Batch回归和privacy audit PASS。没有Conversation portable recovery验收。
+
+- **Conversation ≠ Memory**：实际对话历史和用户明确选择长期复用的Memory是独立实体。
+  Conversation不是TaskManager retention；无自动extraction/write/retrieval/search/selection。
+  M3 explicit per-turn Memory selection保持原语义，M4A不连接执行链。
+- Conversation是私有Workspace SQLite中的durable数据；ACTIVE/ARCHIVED支持显式archive/unarchive，
+  title默认New conversation、trim、非空和160 code points上限；DELETE在一个transaction中FK cascade删除整个aggregate。
+- Conversation 1:N Turn；Turn持有稳定UUID、conversationId、唯一sequence、timestamps和独立execution outcome。
+  1 USER + 0..1 ASSISTANT；PENDING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT，只有SUCCEEDED保存Assistant。
+  InternalJava primitives不调用模型、创建Task或读取Memory；HTTP不提供写Turn/伪造Assistant的入口。
+- Strict linear immutable history：不推断timestamp顺序，按sequence ASC；没有graph/branch/variant字段，
+  没有message edit/regenerate/branching API；SQLite BEFORE UPDATE trigger保护Message。
+  角色只USER/ASSISTANT，system prompt属于Runtime，Memory/Knowledge不是Message。
+- 沿用Xerial JDBC、现有private memory.db位置和BEGIN IMMEDIATE migration；`WorkspaceSchema.VERSION=2`。
+  v0先初始化现有Memory v1，再在同一事务追加Conversation tables并升级；M3 v1直接事务升级至v2。
+  不重建Memory source、不删除/recreateDB；失败rollback，未知更新版本fail closed。
+  `MemoryStore.SCHEMA_VERSION=1`仍表示Memory source/backup版本；ADR-006 restore明确使用Memory-only construction，
+  生成fresh schema v1，完成已有source/FTS/search/quick_check验证后发布；下次Runtime启动才升级v2。
+  Memory backup format不变，不含Conversation；恢复Memory后Conversation为空。
+- 现有MemoryStore负责启动时的shared DB/private location初始化，ConversationConfiguration依赖此完成顺序，
+  ConversationStore只取得validated database path并独立持有一个串行JDBC connection，没有Memory业务依赖。
+  SQLite跨连接/进程锁在序号分配前取得；唯一约束防重复；writes/read snapshots分别BEGIN IMMEDIATE/BEGIN。
+  terminal transition只允许PENDING→终态；assistant INSERT + turn update + parent timestamp同事务，失败rollback。
+  archive拒绝新增Turn；已存在PENDING允许完成，不提前建立M4B cancel/recovery orchestration。
+- Bounded native-only CRUD：POST/create、GET/list/detail、PATCH/title、POST/archive/unarchive、DELETE。
+  reuse现有page/limit模式，limit1–10；总Conversation1000，每Conversation1000 Turns；metadata updatedAt DESC/id ASC。
+  content最多8192 UTF-16/8192 UTF-8 bytes，preserve original；detail最多10 turns，最坏escaping预算<1MiB。
+  同步native请求按数据库commit顺序生效；不新增generic concurrency或pagination framework。
+- DTO/errors/toString只输出安全metadata，正文仅HTTP/DB/有界内存；无content/title/credential/body/path/SQL日志。
+  code/message/phase沿用统一契约，400invalid、404missing、409state/capacity conflict、503storage unavailable。
+  account-only ACL不是加密；same-account/admin threat model、delete非forensic erase限制保持。
+- Desktop/Core新增DTO和RuntimeClient方法，使用既有HTTP/auth/1MiB/deadline/strict fields/duplicates/errors；
+  WPF shell不改。Browser allowlist/security/credential/capabilities完全不扩大。
+
+这些长期规则在本架构文档承载，无机械新增ADR；ADR-004的Memory source与privacy原则、
+ADR-005的stateless普通Ask和explicit selection、ADR-006的v1逻辑格式及fresh v1 restore全部保持。
+M4A数据域扩展不改变M3历史ADR当时未实现Conversation的事实。
+**M4A CLOSED — GO ≠ M4 CLOSED — GO**；M4 overall仍OPEN，必须通过M4C Conversation Backup / Restore Gate。
+验证与边界见 [M4A Closing Report](../milestones/M4A-CLOSING-REPORT.md)。
+
+## M3 accepted implementation and historical acceptance
 
 **M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
 **M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
 
-Published main: `c4e6c669088bed437e10af3db4c11e508714a911`（final closing commit）。
+Published M3 main: `dd069ec5ec4e053a85e8f2f6de6940940cf9f83e`（status sync）；closing commit `c4e6c669088bed437e10af3db4c11e508714a911`。
 Implementation: `9d04b4a0c139ff2ccb9126f89ff8e96061eb46ad`。
 main 已 fast-forward / pushed，feature branch 已 pushed；publication 完成时 working tree clean；no tag/release。
 Java **63 PASS** / Desktop **106 PASS**；Real Recovery **PASS**；M3 Integrated Acceptance **PASS**。
@@ -353,4 +404,4 @@ Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区�
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
-Post-M2 Test Suite Simplification / M3C-2 / M3已CLOSED — GO；M3 publication 已完成。Finance frozen，M4未开始。
+Post-M2 Test Suite Simplification / M3C-2 / M3已CLOSED — GO；M3 publication已完成。Finance frozen；M4A状态见本文开头，M4整体OPEN。

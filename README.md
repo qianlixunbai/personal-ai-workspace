@@ -1,11 +1,14 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。**M2 — Browser Convergence：CLOSED — GO**。
+独立、local-first 的共享 AI Runtime。**M4A — Conversation Domain & Persistence：CLOSED — GO；M4 overall：OPEN**。
+M4A本地实现`03591f9fe74f3a3db18ca062ae168f21cb668a49`；Java **75 PASS** / Desktop **111 PASS**；restart durability与privacy/regression PASS。
+分支`m4a-conversation-domain`，未merge/push；M4C Backup / Restore Gate仍未完成。
+**M2 — Browser Convergence：CLOSED — GO**。
 **M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
 **M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
 当前阶段、验证证据与遗留项的唯一事实来源：[docs/STATUS.md](docs/STATUS.md)。
 
-Published main: `c4e6c669088bed437e10af3db4c11e508714a911`（final closing commit）。
+Published M3 main: `dd069ec5ec4e053a85e8f2f6de6940940cf9f83e`（status sync）；M3 closing commit `c4e6c669088bed437e10af3db4c11e508714a911`。
 Implementation: `9d04b4a0c139ff2ccb9126f89ff8e96061eb46ad`。
 main 已 fast-forward / pushed，feature branch 已 pushed；publication 完成时 working tree clean；no tag/release。
 Java **63 PASS** / Desktop **106 PASS**；Real Recovery **PASS**；M3 Integrated Acceptance **PASS**。
@@ -24,6 +27,60 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
 Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 保留形成当时的综合验收、边界与 Git 状态；当前 M3 publication 已完成。
+
+## M4A — Conversation Domain & Persistence
+
+Conversation 是独立的 Workspace-owned durable domain，**Conversation ≠ Memory ≠ transient Task history**。
+新增 SQLite Conversation lifecycle 与 Turn/Message persistence；不自动提取、写入、搜索或选择 Memory。
+普通 `POST /api/v1/ask/tasks` 仍为 single-turn / stateless，未接入 Conversation。
+
+同一私有 data directory 的 `memory.db` 使用事务式 `PRAGMA user_version` v1 → v2 migration；
+Memory source、revision、FTS/search 与 backup contract 不变。Memory export 仍 format1/schema1/source-only，
+restore 仍生成 fresh M3 schema v1；下一次 Runtime 启动升级至 Workspace v2，Conversation tables 为空。
+**Memory export 不包含 Conversation，不能用它恢复 Conversation。** SQLite 是受 OS 账户权限保护的本地明文，非加密。
+
+Conversation：UUID、trimmed title（默认 `New conversation`，非空，输入最多160 code points）、
+ACTIVE/ARCHIVED、createdAt/updatedAt。Turn：UUID、conversationId、sequence（1起）、
+PENDING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT、timestamps、1个USER message与0..1个ASSISTANT message。
+成功才有 Assistant message；失败/取消/超时只保存状态，错误文字不写成 Assistant message。
+Message 只有 USER/ASSISTANT；正文保留原文，非空，最多8192 UTF-16 units和8192 UTF-8 bytes。
+没有SYSTEM/TOOL/Memory message；已保存Message没有edit API，数据库trigger拒绝UPDATE。
+历史严格线性，唯一 `(conversation_id,sequence)`；没有parent/branch/variant字段或regenerate。
+
+| Native-only API | Contract |
+| --- | --- |
+| POST `/api/v1/conversations` | `{}` 默认标题，或 `{ "title": "Synthetic conversation" }`；201 + metadata/Location |
+| GET `/api/v1/conversations` | `status=ACTIVE` 默认，或ARCHIVED；`page=0&limit=10`；metadata items/total/page/limit |
+| GET `/api/v1/conversations/{id}` | `page=0&limit=10`；conversation metadata + turns/totalTurns/page/limit；sequence ASC |
+| PATCH `/api/v1/conversations/{id}` | `{ "title": "Renamed conversation" }`；只rename |
+| POST `/api/v1/conversations/{id}/archive` | ACTIVE → ARCHIVED；重复操作幂等于状态 |
+| POST `/api/v1/conversations/{id}/unarchive` | ARCHIVED → ACTIVE |
+| DELETE `/api/v1/conversations/{id}` | 204；事务/FK cascade物理删除Conversation、Turns、Messages |
+
+list按updatedAt DESC/id ASC；分页limit 1–10，总Conversation<=1000，每Conversation<=1000 Turns。
+每页最多10 Turns，含最坏JSON escaping的预算仍低于Desktop既有1MiB响应上限；不静默截断正文。
+分页不是跨请求snapshot；每次详情/列表读取使用单个数据库事务。
+Internal Java domain operations创建USER turn、完成ASSISTANT response或终止Turn；没有这些操作的HTTP写入接口。
+同一Conversation并发创建通过BEGIN IMMEDIATE + UNIQUE sequence保护，终态不可覆盖；归档阻止新增Turn。
+修改无revision framework，native并发rename/lifecycle按SQLite事务提交顺序生效；M4B retry/execution未实现。
+400 CONVERSATION_INVALID，404 CONVERSATION_NOT_FOUND，409 CONVERSATION_CONFLICT/CONVERSATION_LIMIT_EXCEEDED，
+503 CONVERSATION_STORAGE_UNAVAILABLE；沿用code/message/phase，错误不含正文、路径、SQL或cause。
+
+Desktop只增加Core DTO/RuntimeClient支持，复用native bearer、loopback HTTP、安全解析与脱敏诊断；WPF不新增Conversation UI。
+Browser仍Translate-only，Conversation所有route/method/preflight/originless访问拒绝。
+没有multi-turn AI execution、context assembly、automatic Memory/retrieval、RAG、Knowledge、Agent、Finance、
+React/WebView2 Main Workspace、Browser Conversation access、edit/regenerate/branching、Conversation logical backup/restore/portable recovery。
+
+```powershell
+.\mvnw.cmd clean verify
+python scripts/conversation-storage-smoke.py
+```
+
+该smoke使用isolated synthetic data、test-only internal fixture和四个独立Runtime进程；
+不调用模型，不接触用户Memory/WinCred；证据只含IDs/status/counts/PASS-FAIL。
+Restart durability不是backup/recovery验收。**M4A CLOSED — GO ≠ M4 CLOSED — GO**；
+M4 Final Closing仍被 **M4C Conversation Backup / Restore Gate** 阻塞。
+完整范围、验证与遗留项见 [M4A Closing Report](docs/milestones/M4A-CLOSING-REPORT.md)。
 
 ## M3A — Native Memory API
 
@@ -119,7 +176,7 @@ Memory作为untrusted user-authored reference data放在JSON user input，不进
 
 每轮terminal、Clear、Action切换、窗口close/cleanup/exit清除selection；admission失败可保留，stale锁定submit至重新选择。
 已接收任务的通信失败也清除selection。问题/回答/selection/snapshot/prompt/provider payload不持久化，无正文日志，Task短期存内存且重启消失。
-Browser仍Translate-only，不能调用Memory Ask。没有自动Memory检索/选择/注入/保存/提取，没有Conversation或RAG。
+Browser仍Translate-only，不能调用Memory Ask。没有自动Memory检索/选择/注入/保存/提取；普通Ask不接入Conversation，没有RAG。
 
 报告：[M3C-1 Report](docs/milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md)；决策：[ADR-005](docs/ADR/ADR-005-explicit-memory-context.md)。
 真实验收要求既有本机Ollama与配置模型可用、8765空闲；使用隔离synthetic Memory与临时凭据，不访问用户Memory/WinCred：
@@ -210,6 +267,9 @@ M2B-2B — Chrome Extension → Shared Runtime Migration：**CLOSED — GO**；�
 M2 — Browser Convergence：**CLOSED — GO**；历史报告保留各阶段当时的 Git / 验收状态，当前基线以上述最终 SHA 为准。
 
 ## 启动
+
+Windows可双击仓库根目录的`start-workspace.cmd`：按需构建、启动/复用Ollama与Runtime并唤出Assistant。
+启动脚本构建跳过测试，不下载模型、不自动配对、不重置Memory；关闭启动窗口不会停止后台应用。
 
 需要 JDK 21；无需安装全局 Maven。首次构建需要网络下载 Maven 与依赖。
 
