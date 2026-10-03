@@ -7,7 +7,8 @@ public enum DesktopError
     RuntimeUnavailable, Unauthorized, CredentialMissing, CredentialInvalid, CredentialStorage,
     QueueFull, ProviderUnavailable, ModelUnavailable, PolicyDenied, InvalidRequest,
     InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError,
-    InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed
+    InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed,
+    MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -40,6 +41,12 @@ public static class ErrorText
         DesktopError.SecurityStateError => "Security state error：Runtime 无法更新安全状态，请检查 Runtime 后重试。",
         DesktopError.PairingCreationFailed => "Pairing creation failed：未能创建配对，请检查 Runtime 后显式重试。",
         DesktopError.BrowserManagementFailed => "Browser management failed：未确认列表或撤销结果，请刷新后检查。",
+        DesktopError.MemoryNotFound => "Memory 已不存在；请新建或刷新列表。",
+        DesktopError.MemoryRevisionConflict => "Memory 自加载后已被修改。请重新加载最新版本后再保存。",
+        DesktopError.MemoryLimitExceeded => "Memory 容量或输入长度超限；请检查输入或删除不用的条目。",
+        DesktopError.MemoryInvalid => "Memory 输入无效：标题须非空且不超过 160 个 Unicode 字符；正文须非空且不超过 2000 个 UTF-16 单位和 8192 UTF-8 字节；搜索不超过 160 个 Unicode 字符。",
+        DesktopError.MemoryStorageUnavailable => "Memory 存储不可用；请检查 Runtime 后显式重试。",
+        DesktopError.MemorySchemaUnsupported => "Memory 数据版本不受当前 Runtime 支持。",
         _ => "Runtime internal error：Runtime 未能完成此次请求。"
     };
 }

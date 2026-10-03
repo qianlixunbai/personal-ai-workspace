@@ -23,6 +23,7 @@ public partial class AssistantWindow : Window
     private readonly IAssistantController app;
     private readonly RuntimeClient? runtime;
     private BrowserPairingWindow? pairingWindow;
+    private MemoryWindow? memoryWindow;
     internal AssistantWindow(IAssistantController app, RuntimeClient? runtime = null)
     {
         this.app = app;
@@ -40,6 +41,7 @@ public partial class AssistantWindow : Window
         ImportButton.IsEnabled = !busy;
         ForgetButton.IsEnabled = !busy;
         PairBrowserButton.IsEnabled = !busy && runtime is not null;
+        MemoryButton.IsEnabled = !busy && runtime is not null;
         CancelButton.IsEnabled = busy;
         CopyButton.IsEnabled = !busy && ResultText.Text.Length != 0;
     }
@@ -49,6 +51,7 @@ public partial class AssistantWindow : Window
     }
     private void HideOnClose(object? sender, CancelEventArgs e)
     {
+        if (!CloseMemory()) { e.Cancel = true; return; }
         CloseBrowserPairing();
         if (app.Exiting) return;
         e.Cancel = true;
@@ -98,4 +101,12 @@ public partial class AssistantWindow : Window
         finally { pairingWindow = null; }
     }
     internal void CloseBrowserPairing() => pairingWindow?.Close();
+    private void OpenMemory(object sender, RoutedEventArgs e)
+    {
+        if (app.Busy || app.Exiting || runtime is null || memoryWindow is not null) return;
+        memoryWindow = new MemoryWindow(runtime) { Owner = this };
+        try { memoryWindow.ShowDialog(); }
+        finally { memoryWindow = null; }
+    }
+    internal bool CloseMemory() => memoryWindow?.TryClose() ?? true;
 }

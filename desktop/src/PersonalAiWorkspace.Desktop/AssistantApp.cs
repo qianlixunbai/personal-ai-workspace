@@ -217,6 +217,7 @@ internal sealed class AssistantApp : Application, IAssistantController
     internal async Task ExitAsync()
     {
         if (exitRequested) return;
+        if (!window.CloseMemory()) return;
         exitRequested = true;
         window.CloseBrowserPairing();
         hotkey?.Dispose();

@@ -81,7 +81,8 @@ public sealed partial class RuntimeClient : IDisposable
 
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
         HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
-        Func<JsonElement, DesktopError>? errorMap = null)
+        Func<JsonElement, DesktopError>? errorMap = null,
+        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null)
     {
         using var request = new HttpRequestMessage(method, path);
         // Actuator defaults to a vendor media type unless the client negotiates JSON.
@@ -128,6 +129,8 @@ public sealed partial class RuntimeClient : IDisposable
                 RejectDuplicates(body.RootElement);
                 if (response.StatusCode != expected)
                 {
+                    if (endpointErrorMap is not null)
+                        throw new DesktopException(endpointErrorMap(response.StatusCode, body.RootElement));
                     var code = String(body.RootElement, "code");
                     bool validStatus = (int)response.StatusCode switch
                     {

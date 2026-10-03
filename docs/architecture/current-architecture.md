@@ -1,6 +1,6 @@
-# Current Architecture — M3A Memory Storage Foundation
+# Current Architecture — M3B Desktop Memory Management
 
-**M3 overall：IN PROGRESS；M3A：CLOSED — GO（implementation acceptance；等待 Closing Review）**。
+**M3 overall：IN PROGRESS；M3A：CLOSED — GO；M3B：CLOSED — GO（implementation acceptance；等待 Closing Review）**。
 
 M3A 增加独立 Runtime-owned Memory：native bearer → MemoryController → MemoryStore → private `memory.db`。
 SQLite `memory_items` 为 source of truth，`PRAGMA user_version=1`；FTS5 case-sensitive trigram 为可重建 derived index。
@@ -25,7 +25,22 @@ API `/api/v1/memory/items` CRUD/lifecycle/pagination/search 与 `/api/v1/memory/
 现有 Browser Translate-only allowlist 不扩展，Memory 所有 method/Origin-less GET/preflight 均拒绝。
 LocalClientFilter 将现有32KiB body保护扩展到 POST/PUT/PATCH/DELETE；Memory errors 不带正文/query/path/SQL/cause。
 无 raw Memory 日志；诊断 toString 只含 metadata。Memory 不接入 Provider/TaskManager 或普通 Ask。
-Desktop Memory UI/Memory Ask/export/restore 尚未实现；不涉及 Finance、Conversation、RAG、automatic extraction。
+Desktop Memory UI 已完成；Memory Ask/export/restore 尚未实现；不涉及 Finance、Conversation、RAG、automatic extraction。
+
+M3B 路径：AssistantWindow 的 Memory… → 独立单实例 MemoryWindow modal → 共用 RuntimeClient native HTTP → M3A API。
+维持 code-behind 风格，只有小型 injectable confirmation boundary；无 WebView2/React/navigation/MVVM framework。
+Core contracts 的 ToString 只含 metadata。Memory endpoint-specific status/code 和字段 allowlists 不放宽 AI/security 验证；
+响应检查 UUID/type/status/source/revision/Unicode limits/ISO timestamps/page consistency/duplicates，拒绝未知字段与 raw error 回显。
+HTTP stack 仍固定127.0.0.1:8765、无proxy/redirect/cookies、8秒deadline、1MiB响应上限、native bearer，无Origin。
+列表 metadata-only display，每页20；GET 选择条目，Search/Enter 显式查询，filters/new search 回到page0，空尾页安全回退。
+New/编辑不发 mutation；显式 Save 使用已加载 expectedRevision，成功只使用服务端 item。
+Archive/Restore 更新服务端 metadata 并保留未保存编辑；Delete 明确确认且不承诺 forensic erase。
+dirty edits 在切换/New/Reload/关闭时确认；stale conflict 保存编辑但锁定全部 mutation，只有显式 Reload/新建/切换可以解除。
+not-found 禁止对旧条目继续 mutation；可 New/Refresh。窗口 busy 串行化操作并冻结编辑/选择/filter/page，仍允许关闭。
+close 取消 lifetime HTTP、清除正文/query/list，禁止 late-response 回填；TextBox undo 关闭，无 history/cache 或后台 clipboard 功能。
+Assistant 到tray/退出前关闭 owned MemoryWindow；拒绝丢弃时保留窗口并取消关闭/退出。
+M3B 46 Java / 84 Desktop PASS、真实 WPF/Runtime/SQLite acceptance PASS；[M3B Report](../milestones/M3B-DESKTOP-MEMORY-MANAGEMENT-REPORT.md)。
+使用既有 [ADR-004](../ADR/ADR-004-user-controlled-memory-storage.md)，不新增架构决策。
 
 M3A 起始稳定 main `1f987402533bf108aa18f0eed4e90de6973c7060`；基线37Java/62Desktop，最终46Java/62Desktop PASS；
 真实 packaged Runtime restart smoke PASS。见 [M3A Report](../milestones/M3A-MEMORY-STORAGE-REPORT.md)、[ADR-004](../ADR/ADR-004-user-controlled-memory-storage.md)。
@@ -150,7 +165,7 @@ Restore 作废旧 generation、停止 watcher、保留成功 cache；partial 仅
 ## Java Runtime 边界
 
 单 Spring Boot application，Java 21，独立进程与 Maven artifact。
-现有实现没有 Maven 子模块、微服务、数据库或 UI。
+没有 Maven 子模块、微服务或 Runtime Web UI；AI task 不依赖数据库，Memory 使用独立 SQLite。
 
 ```mermaid
 flowchart LR
@@ -295,4 +310,4 @@ Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区�
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
-Post-M2 Test Suite Simplification 已 CLOSED — GO；当前等待 M3A Closing Review，不开始 Desktop Memory UI 或 Memory Ask。
+Post-M2 Test Suite Simplification / M3A 已 CLOSED — GO；M3B 验收通过，等待 M3B Closing Review；不开始 Memory Ask。
