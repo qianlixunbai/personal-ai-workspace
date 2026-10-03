@@ -1,0 +1,14 @@
+<Window x:Class="PersonalAiWorkspace.Desktop.MemoryBackupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Memory Export / Restore" Width="620" Height="400" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="24">
+    <TextBlock Text="Memory Export / Restore" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,16"/>
+    <TextBlock x:Name="PlaintextWarning" Text="Export contains your Memory text in plaintext.&#10;Protect this file like other personal documents." TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <Button x:Name="ExportButton" Content="Export Memory…" Click="Export" Padding="10,8" HorizontalAlignment="Left" Margin="0,0,0,18"/>
+    <TextBlock x:Name="RestoreWarning" Text="Restore creates a NEW data directory.&#10;It does not merge or overwrite current Memory.&#10;Choose a new or empty target directory." TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <Button x:Name="RestoreButton" Content="Restore Memory Backup…" Click="Restore" Padding="10,8" HorizontalAlignment="Left"/>
+    <TextBlock x:Name="StatusText" Text="Ready · Explicit user action only" TextWrapping="Wrap" Margin="0,18,0,12"/>
+    <Button Content="Close" Click="CloseBackup" Padding="10,6" HorizontalAlignment="Right"/>
+  </StackPanel>
+</Window>

@@ -97,6 +97,56 @@ public final class MemoryStore implements AutoCloseable {
         transaction(true, () -> { rebuildIndex(); return null; });
     }
 
+    /** One read transaction, including both lifecycle states, ordered independently of UI pagination. */
+    public synchronized List<MemoryItem> backupSnapshot() {
+        return transaction(false, this::allSource);
+    }
+
+    private List<MemoryItem> allSource() throws SQLException {
+        List<MemoryItem> rows = new ArrayList<>();
+        try (var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT * FROM memory_items ORDER BY id ASC")) {
+            while (result.next()) {
+                if (rows.size() == TOTAL_ITEMS) throw error(ErrorCode.MEMORY_BACKUP_TOO_LARGE);
+                rows.add(item(result));
+            }
+        }
+        return List.copyOf(rows);
+    }
+
+    /** Staging-only reconstruction. Never use ordinary create/lifecycle commands for restore. */
+    synchronized void reconstruct(List<MemoryItem> rows) {
+        transaction(true, () -> {
+            if (number("SELECT count(*) FROM memory_items") != 0) throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
+            for (MemoryItem row : rows) {
+                try (var statement = prepare("INSERT INTO memory_items(id,type,title,content,status,revision,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                        row.id().toString(), row.type().name(), row.title(), row.content(), row.status().name(), row.revision(),
+                        row.source().name(), row.createdAt().toEpochMilli(), row.updatedAt().toEpochMilli())) { statement.executeUpdate(); }
+            }
+            rebuildIndex();
+            if (!allSource().equals(rows) || number("PRAGMA user_version") != SCHEMA_VERSION
+                    || number("SELECT count(*) FROM memory_fts") != rows.size()
+                    || number("SELECT count(*) FROM memory_items m LEFT JOIN memory_fts f ON f.rowid=m.rowid WHERE f.rowid IS NULL OR f.title!=m.title OR f.content!=m.content") != 0)
+                throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+            execute("INSERT INTO memory_fts(memory_fts) VALUES('integrity-check')");
+            try (var statement = connection.createStatement(); var result = statement.executeQuery("PRAGMA quick_check")) {
+                if (!result.next() || !"ok".equals(result.getString(1)) || result.next()) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+            }
+            // Exercise the actual search contract on every source, including archived records.
+            for (MemoryItem row : rows) {
+                String query = row.title().substring(0, row.title().offsetByCodePoints(0, Math.min(3, row.title().codePointCount(0, row.title().length()))));
+                String sql = query.codePointCount(0, query.length()) >= 3
+                        ? "SELECT count(*) FROM memory_fts f JOIN memory_items m ON m.rowid=f.rowid WHERE m.id=? AND memory_fts MATCH ?"
+                        : "SELECT count(*) FROM memory_items WHERE id=? AND instr(title,?)>0";
+                String value = query.codePointCount(0, query.length()) >= 3 ? "\"" + query.replace("\"", "\"\"") + "\"" : query;
+                try (var statement = prepare(sql, row.id().toString(), value); var result = statement.executeQuery()) {
+                    if (!result.next() || result.getLong(1) != 1) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+                }
+            }
+            return null;
+        });
+    }
+
     public synchronized MemoryItem create(MemoryItem.Type type, String title, String content) {
         text(type, title, content);
         return transaction(true, () -> {

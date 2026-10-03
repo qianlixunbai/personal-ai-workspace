@@ -10,6 +10,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.json.JsonMapper;
 import java.io.*;
 import java.util.List;
+import io.github.qianlixunbai.workspace.memory.MemoryBackup;
 
 final class LocalClientFilter extends OncePerRequestFilter {
     private final LocalClientToken token;
@@ -83,8 +84,11 @@ final class LocalClientFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
-            byte[] body = request.getInputStream().readNBytes(32769);
-            if (body.length > 32768) { reject(response, 413, ErrorCode.INVALID_REQUEST); return; }
+            boolean restore = identity.clientType().equals("native") && method.equals("POST")
+                    && path.equals("/api/v1/memory/backup/restore");
+            int limit = restore ? MemoryBackup.MAX_RESTORE_BYTES : 32768;
+            byte[] body = request.getInputStream().readNBytes(limit + 1);
+            if (body.length > limit) { reject(response, 413, restore ? ErrorCode.MEMORY_BACKUP_TOO_LARGE : ErrorCode.INVALID_REQUEST); return; }
             request = new BufferedRequest(request, body);
         }
         chain.doFilter(request, response);

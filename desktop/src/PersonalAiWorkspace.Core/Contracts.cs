@@ -9,7 +9,9 @@ public enum DesktopError
     InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError,
     InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed,
     MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported,
-    MemorySelectionStale, MemoryAskBudget
+    MemorySelectionStale, MemoryAskBudget,
+    MemoryBackupInvalid, MemoryBackupUnsupported, MemoryBackupTooLarge, MemoryRestoreTargetNotEmpty,
+    MemoryExportFailed, MemoryRestoreFailed, MemoryBackupFileUnavailable
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -50,6 +52,13 @@ public static class ErrorText
         DesktopError.MemoryInvalid => "Memory 输入无效：标题须非空且不超过 160 个 Unicode 字符；正文须非空且不超过 2000 个 UTF-16 单位和 8192 UTF-8 字节；搜索不超过 160 个 Unicode 字符。",
         DesktopError.MemoryStorageUnavailable => "Memory 存储不可用；请检查 Runtime 后显式重试。",
         DesktopError.MemorySchemaUnsupported => "Memory 数据版本不受当前 Runtime 支持。",
+        DesktopError.MemoryBackupInvalid => "Memory backup is invalid or damaged. 已停止恢复。",
+        DesktopError.MemoryBackupUnsupported => "Memory backup version is unsupported. 已停止恢复。",
+        DesktopError.MemoryBackupTooLarge => "Memory backup exceeds the size budget. 已停止处理。",
+        DesktopError.MemoryRestoreTargetNotEmpty => "Restore requires a NEW / EMPTY data directory. 请选择新的或空的目录。",
+        DesktopError.MemoryExportFailed => "Memory export could not be completed. 请显式重试。",
+        DesktopError.MemoryRestoreFailed => "Memory restore could not be confirmed. 请检查所选目标目录后显式重试。",
+        DesktopError.MemoryBackupFileUnavailable => "Memory backup file could not be read or saved. 请检查所选文件后显式重试。",
         _ => "Runtime internal error：Runtime 未能完成此次请求。"
     };
 }

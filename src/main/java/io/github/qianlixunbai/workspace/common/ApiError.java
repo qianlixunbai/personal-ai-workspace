@@ -21,6 +21,12 @@ public record ApiError(ErrorCode code, String message, String phase) {
             case MEMORY_STORAGE_UNAVAILABLE -> "Memory storage is unavailable.";
             case MEMORY_SCHEMA_UNSUPPORTED -> "Memory schema version is unsupported.";
             case MEMORY_SELECTION_STALE -> "Selected Memory changed. Review and select Memory again.";
+            case MEMORY_BACKUP_INVALID -> "Memory backup is invalid or damaged.";
+            case MEMORY_BACKUP_UNSUPPORTED -> "Memory backup version is unsupported.";
+            case MEMORY_BACKUP_TOO_LARGE -> "Memory backup exceeds its size budget.";
+            case MEMORY_RESTORE_TARGET_NOT_EMPTY -> "Restore requires a new or empty data directory.";
+            case MEMORY_EXPORT_FAILED -> "Memory export could not be completed.";
+            case MEMORY_RESTORE_FAILED -> "Memory restore could not be completed.";
         };
         return new ApiError(code, message, phase);
     }

@@ -82,7 +82,7 @@ public sealed partial class RuntimeClient : IDisposable
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
         HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
         Func<JsonElement, DesktopError>? errorMap = null,
-        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null)
+        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse)
     {
         using var request = new HttpRequestMessage(method, path);
         // Actuator defaults to a vendor media type unless the client negotiates JSON.
@@ -113,14 +113,14 @@ public sealed partial class RuntimeClient : IDisposable
                 return JsonDocument.Parse("{}");
             }
             if (response.Content.Headers.ContentType?.MediaType != "application/json"
-                || response.Content.Headers.ContentLength > MaximumResponse) throw Invalid();
+                || response.Content.Headers.ContentLength > (response.StatusCode == expected ? maximumResponse : MaximumResponse)) throw Invalid();
             using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             using var buffer = new MemoryStream();
             var chunk = new byte[8192];
             int count;
             while ((count = await stream.ReadAsync(chunk, deadline.Token)) != 0)
             {
-                if (buffer.Length + count > MaximumResponse) throw Invalid();
+                if (buffer.Length + count > (response.StatusCode == expected ? maximumResponse : MaximumResponse)) throw Invalid();
                 buffer.Write(chunk, 0, count);
             }
             var body = JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 24 });

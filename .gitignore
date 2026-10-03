@@ -52,3 +52,9 @@ build/
 
 # Python verification helpers
 __pycache__/
+
+# Default logical Memory exports and task-owned backup staging
+memory-backup.json
+*.memory-backup.json
+.memory-export-*
+.memory-restore-*

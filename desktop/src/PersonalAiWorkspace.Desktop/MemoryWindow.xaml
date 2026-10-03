@@ -80,6 +80,7 @@
       </Grid>
     </Grid>
     <DockPanel Grid.Row="4" Margin="0,14,0,0">
+      <Button DockPanel.Dock="Left" x:Name="BackupButton" Content="Export / Restore…" Click="OpenBackup"/>
       <Button DockPanel.Dock="Right" Content="Close" Click="CloseMemory" Margin="12,0,0,0"/>
       <TextBlock x:Name="StatusText" Text="Ready · 管理内容不会加入 Ask" TextWrapping="Wrap" VerticalAlignment="Center"/>
     </DockPanel>

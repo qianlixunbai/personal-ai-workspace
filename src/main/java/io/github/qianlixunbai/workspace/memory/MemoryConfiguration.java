@@ -7,6 +7,10 @@ import java.nio.file.Path;
 
 @Configuration
 public class MemoryConfiguration {
+    @Bean
+    MemoryBackupService memoryBackupService(@Value("${workspace.data-directory}") Path directory, RuntimeProperties properties) {
+        return new MemoryBackupService(directory, properties.security().tokenFile());
+    }
     @Bean(destroyMethod = "close")
     MemoryStore memoryStore(@Value("${workspace.data-directory}") Path directory, RuntimeProperties properties) {
         return new MemoryStore(directory, properties.security().tokenFile());

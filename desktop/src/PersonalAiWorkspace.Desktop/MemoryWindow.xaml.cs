@@ -49,6 +49,7 @@ public partial class MemoryWindow : Window
     {
         if (!initialized || closed) return;
         bool available = !busy;
+        BackupButton.IsEnabled = available;
         SearchButton.IsEnabled = RefreshButton.IsEnabled = NewButton.IsEnabled = available;
         StatusFilter.IsEnabled = TypeFilter.IsEnabled = MemoryList.IsEnabled = available;
         SearchBox.IsReadOnly = TitleBox.IsReadOnly = ContentBox.IsReadOnly = busy;
@@ -228,6 +229,8 @@ public partial class MemoryWindow : Window
     private async void Delete(object sender, RoutedEventArgs e) => await DeleteAsync();
     private async void Reload(object sender, RoutedEventArgs e) => await ReloadAsync();
     private void CloseMemory(object sender, RoutedEventArgs e) => Close();
+    private void OpenBackup(object sender, RoutedEventArgs e)
+    { if (!busy && !closed) new MemoryBackupWindow(runtime) { Owner = this }.ShowDialog(); }
     private void WindowClosing(object? sender, CancelEventArgs e)
     { if (Dirty && !confirm(MemoryConfirmation.Discard)) e.Cancel = true; }
     private void WindowClosed(object? sender, EventArgs e)

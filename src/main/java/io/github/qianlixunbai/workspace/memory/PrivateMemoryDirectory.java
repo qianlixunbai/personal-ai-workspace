@@ -11,15 +11,7 @@ final class PrivateMemoryDirectory {
 
     static Path prepare(Path directory, Path tokenFile) throws IOException {
         Path data = directory.toAbsolutePath().normalize();
-        Path credentials = tokenFile.toAbsolutePath().normalize().getParent();
-        Path working = Path.of("").toAbsolutePath().normalize();
-        if (data.equals(working) || insideProject(data) || data.startsWith(credentials) || credentials.startsWith(data))
-            throw new IOException("Memory location is not separate");
-        for (Path part : data) {
-            if (Set.of("build", "target", "logs", ".git", ".runtime").contains(part.toString().toLowerCase(Locale.ROOT)))
-                throw new IOException("Memory location is not private data");
-        }
-        noLinks(data);
+        validateLocation(data, tokenFile);
         Files.createDirectories(data);
         noLinks(data);
         protect(data, true);
@@ -41,6 +33,18 @@ final class PrivateMemoryDirectory {
         return database;
     }
 
+    static void validateLocation(Path data, Path tokenFile) throws IOException {
+        Path credentials = tokenFile.toAbsolutePath().normalize().getParent();
+        Path working = Path.of("").toAbsolutePath().normalize();
+        if (data.equals(working) || insideProject(data) || data.startsWith(credentials) || credentials.startsWith(data))
+            throw new IOException("Memory location is not separate");
+        for (Path part : data) {
+            if (Set.of("build", "target", "logs", ".git", ".runtime").contains(part.toString().toLowerCase(Locale.ROOT)))
+                throw new IOException("Memory location is not private data");
+        }
+        noLinks(data);
+    }
+
     private static boolean insideProject(Path data) {
         for (Path part = data; part != null; part = part.getParent()) {
             if (Files.exists(part.resolve(".git"), LinkOption.NOFOLLOW_LINKS)
@@ -50,7 +54,7 @@ final class PrivateMemoryDirectory {
         return false;
     }
 
-    private static void noLinks(Path path) throws IOException {
+    static void noLinks(Path path) throws IOException {
         for (Path part = path; part != null; part = part.getParent()) {
             if (Files.exists(part, LinkOption.NOFOLLOW_LINKS)) {
                 var attributes = Files.readAttributes(part, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -60,7 +64,7 @@ final class PrivateMemoryDirectory {
         }
     }
 
-    private static void protect(Path path, boolean directory) throws IOException {
+    static void protect(Path path, boolean directory) throws IOException {
         var lookup = path.getFileSystem().getUserPrincipalLookupService();
         UserPrincipal account = lookup.lookupPrincipalByName(System.getProperty("user.name"));
         if (!Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).equals(account))

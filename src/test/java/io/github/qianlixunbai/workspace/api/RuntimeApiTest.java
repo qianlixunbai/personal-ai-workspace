@@ -838,4 +838,45 @@ class RuntimeApiTest {
     private URI uri(String path) { return URI.create("http://127.0.0.1:" + port + path); }
     private JsonNode tree(HttpResponse<String> response) { return json.readTree(response.body()); }
     private String valid() { return "{\"text\":\"input-private-marker\",\"targetLanguage\":\"zh-CN\",\"profile\":\"translate.fast\"}"; }
+
+    @Test void backupNativeHttpRestoreSecurityBoundsAndPrivacy(CapturedOutput logs) throws Exception {
+        String export = "/api/v1/memory/backup", restore = export + "/restore";
+        var client = pairBrowser("chrome-extension://" + "m".repeat(32));
+        var backup = send("GET", export, null, true); assertEquals(200, backup.statusCode());
+        assertEquals("no-store", backup.headers().firstValue("Cache-Control").orElseThrow());
+        for (String path : List.of(export, restore)) {
+            String method = path.equals(export) ? "GET" : "POST";
+            assertEquals(403, browser(method, path, method.equals("POST") ? "{}" : null, client.credential(), client.origin()).statusCode());
+            assertTrue(List.of(401, 403).contains(browser(method, path, method.equals("POST") ? "{}" : null, client.credential(), null).statusCode()));
+            assertEquals(401, browser(method, path, null, token(), "https://example.com").statusCode());
+            assertEquals(401, send(method, path, null, false).statusCode());
+            assertEquals(401, http.send(browserRequest(path, client.origin()).header("Access-Control-Request-Method", method)
+                    .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        Path root = Files.createTempDirectory("workspace-backup-api-");
+        try {
+            byte[] current = Files.readAllBytes(MEMORY.resolve("memory.db"));
+            String body = json.writeValueAsString(Map.of("backup", tree(backup), "targetDirectory", root.resolve("restored").toString()));
+            // Endpoint-specific allowance exceeds 32 KiB; ordinary Memory keeps the existing limit.
+            var restored = send("POST", restore, body + " ".repeat(33000), true); assertEquals(200, restored.statusCode());
+            assertEquals(tree(backup).path("itemCount").asInt(), tree(restored).path("itemCount").asInt());
+            assertArrayEquals(current, Files.readAllBytes(MEMORY.resolve("memory.db")));
+            assertEquals(409, send("POST", restore, body, true).statusCode());
+            for (String invalid : List.of("{\"backup\":\"secret-content\"}", body.replace("\"formatVersion\":1", "\"formatVersion\":2"), body + "{}")) {
+                var rejected = send("POST", restore, invalid, true); assertEquals(400, rejected.statusCode());
+                assertFalse(rejected.body().contains("secret-content")); assertFalse(rejected.body().contains(root.toString()));
+                assertArrayEquals(current, Files.readAllBytes(MEMORY.resolve("memory.db")));
+            }
+            var tooLarge = send("POST", restore, " ".repeat(io.github.qianlixunbai.workspace.memory.MemoryBackup.MAX_RESTORE_BYTES + 1), true);
+            assertEquals(413, tooLarge.statusCode()); assertEquals("MEMORY_BACKUP_TOO_LARGE", tree(tooLarge).path("code").asString());
+            String nestedTooLarge = "{\"targetDirectory\":" + json.writeValueAsString(root.resolve("oversized").toString())
+                    + ",\"backup\":{\"format\":" + " ".repeat(io.github.qianlixunbai.workspace.memory.MemoryBackup.MAX_BYTES) + "\"invalid\"}}";
+            assertTrue(nestedTooLarge.getBytes(StandardCharsets.UTF_8).length < io.github.qianlixunbai.workspace.memory.MemoryBackup.MAX_RESTORE_BYTES);
+            assertEquals(413, send("POST", restore, nestedTooLarge, true).statusCode()); assertFalse(Files.exists(root.resolve("oversized")));
+            assertEquals(413, send("POST", "/api/v1/memory/items", " ".repeat(32769), true).statusCode());
+            assertFalse(logs.getAll().contains(root.toString())); assertFalse(logs.getAll().contains("secret-content"));
+        } finally {
+            try (var paths = Files.walk(root)) { for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path); }
+        }
+    }
 }
