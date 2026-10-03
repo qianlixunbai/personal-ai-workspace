@@ -622,3 +622,190 @@ B11/B12仍是deferredlimitations，不新增“已修复”的corecase承诺；�
 - W-Core8 全保留：HTTP/accepted envelope errors 与 redaction；pending POST cancel；capability identity / budgets；health vendor MIME；native approval / safe list / DELETE 204；proof clear-before-await / replacement / close / late discard；failed revoke retention。五个指定 WPF UX 方法均在 TRX 中 PASS。新增确定性 client-timeout / IO mapper rows；未声称测试真实8秒 deadline。
 - W-Core7 的 `CredentialTests`、`HelperProcessTests`、`SelectionAndLifecycleTests`、`UiaTests` 与基线完全无 diff，13 cases 全 PASS；production / Core / Java / Browser 均未修改。反射属性安全断言及 pairing 专用403/500分支保留。
 - `dotnet restore`、`dotnet build --no-restore`（0 warning/error）、`dotnet test --no-build --no-restore --logger "console;verbosity=minimal"`（额外 TRX logger）、`git diff --check` 均 PASS。实现只改3个授权测试文件与本追加节；其他审计建议 DEFERRED，须另行授权。
+
+## Implementation Batch 2 Result
+
+**POST-M2 TEST SIMPLIFICATION — BATCH 2 REPORT**
+
+Date: **2026-10-03 (Asia/Shanghai)**. Repository: **qianlixunbai/personal-ai-workspace**. 本节追加 Batch 2 实测结果，以上原审计与 Batch 1 历史证据保持不变。
+
+### 1. Result
+
+**GO — Balanced Batch 2 完成。** 只重组 Java tests 并追加本报告。Java **37 PASS**，Desktop **62 PASS**；production / Desktop / Browser 零修改；W-Core1–W-Core6 保留；所有删除的重复执行都有下方 replacement；diff whitespace check PASS。
+
+### 2. Git
+
+Reality check 依次执行 `git status`、`git branch --show-current`、`git rev-parse HEAD`、`git fetch origin`、`git rev-parse origin/main`、`git log -10 --oneline --decorate`。起始 working tree clean，`main = HEAD = fetched origin/main = 61c2936c71c7408eccb9a6e29fc28db869572680`。
+
+工作分支：`post-m2-test-simplification-2`。本地提交标题：`test: simplify runtime regression suite`；交付 SHA 见最终回复。`main` / `origin/main` 保持基线；不 merge / push。未发现适用的 AGENTS.md；memory registry 无相关命中。
+
+### 3. Baseline
+
+本轮实际执行 `.\mvnw.cmd test -q`：**30 invocations，0 failures，0 errors，0 skipped，wall 12.18 s**。以下是 Surefire suite time，均不含完整 Maven 启动时间。
+
+| Suite | Baseline invocations | Baseline time | After clean verify invocations | After time |
+| --- | ---: | ---: | ---: | ---: |
+| RuntimeApiTest | 1 | 5.282 s | 12 | 5.914 s |
+| TaskManagerTest | 10 | 1.342 s | 6 | 2.056 s |
+| TextCapabilitiesTest | 3 | 0.006 s | 3 | 0.023 s |
+| OllamaProviderTest | 7 | 0.373 s | 7 | 0.387 s |
+| BrowserClientsTest | 7 | 0.228 s | 7 | 0.220 s |
+| ProfilePolicyTest | 2 | 0.007 s | 2 | 0.009 s |
+| Total | **30** | — | **37** | — |
+
+Desktop 起始代码是 Batch 1 的 62-case baseline；本轮最终实际回归为 62 PASS，未把原审计中的历史 67 当成当前基线。
+
+### 4. Scope
+
+修改 `TaskManagerTest.java`、`TextCapabilitiesTest.java`、`RuntimeApiTest.java` 与本审计追加节。`src/main/**`、`desktop/**`、`pom.xml` / runtime config 零 diff。未访问或修改 Browser repo，未开始 M3、Memory、Finance、RAG，未修 B11 / B12。
+
+### 5. Before
+
+6 个 Java suites、**26 个 test method declarations / 30 expanded invocations**。TaskManager 的 4 个 boolean 参数化 lifecycle 各执行 String / structured 两次；TextCapabilities 将两个能力的 prompt 与取消混合；RuntimeApi 一个大 @Test 串行阻断多个后续 contract。
+
+RuntimeApi generic failure-mode task submissions 是 **14**：Translate 2 + Summarize 4 + Ask 4 + Batch 4。该口径排除独立 offline connection-refusal 场景、readiness GET 和 capability success。
+
+### 6. TaskManager Changes
+
+4 个 scheduler 场景各保留一次 canonical String 路径，6 个方法 / 10 invocations → 6 个方法 / 6 invocations。完整保留 owner isolation、cross-owner GET/cancel not found、QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT、queue full、queued/running cancel、cancel idempotence、queue release、distinct queue/execution timeout、late-result discard、retention capacity/expiry 和 sanitized failure。
+
+原 `structuredResultIsImmutableAndDiagnosticsAreRedactedAndArbitraryObjectsAreRejected` 保留，并增加实际 structured SUCCEEDED + result equality。不可变、redacted diagnostics、arbitrary object rejection 原断言保留。RuntimeApi 仍证明真实 HTTP structured cancel/revoke。
+
+取消和 timeout 后用同一个单 worker 的后续成功任务作为 barrier，确认旧 work 的返回值已经由 scheduler 处理后再读结果；不再仅依赖 work 返回前的 exited latch 或 release 后立即 get。补 retained success/cancel 的跨 owner GET/cancel 检查及明确 FAILED/null result 断言。Queue/execution timeout 从 60/150 ms 调整为 250/1000 ms，retention 从 400 ms 调整为 1000 ms，并将固定 sleep 450 ms 改为有截止时间的 expiry polling。仍使用真实 timer，未引入 fake clock 或修改 TaskManager。
+
+### 7. Capability Changes
+
+`promptsStayOwnedByRuntimeAndRunningCancellationDiscardsLateOutputForBoth` → `promptsProfilesAndOutputsStayOwnedByRuntimeForBoth`。Summarize/Ask 都经过真实 service → shared submission → TaskManager 成功路径；保留并加强 Runtime-owned exact prompt/profile、promptVersion、capability identity、system/input separation、LOCAL_ONLY、DTO/execution redaction、string output。仅去掉两次完整 scheduler cancel/late scenario，替代路径见第 13 节。
+
+Translate batch admission/readiness 的 translate authorization、cloud rejection、provider zero execution、DTO redaction、language-tag template reserve 均保留。Summarize/Ask cloud policy 在 provider execute 前被拒绝，zero execution 断言保留。
+
+### 8. RuntimeApi Changes
+
+拆为 **7 个方法 / 12 invocations**：
+
+| Method | Expanded invocations | Purpose |
+| --- | ---: | --- |
+| runtimeHealthRemainsIndependentOfOfflineProvider | 1 | 真 connection refusal、Runtime offline startup/health、native admission |
+| nativeTranslateContract | 1 | Translate schema/validation/budgets、public identity、text result、exact prompt |
+| nativeAssistantCapabilitiesContract | 2 | Summarize/Ask 各自 endpoint/schema/forbidden fields/input budgets/prompt/profile/output |
+| sharedApiErrorProjectionMatrix | 5 | named unavailable/model missing/malformed/output budget/internal sanitized projection |
+| browserSecurityContract | 1 | approval/exchange、Origin/credential/routes/ownership/CORS/revoke/privacy |
+| chromeOriginlessGetContract | 1 | 历史 Chrome GET regression 独立运行 |
+| batchTranslateContract | 1 | 全部 Batch input/output/execution/identity/cancel/revoke contract |
+
+一次 Spring context；每个 invocation 自己创建/启动/停止 loopback fake Provider，重置 mode/counters/output/latches，HTTP 配对使用独立 clients，finally 撤销已 exchange 的 fixture clients。每 JVM 使用 target 下唯一 token/registry 目录，避免上次非 clean 执行的 registry 残留。固定 SAME_THREAD 避免静态 mock state 被并发调用覆盖，不指定测试执行顺序。Offline 场景保持 Provider 不绑定、不启动。
+
+每次 invocation 的 AfterEach 检查 private markers、token、记录的完整 prompt/input/pairing proof/credential/Origin 不进日志；browser/batch 专有诊断断言保留。该日志检查不依赖旧长方法前半段先 PASS。
+
+Readiness 改为验证 available/error/code、禁止 model/provider/profile、无 concrete model；不再绑定完整 JSON 字符串与属性顺序。公开 profile version 仍验证 Translate `m0-1`、Summarize/Ask `m1.5-1`；promptVersion 仍精确验证。
+
+Generic mode submissions **14 → 4**（四个真实 adapter failure rows），额外一个 INTERNAL_ERROR row 在 test-only scheduler work 注入 raw exception，随后实际 HTTP GET 验证 TaskController 的 sanitized projection；没有声称这条是新的真实 adapter fault simulation。Summarize 的独有 4096/4097-byte output 边界另行保留，不并入 Translate/Ask 共用预算。
+
+### 9. Provider Test Changes
+
+**OllamaProviderTest 零 diff，7 PASS。** 不实施 J3 classification merge；real HTTP parsing、generation settings、unavailable/model/raw status、malformed/oversize/incomplete、redirect rejection、真实 timeout、in-flight cancel、connection/request classification、final LOCAL_ONLY egress 全部原样保留。
+
+### 10. Batch Coverage Retained
+
+原输入拒绝 **26 rows**、forbidden ownership/config **10 fields**、body 413 **1 row** 全保留；覆盖 exactly-one text/items、null/type/ID validation、max 32/33、aggregate characters、UTF-8、serialized/context budget、unsafe language/profile。所有这些拒绝合并校验 provider zero generation。合法 32 items、2800 characters、1365 Chinese characters、2800 quotes 的成功输入保留。
+
+输出映射 **9 rows** 全保留并有名称：完整 reorder、missing partial、unexpected ignored、duplicate output ID invalid/omitted、blank omitted、malformed items ignored、null/repeated ID omitted、empty partial、extra item field omitted。用每行 expected IDs 替换 counts/index 条件，继续检验安全 omission，并加强返回 ID 顺序。
+
+输出拒绝 **8 rows** 全保留并有名称：malformed JSON、object/null top-level、trailing JSON、markdown fence、duplicate JSON key、output budget、adapter bounded-body budget。没有用一个 malformed case 取代其他协议故障。
+
+Execution 保留一个 accepted batch 的一个 taskId/Location、exactly one provider generation（成功主场景及 9 映射行）；public profile/version/locality、translate-batch-v1、无 concrete model、Runtime-owned system/user 分离；cross-owner GET/DELETE 404、真实 HTTP RUNNING cancel/late response、revoke 后 accepted batch 仍成功，原样保留。
+
+### 11. Browser Security Coverage Retained
+
+Origin-present approval/exchange matrix、single-use/replay、exact registered Origin、wrong extension/web/null/wildcard Origin、missing/malformed/wrong-secret/native credential、Translate-only capabilities、route allowlist、Fetch Metadata、native/browser 双向 task ownership isolation、cross-owner GET/cancel 404、CORS exact Origin/no wildcard、no-store、list privacy、native revoke 与 revoked credential rejection 均保留。
+
+历史 Originless Chrome GET 单独成为 @Test：valid browser bearer + no Origin + none/cors/empty → readiness/owned task GET 200；无 synthesized CORS，no-store；other browser/native owner 404；missing/wrong credential 和 Fetch Site/Mode/Dest 每个维度拒绝；route allowlist、POST/DELETE/OPTIONS/HEAD mutation/read restrictions、exchange Authorization/no-Origin 拒绝；Origin-present allowlist仍绑定原 Origin。原边界断言全部搬迁保留，不以历史 Chrome acceptance 替代。
+
+### 12. Registry / Policy Tests
+
+**BrowserClientsTest 7 methods / 7 PASS，ProfilePolicyTest 2 methods / 2 PASS，均零 diff。** Registry identity/persistence/restart/revoke、TTL/replay/budgets/capacity/Origin、malformed registry、atomic failure、ACL/lock；profile ownership、LOCAL_ONLY、endpoint validation、unsafe configuration/final privacy boundary 均保留。
+
+### 13. Replacement Mapping
+
+删除前依据当前 shared execution/DTO 路径和审计核对 replacement；没有 replacement 的边界不删除。
+
+| Removed / merged old case | Replacement path | Same fault remains detectable because |
+| --- | --- | --- |
+| J2 ownersIsolate… 的 structured 重复 invocation | 同名 canonical String test + structuredResultIsImmutable… success + RuntimeApi batch ownership/cancel | TaskManager.submit/Job.run/find/cancel 的 scheduler/owner 路径不按 result shape 分叉；canonical 逐 owner/status 断言仍在，structured admission/terminal 类型独立证明；HTTP structured ownership/cancel 同样实测。 |
+| J2 boundedQueueCancellationAndLateSuccess 的 structured 重复 invocation | 同名 canonical test + structuredResultIsImmutable… + batchTranslateContract | 同一 workers queue、cancel/remove/finish 路径仍检查 QUEUE_FULL、queued no-execute、running cancel、replacement success、capacity release/idempotence；structured success 与真实 HTTP cancel 保留。 |
+| J2 queueAndExecutionTimeouts… 的 structured 重复 invocation | 同名 canonical test + structured success | QUEUED/RUNNING timer 和 status guard 不读取结果类型；distinct phases、TIMED_OUT/null result、处理旧 work 之后的 late discard 继续实测。 |
+| J2 resultRetentionIsBoundedAndExpires 的 structured 重复 invocation | 同名 canonical test + structured success | maxRetained/expire 基于任务数/status/finishedAt/inWorker，与 result shape 无关；capacity rejection、expiry not found、新 admission 继续实测。 |
+| J6 Summarize/Ask running-cancel/late-output 两次复制 | TaskManager ownersIsolate…、boundedQueue…、queueAndExecutionTimeouts…；RuntimeApi batchTranslateContract 的真实 adapter cancel | 两能力共用 TextTaskSubmission → TaskManager，没有 capability-specific cancellation branch；canonical scheduler barrier 捕捉 late finish/status overwrite，HTTP cancel 保留真实 future hook；两能力 service prompt/profile/privacy/output 接线仍各执行。 |
+| J1 Summarize provider modes 1/2/3/4 | sharedApiErrorProjectionMatrix 四个 adapter rows + nativeAssistantCapabilitiesContract("summarize") 的 4096/4097 输出边界 | Summarize/Translate 共用 OllamaProvider.execute → TextTaskSubmission → TaskManager/TaskView → TaskController GET；相同 controlled error/status/null result/raw redaction 仍检查。Summarize 独有 schema/prompt/profile/4096 budget 单独保留。 |
+| J1 Ask provider modes 1/2/3/4 | sharedApiErrorProjectionMatrix + nativeAssistantCapabilitiesContract("ask") | 同一 adapter/submission/scheduler/HTTP projection，无 Ask-specific generic error branch；Ask question schema、forbidden fields、input character/UTF8 budget、profile/prompt/result 身份仍独立检验。 |
+| J1 Batch generic provider modes 1/2/3/4 | sharedApiErrorProjectionMatrix + batchTranslateContract 8 output rejection / 9 mapping rows | Batch 共用 submitMapped 的 adapter/output-budget/TaskView 错误路径；只有 structured mapping 是独有分叉，全部 top-level/key/item/duplicate/budget 故障保留，因此共用错误与 Batch 专属 mapping 错误仍可被捕捉。 |
+| J1 Translate unavailable/model mode setup | sharedApiErrorProjectionMatrix 的 UNAVAILABLE/MODEL_MISSING + standalone offline health test | 真 503/empty model tags 继续执行；native readiness available vs model readiness 差异及 connection-refusal path 都保留。 |
+| J1 readiness 完整 JSON 字符串相等 | batchContract available/error/code + forbidden public fields checks | 不绑定 property order；availability、错误 code、model/provider/profile 泄露等实际 contract 故障仍使断言失败。 |
+| J1 原长 @Test 的 Browser / Chrome / Batch 串行 helper calls | browserSecurityContract、chromeOriginlessGetContract、batchTranslateContract 独立 @Test | 原安全/Batch断言逐行搬迁，自己的配对/任务 fixture；前置 native test 失败不会阻断这些 runner invocations。 |
+| J3 classification merge | **未修改、未删除**；原 7 methods | 真实协议和分类故障仍由原 adapter authority 检测，无需 replacement。 |
+
+### 14. Core Regression Gate
+
+| Gate | Retained executable authority | Result |
+| --- | --- | --- |
+| W-Core1 TaskManager lifecycle / ownership | 6 TaskManager tests + real HTTP structured cancellation | PASS |
+| W-Core2 Native capability contracts | native Translate / Summarize / Ask API rows、offline health、TextCapabilities / ProfilePolicy | PASS |
+| W-Core3 Browser security matrix | independent browserSecurityContract + chromeOriginlessGetContract + readiness/batch ownership | PASS；原边界无删减 |
+| W-Core4 Browser registry / pairing revoke | BrowserClients 原 7 tests + HTTP approval/exchange/revoke + accepted-batch lifecycle | PASS；原边界无删减 |
+| W-Core5 Batch contract | 原 26 + 10 + 1 input rejection、9 mapping、8 output rejection、legal boundary/execution/identity/cancel/revoke | PASS；原边界无删减 |
+| W-Core6 Provider boundary | OllamaProvider 原 7 tests + ProfilePolicy 原 2 tests | PASS |
+
+### 15. After
+
+| Suite | Methods before → after | Expanded invocations before → after | Source LOC before → after |
+| --- | ---: | ---: | ---: |
+| RuntimeApiTest | 1 → 7 | 1 → 12 | 540 → 660 |
+| TaskManagerTest | 6 → 6 | 10 → 6 | 163 → 189 |
+| TextCapabilitiesTest | 3 → 3 | 3 → 3 | 114 → 118 |
+| OllamaProviderTest | 7 → 7 | 7 → 7 | 123 → 123 |
+| BrowserClientsTest | 7 → 7 | 7 → 7 | 143 → 143 |
+| ProfilePolicyTest | 2 → 2 | 2 → 2 | 49 → 49 |
+| Total | **26 → 32** | **30 → 37** | **1132 → 1282** |
+
+3 changed test files **817 → 967 LOC**；test diff **+365 / -215**，净 +150。表/fixture/失败隔离增加了代码行，执行重复减少；未宣称 source LOC 或 invocation 总数下降。审计报告只追加 187 行；总 diff **+552 / -215，4 files**。
+
+### 16. Runtime / Maintenance Impact
+
+production runtime 无变化。Scheduler 完整 result-shape 复制 8 → 4 invocations；service scheduler cancel 2 → 0；generic API adapter mode submissions 14 → 4，另新增独立 internal projection 与 Summarize 4096/4097 特有边界。维护共享错误时只改一个具名矩阵；能力身份/schema/prompt 特有断言各保留。
+
+diagnostics：API 失败隔离从一个 @Test 提升到 12 runner invocations，两个能力与五个错误 modes 使用具名 JUnit 参数化显示名（Surefire XML 仍以 method[index] 记录）；Batch 26/9/8 行有明确名称，输出期望由 parallel arrays/index 条件改成 named row + expected IDs。单个 Batch 场景内部仍串行，不声称每个 matrix row 都是独立 runner invocation。
+
+wall time：baseline warm test 12.18 s、clean test 17.31 s、clean verify 17.20 s（含编译/打包）；命令成本不同，且只作本轮单次测量，**不宣称提速**。TaskManager suite 1.342 → 2.056 s，主要为 timeout/retention 安全裕量；依然需要真实 clock/timer，随机顺序单个 seed PASS 不等于穷尽所有并发 interleavings。
+
+### 17. Tests
+
+| Command | Result | Wall time |
+| --- | --- | ---: |
+| `.\mvnw.cmd test -q` (before) | 30 PASS；0 failures/errors/skipped | 12.18 s |
+| `.\mvnw.cmd clean test` (after) | 37 PASS；0 failures/errors/skipped；BUILD SUCCESS | 17.31 s |
+| `.\mvnw.cmd clean verify '-Djunit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random' '-Djunit.jupiter.execution.order.random.seed=20261003'` | 37 PASS；0 failures/errors/skipped；jar/repackage PASS | 17.20 s |
+
+README 的标准 gate 为 clean verify，已执行。Surefire XML 确认随机配置实际生效；API 执行顺序包含 assistant → batch → Chrome → Browser → errors → offline health → native Translate，证明这些场景无需旧长方法的先后状态。原 Mockito dynamic-agent warning 不改变 gate；无 dependency/runtime config 修改。
+
+### 18. Desktop Regression
+
+执行 `dotnet test desktop/PersonalAiWorkspace.Desktop.slnx --no-restore --logger "console;verbosity=minimal"`：**62 PASS，0 failed，0 skipped，wall 6.23 s**（含 build；runner 约 1 s）。desktop tracked diff 为空，Batch 1 保持不变。
+
+### 19. Diff Check
+
+`git diff --check` PASS；reviewed `git status`、`git diff --stat`、完整 `git diff`。`git diff --name-only 61c2936 -- src/main desktop pom.xml` 为空；只有以下 4 个授权 test/report 文件变化。Browser repo 没有操作或修改，因此未重跑 Chrome/MV3，也没有把它们列为本轮实际 PASS。
+
+### 20. Files Changed
+
+- `src/test/java/io/github/qianlixunbai/workspace/task/TaskManagerTest.java`
+- `src/test/java/io/github/qianlixunbai/workspace/capability/TextCapabilitiesTest.java`
+- `src/test/java/io/github/qianlixunbai/workspace/api/RuntimeApiTest.java`
+- `docs/audits/POST-M2-TEST-SUITE-AUDIT.md`（只追加本节）
+
+### 21. Deferred Batch 3
+
+本轮不实施下一批。后续审计中的 Browser scenario/fixture、historical tooling 归档或 J3 named classification table 仍 DEFERRED，须单独确定范围；Browser registry/policy/adapter authority 不列为待删除目标。B11/B12、M3、Memory/Finance/RAG 仍未启动。
+
+### 22. Recommendation
+
+**GO：接受 Balanced Batch 2 的本地 test-only 提交。** 收益是同层重复执行减少、公开 contract 保留、故障定位与完成同步更明确；无需以 30 → 37 或 source +150 LOC 判定失败。保留现有 Chrome/real Provider/Windows acceptance 入口；本轮无对应 production 变更，不据此扩展验收范围。不 merge / push。
