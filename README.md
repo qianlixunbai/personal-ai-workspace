@@ -1,34 +1,43 @@
 # Personal AI Workspace
 
-**M5 — Unified Main Workspace UI：OPEN。M5A / M5B：CLOSED — GO。**
-**M5C — Conversations Migration：IMPLEMENTED / LOCAL ACCEPTANCE PASS。**
-**M5C CLOSING CANDIDATE — GO**；等待 Architecture / Closing Review，尚未正式关闭或发布。
+**M5 — Unified Main Workspace UI：OPEN。M5A / M5B / M5C：CLOSED — GO。**
+**M5C — Conversations Migration：CLOSED — GO。M5C Architecture / Closing Review：GO。**
 M5D — Memory + Settings、M5E — Consolidation / Packaging / Final Acceptance 均 **NOT STARTED**。
+M5 仍 OPEN，因为 M5D / M5E 尚未完成；本轮止于 M5C approval sync 与 formal delivery，不开始 M5D。
 
-React Conversations 已支持 ACTIVE / ARCHIVED 分页、新建、手动改名、最新历史页与 Older / Newer、发送、逐轮显式 Memory、
-PENDING 观察与取消、归档/取消归档、确认永久删除和真实 terminal history。
-Runtime 是唯一 durable Conversation truth；React 只保留草稿、当前列表/历史页和选择状态。
-WebView reload / Workspace close-reopen 重新读取 Runtime；Runtime 重启将遗留 PENDING 置为 FAILED / EXECUTION_INTERRUPTED，不重放。
+已批准的 React Main Workspace Conversations 支持 ACTIVE / ARCHIVED、paged list、create、manual rename、paged durable history、
+per-turn explicit Memory、send、PENDING 观察与 cancel、archive / unarchive / delete、durable failure states 和 reload / reopen / restart recovery。
+Runtime = sole durable Conversation truth；React 只负责 presentation、bounded current pages、draft、selection、focus/loading/error。
+列表每页 10 Conversations，历史每页 10 Turns；默认读取 page0，必要时再读取 latest page，不全量预加载 1000 Conversations / Turns。
+WebView reload 时 session rotates，重新读取 durable detail、发现 PENDING 并观察 terminal，无 replay。
+Main Workspace reopen 不自动 cancel、不 resend，从 Runtime 重读；Runtime restart 将 stale PENDING 置为 FAILED / EXECUTION_INTERRUPTED，无 provider replay。
 
 生产链保持 bundled React → typed allowlisted WPF bridge → application-owned RuntimeClient → Runtime / SQLite / Ollama。
-M5C 新增 11 个 explicit `conversations.*` 方法；Conversation ID 由当前 session 的 list/create 授权，raw taskId 与 bearer 留在 native/Core。
-普通 bridge reply 仍为 64 KiB；只有 `conversations.get` 具有经最大合法页面测试证明的 1 MiB 上限，无截断。
-Memory 仍经既有原生 picker 显式预览/选择，exact revision 以 decimal string 跨 bridge；历史只显示 reference metadata。
-接受 admission 后消耗选择，明确 stale 要 Review / Change 或 Clear；未知结果保留草稿、清除授权、刷新 durable history，不自动重发。
+M5C 新增 11 个 explicit `conversations.*` 方法，完整名单见 [current architecture](docs/architecture/current-architecture.md)。
+Bridge 保持 typed、versioned、allowlisted、origin/session checked、strict payload schemas 与 session-authorized IDs；无 generic CRUD / HTTP / SQL / task-by-ID proxy。
+raw Runtime taskId 不暴露给 React；React cancel 只传 conversationId + turnId，WPF Host 通过真实 Runtime detail 验证并绑定内部 taskId 后调用 existing cancel API。
+普通 bridge response 仍为 64 KiB；只有 `conversations.get` 的 Conversation detail 为 1 MiB hard ceiling，基于 legal page worst-case，automated + real serialization/render 验证，无 silent truncation。
+Memory 是 explicit per-turn，经 native MemorySelectionWindow 显式预览/选择，max 4、exact revision 以 decimal string 跨 bridge。
+Accepted admission 消耗 selection，下一 Turn 无 automatic carry-over；明确 stale 要 Review / Change 或 Clear，未知结果保留草稿、清除授权、刷新 durable history，不自动重发。
+Historical refs 可以 dangling；UI 只显示历史 reference metadata，不查询当前 Memory 伪造历史 title/body。
 
-本轮完整验收：Java **105 PASS** / Desktop **233 PASS** / Frontend **66 PASS**，0 failure/error/skip。
-**REAL WINDOWS PINYIN CONVERSATION EDITOR — PASS**：真实键盘 composition / 候选 commit → exact React / bridge / durable USER / provider input。
+Published M5C test baseline（Architecture Review 已批准）：Java **105 PASS** / Desktop **233 PASS** / Frontend **66 PASS**，0 failure/error/skip。
+Approval sync / formal delivery 记录既有验收结果，本轮不重跑测试或真实 Windows gates。
+**REAL WINDOWS PINYIN — PASS**：production Conversation textarea 中 Pinyin → committed Chinese → conversations.send → exact durable USER → exact provider USER。
+**REAL MULTI-TURN OLLAMA — PASS；DURABLE RELOAD / REOPEN / RESTART RECOVERY — PASS。**
 真实 Release WPF / WebView2 / bundled React / Runtime / SQLite / Ollama，多轮上下文、逐轮 Memory、取消、failure、生命周期、恢复与隐私均 PASS。
 M5A shell/security、M5B React Assistant/Summarize/Memory Ask/Translate及真实 Assistant Pinyin、native hotkey/UIA/clipboard、
 Memory CRUD、Workspace / Memory-only recovery 和 Browser Translate-only 回归 PASS。Browser 回归为 synthetic HTTP + real Ollama，不声称新 Chrome GUI 验收。
-范围、175 项验收检查记录、性能及限制见 [M5C Closing Report](docs/milestones/M5C-CLOSING-REPORT.md)；当前状态见 [STATUS](docs/STATUS.md)。
+范围、175 项验收检查记录、性能及限制见 [M5C Closing Report](docs/milestones/M5C-CLOSING-REPORT.md)。该报告保留形成时 IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO、M5 — OPEN 的历史快照；review 后当前正式状态见 [STATUS](docs/STATUS.md)。
 
 Assistant 继续 ordinary Ask / Summarize / explicit Memory Ask，保持 single-turn/stateless；Desktop Translate 支持 Submit / Cancel / Result / native Copy。
 Conversations 为 durable multi-turn domain，独立于 M5B transient operation registry。
 会话编辑器支持 Enter 换行、composition 完成后 Ctrl+Enter 或 Send；切换会话丢弃草稿并清除本轮 Memory，不取消已接受执行。
-归档阻止新 Turn，已接受 PENDING 可继续完成；PENDING 阻止永久删除。删除 dialog 默认聚焦 Cancel。
+Archive：ACTIVE → ARCHIVED，阻止新 Turn，但不 cancel accepted PENDING execution；Unarchive 使用同一 Conversation ID 回到 ACTIVE。
+Delete 是 physical irreversible delete，Runtime conflict 在 PENDING 时阻止删除；无 cancel-then-delete / force delete。删除 dialog 默认聚焦 Cancel。
 全部 legacy native windows 保留，包括 `native.openConversations` fallback；Memory management / Settings maintenance 仍为原生入口。
-React 不直接请求 Runtime，不持久化 Conversation、草稿或结果；URL 不带 Conversation ID。唯一 localStorage 数据仍为 theme。
+Conversation content 仅作 in-memory presentation；React 不拥有 durable transcript、second database、IndexedDB Conversation truth 或 localStorage Conversation history。
+React 不直接请求 Runtime；localStorage 仅 theme，无 IndexedDB / sessionStorage / service worker domain state，无 content in URL；plain text rendering，UDF privacy scan PASS。
 Browser companion 继续 Translate-only；ADR-001..010 **Accepted**，Java production / schema / backup format 无改动。
 
 M5C Release acceptance 复现：先构建 Runtime 与 frontend，确保 8765/18766/11435 空闲和本机 Ollama 模型可用：
@@ -45,7 +54,7 @@ python -X utf8 scripts/conversations-workspace-smoke.py
 M5B 回归：`python -X utf8 scripts/assistant-translate-smoke.py`。
 
 已批准历史：[M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md)、[M5B Closing Report](docs/milestones/M5B-CLOSING-REPORT.md) 保留原快照。
-M5A shell 的真实 IME 当时 deferred，M5B 的生产 Assistant 编辑器已正式通过；M5C 对新 Conversation 编辑器单独重复真实验收。
+M5A shell 的真实 IME 当时 deferred，M5B 的生产 Assistant 编辑器已正式通过；M5C implementation acceptance 对新 Conversation 编辑器单独完成真实验收。
 M4 — User-Controlled Conversation Foundation **CLOSED — GO**，包含 durable Conversation、multi-turn execution、explicit per-turn Memory 与 logical Workspace recovery。
 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md) 与 [ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md) 保持原样。
 Memory / full Settings React 迁移、旧窗口退役、installer/updater/Java bundling、Finance/Knowledge/RAG/Agent、Browser Conversation、
