@@ -2,7 +2,7 @@
 
 ## Current M5E product consolidation and portable packaging
 
-**M5E — IN PROGRESS。M5 — OPEN。M5A/B/C/D — CLOSED — GO。** ADR-001..010 remain Accepted; no new durable architecture.
+**M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5E CLOSING CANDIDATE — GO。M5 FINAL CLOSING CANDIDATE — GO。M5 — OPEN。M5A/B/C/D — CLOSED — GO。** ADR-001..010 remain Accepted; no new durable architecture. Architecture / Final Closing Review is pending.
 
 React is the normal product surface for Assistant / Conversations / Memory / Translate / Settings. WPF owns shell/lifecycle/tray, single instance, selection hotkey, UIA/controlled clipboard/helpers, Quick Assistant/fallback, credential flow, Memory selector, Browser Pairing and backup/file/confirmation flows. Normal launch, second instance, launcher activation, tray double-click and primary Open all target MainWorkspaceWindow. Missing credentials leave Main Workspace open with safe status and explicit native import.
 
@@ -12,7 +12,7 @@ The JS-accessible native allowlist is exactly `native.openCredentialFlow`, `nati
 
 Java 21, installed Ollama/configured model and Evergreen WebView2 remain external requirements. Runtime is externally owned; launcher startup does not create a supervisor or exit-time service ownership. Readiness plus authenticated native provider contract is required for reuse, otherwise fail closed without killing unknown processes. Workspace data defaults to existing `${user.home}/.personal-ai-workspace/data`; auth/browser registry/logs use owner-only `%LOCALAPPDATA%/PersonalAiWorkspace/RuntimeState`, outside package/repository/data. WebView keeps its separate fixed private profile.
 
-Unsigned portable folder; installer/updater, embedded Java/Ollama and encryption remain deferred. Current acceptance results will be recorded in the M5E report after actual package gates finish.
+Unsigned portable folder; installer/updater, embedded Java/Ollama and encryption remain deferred. The fixed clean implementation package passed real Windows entry/tray/single-instance, Ollama, native Pinyin, durable Conversation, Memory, explicit context, hotkey/UIA, Workspace recovery, native maintenance and renderer/asset fallback acceptance. Runtime/Browser/schema/Core ownership code did not change. Final automated totals: Java 105 / Desktop 258 / Frontend 106 PASS; package security checks 13 PASS; full privacy/package/UDF audit 0 unexpected matches. Exact evidence, limits and package hashes: [M5E Closing Report](../milestones/M5E-CLOSING-REPORT.md). This is local acceptance, not final architecture approval or publication.
 
 ## Approved M5D implementation history
 

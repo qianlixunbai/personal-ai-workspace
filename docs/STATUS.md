@@ -1,15 +1,18 @@
 # Personal AI Workspace — Current Status
 
-## Current M5E implementation
+## Current M5E local closing candidate
 
 M5A / M5B / M5C / M5D — CLOSED — GO。
-**M5E — IN PROGRESS。M5 — OPEN。**
+**M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5 — OPEN。**
+**M5E CLOSING CANDIDATE — GO。M5 FINAL CLOSING CANDIDATE — GO。** Waiting for Architecture / Final Closing Review; neither M5E nor M5 is closed by this implementation candidate.
 Published baseline `a1c17b441d1d29088d16894da92f50d2f1d3f642`，clean main / HEAD / main / live-fetched origin/main Reality Gate PASS。
 Branch `m5e-product-consolidation-packaging`；no merge/push/tag/release。
 
 Main Workspace becomes the default startup, second-instance, launcher and tray destination. Credential Missing no longer forces legacy UI. Native quick/hotkey/privileged surfaces stay implemented; healthy React no longer advertises legacy domain windows. Three legacy JS native-open methods are removed; four Settings maintenance methods remain.
 Self-contained win-x64 portable packaging includes Desktop, production React, application JAR, launcher, user README, manifest and SHA-256. Java 21/Ollama/WebView2 remain prerequisites. Runtime auth/log state is private and separate from package/data.
-Changed components/trust boundaries are tested during implementation; one final full automated regression and one compact packaged product flow are required before candidate GO. Real product acceptance is still in progress; no local acceptance PASS or closing GO is claimed yet.
+Implementation commit `bcf7d5f8e20c05e516ae22cbff40d17a18567222`; final ignored package `artifacts/PersonalAiWorkspace-win-x64`, manifest sourceDirty=false, 487 payload files plus manifest/checksums. One final full automated regression: Java **105 PASS**, Desktop **258 PASS**, Frontend **106 PASS**; production frontend build and self-contained package publish PASS. Package negative/security checks: **13 PASS**.
+Final real packaged Windows flow PASS: actual shipped EXE/default main/tray/second launch; Missing credential and explicit native flow; real Ollama; one native Windows Pinyin input; durable two-turn/reload; Memory create/edit/search; explicit Memory once and no next-operation inheritance; native hotkey/UIA Translate; Workspace export/restore with exact logical parity; maintenance entries; renderer-crash/invalid-asset native fallback. Package/UDF/full source-output-log-evidence-archive privacy audit: **0 unexpected matches**. User Ollama and credentials were preserved; isolated acceptance Runtime/Desktop cleaned up.
+[M5E Closing Report](milestones/M5E-CLOSING-REPORT.md) records the precise fixtures, 374-file UDF audit, package identity, test policy, limitations and review handoff. Historical heavy acceptance was not mechanically rerun. Portable unsigned folder, Java/Ollama/WebView2 prerequisites, plaintext DB/backups, no installer/updater remain disclosed.
 
 ## Approved M5D delivery history
 

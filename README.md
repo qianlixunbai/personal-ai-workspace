@@ -2,8 +2,8 @@
 
 Personal AI Workspace 是 local-first Windows AI 工作区：Assistant 单轮问答/摘要、持久多轮 Conversations、用户手动管理的 Memory、Translate 和 Settings。所有推理由本机 Ollama 执行；没有云端 fallback、自动 Memory 或同步。
 
-**M5A / M5B / M5C / M5D — CLOSED — GO。M5E — IN PROGRESS。M5 — OPEN。**
-M5E 将 Main Workspace 收口为默认 Windows 产品入口，并建立 portable Release bundle；候选必须完成包内产品验收后才能进入 Architecture / Final Closing Review。当前状态见 [STATUS](docs/STATUS.md)。
+**M5A / M5B / M5C / M5D — CLOSED — GO。M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5 — OPEN。**
+M5E CLOSING CANDIDATE — GO；M5 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Final Closing Review。Main Workspace 默认产品入口与 portable Release bundle 已完成本地验收。最终回归：Java 105 / Desktop 258 / Frontend 106 PASS。范围、包身份和真实 Windows 证据见 [M5E Closing Report](docs/milestones/M5E-CLOSING-REPORT.md)，当前状态见 [STATUS](docs/STATUS.md)。
 
 ## 产品与架构
 
