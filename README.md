@@ -1,9 +1,17 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。**M4B — Multi-turn Execution & Context Assembly：实施与本地验收完成，等待 Architecture / Closing Review；M4 overall：OPEN**。
-正式 M4A baseline：`126061bc116c8d7f2215446eac8151149ae07f1a`。M4B 在 `m4b-conversation-execution` 本地开发，未 merge/push。
-Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**；Delivery Gate **PASS WITH REMOTE FRESHNESS DEFERRED**，依据用户一次性例外。
-Last verified published baseline: `126061bc116c8d7f2215446eac8151149ae07f1a`。交付前须成功 fetch 并复核 remote；未知新提交触发 STOP / REMOTE DIVERGENCE REVIEW。
+**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
+M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
+Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
+M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
+Local git fetch at M4C start: FAILED due to GitHub connectivity.
+Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
+No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
+
+
+独立、local-first 的共享 AI Runtime。M4C 在 `m4c-workspace-backup-restore` 本地实现，未 merge/push。
+当前证据与限制见 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md)；当前阶段唯一事实来源为 [STATUS](docs/STATUS.md)。
+
 **M2 — Browser Convergence：CLOSED — GO**。
 **M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
 **M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
@@ -28,6 +36,40 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 收口范围、架构、安全与既有验收证据见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
 Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 保留形成当时的综合验收、边界与 Git 状态；当前 M3 publication 已完成。
+
+## M4C — Workspace Logical Backup / Restore
+
+Assistant 的 **Workspace Backup…** 打开最小原生 WPF 窗口：Export、Choose / Validate、单独 Restore。
+备份包含 ACTIVE/ARCHIVED Memory 和 terminal Conversation history，属于**明文个人数据**；没有加密或密码。
+SHA-256 用于检测损坏，不提供真实性证明。预览只显示版本、时间和计数。
+
+| Native-only API | Contract |
+| --- | --- |
+| GET `/api/v1/workspace/backup` | 流式 UTF-8 Workspace JSON；不接受 export path |
+| POST `/api/v1/workspace/backup/validate` | 原始 backup body；完整验证并返回安全 metadata |
+| POST `/api/v1/workspace/backup/restore` | 原始 backup body；`X-Workspace-Restore-Target` 为 absolute target 的 UTF-8/unpadded base64url |
+
+新格式 `personal-ai-workspace.workspace-backup` format1；Memory section1 / Conversation section1；SQLite仍v3。
+使用同一 SQLite read snapshot，拒绝 PENDING；不导出/恢复 taskId，恢复启动不重放任务。
+Historical Memory ID/revision/position 保留，包括已删除 Memory 的引用；新 Send 仍须显式选择 Memory。
+只恢复到新/空目录，通过 private staging、单事务重建、FTS/read-back/digest/integrity 检查后 no-replace 发布。
+成功后须显式使用 restored directory 启动 Runtime/Desktop；不合并、不切换当前数据。
+
+Desktop64KiB缓冲、Runtime逐条解析；文件/body上限 **101,393,896,192 bytes**，根据现有1000x1000 Turns容量推导。
+完整验证需要临时磁盘及额外流式上传，backup请求最长2小时；大导出read transaction可能短暂阻塞SQLite writes。
+完整101GB理论数据集未实测；单Conversation1000Turns最坏转义约94MiB已验证。
+Memory-only `/api/v1/memory/backup` contract 与fresh-v1 restore独立保留，不能用于恢复Conversation。
+详细字段/canonical规则/路径策略见 [ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md)。
+
+```powershell
+.\mvnw.cmd clean verify
+dotnet test desktop/PersonalAiWorkspace.Desktop.slnx
+python -X utf8 scripts/workspace-backup-smoke.py
+```
+
+真实恢复脚本只使用隔离合成数据，删除original Workspace后，以真实WPF/HTTP/SQLite/Ollama验证恢复与续聊。
+本地Java105/Desktop136 PASS；Browser继续Translate-only，普通Ask继续stateless。
+M4保持OPEN；不会开始React/WebView2 Main Workspace。
 
 ## M4B — Multi-turn Conversation
 
@@ -73,7 +115,7 @@ python -X utf8 scripts/conversation-execution-smoke.py
 
 真实 smoke 使用隔离临时数据和凭据，驱动生产 WPF entry/controls、HTTP、SQLite、Ollama，验证多轮、逐轮 Memory、cancel、reopen/continue、失败与启动无重放。
 真实 timeout 未稳定制造；自动 queue/execution timeout 测试是主证据。完整结果见 [M4B Closing Report](docs/milestones/M4B-CLOSING-REPORT.md)。
-**M4 remains OPEN**：Conversation logical export/restore、portable recovery 与最终完整 closing 留到 M4C。
+M4B历史closing时尚无Conversation portable backup；当前恢复能力与证据见上方M4C。M4仍OPEN，等待Architecture/Closing Review。
 
 ## M4A — Conversation Domain & Persistence（历史 closing 基线）
 
@@ -169,7 +211,7 @@ title/content 去空白检查非空，但保存原始正文/换行。搜索 quer
 python scripts/memory-storage-smoke.py
 ```
 
-当前 Java **63** / Desktop **106** PASS（保留原 Java54 / Desktop94）；M3 最终真实 WPF/HTTP/SQLite/Ollama / logical recovery 综合验收 PASS。
+M3历史 closing Java **63** / Desktop **106** PASS（保留原 Java54 / Desktop94）；M3 最终真实 WPF/HTTP/SQLite/Ollama / logical recovery 综合验收 PASS。
 
 ## M3B — Desktop Memory Management
 

@@ -1,9 +1,28 @@
-# Current Architecture — M4B Multi-turn Execution & Context Assembly
+# Current Architecture — M4C Workspace Logical Backup / Restore
 
-M4B本地实现与验收完成，等待Architecture/Closing Review；**M4 overall OPEN**。
-正式M4A baseline `126061bc116c8d7f2215446eac8151149ae07f1a`。
-Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**；Gate **PASS WITH REMOTE FRESHNESS DEFERRED**。
-最后已验证published baseline同上；formal delivery前须成功fetch。未知新remote commit触发STOP/REMOTE DIVERGENCE REVIEW，不自动整合。
+**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
+M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
+Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
+M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
+Local git fetch at M4C start: FAILED due to GitHub connectivity.
+Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
+No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
+
+
+## M4C current architecture
+
+[ADR-007](../ADR/ADR-007-logical-workspace-backup-restore.md)完整定义新portable contract，尚待Architecture/Closing Review。
+ADR-006仍Accepted，Memory-only format1/schema1/fresh-v1 restore保持；Workspace DB仍v3，无新增migration。
+Workspace format1包含Memory source + Conversation terminal history，不包含taskId/PENDING/transient execution。
+同一SQLite read transaction提供counts/digest/streamed export；SHA-256采用排序后的length-prefixed UTF-8 canonical values。
+严格逐条解析至private staging v3 DB，单transaction写入，read-back canonical equality、FK/FTS/search/quick_check后commit/close。
+复用ADR-006 path validator/publisher，new/empty target、same FileStore/no-replace、no active hot swap；failure只清理task-owned staging。
+Desktop拥有native file dialogs与64KiB file/HTTP stream；完整validation由Runtime执行，再显示仅metadata预览；Restore是单独显式操作。
+Native-only GET export / POST validate / POST restore；Browser所有route/method/Origin组合在body/filesystem前拒绝。
+Raw restore body避免巨大JSON envelope复制；target通过bounded UTF-8/base64url header传入，request header limit64KiB。
+理论安全上限101,393,896,192bytes，完整保留当前domain capacity；大文件需磁盘/时间并可能延迟SQLite writer。
+真实isolated recovery中original已删除，恢复逐字段exact、startup0replay、oldTask404、WPF search/reopen/realOllama continue+explicitMemory PASS。
+M4保持OPEN、等待Closing Review；没有Finance/Knowledge/RAG/Agent/autoMemory/cloud/sync/scheduler/React/WebView2 Main Workspace。
 
 ## M4B current architecture decisions
 
@@ -41,7 +60,7 @@ Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**�
   admission evidence只有sequence/count/input sizes，ToString redacted；无title/Message/Memory/context/provider output日志。SQLite仍本地明文+OS账户权限。
 
 以上长期规则由本架构文档承载；所有六个Accepted ADR保持，未新增通用框架或机械ADR。
-M4B不实现M4C backup/restore/portable recovery；无React/WebView2/streaming/RAG/Knowledge/Finance/Agent/Browser Conversation/edit/regenerate/branching。
+M4B当时不实现M4C backup/restore/portable recovery；当前新增能力见上方与ADR-007。无React/WebView2/streaming/RAG/Knowledge/Finance/Agent/Browser Conversation/edit/regenerate/branching。
 完整证据与limitations见[M4B Closing Report](../milestones/M4B-CLOSING-REPORT.md)。
 
 ## Historical M4A architecture and closing baseline

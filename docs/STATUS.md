@@ -1,11 +1,37 @@
 # Personal AI Workspace — Current Status
 
+**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
+M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
+Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
+M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
+Local git fetch at M4C start: FAILED due to GitHub connectivity.
+Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
+No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
+
+
 Updated: 2026-10-04 (Asia/Shanghai)
 
 此文件是当前阶段、完成状态、验证证据与遗留项的唯一事实来源。
 README 负责启动/API 使用；ADR 负责已采用决策。
 
-## 阶段与结论
+## 当前 M4C 结果
+
+本地Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。Workspace format1 / section1 / DBv3。
+真实WPF/HTTP/SQLite/Ollama recovery PASS：original删除后仅凭backup恢复，逐字段logical equality、
+Memory search、Conversation reopen、真实Ollama续聊与explicit restored Memory、startup0replay/oldTask404均PASS。
+M4A/M4B、旧Memory-only recovery、native Translate/Summarize/stateless Ask、Browser Batch/security与privacy audit回归PASS。
+3个合成测试临时目录因automatic approval review拒绝cleanup而保留；详见[M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)。
+
+ADR-001..006仍Accepted；新增[ADR-007](ADR/ADR-007-logical-workspace-backup-restore.md)记录独立Workspace portability contract，等待Review。
+M4 Final Closing Candidate — GO；这不是M4 CLOSED — GO。没有main merge/push、tag/release或Main Workspace UI。
+Local main/cached origin/main仍是published M4B baseline；本机开工fetch失败，Architecture Review外部实时核验支持本次开工。
+任何main merge/push/formal delivery前须重新实时验证remote；连接仍失败则等Architecture/Delivery Review，不自行发布。
+
+## Historical M4B execution and closing snapshot
+
+以下保留M4B形成时的执行/验收事实；当前published状态以上方M4C baseline为准。
+
+
 
 **M4B — Multi-turn Execution & Context Assembly：实施与本地验收完成，等待 Architecture / Closing Review**。
 **M4 — User-Controlled Conversation Foundation：OPEN**。
@@ -29,7 +55,7 @@ Dedicated Retry = **NOT IMPLEMENTED BY DESIGN**；terminal immutable，用户明
 真实WPF/HTTP/SQLite/Ollama multi-turn/Memory/cancel/archive/restart/reopen/continue/failure，以及startup零provider调用已PASS。
 M3 Memory restart/backup/restore、M4A persistence、native Translate/Summarize/Ask、Browser Batch/security回归PASS；最终计数与审计见[M4B报告](milestones/M4B-CLOSING-REPORT.md)。
 Real timeout **UNVERIFIED**，自动 queue/execution timeout tests 为主证据；不冒充历史ChromeGUI/hotkey手工验收。
-M4C logical Conversation export/restore/version/recovery/portability/final lifecycle及最终Windows/Ollama/privacy gates仍未开始。
+上述是M4B历史scope；M4C当前已完成本地实现/恢复验收，详见本文件顶部与M4C报告。
 Finance/Knowledge/RAG/Agent/Browser Conversation/React-WebView2/streaming/edit/regenerate/branching/automatic Memory均未实现。
 
 ### M4A 历史 closing 与形成时的 Git 记录

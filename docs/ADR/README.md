@@ -10,3 +10,4 @@
 | [ADR-004](ADR-004-user-controlled-memory-storage.md) | Accepted | Runtime-owned explicit Memory、SQLite truth、derived FTS、revision、native-only、plaintext + OS boundary |
 | [ADR-005](ADR-005-explicit-memory-context.md) | Accepted | Per-turn explicit context、ACTIVE exact-revision admission snapshot、combined budget、ordinary Ask isolation |
 | [ADR-006](ADR-006-logical-memory-backup-restore.md) | Accepted | Versioned logical source backup、canonical digest、plaintext、new/empty target、fresh schema/FTS rebuild、no active DB replacement |
+| [ADR-007](ADR-007-logical-workspace-backup-restore.md) | Implemented locally; pending Review | 独立Workspace format1、Memory+terminal Conversation、bounded streaming、strict digest、new/empty v3 reconstruction与recovery |
