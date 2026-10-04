@@ -11,6 +11,7 @@ public sealed class AssistantOperation(RuntimeClient client, TimeSpan? pollingIn
     }
 
     public bool Accepted { get; private set; }
+    public bool AdmissionOutcomeUnknown { get; private set; }
     public async Task<RuntimeTask> RunAsync(AssistantInput input, Action<RuntimeTask> progress, CancellationToken lifetime,
         IReadOnlyList<MemoryReference>? memories = null)
     {
@@ -26,14 +27,21 @@ public sealed class AssistantOperation(RuntimeClient client, TimeSpan? pollingIn
             if (memoryAsk && input.Action != AssistantAction.Ask) throw new DesktopException(DesktopError.InvalidRequest);
             capability = input.Action switch { AssistantAction.Translate => "translate", AssistantAction.Summarize => "summarize", AssistantAction.Ask => "ask", _ => throw new DesktopException(DesktopError.InvalidRequest) };
             promptVersion = memoryAsk ? "memory-ask-v1" : capability + "-v1";
-            var task = await (input.Action switch
+            RuntimeTask task;
+            try { task = await (input.Action switch
             {
                 AssistantAction.Translate => client.SubmitTranslateAsync(new(input.Text, input.TargetLanguage), lifetime),
                 AssistantAction.Summarize => client.SubmitSummarizeAsync(new(input.Text), lifetime),
                 AssistantAction.Ask => memoryAsk ? client.SubmitMemoryAskAsync(new(input.Text, selection!), lifetime)
                     : client.SubmitAskAsync(new(input.Text), lifetime),
                 _ => throw new DesktopException(DesktopError.InvalidRequest)
-            });
+            }); }
+            catch (DesktopException error) when (error.Error is DesktopError.RuntimeUnavailable or DesktopError.ClientTimeout or DesktopError.InvalidResponse)
+            {
+                // A failed POST/response cannot prove that admission did not happen. Never replay.
+                AdmissionOutcomeUnknown = true;
+                throw;
+            }
             id = task.TaskId;
             Accepted = true;
             var started = System.Diagnostics.Stopwatch.StartNew();

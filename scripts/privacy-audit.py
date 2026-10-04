@@ -114,11 +114,15 @@ ignore_ok = all(subprocess.run(['git', '-C', str(root), 'check-ignore', '-q', na
     'desktop/src/PersonalAiWorkspace.Desktop/bin/check.dll', 'desktop/src/PersonalAiWorkspace.Desktop/obj/check.json',
     'desktop/tests/PersonalAiWorkspace.Desktop.Tests/TestResults/check.trx'])
 frontend_production = [p for p in (root / 'desktop/frontend/src').rglob('*') if p.suffix in ['.ts', '.tsx'] and '.test.' not in p.name and 'test' not in p.parts]
-frontend_isolated = all(not re.search(r'\bfetch\s*\(|XMLHttpRequest|\bAuthorization\b|indexedDB|serviceWorker|\bconsole\.', p.read_text('utf-8')) for p in frontend_production)
-report = dict(result='PASS' if not matches and not artifacts and not backup_artifacts and ignore_ok and frontend_isolated else 'FAIL', sourceFiles=len(sources),
+frontend_isolated = all(not re.search(r'\bfetch\s*\(|XMLHttpRequest|\bAuthorization\b|indexedDB|serviceWorker|\bcaches\s*\.|\bconsole\.|dangerouslySetInnerHTML|navigator\.clipboard|sessionStorage', p.read_text('utf-8'))
+                       and (p.name == 'theme.ts' or not re.search(r'localStorage|Storage\.prototype', p.read_text('utf-8')))
+                       for p in frontend_production)
+bridge_sources = list((root / 'desktop/src/PersonalAiWorkspace.Desktop/Bridge').glob('*.cs'))
+bridge_no_content_diagnostics = all(not re.search(r'Console\.|Debug\.Write|Trace\.Write|ILogger|LogInformation|LogError|LogWarning', p.read_text('utf-8')) for p in bridge_sources)
+report = dict(result='PASS' if not matches and not artifacts and not backup_artifacts and ignore_ok and frontend_isolated and bridge_no_content_diagnostics else 'FAIL', sourceFiles=len(sources),
               files=len(files), byteAndArchiveChecks=checks, archives=archives, actualNativeCredentials=len(native),
               ephemeralSecrets=len(payload.get('secrets', [])), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok,
-              frontendNoDirectNetworkOrDomainStorage=frontend_isolated)
+              frontendNoDirectNetworkOrDomainStorage=frontend_isolated, bridgeNoContentDiagnostics=bridge_no_content_diagnostics)
 print(json.dumps(report, indent=2))
 if report['result'] != 'PASS':
     print(json.dumps(dict(matchedFiles=matches, artifacts=artifacts, backupArtifacts=backup_artifacts)))

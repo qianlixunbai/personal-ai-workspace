@@ -6,7 +6,7 @@ public enum DesktopError
 {
     RuntimeUnavailable, Unauthorized, CredentialMissing, CredentialInvalid, CredentialStorage,
     QueueFull, ProviderUnavailable, ModelUnavailable, PolicyDenied, InvalidRequest,
-    InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError,
+    InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError, OutcomeUnknown,
     InvalidExtensionOrigin, PairingCapacityFull, SecurityStateError, PairingCreationFailed, BrowserManagementFailed,
     MemoryNotFound, MemoryRevisionConflict, MemoryLimitExceeded, MemoryInvalid, MemoryStorageUnavailable, MemorySchemaUnsupported,
     MemorySelectionStale, MemoryAskBudget,
@@ -32,6 +32,7 @@ public static class ErrorText
         DesktopError.ConversationLimitExceeded => "Conversation capacity or size limit exceeded.",
         DesktopError.ConversationStorageUnavailable => "Conversation storage is unavailable.",
         DesktopError.RuntimeUnavailable => "Runtime unavailable：请先启动本机 Runtime。",
+        DesktopError.OutcomeUnknown => "Outcome unknown：提交可能已被接受，但未收到可验证的响应。请检查 Runtime；不会自动重发。",
         DesktopError.Unauthorized => "Unauthorized：凭据已失效，请显式重新导入 Runtime token。",
         DesktopError.CredentialMissing => "Credential missing：请首次导入本机 Runtime 的私有 token 文件。",
         DesktopError.CredentialInvalid => "Credential invalid：token 格式、所有者或私有权限不符合要求。",

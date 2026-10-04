@@ -16,7 +16,7 @@ it('shows the five real navigation routes with safe status and no fake domain da
     expect(screen.getByRole('heading', { level: 1 }).textContent?.toLowerCase()).toBe(route)
     expect(screen.getByRole('navigation').querySelector('[aria-current="page"]')?.getAttribute('href')).toBe(`#/${route}`)
   }
-  expect(document.querySelector('form, textarea, iframe')).toBeNull(); expect(screen.queryByText('Knowledge')).toBeNull(); expect(screen.queryByText('Finance')).toBeNull()
+  expect(document.querySelectorAll('textarea')).toHaveLength(2); expect(document.querySelector('iframe')).toBeNull(); expect(screen.queryByText('Knowledge')).toBeNull(); expect(screen.queryByText('Finance')).toBeNull()
   expect(pageFromHash('#/unknown')).toBe('assistant')
 })
 it('native entry buttons issue only fixed methods and refresh displays unavailable honestly', async () => {

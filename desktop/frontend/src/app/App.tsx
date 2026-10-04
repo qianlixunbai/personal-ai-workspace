@@ -4,6 +4,7 @@ import type { NativeMethod, ShellStatus } from '../bridge/contracts'
 import { pages, pageFromHash } from './navigation'
 import { readTheme, saveTheme } from './theme'
 import { WorkspacePage } from '../pages/WorkspacePage'
+import { OperationPage } from '../pages/OperationPage'
 
 export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [page, setPage] = useState(() => pageFromHash(location.hash))
@@ -55,7 +56,10 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
         <button className="theme-button" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}>切换到{theme === 'light' ? '深色' : '浅色'}主题</button></div>
     </aside>
     <main id="main-content" tabIndex={-1}><header className="page-header"><div><p className="eyebrow">MAIN WORKSPACE</p><h1 ref={heading} tabIndex={-1}>{current.name}</h1><p>{current.subtitle}</p></div><span className="shell-badge">原生功能可用</span></header>
-      <div className="page-content" aria-busy={busy}><WorkspacePage page={page} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />
+      <div className="page-content" aria-busy={busy}>
+        {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
+          <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} openNative={() => { void run('native.openLegacyAssistant') }} /></div>)}
+        {page !== 'assistant' && page !== 'translate' && <WorkspacePage page={page} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
         {error && <p role="alert" className="error">{error}</p>}<p role="status" className="operation-status">{notice}</p>
       </div><footer>Personal AI Workspace<span>本机 · 明确选择 · 由你控制</span></footer>
     </main>

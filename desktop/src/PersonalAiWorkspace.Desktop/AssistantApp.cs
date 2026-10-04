@@ -16,6 +16,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private readonly CredentialStore credentials;
     private readonly CancellationTokenSource lifetime = new();
     private readonly RuntimeClient runtime;
+    private readonly WorkspaceOperations workspaceOperations;
+    private MemorySelectionWindow? workspaceSelector;
     private AssistantWindow window = null!;
     private MainWorkspaceWindow? workspace;
     private Forms.NotifyIcon? tray;
@@ -39,6 +41,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         this.single = single;
         credentials = testCredentials ?? new CredentialStore();
         runtime = new RuntimeClient(() => credentials.Load());
+        workspaceOperations = new WorkspaceOperations(runtime, SelectWorkspaceMemoryAsync, text => Clipboard.SetText(text));
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += (_, error) =>
         {
@@ -105,6 +108,17 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
         new WorkspaceStatusProbe(runtime, credentials.Load).ReadAsync(cancellation);
+    WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
+    private Task<System.Collections.Generic.IReadOnlyList<MemorySelection>?> SelectWorkspaceMemoryAsync(CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        if (exitRequested || workspace is null || workspaceSelector is not null) throw new InvalidOperationException();
+        var picker = new MemorySelectionWindow(runtime) { Owner = workspace };
+        workspaceSelector = picker;
+        using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => { if (!picker.IsClosed) picker.Close(); }));
+        try { picker.ShowDialog(); cancellation.ThrowIfCancellationRequested(); return Task.FromResult(picker.Selection); }
+        finally { workspaceSelector = null; workspace?.ReturnFocus(); }
+    }
     Task IWorkspaceNativeActions.OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -188,7 +202,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         }
         catch (DesktopException error)
         {
-            window.StatusText.Text = error.Message;
+            window.StatusText.Text = current.AdmissionOutcomeUnknown ? ErrorText.For(DesktopError.OutcomeUnknown) : error.Message;
             if (!current.Accepted) window.MemoryAdmissionFailed(error.Error);
         }
         catch (OperationCanceledException) { window.StatusText.Text = "应用关闭中；取消已尽力发送，未确认的 Runtime 状态不能视为已取消。"; }
@@ -256,7 +270,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (exitRequested) return;
         if (!window.CloseMemory()) return;
         exitRequested = true;
+        workspaceSelector?.Close();
         if (workspace is not null) await workspace.ShutdownAsync();
+        await workspaceOperations.ShutdownAsync();
         window.CloseMemorySelector(); window.ClearMemorySelection();
         window.CloseBrowserPairing();
         window.CloseWorkspaceBackup();
@@ -282,6 +298,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         window?.CloseWorkspaceBackup();
         // Normal exit awaits profile cleanup in ExitAsync. Emergency exit still disposes the controller.
         workspace?.DisposeImmediately();
+        workspaceSelector?.Close();
+        workspaceOperations.Dispose();
         window?.CloseMemorySelector();
         single.StopListening();
         lifetime.Cancel();

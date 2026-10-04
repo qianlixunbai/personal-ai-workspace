@@ -1,4 +1,11 @@
 :root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#202b32;background:#f5f7f8;font-synthesis:none;font-size:15px;--surface:#fff;--bg:#f5f7f8;--text:#202b32;--muted:#53646d;--border:#dce3e5;--accent:#176852;--active:#e8f2ee;--focus:#0577be;color-scheme:light}
+.operation-card label{display:block;margin:22px 0 10px;font-weight:600;font-size:14px}
+textarea,select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:12px}
+textarea{display:block;width:100%;min-height:180px;resize:vertical;line-height:1.7}
+textarea:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.operation-card .hint{margin-top:12px}.operation-actions{display:flex;gap:12px;margin-top:24px}.execution-status{margin:20px 0 0;font-size:14px}
+.memory-choice{margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px}.memory-choice ol,.memory-choice p{width:100%;margin-bottom:0;overflow-wrap:anywhere}
+.operation-result{white-space:pre-wrap;overflow-wrap:anywhere;unicode-bidi:plaintext;font:inherit;line-height:1.7;margin-bottom:0}
 .page-header h1:focus-visible{outline:3px solid var(--focus);outline-offset:4px}
 .sidebar{position:sticky;top:0;height:100vh}
 :root[data-theme=dark]{--surface:#19242b;--bg:#111b21;--text:#e8eff1;--muted:#afc0c8;--border:#35464f;--accent:#6dc3a5;--active:#203f36;--focus:#7ac9ff;color-scheme:dark}
