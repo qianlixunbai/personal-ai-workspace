@@ -1,40 +1,52 @@
 # Personal AI Workspace — Current Status
 
-## Current M5 status — M5B Architecture Approval
+## Current M5 status — M5C local acceptance candidate
 
 | Milestone | 当前正式状态 |
 | --- | --- |
 | M5 — Unified Main Workspace UI | OPEN |
 | M5A — Main Workspace Shell Foundation | CLOSED — GO |
 | M5B — Assistant + Desktop Translate Migration | CLOSED — GO |
-| M5C — Conversations Migration | NOT STARTED |
+| M5C — Conversations Migration | IMPLEMENTED / LOCAL ACCEPTANCE PASS |
 | M5D — Memory + Settings Migration | NOT STARTED |
 | M5E — Product Consolidation / Packaging / Final Acceptance | NOT STARTED |
 
-**M5A Architecture / Closing Review：GO。M5B Architecture / Closing Review：GO。** M5A / M5B 完成不代表 M5 整体完成。
-ADR-001..010 **Accepted**；ADR-008/009/010 分别确立 ownership、trusted WebView2/least-privilege bridge 与 bundled frontend distribution。
-M5B 当前只迁移 Assistant / Desktop Single Translate；没有旧窗口退役，M5C–M5E 未开始。
-真实 React Ask / Summarize / explicit Memory Ask / Single Translate / cancel / copy 已通过；
-**REAL WINDOWS PINYIN IME — PASS**：production React Assistant editor，实际键盘拼音/候选/commit、explicit Submit、exact React/WPF bridge/Runtime/provider input 与真实 Ollama completion。
-**M5B — CLOSED — GO**，Architecture / Closing Review 已正式批准；M5 仍 **OPEN**。
-已批准最终验收基线：Java **105 PASS** / Desktop **197 PASS** / Frontend **33 PASS**，0 failure/error/skip。本轮只同步批准状态与正式交付，不重跑全套测试。
-业务 UDF / evidence / log privacy PASS，303 UDF files / 0 matches；9类synthetic marker及实际临时bearer。
-真实WPF Ask/Summarize/Translate、explicit Memory Ask、native picker、hotkey/UIA/clipboard、安全 shell、
-Workspace recovery、Memory-only recovery、Browser Translate-only synthetic HTTP/real Ollama 回归 PASS。
-Browser 是协议/真实推理回归，未重新运行 Chrome GUI；screen reader / mixed-DPI hardware 未验收。
-M5B 开工及正式交付前 published main baseline：`8bf5aac70630fae730ea5ba1d101b42a5e277af5`；implementation branch：`m5b-assistant-translate-migration`。
-Implementation：`8bfc362196233297302997bf23cf9052147ef2f9`；historical documentation / closing：`e456030df3c4e01ced11d28c21e3f4c95a057d50`。
-Architecture approval sync 使用后续独立 docs commit；正式交付必须成功实时 fetch / baseline 验证、ancestry PASS、fast-forward-only merge、仅 push main 与 post-push fetch，成功后才删除已合并本地 feature branch。
-[M5B Closing Report](milestones/M5B-CLOSING-REPORT.md) 记录46项范围、证据、性能和限制，保留形成时的 **IMPLEMENTED / LOCAL ACCEPTANCE PASS**、**M5B CLOSING CANDIDATE — GO**、**M5 — OPEN**；不追改历史报告。M5A Closing Report 亦原样保留。
+**M5C CLOSING CANDIDATE — GO**。所有本地 hard gates 已通过；等待 Architecture / Closing Review，未标记 CLOSED。
+ADR-001..010 **Accepted**，无新增 ADR；M5A / M5B Architecture / Closing Review 的既有 GO 状态保持。
 
-### M5B approved capabilities and boundaries
+### M5C implementation and current evidence
 
-- Assistant：ordinary Ask / Summarize / explicit Memory Ask，支持 submit / polling / cancel / terminal result / native-owned Copy Result。
-- ordinary Ask：single-turn / stateless / no Conversation persistence；Summarize：stateless / no Memory / no Conversation。
-- explicit Memory Ask：explicit-only / exact revision / native Memory selector authorization / no automatic retrieval。
-- Translate：Desktop Single Translate、target language、submit / polling / cancel / result / copy；Browser DOM/Batch/Dynamic/Restore 仍属于 Browser companion。
-- Bridge：typed / versioned / allowlisted / origin/session checked / bounded / no generic proxy；没有 Conversation React bridge、Memory CRUD React bridge 或 Settings mutation bridge。
-- Remaining scope：M5C Conversations Migration、M5D Memory + Settings Migration、M5E Consolidation / Packaging / Final Acceptance 均 NOT STARTED；M5 保持 OPEN。
+Published baseline：`7b6dbdfeece1d4ab8179ec6cd5ce7f730e6aee14`；开工时 clean main / HEAD / origin/main 相等，实时 fetch PASS。
+Branch：`m5c-conversations-migration`；implementation：`084171306874f36166077b44dcd0143502ed66c5`。
+本轮只产生 implementation 与独立 closing docs commits；未 merge/push/tag/release/delete branch，main/origin/main 保持 baseline。
+完整本轮测试：Java **105 PASS** / Desktop **233 PASS** / Frontend **66 PASS**；相对105/197/33增加36个Desktop与33个Frontend case，0 failure/error/skip。
+
+- React Conversations：ACTIVE/ARCHIVED，各10项分页；create/manual rename；最新历史页、Older/Newer；本轮发送/原生 Memory picker；cancel/archive/unarchive/确认 delete。
+- Durable truth：既有 Runtime Conversation API / SQLite / TaskManager / context；React不持久化历史，不使用M5B operations registry观察Conversation。
+- Bridge：11个exact Conversation方法；当前session list/create授权ID；真实get重建pending turn→task binding，taskId/bearer不进入JS。
+- Bounds：request32KiB、ordinary reply64KiB、仅detail1MiB；8pending/4096request IDs；最多1000授权ID；React仅当前list/history page。
+- Memory：session+conversation scope、decimal Int64 exact revision、max4、无正文；accepted/不安全POST错误消耗，明确pre-admission stale保留Needs review。
+- Recovery：PENDING reload/session rotation与window reopen不取消/不重发；Runtime restart FAILED/EXECUTION_INTERRUPTED、startup0provider replay；恢复backup后React真实续聊PASS。
+- Real Windows：Release WPF/WebView2/bundled React/Runtime/SQLite/Ollama，175项检查记录；**REAL WINDOWS PINYIN CONVERSATION EDITOR — PASS**，exact durable USER/provider current input。
+- Privacy：最终真实M5C gate扫描374 UDF files、12个新鲜Conversation marker、临时bearer与实际输出；仓库/build/archive/log/evidence无匹配，无forensic erase承诺。
+
+[M5C Closing Report](milestones/M5C-CLOSING-REPORT.md) 提供60节设计、测试、真实验收、性能与限制。
+Java/Core production、DB schema、backup format、Browser权限均未改变；Memory CRUD / full Settings React迁移仍待M5D，全部legacy windows仍保留。
+M5A/M5B、安全shell、native quick Ask/Summarize、真实hotkey/UIA Translate/clipboard、Memory CRUD/Ask、Workspace/Memory-only recovery、Browser Translate-only synthetic HTTP+real Ollama全部回归PASS。
+旧M3C1验收脚本已改为检查Workspace v3四张Conversation表为空，继续证明Memory Ask不创建历史。
+已知限制：Chrome GUI / screen reader / mixed-DPI hardware本轮未重新验收；模型回答和既有UIA fixture有过中间失败，最终完整验收PASS，详见报告。
+
+### M5B approved history
+
+M5B **CLOSED — GO**，正式approved baseline：Java105 / Desktop197 / Frontend33。
+ordinary Ask为single-turn/stateless，Summarize无Memory/Conversation；explicit Memory Ask精确revision且无automatic retrieval。
+React Assistant/Single Translate支持submit/poll/cancel/result/native Copy；原生Memory picker仍复用。
+6个business methods：`assistant.selectMemories`、`assistant.submit`、`translate.submit`、`operations.get`、`operations.cancel`、`operations.copyResult`。
+Host-owned bounded transient operations只用于Assistant/Translate；M5C的11个Conversation方法与其独立。
+生产Assistant editor真实Windows Pinyin已经Architecture/Closing Review批准；本轮M5B真实拼音与业务回归再次PASS。
+M5B原实现：`8bfc362196233297302997bf23cf9052147ef2f9`；historical docs：`e456030df3c4e01ced11d28c21e3f4c95a057d50`。
+[M5B Closing Report](milestones/M5B-CLOSING-REPORT.md) 保留其46节历史快照；[M5A Closing Report](milestones/M5A-CLOSING-REPORT.md)亦不追改。
+M5D/M5E仍NOT STARTED；M5保持OPEN。
 
 M5A 开工时 published main baseline：`d1d7be9e904387862b663a8bab7c72bb89d392c5`。
 Implementation：`233244475078a33f85c89edf801b2f3effa0d524`；
@@ -43,7 +55,7 @@ Formal Delivery 仅允许实时 fetch / baseline 验证、ancestry PASS、fast-f
 
 ### M5A final acceptance baseline
 
-Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**。这是 M5A 已完成的本地验收基线，本轮不重跑全套测试。
+Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**。这是 M5A 历史验收基线；当前 M5C 回归结果见页首。
 Build/publish、真实 WPF/WebView2/bundled React/Runtime shell foundation、native entries、
 navigation/frame/popup/download/permission、reload/stale response、fallback、UDF/privacy audit、hotkey/UIA/clipboard 回归 **PASS**。
 Workspace recovery、Memory-only integrated recovery、Translate/Summarize/stateless Ask、synthetic HTTP Browser Batch/security 回归 **PASS**。
@@ -75,7 +87,7 @@ native.openCredentialFlow
 
 以上为 M5A foundation allowlist；M5B 在原边界内只增加：
 `assistant.selectMemories`、`assistant.submit`、`translate.submit`、`operations.get`、`operations.cancel`、`operations.copyResult`。
-Host-owned bounded transient operations，React 只使用 opaque operationId；不开放 Conversation/Memory CRUD、Settings mutation、generic proxy。
+Host-owned bounded transient operations，React 只使用 opaque operationId；M5B当时不开放Conversation CRUD；M5C增量见页首。Memory CRUD、Settings mutation和generic proxy仍不开放。
 
 ### Real Windows Pinyin IME — PASS
 
@@ -109,7 +121,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## Final M4 Closing baseline
 
-Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；本次仅 approval sync，不重跑全套测试。
+Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；M4 approval sync 当时不重跑全套测试；当前 M5C 回归见页首。
 Workspace Backup format：`personal-ai-workspace.workspace-backup`；formatVersion：**1**；
 Memory section：**schema1**；Conversation section：**schema1**；Workspace DB：**v3**。
 Memory-only Backup：**format1/schema1 preserved**；ADR-006 独立保持 Accepted。
@@ -127,8 +139,8 @@ M4 is now complete：durable Conversation、multi-turn execution、explicit per-
 [M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
 
 **M5A — CLOSED — GO under the approved architecture.** React + WebView2 inside WPF Native Shell；
-M5A / M5B Architecture / Closing Review 已批准；M5 仍 OPEN，M5B CLOSED — GO，M5C–M5E NOT STARTED。
-Remaining deferred scope：Conversations / Memory management / full Settings 的 React 迁移、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+M5A / M5B Architecture / Closing Review 已批准；M5 仍 OPEN，M5B CLOSED — GO，M5C IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO；M5D/M5E NOT STARTED。
+Remaining deferred scope：Memory management / full Settings 的 React 迁移、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
 cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。
 

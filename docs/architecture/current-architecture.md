@@ -1,12 +1,86 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
-## Current M5B Assistant / Desktop Single Translate
+## Current M5C durable Conversations
+
+**M5C — IMPLEMENTED / LOCAL ACCEPTANCE PASS. M5C CLOSING CANDIDATE — GO. M5 — OPEN.**
+M5A/M5B remain CLOSED — GO; M5D/M5E are NOT STARTED. Closing review/publication are pending.
+Baseline `7b6dbdfeece1d4ab8179ec6cd5ce7f730e6aee14`; local branch `m5c-conversations-migration`.
+Implementation `084171306874f36166077b44dcd0143502ed66c5`; separate closing documentation commit.
+ADR-001..010 remain Accepted. Java/Core production, Runtime API/schema, backup format and Browser permissions are unchanged.
+
+Runtime is the only durable Conversation truth. React owns one bounded list page, one history
+page, latest pending identity, draft/selection/loading/focus state. All are process memory only.
+No domain localStorage/sessionStorage/IndexedDB, transcript accumulation or identity in URLs.
+The route remains `#/conversations`. Assistant is stateless; M5B WorkspaceOperations remains
+independent and owns no Conversation task, transcript, recovery or shutdown cancellation.
+
+`WorkspaceConversations` uses the application RuntimeClient and native MemorySelectionWindow.
+The eleven exact methods are:
+
+```text
+conversations.list / conversations.get / conversations.create / conversations.rename
+conversations.archive / conversations.unarchive / conversations.delete
+conversations.selectMemories / conversations.clearMemories
+conversations.send / conversations.cancelPending
+```
+
+List/create authorize returned canonical IDs in the current WebView session, bounded to1000.
+Read/mutation/picker/send/cancel require those IDs; delete revokes them; new document resets all.
+Only a real, validated detail read binds conversationId+turnId to native taskId+page.
+Cancel rechecks that same durable PENDING binding immediately before native task cancellation;
+terminal truth wins races. JS receives turnId/status/canCancel, never raw taskId or credentials.
+Projection contains safe metadata, USER/ASSISTANT messages and historical ordered decimal refs,
+with no Memory body/current-Memory lookup, provider payload, system prompt or context assembly.
+TypeScript validates exact fields/IDs/enums/UTC timestamps/calendar ranges/counts/order/roles/
+assistant invariants/string and UTF-8 bounds; no raw task field is accepted.
+
+Requests remain32KiB, ordinary replies64KiB,8pending and4096consumed request IDs per document.
+Only `conversations.get` has a1MiB reply ceiling. Worst content bound is
+20×8192×6=983040bytes, plus≤1920title bytes and≤40KiB DTO/envelope overhead, within1048576.
+Native maximal-page and TypeScript/React tests preserve every character; oversized responses
+produce a controlled failure, never substring/drop/incomplete success. Runtime limits are unchanged.
+List and turn limits are fixed10, pages0..99. Latest selection reads page0 and only the last page
+if needed. Polling serializes durable detail requests, waits550ms after completion, and stops
+on terminal/error/hidden route; an older visible page is not replaced or appended by latest probes.
+
+Native picker authorization binds session+conversation and exact ordered refs, max4, Int64 decimal
+revision. Switch/clear/archive invalidate selection. Accepted admission and unsafe POST errors
+consume authority; definite pre-admission stale retains Needs review until explicit reselect/clear.
+Preflight authority is checked again after await and before POST, so an in-flight clear cannot send
+revoked refs. Durable send continues independently of the WebView document token. Lost/unverifiable
+admission returns OutcomeUnknown, preserves the draft, clears unsafe selection, refreshes Runtime,
+and never retries. Error responses can follow a persisted FAILED USER; history is always refreshed.
+
+ACTIVE/ARCHIVED lists have separate in-memory page indices. Manual title uses existing160 Unicode
+code-point validation; editor retains exact multiline input under3000UTF-16/5632UTF-8 admission
+bounds. Native composition/keyCode229 guards cover Ctrl+Enter and explicit Send.
+Archive blocks new turns without cancelling PENDING; archived PENDING remains observable.
+Unarchive resumes the same durable identity. Physical delete requires keyboard modal confirmation,
+default Cancel, and remains blocked by Runtime409 while execution is live.
+History renders PENDING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT as plain text; only SUCCEEDED has
+ASSISTANT. Failure labels use the existing seven controlled codes; historical refs may dangle.
+
+Reload rotates session and reconstructs authorization/pending from list/detail without replay.
+Workspace close/reopen does not cancel durable execution. Runtime startup reconciles stale PENDING
+to FAILED/EXECUTION_INTERRUPTED without invoking the provider. Original-unavailable logical restore
+preserves source fields; React reads the restored Workspace and continues real contextual dialogue.
+
+Final local verification: Java105 / Desktop233 / Frontend66 PASS. Real Release WPF/WebView2/React/
+Runtime/SQLite/Ollama acceptance and the new editor's genuine Windows Pinyin gate PASS.
+Main shell/old business/native quick path/UIA/clipboard/Memory/backup/Browser regressions PASS.
+M5C live privacy audit:374 UDF files and source/build/nested archives/log/evidence,0matches;
+fresh Conversation markers and actual temporary bearer scan, no forensic erasure claim.
+All legacy windows remain, including `native.openConversations` fallback. Memory management and
+full Settings remain native. No M5D/M5E or deferred-domain work is included.
+Full60-section evidence, reproducible commands, observations and limits:
+[M5C Closing Report](../milestones/M5C-CLOSING-REPORT.md).
+
+## M5B accepted Assistant / Desktop Single Translate history
 
 M5B is **CLOSED — GO**. **M5B Architecture / Closing Review: GO.**
 The implementation branch is `m5b-assistant-translate-migration`, from the pre-delivery published baseline
 `8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains **OPEN**; M5A is **CLOSED — GO**.
-M5C — Conversations Migration, M5D — Memory + Settings Migration and M5E — Consolidation / Packaging / Final Acceptance
-are all **NOT STARTED**. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
+M5C current local implementation is recorded above; M5D and M5E remain **NOT STARTED**. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
 
 Bundled React owns two production controlled editors: Assistant Ask/Summarize and Desktop
 Single Translate (zh-CN/en/ja, existing native choices). Input, selection metadata and plain-text
@@ -21,7 +95,7 @@ The existing v1 bridge adds exactly `assistant.selectMemories`, `assistant.submi
 `translate.submit`, `operations.get`, `operations.cancel`, `operations.copyResult`.
 Exact payload/field/duplicate/enum/bounds/origin/document/session/requestId checks still apply.
 The bridge remains typed, versioned, allowlisted, origin/session checked and bounded, with no generic proxy.
-There is no Conversation React bridge, Memory CRUD React bridge or Settings mutation bridge.
+M5B introduced no Conversation bridge; M5C now adds it separately. Memory CRUD and Settings mutation bridges remain absent.
 Requests retain32KiB; replies allow64KiB because a verified8192-byte result can JSON-escape to49152bytes.
 Eight pending requests /4096 consumed IDs per document remain. No task IDs, bearer, provider/model/
 profile/systemPrompt/history/endpoint/path/HTTP/native generic proxy crosses the bridge.
@@ -77,7 +151,7 @@ historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO and M5 
 
 M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
 **M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
-M5B — Assistant + Desktop Translate Migration: **CLOSED — GO**; M5C — Conversations Migration: **NOT STARTED**;
+M5B — Assistant + Desktop Translate Migration: **CLOSED — GO**; M5C — Conversations Migration: **IMPLEMENTED / LOCAL ACCEPTANCE PASS**, **CLOSING CANDIDATE — GO**;
 M5D — Memory + Settings Migration: **NOT STARTED**; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
 Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
 The historical M5A approval sync recorded existing acceptance results without changing implementation or tests.
@@ -97,7 +171,7 @@ never enter JS. React does not directly call Runtime. No CORS widening occurs; B
 M5A introduced safe bootstrap/status and seven explicit native entries. M5B business methods are
 listed above; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
 single-instance activation and the selection hotkey retain their existing behavior. No production surface is retired;
-incremental migration remains required. Conversation/Memory CRUD and Settings mutation remain native.
+incremental migration remains required. Memory CRUD and Settings mutation remain native; M5C Conversation presentation is described above.
 
 The complete M5A allowlist remains:
 
@@ -157,10 +231,10 @@ Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-0
 
 Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollama recovery/continue、ADR-006 compatibility与privacy/security **PASS**。
 历史Closing Reports保留当时的candidate/OPEN及Git记录；正式发布另须实时remote验证、ff-only merge、push/post-push fetch。
-M4 closing 时 Main Workspace 尚未开始；当前 M5B 业务迁移与 M5A shell 基础见页首。
+M4 closing 时 Main Workspace 尚未开始；当前 M5C Conversation migration、M5B业务与M5A shell基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A / M5B Architecture / Closing Review 已 GO；M5B CLOSED — GO，M5C–M5E NOT STARTED；M5 仍 OPEN。
+M5A / M5B Architecture / Closing Review 已 GO；M5B CLOSED — GO，M5C LOCAL ACCEPTANCE PASS/CLOSING CANDIDATE — GO，M5D/M5E NOT STARTED；M5仍OPEN。
 
 ## M4C current architecture
 
