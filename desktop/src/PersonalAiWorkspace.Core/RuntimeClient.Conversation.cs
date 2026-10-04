@@ -91,7 +91,7 @@ public sealed partial class RuntimeClient
     }
     private static ConversationTurn ParseConversationTurn(JsonElement root, Guid conversationId)
     {
-        MemoryFields(root, "id", "conversationId", "sequence", "status", "createdAt", "updatedAt", "userMessage", "assistantMessage");
+        MemoryFields(root, "id", "conversationId", "sequence", "status", "createdAt", "updatedAt", "userMessage", "assistantMessage", "taskId", "failureCode", "memories");
         var id = ConversationId(root, "id"); var owner = ConversationId(root, "conversationId");
         long sequence = MemoryInteger(root, "sequence");
         string state = String(root, "status");
@@ -103,7 +103,26 @@ public sealed partial class RuntimeClient
         if (owner != conversationId || sequence is < 1 or > 1000 || updated < created || user.CreatedAt != created
             || (status == ConversationTurnStatus.SUCCEEDED) != (assistant is not null)
             || assistant is not null && (assistant.CreatedAt < created || assistant.CreatedAt > updated || assistant.Id == user.Id)) throw Invalid();
-        return new ConversationTurn(id, owner, sequence, status, created, updated, user, assistant);
+        var taskJson = Property(root, "taskId");
+        Guid? taskId = taskJson.ValueKind == JsonValueKind.Null ? null : ConversationId(root, "taskId");
+        var failureJson = Property(root, "failureCode");
+        ConversationFailureCode? failure = null;
+        if (failureJson.ValueKind != JsonValueKind.Null) {
+            string code = String(root, "failureCode");
+            if (status != ConversationTurnStatus.FAILED || !Enum.TryParse<ConversationFailureCode>(code, out var parsed)
+                || !Enum.IsDefined(parsed) || code != parsed.ToString()) throw Invalid();
+            failure = parsed;
+        }
+        var refs = Property(root, "memories");
+        if (refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > 4) throw Invalid();
+        var selections = refs.EnumerateArray().Select(x => {
+            MemoryFields(x, "memoryId", "revision", "position");
+            var revision = Property(x, "revision");
+            if (revision.ValueKind != JsonValueKind.Number || !revision.TryGetInt64(out long value) || value <= 0) throw Invalid();
+            return new ConversationSelection(ConversationId(x, "memoryId"), value, MemoryInteger(x, "position"));
+        }).ToArray();
+        if (selections.Where((x,i) => x.Position != i).Any() || selections.Select(x=>x.MemoryId).Distinct().Count()!=selections.Length) throw Invalid();
+        return new ConversationTurn(id, owner, sequence, status, created, updated, user, assistant, taskId, failure, Array.AsReadOnly(selections));
     }
     private static ConversationMessage ParseConversationMessage(JsonElement root, Guid turnId, ConversationRole role)
     {
@@ -123,9 +142,37 @@ public sealed partial class RuntimeClient
             (409, "CONVERSATION_CONFLICT") => DesktopError.ConversationConflict,
             (409, "CONVERSATION_LIMIT_EXCEEDED") => DesktopError.ConversationLimitExceeded,
             (503, "CONVERSATION_STORAGE_UNAVAILABLE") => DesktopError.ConversationStorageUnavailable,
+            (409, "MEMORY_SELECTION_STALE") => DesktopError.MemorySelectionStale,
+            (503, "MEMORY_STORAGE_UNAVAILABLE") => DesktopError.MemoryStorageUnavailable,
+            (429, "QUEUE_FULL") => DesktopError.QueueFull,
             (403, "POLICY_DENIED") => DesktopError.PolicyDenied,
             (500, "INTERNAL_ERROR") => DesktopError.InternalError,
             _ => throw Invalid()
         };
     }
+    public async Task<ConversationAdmission> SubmitConversationTurnAsync(Guid conversationId, string message,
+        IReadOnlyList<MemoryReference> memories, CancellationToken ct)
+    {
+        ConversationValidation.Id(conversationId); new AskInput(message).Validate();
+        if (!ConversationValidation.Content(message)) throw new DesktopException(DesktopError.ConversationInvalid);
+        if (memories is null) throw new DesktopException(DesktopError.InvalidRequest);
+        if (memories.Count > 0) new MemoryAskInput(message, memories).Validate();
+        using var document = await SendConversationAsync(HttpMethod.Post, ConversationPath(conversationId) + "/turns",
+            new { message, memories = memories.Select(x=>new { id=x.Id, revision=x.Revision }).ToArray() }, HttpStatusCode.Accepted, ct,
+            (response, body) => {
+                if (response.Headers.Location?.OriginalString != $"/api/v1/tasks/{ConversationId(body.RootElement,"taskId"):D}") throw Invalid();
+            });
+        var root = document.RootElement;
+        MemoryFields(root, "conversationId", "turnId", "taskId", "status", "memoryCount", "admittedSequences", "inputCharacters", "inputBytes");
+        if (ConversationId(root,"conversationId") != conversationId || String(root,"status") != "QUEUED") throw Invalid();
+        int count = MemoryInteger(root,"memoryCount"), chars = MemoryInteger(root,"inputCharacters"), bytes = MemoryInteger(root,"inputBytes");
+        var sequences = Property(root,"admittedSequences");
+        if (count != memories.Count || chars is < 1 or > 3000 || bytes is < 1 or > 5632 || sequences.ValueKind != JsonValueKind.Array) throw Invalid();
+        var admitted = sequences.EnumerateArray().Select(x=>x.ValueKind == JsonValueKind.Number && x.TryGetInt64(out long value) && value is > 0 and <=1000 ? value : throw Invalid()).ToArray();
+        if (admitted.Distinct().Count()!=admitted.Length || !admitted.SequenceEqual(admitted.Order())) throw Invalid();
+        return new ConversationAdmission(conversationId, ConversationId(root,"turnId"), ConversationId(root,"taskId"), TaskState.QUEUED,
+            count, Array.AsReadOnly(admitted), chars, bytes);
+    }
+    public Task<RuntimeTask> GetConversationTaskAsync(Guid taskId, CancellationToken ct) => GetAsync(taskId,"conversation",ct,"conversation-v1");
+    public Task<RuntimeTask> CancelConversationTaskAsync(Guid taskId, CancellationToken ct) => CancelAsync(taskId,"conversation",ct,"conversation-v1");
 }

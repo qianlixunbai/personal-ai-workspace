@@ -57,9 +57,11 @@ public final class OllamaProvider implements Provider {
         cancellation.check();
         ensureModel(execution.profile(), cancellation);
         ModelProfile p = execution.profile();
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", execution.system()));
+        for (var message : execution.messages()) messages.add(Map.of("role", message.role(), "content", message.content()));
         byte[] payload = json.writeValueAsBytes(Map.of("model", p.model(), "stream", false, "think", false,
-                "messages", List.of(Map.of("role", "system", "content", execution.system()),
-                        Map.of("role", "user", "content", execution.input())),
+                "messages", messages,
                 "options", Map.of("num_ctx", p.contextBudget(), "num_predict", p.outputBudget(),
                         "temperature", p.temperature())));
         HttpRequest request = HttpRequest.newBuilder(base.resolve("/api/chat"))

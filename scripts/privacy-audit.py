@@ -43,6 +43,8 @@ def encodings(value):
 
 needles = [encoded for value in secrets if value for encoded in encodings(value)]
 private_bodies = payload.get('logBodies', []) + [
+    'ORBIT-731', 'QUARTZ-492', 'VECTOR-268', 'CURRENT_USER', 'OLD_ASSISTANT',
+    'Synthetic interrupted user instruction',
     'conversation-private-title', 'conversation-private-user', 'conversation-private-assistant',
     'private-memory-title', 'private-memory-context', 'private-memory-question',
     'Synthetic Project Context', 'What is the synthetic project codename?',

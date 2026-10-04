@@ -26,7 +26,7 @@ public final class ConversationLimits {
         if (value.codePointCount(0, value.length()) > TITLE_POINTS) throw error(ErrorCode.CONVERSATION_INVALID);
         return value.strip();
     }
-    static void content(String value) {
+    public static void content(String value) {
         unicode(value);
         if (value.length() > CONTENT_UTF16 || value.getBytes(StandardCharsets.UTF_8).length > CONTENT_BYTES)
             throw error(ErrorCode.CONVERSATION_LIMIT_EXCEEDED);

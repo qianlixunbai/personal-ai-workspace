@@ -869,7 +869,7 @@ class RuntimeApiTest {
             assertEquals(400,send("GET",base+"/bad-id",null,true).statusCode());
             assertEquals(400,send("GET",base+"?status=UNKNOWN",null,true).statusCode());
             assertEquals(400,send("POST",base,"{\"title\":\"x\",\"role\":\"SYSTEM\"}",true).statusCode());
-            for (String suffix : List.of("/messages","/turns","/regenerate","/branches")) {
+            for (String suffix : List.of("/messages","/regenerate","/branches","/retry")) {
                 assertEquals(404,send("POST",path+suffix,"{}",true).statusCode());
                 assertEquals(404,send("PATCH",path+suffix,"{}",true).statusCode());
             }
@@ -888,6 +888,33 @@ class RuntimeApiTest {
         } finally { try { conversations.delete(java.util.UUID.fromString(id)); } catch (io.github.qianlixunbai.workspace.common.WorkspaceException ignored) { } }
     }
 
+    @Test void conversationExecutionUsesNativeOwnedTaskAndOrderedProviderMessagesAndBrowserIsDenied() throws Exception {
+        startMock();
+        var c=conversations.create("TITLE_NOT_IN_CONTEXT");String path="/api/v1/conversations/"+c.id()+"/turns";
+        try {
+            var first=send("POST",path,"{\"message\":\"CURRENT_USER\",\"memories\":[]}",true);assertEquals(202,first.statusCode());
+            var accepted=tree(first);String id=accepted.path("taskId").asString();
+            assertEquals("/api/v1/tasks/"+id,first.headers().firstValue("Location").orElseThrow());
+            long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+            while (!taskManager.get(java.util.UUID.fromString(id)).status().equals(io.github.qianlixunbai.workspace.task.TaskStatus.SUCCEEDED)) {assertTrue(System.nanoTime()<until);Thread.sleep(5);}
+            var task=tree(send("GET","/api/v1/tasks/"+id,null,true));assertEquals("conversation",task.path("capability").asString());assertEquals("conversation-v1",task.path("promptVersion").asString());
+            assertEquals("system",LAST_CHAT.get().path("messages").get(0).path("role").asString());
+            assertEquals("CURRENT_USER",LAST_CHAT.get().path("messages").get(1).path("content").asString());
+            var second=tree(send("POST",path,"{\"message\":\"NEXT_USER\"}",true));String secondId=second.path("taskId").asString();
+            until=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+            while (!taskManager.get(java.util.UUID.fromString(secondId)).status().equals(io.github.qianlixunbai.workspace.task.TaskStatus.SUCCEEDED)) {assertTrue(System.nanoTime()<until);Thread.sleep(5);}
+            assertEquals(4,LAST_CHAT.get().path("messages").size());assertEquals("assistant",LAST_CHAT.get().path("messages").get(2).path("role").asString());
+            assertEquals("NEXT_USER",LAST_CHAT.get().path("messages").get(3).path("content").asString());assertFalse(LAST_CHAT.get().toString().contains("TITLE_NOT_IN_CONTEXT"));
+            assertEquals(0,second.path("memoryCount").asInt());assertEquals(1,second.path("admittedSequences").size());
+            for(String field:List.of("role","systemPrompt","provider","model","messages","history","assistant"))
+                assertEquals(400,send("POST",path,"{\"message\":\"USER\",\""+field+"\":\"forged\"}",true).statusCode());
+            assertEquals(401,send("POST",path,"{\"message\":\"USER\"}",false).statusCode());
+            var browserClient=pairBrowser("chrome-extension://"+"h".repeat(32));
+            assertEquals(403,browser("POST",path,"{\"message\":\"USER\"}",browserClient.credential(),browserClient.origin()).statusCode());
+            assertEquals(404,browser("GET","/api/v1/tasks/"+id,null,browserClient.credential(),browserClient.origin()).statusCode());
+            assertEquals(401,browser("OPTIONS",path,null,null,browserClient.origin()).statusCode());
+        } finally {conversations.delete(c.id());}
+    }
     @Test void conversationStorageErrorDoesNotLeakInternalsAndBoundedEscapedHistory() throws Exception {
         var c = conversations.create(null);
         try {

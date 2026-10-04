@@ -7,6 +7,8 @@ import org.springframework.context.annotation.*;
 public class ConversationConfiguration {
     @Bean(destroyMethod = "close")
     ConversationStore conversationStore(MemoryStore initializedDatabase) {
-        return new ConversationStore(initializedDatabase.databaseFile());
+        var store = new ConversationStore(initializedDatabase.databaseFile());
+        try { store.reconcilePending(); return store; }
+        catch (RuntimeException failure) { store.close(); throw failure; }
     }
 }

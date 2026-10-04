@@ -5,6 +5,9 @@ namespace PersonalAiWorkspace.Core;
 public enum ConversationStatus { ACTIVE, ARCHIVED }
 public enum ConversationTurnStatus { PENDING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT }
 public enum ConversationRole { USER, ASSISTANT }
+public enum ConversationFailureCode { EXECUTION_INTERRUPTED, PROVIDER_UNAVAILABLE, MODEL_UNAVAILABLE, QUEUE_FULL, POLICY_DENIED, EXECUTION_FAILED, STORAGE_UNAVAILABLE }
+public sealed record ConversationSelection(Guid MemoryId, long Revision, int Position)
+{ public override string ToString() => "ConversationSelection[redacted]"; }
 public sealed record Conversation(Guid Id, string Title, ConversationStatus Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public override string ToString() => $"Conversation[id={Id:D},status={Status}]";
@@ -14,10 +17,14 @@ public sealed record ConversationMessage(Guid Id, Guid TurnId, ConversationRole 
     public override string ToString() => $"ConversationMessage[id={Id:D},role={Role}]";
 }
 public sealed record ConversationTurn(Guid Id, Guid ConversationId, long Sequence, ConversationTurnStatus Status,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, ConversationMessage UserMessage, ConversationMessage? AssistantMessage)
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, ConversationMessage UserMessage, ConversationMessage? AssistantMessage,
+    Guid? TaskId = null, ConversationFailureCode? FailureCode = null, IReadOnlyList<ConversationSelection>? Memories = null)
 {
     public override string ToString() => $"ConversationTurn[id={Id:D},sequence={Sequence},status={Status}]";
 }
+public sealed record ConversationAdmission(Guid ConversationId, Guid TurnId, Guid TaskId, TaskState Status,
+    int MemoryCount, IReadOnlyList<long> AdmittedSequences, int InputCharacters, int InputBytes)
+{ public override string ToString() => $"ConversationAdmission[turnId={TurnId:D},status={Status}]"; }
 public sealed record ConversationPage(IReadOnlyList<Conversation> Items, int Total, int Page, int Limit)
 {
     public override string ToString() => $"ConversationPage[total={Total},page={Page}]";

@@ -150,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix="workspace-memory-smoke-") as directory:
         stop()
         require(len(process_ids) == 3 and len(set(process_ids)) == 3, "three-distinct-runtime-processes")
         with closing(sqlite3.connect(data / "memory.db")) as db:
-            require(db.execute("PRAGMA user_version").fetchone()[0] == 2, "workspace-schema-v2")
+            require(db.execute("PRAGMA user_version").fetchone()[0] == 3, "workspace-schema-v3")
             require(db.execute("PRAGMA journal_mode").fetchone()[0] == "delete", "journal-delete")
             require(db.execute("SELECT count(*) FROM memory_items").fetchone()[0] == 0, "source-empty")
             require(db.execute("SELECT count(*) FROM memory_fts").fetchone()[0] == 0, "index-empty")

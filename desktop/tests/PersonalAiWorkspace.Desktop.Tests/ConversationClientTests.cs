@@ -17,7 +17,7 @@ public sealed class ConversationClientTests
     private static string Detail(string status = "SUCCEEDED", string? role = "USER", long sequence = 1) =>
         "{\"conversation\":" + Metadata() + ",\"turns\":[{\"id\":\""+TurnId+"\",\"conversationId\":\""+ConversationId
         +"\",\"sequence\":"+sequence+",\"status\":\""+status+"\",\"createdAt\":\"2026-10-04T00:00:00Z\",\"updatedAt\":\"2026-10-04T00:00:01Z\",\"userMessage\":"
-        +Message(UserId,role!)+",\"assistantMessage\":"+(status=="SUCCEEDED"?Message(AssistantId,"ASSISTANT"):"null")+"}],\"totalTurns\":1,\"page\":0,\"limit\":10}";
+        +Message(UserId,role!)+",\"assistantMessage\":"+(status=="SUCCEEDED"?Message(AssistantId,"ASSISTANT"):"null")+",\"taskId\":null,\"failureCode\":null,\"memories\":[]}],\"totalTurns\":1,\"page\":0,\"limit\":10}";
 
     [Fact]
     public async Task NativeCrudAndListUseExistingTransportAndExactContracts()

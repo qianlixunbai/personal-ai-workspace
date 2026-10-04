@@ -13,6 +13,8 @@ import java.util.concurrent.*;
 @Component
 public final class TaskManager {
     @FunctionalInterface public interface Work { Object execute(Cancellation cancellation); }
+    /** Serialized with cancellation/deadlines, before publishing the terminal task. */
+    @FunctionalInterface public interface Completion { void finish(UUID taskId, TaskStatus status, Object result, ApiError error); }
     private final RuntimeProperties.Tasks settings;
     private final ThreadPoolExecutor workers;
     private final ScheduledExecutorService timer;
@@ -36,10 +38,15 @@ public final class TaskManager {
     }
 
     public synchronized TaskView submit(String ownerClientId, String capability, ModelProfile profile, String promptVersion, Work work) {
+        return submit(UUID.randomUUID(), ownerClientId, capability, profile, promptVersion, work, null);
+    }
+    public synchronized TaskView submit(UUID taskId, String ownerClientId, String capability, ModelProfile profile,
+                                        String promptVersion, Work work, Completion completion) {
         Objects.requireNonNull(ownerClientId);
         expire();
         if (closed || tasks.size() >= settings.maxRetained()) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "ADMISSION");
-        Job job = new Job(ownerClientId, capability, profile.publicInfo(), promptVersion, work);
+        if (tasks.containsKey(taskId)) throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "TASK_ID");
+        Job job = new Job(taskId, ownerClientId, capability, profile.publicInfo(), promptVersion, work, completion);
         tasks.put(job.id, job);
         job.deadline = timer.schedule(() -> timeout(job, TaskStatus.QUEUED, "QUEUE"),
                 settings.queueTimeout().toNanos(), TimeUnit.NANOSECONDS);
@@ -93,6 +100,18 @@ public final class TaskManager {
     }
 
     private void finish(Job job, TaskStatus status, Object result, ApiError error) {
+        if (job.completion != null) {
+            try { job.completion.finish(job.id, status, result, error); }
+            catch (RuntimeException persistenceFailure) {
+                status = TaskStatus.FAILED; result = null;
+                error = ApiError.of(ErrorCode.CONVERSATION_STORAGE_UNAVAILABLE, "PERSISTENCE");
+                // A failed successful commit rolls back. If storage remains unavailable,
+                // durable PENDING stays for startup reconciliation; never report success.
+                try { job.completion.finish(job.id, status, null, error); }
+                catch (RuntimeException ignored) { }
+            }
+            job.completion = null;
+        }
         job.status = status;
         job.result = result;
         job.error = error;
@@ -116,7 +135,7 @@ public final class TaskManager {
     }
 
     private final class Job implements Runnable {
-        final UUID id = UUID.randomUUID();
+        final UUID id;
         final Instant createdAt = Instant.now();
         final ModelProfile.PublicProfile profile;
         final String promptVersion;
@@ -125,13 +144,15 @@ public final class TaskManager {
         final Cancellation cancellation = new Cancellation();
         TaskStatus status = TaskStatus.QUEUED;
         Work work;
+        Completion completion;
         Object result;
         ApiError error;
         Instant finishedAt;
         ScheduledFuture<?> deadline;
         boolean inWorker;
 
-        Job(String ownerClientId, String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work) {
+        Job(UUID id, String ownerClientId, String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work, Completion completion) {
+            this.id = id; this.completion = completion;
             this.ownerClientId = ownerClientId;
             this.capability = capability; this.profile = profile; this.promptVersion = promptVersion; this.work = work;
         }

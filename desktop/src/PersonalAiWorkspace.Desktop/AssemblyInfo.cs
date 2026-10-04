@@ -3,3 +3,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MemoryAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MemoryAskAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MemoryBackupAcceptance")]
+[assembly: InternalsVisibleTo("PersonalAiWorkspace.ConversationAcceptance")]

@@ -162,7 +162,7 @@ public sealed partial class RuntimeClient : IDisposable
     {
         if (!Guid.TryParseExact(String(root, "taskId"), "D", out var id) || id == Guid.Empty || (expectedId.HasValue && id != expectedId)) throw Invalid();
         string capability = String(root, "capability");
-        string profileId = capability switch { "translate" => "translate.fast", "summarize" => "summarize.fast", "ask" => "chat.balanced", _ => throw Invalid() };
+        string profileId = capability switch { "translate" => "translate.fast", "summarize" => "summarize.fast", "ask" or "conversation" => "chat.balanced", _ => throw Invalid() };
         if (expectedCapability is not null && capability != expectedCapability) throw Invalid();
         string state = String(root, "status");
         if (!Enum.TryParse<TaskState>(state, false, out var status) || !Enum.IsDefined(status) || status.ToString() != state) throw Invalid();
@@ -213,6 +213,7 @@ public sealed partial class RuntimeClient : IDisposable
         "UNAUTHORIZED" => DesktopError.Unauthorized,
         "PROVIDER_RESPONSE_INVALID" => DesktopError.ProviderResponseInvalid,
         "INTERNAL_ERROR" => DesktopError.InternalError,
+        "CONVERSATION_STORAGE_UNAVAILABLE" => DesktopError.ConversationStorageUnavailable,
         _ => throw Invalid()
     };
 

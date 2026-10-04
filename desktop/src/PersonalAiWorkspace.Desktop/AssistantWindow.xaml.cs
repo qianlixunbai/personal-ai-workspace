@@ -26,6 +26,7 @@ public partial class AssistantWindow : Window
     private readonly RuntimeClient? runtime;
     private BrowserPairingWindow? pairingWindow;
     private MemoryWindow? memoryWindow;
+    private ConversationWindow? conversationWindow;
     private MemorySelectionWindow? selectionWindow;
     private IReadOnlyList<MemorySelection> selectedMemory = Array.Empty<MemorySelection>();
     internal bool MemoryNeedsReview { get; private set; }
@@ -48,6 +49,7 @@ public partial class AssistantWindow : Window
         ForgetButton.IsEnabled = !busy;
         PairBrowserButton.IsEnabled = !busy && runtime is not null;
         MemoryButton.IsEnabled = !busy && runtime is not null;
+        ConversationButton.IsEnabled = !busy && runtime is not null;
         UseMemoryButton.IsEnabled = !busy && runtime is not null;
         ClearMemoryButton.IsEnabled = !busy && selectedMemory.Count > 0;
         TranslateButton.IsEnabled = !busy && !MemoryNeedsReview;
@@ -63,6 +65,7 @@ public partial class AssistantWindow : Window
     {
         if (!CloseMemory()) { e.Cancel = true; return; }
         CloseBrowserPairing();
+        conversationWindow?.Close();
         CloseMemorySelector(); ClearMemorySelection();
         if (app.Exiting) return;
         e.Cancel = true;
@@ -121,6 +124,13 @@ public partial class AssistantWindow : Window
         finally { memoryWindow = null; }
     }
     internal bool CloseMemory() => memoryWindow?.TryClose() ?? true;
+    private void OpenConversation(object sender, RoutedEventArgs e)
+    {
+        if (app.Busy || app.Exiting || runtime is null || conversationWindow is not null) return;
+        conversationWindow = new ConversationWindow(runtime) { Owner = this };
+        try { conversationWindow.ShowDialog(); }
+        finally { conversationWindow = null; }
+    }
     internal void ApplyMemorySelection(IReadOnlyList<MemorySelection> selection)
     {
         if (app.Exiting || SelectedAction != AssistantAction.Ask) return;

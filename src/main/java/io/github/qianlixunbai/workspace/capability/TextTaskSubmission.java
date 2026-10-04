@@ -9,6 +9,8 @@ import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Function;
+import java.util.List;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Shared execution for the three concrete text capabilities; prompts remain capability-owned. */
 @Service
@@ -62,5 +64,32 @@ public class TextTaskSubmission {
         if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         return provider.readiness(profile);
+    }
+    public record Prepared(ModelProfile profile, TaskManager.Work work) {
+        @Override public String toString() { return "PreparedExecution[redacted]"; }
+    }
+    /** Prepare through the existing profile/policy/provider stack; no work starts at admission. */
+    public Prepared prepareConversation(String system, List<Provider.ChatMessage> messages) {
+        if (!ClientIdentity.current().equals(ClientIdentity.NATIVE)) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        ModelProfile profile = profiles.resolve("chat.balanced");
+        String serialized = JsonMapper.builder().build().writeValueAsString(messages);
+        if (messages.isEmpty() || serialized.length() > profile.maxTextCharacters()
+                || serialized.getBytes(StandardCharsets.UTF_8).length > profile.contextBudget() - profile.outputBudget() - 512)
+            throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "CONTEXT_BUDGET");
+        if (system.getBytes(StandardCharsets.UTF_8).length > 512) throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "PROMPT_BUDGET");
+        Provider provider = providers.resolve(profile.provider());
+        var execution = new Provider.ProviderExecution(profile, PrivacyMode.LOCAL_ONLY, system, serialized, messages);
+        policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
+        if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION)) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        return new Prepared(profile, cancellation -> {
+            policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
+            if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION)) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+            String output = provider.execute(execution, cancellation);
+            if (output == null || output.isBlank() || output.getBytes(StandardCharsets.UTF_8).length > profile.outputBudget() * 4)
+                throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "OUTPUT_BUDGET");
+            try { io.github.qianlixunbai.workspace.conversation.ConversationLimits.content(output); }
+            catch (WorkspaceException invalid) { throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "OUTPUT_VALIDATION"); }
+            return output;
+        });
     }
 }

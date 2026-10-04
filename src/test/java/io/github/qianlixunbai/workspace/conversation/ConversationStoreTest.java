@@ -100,6 +100,7 @@ class ConversationStoreTest {
             assertNotEquals(a.get(10, TimeUnit.SECONDS).sequence(), b.get(10, TimeUnit.SECONDS).sequence());
         }
         assertEquals(List.of(1L,2L), store.detail(c.id(), 0, 10).turns().stream().map(Turn::sequence).toList());
+        code(ErrorCode.CONVERSATION_CONFLICT, () -> store.delete(c.id())); store.reconcilePending();
         store.delete(c.id()); assertEquals(m, memory.get(m.id())); assertEquals(1, memory.list(null,null,null,0,20).total());
         assertEquals(1, memory.backupSnapshot().size());
     }
@@ -110,9 +111,9 @@ class ConversationStoreTest {
             assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_messages VALUES('x','" + turn.id() + "','SYSTEM','x',0)"));
             assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_messages VALUES('x','missing','USER','x',0)"));
             assertThrows(SQLException.class, () -> s.execute("UPDATE conversation_messages SET content='edited'"));
-            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns VALUES('x','" + c.id() + "',1,'PENDING',0,0)"));
-            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns VALUES('x','" + c.id() + "',0,'PENDING',0,0)"));
-            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns VALUES('x','" + c.id() + "',2,'UNKNOWN',0,0)"));
+            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns(id,conversation_id,sequence,status,created_at,updated_at) VALUES('x','" + c.id() + "',1,'PENDING',0,0)"));
+            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns(id,conversation_id,sequence,status,created_at,updated_at) VALUES('x','" + c.id() + "',0,'PENDING',0,0)"));
+            assertThrows(SQLException.class, () -> s.execute("INSERT INTO conversation_turns(id,conversation_id,sequence,status,created_at,updated_at) VALUES('x','" + c.id() + "',2,'UNKNOWN',0,0)"));
         }
         assertEquals("original", store.detail(c.id(),0,10).turns().getFirst().userMessage().content());
     }
@@ -147,7 +148,7 @@ class ConversationStoreTest {
             SELECT printf('00000000-0000-0000-0000-%012d',x),'seed','ARCHIVED',0,0 FROM n
             """);
         code(ErrorCode.CONVERSATION_LIMIT_EXCEEDED, () -> store.create(null));
-        store.delete(c.id()); assertEquals(0,count("SELECT count(*) FROM conversation_turns"));
+        store.reconcilePending(); store.delete(c.id()); assertEquals(0,count("SELECT count(*) FROM conversation_turns"));
         store.create(null); assertEquals(1000,count("SELECT count(*) FROM conversations"));
     }
 }

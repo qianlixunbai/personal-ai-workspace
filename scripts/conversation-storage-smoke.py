@@ -125,7 +125,7 @@ def main():
                 before = db.execute("SELECT * FROM memory_items").fetchall()
             start()
             with closing(sqlite3.connect(data / "memory.db")) as db:
-                require(db.execute("PRAGMA user_version").fetchone()[0] == 2, "v1-to-v2-migration")
+                require(db.execute("PRAGMA user_version").fetchone()[0] == 3, "v1-to-v3-migration")
                 require(db.execute("SELECT * FROM memory_items").fetchall() == before, "memory-source-exact-preserved")
             code, item = request("POST", "/api/v1/conversations", {})
             require(code == 201 and item["status"] == "ACTIVE" and item["title"] == "New conversation", "create-defaults")

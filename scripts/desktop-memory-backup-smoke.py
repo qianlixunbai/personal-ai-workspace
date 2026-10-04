@@ -202,9 +202,10 @@ def main():
         require(not any(value in diagnostics for value in sensitive), "runtime-harness-log-privacy")
         with closing(sqlite3.connect(target / "memory.db")) as db:
             names = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
-            require(not any(any(part in name for part in ["task", "selection", "ask"]) for name in names), "no-provider-task-selection-persistence")
+            require(not any(any(part in name for part in ["task", "selection", "ask"])
+                for name in names if name != "conversation_memory_selections"), "memory-ask-is-stateless")
             require(all(db.execute("SELECT count(*) FROM " + table).fetchone()[0] == 0
-                for table in ["conversations", "conversation_turns", "conversation_messages"]), "memory-restore-does-not-restore-conversations")
+                for table in ["conversations", "conversation_turns", "conversation_messages", "conversation_memory_selections"]), "memory-restore-does-not-restore-conversations")
         require(not any(path.name.startswith(".memory-restore-") for path in temporary.iterdir()), "staging-cleaned")
         metadata = {"formatVersion": 1, "schemaVersion": 1, "itemCount": 3, "contentDigest": backup["contentDigest"], "fileSize": len(backup_bytes)}
     require(not temporary.exists(), "temporary-source-backup-target-cleaned")

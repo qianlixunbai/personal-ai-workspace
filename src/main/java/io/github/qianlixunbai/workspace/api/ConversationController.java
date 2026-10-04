@@ -12,7 +12,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/conversations")
 public class ConversationController {
     private final ConversationStore store;
-    public ConversationController(ConversationStore store) { this.store = store; }
+    private final ConversationExecution execution;
+    public ConversationController(ConversationStore store, ConversationExecution execution) { this.store = store; this.execution = execution; }
     public record Title(String title) { @Override public String toString() { return "ConversationTitle[redacted]"; } }
     private static void nativeOnly() {
         if (!ClientIdentity.current().clientType().equals("native")) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CONVERSATION");
@@ -33,6 +34,11 @@ public class ConversationController {
     Conversation.Page list(@RequestParam(required = false) Conversation.Status status,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int limit) {
         nativeOnly(); return store.list(status, page, limit);
+    }
+    @PostMapping("/{conversationId}/turns")
+    ResponseEntity<ConversationExecution.Accepted> send(@PathVariable String conversationId, @RequestBody ConversationExecution.Request body) {
+        nativeOnly(); var result = execution.submit(id(conversationId), body);
+        return ResponseEntity.accepted().location(URI.create("/api/v1/tasks/" + result.taskId())).body(result);
     }
     @GetMapping("/{conversationId}")
     Conversation.Detail detail(@PathVariable String conversationId, @RequestParam(defaultValue = "0") int page,

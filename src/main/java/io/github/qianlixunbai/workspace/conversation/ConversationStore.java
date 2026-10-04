@@ -2,6 +2,7 @@ package io.github.qianlixunbai.workspace.conversation;
 
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
+import io.github.qianlixunbai.workspace.memory.MemoryReference;
 import java.nio.file.Path;
 import java.sql.*;
 import java.time.Instant;
@@ -49,7 +50,12 @@ public final class ConversationStore implements AutoCloseable {
         });
     }
     public synchronized void delete(UUID id) {
-        id(id); transaction(true, () -> { read(id); update("DELETE FROM conversations WHERE id=?", id.toString()); return null; });
+        id(id); transaction(true, () -> {
+            read(id);
+            if (count("SELECT count(*) FROM conversation_turns WHERE conversation_id=? AND status='PENDING'", id.toString()) > 0)
+                throw error(ErrorCode.CONVERSATION_CONFLICT);
+            update("DELETE FROM conversations WHERE id=?", id.toString()); return null;
+        });
     }
     public synchronized Page list(Status status, int page, int limit) {
         page(page, limit); Status filter = status == null ? Status.ACTIVE : status;
@@ -78,15 +84,26 @@ public final class ConversationStore implements AutoCloseable {
     }
     /** Internal Java service primitive only; no HTTP write route for turns or messages. */
     public synchronized Turn createTurnWithUserMessage(UUID conversationId, String content) {
+        return createTurnWithUserMessage(conversationId, content, null, List.of());
+    }
+    public synchronized Turn createTurnWithUserMessage(UUID conversationId, String content, UUID taskId, List<MemoryReference> memories) {
         id(conversationId); content(content);
+        if (!memories.isEmpty()) MemoryReference.validate(memories);
         return transaction(true, () -> {
             Conversation conversation = read(conversationId);
             if (conversation.status() != Status.ACTIVE) throw error(ErrorCode.CONVERSATION_CONFLICT);
+            if (taskId != null && count("SELECT count(*) FROM conversation_turns WHERE conversation_id=? AND status='PENDING'", conversationId.toString()) > 0)
+                throw error(ErrorCode.CONVERSATION_CONFLICT);
             long sequence = count("SELECT coalesce(max(sequence),0)+1 FROM conversation_turns WHERE conversation_id=?", conversationId.toString());
             if (sequence > TURNS_PER_CONVERSATION) throw error(ErrorCode.CONVERSATION_LIMIT_EXCEEDED);
             UUID turnId = UUID.randomUUID(); long now = Math.max(now(), conversation.updatedAt().toEpochMilli());
-            update("INSERT INTO conversation_turns VALUES(?,?,?,'PENDING',?,?)", turnId.toString(), conversationId.toString(), sequence, now, now);
+            update("INSERT INTO conversation_turns(id,conversation_id,sequence,status,created_at,updated_at,task_id) VALUES(?,?,?,'PENDING',?,?,?)",
+                    turnId.toString(), conversationId.toString(), sequence, now, now, taskId == null ? null : taskId.toString());
             message(turnId, Role.USER, content, now);
+            for (int position = 0; position < memories.size(); position++) {
+                var ref = memories.get(position);
+                update("INSERT INTO conversation_memory_selections VALUES(?,?,?,?)", turnId.toString(), position, ref.id().toString(), ref.revision());
+            }
             touch(conversationId, now);
             return readTurn(conversationId, turnId);
         });
@@ -100,15 +117,52 @@ public final class ConversationStore implements AutoCloseable {
         return finish(conversationId, turnId, status, null);
     }
     private Turn finish(UUID conversationId, UUID turnId, TurnStatus status, String assistant) {
+        return finish(conversationId, turnId, null, status, assistant, null);
+    }
+    public synchronized Turn finalizeExecution(UUID conversationId, UUID turnId, UUID taskId, TurnStatus status, String assistant, FailureCode failure) {
+        id(taskId);
+        if (status == TurnStatus.PENDING || (status == TurnStatus.SUCCEEDED) != (assistant != null)
+                || failure != null && status != TurnStatus.FAILED) throw error(ErrorCode.CONVERSATION_INVALID);
+        if (assistant != null) content(assistant);
+        return finish(conversationId, turnId, taskId, status, assistant, failure);
+    }
+    private Turn finish(UUID conversationId, UUID turnId, UUID taskId, TurnStatus status, String assistant, FailureCode failure) {
         id(conversationId); id(turnId);
         return transaction(true, () -> {
             read(conversationId); Turn turn = readTurn(conversationId, turnId);
             if (turn.status() != TurnStatus.PENDING) throw error(ErrorCode.CONVERSATION_CONFLICT);
+            if (taskId != null && !taskId.equals(turn.taskId())) throw error(ErrorCode.CONVERSATION_CONFLICT);
             long now = Math.max(now(), turn.updatedAt().toEpochMilli());
             if (assistant != null) message(turnId, Role.ASSISTANT, assistant, now);
-            update("UPDATE conversation_turns SET status=?,updated_at=? WHERE id=?", status.name(), now, turnId.toString());
+            update("UPDATE conversation_turns SET status=?,updated_at=?,failure_code=? WHERE id=?", status.name(), now,
+                    failure == null ? null : failure.name(), turnId.toString());
             touch(conversationId, now);
             return readTurn(conversationId, turnId);
+        });
+    }
+    /** One consistent successful-history snapshot; PENDING/current and incomplete exchanges are excluded. */
+    public synchronized List<Turn> successfulHistory(UUID conversationId) {
+        id(conversationId);
+        return transaction(false, () -> {
+            read(conversationId); List<Turn> result = new ArrayList<>();
+            try (var s = prepare("SELECT id FROM conversation_turns WHERE conversation_id=? AND status='SUCCEEDED' ORDER BY sequence DESC", conversationId.toString()); var r = s.executeQuery()) {
+                while (r.next()) result.add(readTurn(conversationId, UUID.fromString(r.getString(1))));
+            }
+            return List.copyOf(result);
+        });
+    }
+    /** Startup only, before HTTP admission. No task/provider replay. */
+    public synchronized int reconcilePending() {
+        return transaction(true, () -> {
+            List<UUID> parents = new ArrayList<>();
+            try (var s = prepare("SELECT DISTINCT conversation_id FROM conversation_turns WHERE status='PENDING'"); var r = s.executeQuery()) {
+                while (r.next()) parents.add(UUID.fromString(r.getString(1)));
+            }
+            int count = (int) scalar("SELECT count(*) FROM conversation_turns WHERE status='PENDING'");
+            long now = now();
+            update("UPDATE conversation_turns SET status='FAILED',failure_code='EXECUTION_INTERRUPTED',updated_at=max(updated_at,?) WHERE status='PENDING'", now);
+            for (UUID parent : parents) touch(parent, now);
+            return count;
         });
     }
     private void touch(UUID conversationId, long time) throws SQLException {
@@ -130,8 +184,14 @@ public final class ConversationStore implements AutoCloseable {
             }
             TurnStatus status = TurnStatus.valueOf(r.getString("status"));
             if (user == null || (status == TurnStatus.SUCCEEDED) != (assistant != null)) throw new SQLException();
+            List<Selection> selections = new ArrayList<>();
+            try (var selection = prepare("SELECT * FROM conversation_memory_selections WHERE turn_id=? ORDER BY position", id.toString()); var rows = selection.executeQuery()) {
+                while (rows.next()) selections.add(new Selection(UUID.fromString(rows.getString("memory_id")), rows.getLong("revision"), rows.getInt("position")));
+            }
+            String task = r.getString("task_id"), failure = r.getString("failure_code");
             return new Turn(id, conversationId, r.getLong("sequence"), status,
-                    Instant.ofEpochMilli(r.getLong("created_at")), Instant.ofEpochMilli(r.getLong("updated_at")), user, assistant);
+                    Instant.ofEpochMilli(r.getLong("created_at")), Instant.ofEpochMilli(r.getLong("updated_at")), user, assistant,
+                    task == null ? null : UUID.fromString(task), failure == null ? null : FailureCode.valueOf(failure), selections);
         }
     }
     private Conversation read(UUID id) throws SQLException {
