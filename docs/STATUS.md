@@ -7,6 +7,35 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## 阶段与结论
 
+**M4B — Multi-turn Execution & Context Assembly：实施与本地验收完成，等待 Architecture / Closing Review**。
+**M4 — User-Controlled Conversation Foundation：OPEN**。
+
+M4B 基于正式 main `126061bc116c8d7f2215446eac8151149ae07f1a`；branch `m4b-conversation-execution`，未 merge/push。
+M4A Formal Delivery 已在本次会话成功 fast-forward / push / post-push fetch，launcher/implementation/closing 均包含。
+M4B Delivery Gate: **PASS WITH REMOTE FRESHNESS DEFERRED**（用户一次性授权）。
+Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**。
+Last verified published baseline: `126061bc116c8d7f2215446eac8151149ae07f1a`。
+起始 local main/cached origin/main/M4A branch 完全一致且clean；没有未知本地 commit。
+后续 fetch 再次因 connection reset 失败；缓存不是实时 remote 验证。Formal Delivery 前须重新成功 fetch/log/compare；未知新提交 STOP。
+
+Runtime native-only Turn send；USER先事务落盘再提交共享TaskManager；成功原子保存Assistant，失败/cancel/timeout保留User且无假Assistant。
+独立 `conversation-v1`/capability `conversation`，沿用 `chat.balanced`/LOCAL_ONLY/Ollama/provider policy。
+Runtime bounded whole-successful-turn context、current USER一次、explicit per-turn exact-revision Memory，普通Ask仍stateless。
+Startup PENDING → FAILED/EXECUTION_INTERRUPTED，无模型replay/retry；同Conversation一个PENDING，运行中archive不cancel，PENDING阻止delete。
+Workspace DBv3 additive migration；selection只有ID/revision/order，不妨碍Memory physical deletion；Memory backup仍format1/schema1/freshv1 restore。
+最小WPF Conversation入口，纯文本、paging、explicit Memory、cancel、refresh/reopen；window close清空正文。
+Dedicated Retry = **NOT IMPLEMENTED BY DESIGN**；terminal immutable，用户明确resend创建新Turn。
+
+真实WPF/HTTP/SQLite/Ollama multi-turn/Memory/cancel/archive/restart/reopen/continue/failure，以及startup零provider调用已PASS。
+M3 Memory restart/backup/restore、M4A persistence、native Translate/Summarize/Ask、Browser Batch/security回归PASS；最终计数与审计见[M4B报告](milestones/M4B-CLOSING-REPORT.md)。
+Real timeout **UNVERIFIED**，自动 queue/execution timeout tests 为主证据；不冒充历史ChromeGUI/hotkey手工验收。
+M4C logical Conversation export/restore/version/recovery/portability/final lifecycle及最终Windows/Ollama/privacy gates仍未开始。
+Finance/Knowledge/RAG/Agent/Browser Conversation/React-WebView2/streaming/edit/regenerate/branching/automatic Memory均未实现。
+
+### M4A 历史 closing 与形成时的 Git 记录
+
+以下保留M4A报告形成时未merge/push的历史；其正式交付现已完成，见上方M4B baseline。
+
 **M4A — Conversation Domain & Persistence：CLOSED — GO**。
 **M4 — User-Controlled Conversation Foundation：OPEN**。
 

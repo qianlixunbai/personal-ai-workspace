@@ -1,4 +1,54 @@
-# Current Architecture — M4A Conversation Domain & Persistence
+# Current Architecture — M4B Multi-turn Execution & Context Assembly
+
+M4B本地实现与验收完成，等待Architecture/Closing Review；**M4 overall OPEN**。
+正式M4A baseline `126061bc116c8d7f2215446eac8151149ae07f1a`。
+Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**；Gate **PASS WITH REMOTE FRESHNESS DEFERRED**。
+最后已验证published baseline同上；formal delivery前须成功fetch。未知新remote commit触发STOP/REMOTE DIVERGENCE REVIEW，不自动整合。
+
+## M4B current architecture decisions
+
+- Conversation ≠ Memory ≠ transient Task。独立native-only POST `/api/v1/conversations/{id}/turns`只接收message和既有Memory ID/revision selector。
+  普通Ask/MemoryAsk的endpoint、persona和stateless/no-persistence语义保持；Browser allowlist没有扩权。
+- Validation和M3 exact-revision admission snapshot → BEGIN IMMEDIATE验证ACTIVE及无PENDING → 分配sequence → PENDING/USER/taskId/selectionmetadata → COMMIT → 共享TaskManager。
+  单Conversation至多一个PENDING execution，避免重叠推理破坏strict linear context；其他Conversation共享原bounded queue/concurrency。
+- Task ID提前分配；TaskManager Job持有最小completion callback，绑定Conversation/Turn/Task ID。
+  成功/失败/cancel/queue-timeout/execution-timeout/shutdown终态均在同一TaskManager锁内决定，并先执行durable callback再公布terminal Task。
+  成功callback事务插入Assistant、更新Turn与parent timestamp；任务只在durable commit成功后报告SUCCEEDED。
+  duplicate/terminal/wrongConversation/wrongTask由store guard拒绝，cancel/timeout锁胜出后不调用late-success callback。
+- Assistant persistence rollback后以受控storage failure尝试保存FAILED；完全DB outage时Task FAILED/CONVERSATION_STORAGE_UNAVAILABLE且无result，
+  durable PENDING不得误标成功，等下次启动fail closed。Storage callback最多沿用SQLite busy_timeout3秒，可能短暂阻塞共享终态锁。
+- Submission失败不删USER，保存FAILED及controlled enum；QUEUE_FULL不是timeout。Cancelled/TimedOut只有executionstate，没有伪造Assistant。
+  startup在HTTP admission前事务将残留PENDING→FAILED/EXECUTION_INTERRUPTED，不创建task、不调用provider、不重放。
+  所有terminal Turn immutable，数据库trigger及service保护；Dedicated Retry=NOT IMPLEMENTED BY DESIGN，显式resend是new Turn。
+- Context属于Runtime。`conversation-v1`独立system→当前explicit Memory JSON reference user message→recent complete SUCCEEDED USER/ASSISTANT→current USER exactly once。
+  Runtime先验证必需current/Memory，随后按sequence DESC尝试整轮，按ASC输出；超过预算停止接纳更旧历史，不拆分、不截断、不总结。
+  不接纳FAILED/CANCELLED/TIMED_OUT/PENDING，不注入title/archive/errors；不跨Conversation检索，没有automatic retrieval/Memory。
+- 复用chat.balanced context/output/character配置。serialized messages <=3000 UTF-16；UTF-8预算context-output-templateReserve。
+  templateReserve=max(512,escaped system bytes+escaped model bytes+256 wire-envelope reserve)；system<=512。
+  因而current+Memory优先且完整，超限controlled400；最终Provider JSON和输出reserve一起受原context预算约束。没有客户端model/context-size配置或tokenizer。
+- `TextTaskSubmission.prepareConversation`复用既有profile resolver/registry/policy/output validation；ProviderExecution仅扩展immutable role/content messages。
+  Ollama adapter只序列化Runtime已决定的messages，system始终第一；LOCAL_ONLY在admission/work/final egress复核，无cloud/fallback/retry/新executor。
+- Workspace DB additive v2→v3：task_id/failure_code、conversation_memory_selections(turn_id FK cascade,position,memory_id,revision)、immutability triggers。
+  Memory reference故意无Memory FK：只记录历史selection identity，Memory仍可edit/archive/delete，snapshot正文不复制到Conversation。
+  source/FTS/Memory logical format1/schema1/fresh-v1 restore不变；旧Runtime不可打开v3，未知新版本fail closed，migration失败rollback。
+- Archive不cancel live Turn，新Turn拒绝；DELETE在同一write transaction发现任何PENDING即409，不自动cancel/cascade竞态。
+  terminal aggregate可删除。create/rename/lifecycle/newTurn/terminal更新updatedAt，polling/read不更新。
+- Desktop/Core沿用单一RuntimeClient/auth/loopback/no-proxy/no-redirect/JSON limits/strict parsing；只有IDs/reference/request，不拼prompt或读DB。
+  Assistant新增Conversation modal，ACTIVE list、plain ordered USER/ASSISTANT/executionstates、paging、send、explicit selector、cancel、refresh/reopen/archive。
+  后续Send默认无Memory；stale锁定至explicit reselect/clear；窗口关闭取消HTTP、忽略late结果、清空正文及selection、不保留undo/cache。
+  关闭窗口不自动replay/retry/cancel已提交server task；再次打开可刷新durable outcome或Cancel仍PENDING task。
+- 只保存controlled failure enum，不保存raw exception/provider body/stacktrace/prompt/secret。
+  admission evidence只有sequence/count/input sizes，ToString redacted；无title/Message/Memory/context/provider output日志。SQLite仍本地明文+OS账户权限。
+
+以上长期规则由本架构文档承载；所有六个Accepted ADR保持，未新增通用框架或机械ADR。
+M4B不实现M4C backup/restore/portable recovery；无React/WebView2/streaming/RAG/Knowledge/Finance/Agent/Browser Conversation/edit/regenerate/branching。
+完整证据与limitations见[M4B Closing Report](../milestones/M4B-CLOSING-REPORT.md)。
+
+## Historical M4A architecture and closing baseline
+
+以下M4A内容保留原scope与形成时未merge/push的记录；正式M4A已交付，当前执行架构以上方M4B为准。
+
+### M4A Conversation Domain & Persistence
 
 **M4A：CLOSED — GO；M4 overall：OPEN**。M4A只建立durable Conversation数据域；
 普通Ask仍single-turn/stateless。没有multi-turn AI execution、context assembly、automatic Memory/retrieval、

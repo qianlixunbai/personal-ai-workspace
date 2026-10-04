@@ -1,8 +1,9 @@
 # Personal AI Workspace
 
-独立、local-first 的共享 AI Runtime。**M4A — Conversation Domain & Persistence：CLOSED — GO；M4 overall：OPEN**。
-M4A本地实现`03591f9fe74f3a3db18ca062ae168f21cb668a49`；Java **75 PASS** / Desktop **111 PASS**；restart durability与privacy/regression PASS。
-分支`m4a-conversation-domain`，未merge/push；M4C Backup / Restore Gate仍未完成。
+独立、local-first 的共享 AI Runtime。**M4B — Multi-turn Execution & Context Assembly：实施与本地验收完成，等待 Architecture / Closing Review；M4 overall：OPEN**。
+正式 M4A baseline：`126061bc116c8d7f2215446eac8151149ae07f1a`。M4B 在 `m4b-conversation-execution` 本地开发，未 merge/push。
+Remote freshness at M4B start: **UNVERIFIED due to GitHub connectivity outage**；Delivery Gate **PASS WITH REMOTE FRESHNESS DEFERRED**，依据用户一次性例外。
+Last verified published baseline: `126061bc116c8d7f2215446eac8151149ae07f1a`。交付前须成功 fetch 并复核 remote；未知新提交触发 STOP / REMOTE DIVERGENCE REVIEW。
 **M2 — Browser Convergence：CLOSED — GO**。
 **M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
 **M3C-2 — Versioned Logical Export / Restore：CLOSED — GO**。
@@ -28,7 +29,53 @@ M2 closing 历史发布基线（当时 docs-only closing 前）：
 M2 closing 当时只同步文档，没有重新执行历史 Java/Desktop/Chrome acceptance；B11 inline BR layout / B12 mutation debounce starvation 继续 **DEFERRED**。
 Post-M2 Test Suite Simplification 与 M3 已 CLOSED — GO；[M3 Closing Report](docs/milestones/M3-CLOSING-REPORT.md) 保留形成当时的综合验收、边界与 Git 状态；当前 M3 publication 已完成。
 
-## M4A — Conversation Domain & Persistence
+## M4B — Multi-turn Conversation
+
+Assistant 的 **Conversation…** 打开最小原生 WPF modal：New Conversation、选择 ACTIVE Conversation、
+分页纯文本 USER/ASSISTANT/执行状态、Send、Use Memory… / Clear Memory、Cancel、Refresh / Reopen、Archive。
+Runtime 持久化所有 Turn；Desktop 窗口关闭清空正文与 selection。普通 Ask 继续 single-turn/stateless，Translate/Summarize/Memory 原契约保留。
+
+新增 native-only `POST /api/v1/conversations/{id}/turns`：
+
+```json
+{"message":"Current user instruction","memories":[{"id":"b58ab357-456f-4c44-950b-a9c083e8ba8a","revision":1}]}
+```
+
+无 selection 时省略 `memories` 或传 `[]`。示例 ID 必须替换为当前实际 ACTIVE Memory/exact revision；不接收模型、profile、system、role、assistant 或 arbitrary history。
+202 返回 `conversationId/turnId/taskId/status`、只含计数/sequence/长度的 context admission metadata，Location 指向既有 Task API。
+GET/DELETE `/api/v1/tasks/{taskId}` 用于 polling/cancel，task capability=`conversation`、promptVersion=`conversation-v1`、profile=`chat.balanced`。
+Conversation detail 承载 durable history，不依赖 Task retention；Turn 新增 `taskId/failureCode/memories`（仅 Memory ID/revision/position）。
+Memory reference 不设到 Memory source 的 FK，不阻止 Memory edit/archive/physical delete，不复制正文。
+
+验证与 exact-revision snapshot → 事务保存 PENDING + USER + selection metadata → commit → shared TaskManager。
+同一 Conversation 只允许一个 PENDING execution，第二次 Send 返回409；保持线性执行与稳定 sequence。
+成功在 TaskManager 终态锁内以一个 DB transaction 插入 ASSISTANT、SUCCEEDED、parent updatedAt。
+提交失败/queue full/policy denial 保存 FAILED 和 USER；cancel/timeout 保存对应状态，无虚构 Assistant 错误消息。
+完全 storage outage 时 Task 返回受控 storage failure，durable PENDING 留待重启 fail closed，不声称成功。
+启动将残留 PENDING → FAILED / EXECUTION_INTERRUPTED，不重新调用模型、不自动 retry。
+Archive 不取消已有任务；PENDING 阻止 physical DELETE，须先 Cancel/等待终态。Polling 不更新 updatedAt。
+
+Runtime-owned system → 当前显式 Memory reference data → 最近完整 SUCCEEDED exchanges → 当前 USER 一次。
+FAILED/CANCELLED/TIMED_OUT/PENDING 历史、title/lifecycle/error metadata 均不进入 inference。
+预算延续 `chat.balanced` 8192 context /2048 output /3000 serialized UTF-16 units；UTF-8 input 上限最多5632，
+另为 escaped system/model 和 wire envelope 计算保守 reserve。必需 current/Memory 超限400，不截断或偷偷丢掉 Memory；
+history 只整轮纳入，从最旧 successful Turn 丢弃。Persisted history 和 inference window 是不同范围。
+选中的 Memory snapshot 仍沿用 M3 exact-revision validation；执行期间编辑或删除不改变已接收 snapshot。每次新 Send 默认无 Memory。
+
+Workspace SQLite additive v2 → v3 migration 保留 M4A/M3 source；Memory logical backup/restore 仍 format1/schema1，恢复构造 fresh v1 后由启动升级。
+**Memory export 不包含 Conversation，不能用于 Conversation recovery。** Dedicated Retry = **NOT IMPLEMENTED BY DESIGN**；用户再次尝试须明确发送新 Turn。
+Browser 仍 Translate-only；无 edit/regenerate/branching、自动 Memory/retrieval、streaming、Knowledge/RAG、Finance、Agent、React/WebView2 Main Workspace。
+
+```powershell
+.\mvnw.cmd clean verify
+python -X utf8 scripts/conversation-execution-smoke.py
+```
+
+真实 smoke 使用隔离临时数据和凭据，驱动生产 WPF entry/controls、HTTP、SQLite、Ollama，验证多轮、逐轮 Memory、cancel、reopen/continue、失败与启动无重放。
+真实 timeout 未稳定制造；自动 queue/execution timeout 测试是主证据。完整结果见 [M4B Closing Report](docs/milestones/M4B-CLOSING-REPORT.md)。
+**M4 remains OPEN**：Conversation logical export/restore、portable recovery 与最终完整 closing 留到 M4C。
+
+## M4A — Conversation Domain & Persistence（历史 closing 基线）
 
 Conversation 是独立的 Workspace-owned durable domain，**Conversation ≠ Memory ≠ transient Task history**。
 新增 SQLite Conversation lifecycle 与 Turn/Message persistence；不自动提取、写入、搜索或选择 Memory。
