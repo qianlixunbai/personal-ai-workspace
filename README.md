@@ -1,5 +1,12 @@
 # Personal AI Workspace
 
+**M5 — Unified Main Workspace UI：OPEN；M5A — IMPLEMENTED / PARTIAL。**
+Main Workspace shell、真实 Windows foundation、安全/隐私与回归通过；真实 Windows 拼音 IME 输入尚未确认，等待 accessibility acceptance。
+Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**；[M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md) 记录完整证据与限制。
+本轮只实施 M5A，未迁移 Assistant/Translate/Conversation/Memory 的业务操作。
+托盘“打开 Main Workspace”进入五页导航与真实原生入口；原生 Assistant 与全部现有窗口继续可用。
+决策：[ADR-008](docs/ADR/ADR-008-hybrid-main-workspace-ownership.md)、[ADR-009](docs/ADR/ADR-009-webview2-trusted-content-bridge.md)、[ADR-010](docs/ADR/ADR-010-frontend-build-desktop-distribution.md)。
+
 **M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
 M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
 Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；[ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md)：**Accepted**。
@@ -9,10 +16,11 @@ Real Windows / WPF / HTTP / SQLite / Ollama **PASS**；Workspace logical backup 
 Memory-only ADR-006 compatibility **PASS**；privacy/security **PASS**。这些是既有 closing 验收结果，approval sync 不重跑全套测试。
 
 **M4 is now complete.** 包含 durable Conversation、multi-turn execution、explicit per-turn Memory，以及 Memory + Conversation recovery/portability。
-Main Workspace UI（WPF Native Shell 内的 React + WebView2）、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+Main Workspace 业务页面迁移、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、streaming、edit/regenerate/branching、automatic Memory、
 cloud backup、encryption/password、scheduled/incremental backup、multi-device sync 均未实现。
-Next major milestone candidate：Unified Main Workspace UI；**NOT STARTED**，等待新的 Scope Review、Architecture decision 与 Implementation prompt。
+M5 milestone split：M5A Shell Foundation；M5B Assistant + Desktop Translate；M5C Conversations；M5D Memory + Settings；M5E Consolidation/Packaging/Final Acceptance。
+M5B–M5E 未开始；M5A 实现后停在 Architecture / Closing Review，不 merge/push main、tag 或 release。
 
 独立、local-first 的共享 AI Runtime。正式发布须成功实时 fetch、核验远端基线、fast-forward-only merge、push main 与 post-push fetch。
 当前证据与限制见 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md)；当前阶段唯一事实来源为 [STATUS](docs/STATUS.md)。
@@ -74,7 +82,7 @@ python -X utf8 scripts/workspace-backup-smoke.py
 
 真实恢复脚本只使用隔离合成数据，删除original Workspace后，以真实WPF/HTTP/SQLite/Ollama验证恢复与续聊。
 Final closing baseline：Java105/Desktop136 PASS；Browser继续Translate-only，普通Ask继续stateless。
-M4 — CLOSED — GO；React/WebView2 Main Workspace — NOT STARTED。
+M4 — CLOSED — GO；当前 Main Workspace shell 状态见页首 M5A 与 STATUS。
 
 ## M4B — Multi-turn Conversation
 
@@ -361,6 +369,29 @@ M2B-2B — Chrome Extension → Shared Runtime Migration：**CLOSED — GO**；�
 M2 — Browser Convergence：**CLOSED — GO**；历史报告保留各阶段当时的 Git / 验收状态，当前基线以上述最终 SHA 为准。
 
 ## 启动
+
+### Main Workspace 开发与构建（M5A）
+
+开发机需要 Node20.19+/22.12+、npm 与现有 .NET/Java。用户运行发布目录无需 Node/npm/Vite。
+React 使用本地 bundled assets，不直接访问 Runtime；凭据、文件与备份操作在原生窗口完成。
+
+```powershell
+cd desktop/frontend
+npm ci
+npm test
+npm run build
+cd ../..
+dotnet build desktop/PersonalAiWorkspace.Desktop.slnx -c Release
+dotnet publish desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj -c Release
+python -X utf8 scripts/main-workspace-smoke.py
+```
+
+普通 build/publish 会自动执行 npm ci/build，并验证 production assets。已构建的流水线可使用
+`-p:FrontendSkipBuild=true`，但仍须有 Node 和有效 manifest；不允许缺失 assets 静默发布。
+Main Workspace 需要已安装的 Microsoft Edge WebView2 Runtime；初始化失败会显示原生 fallback，Assistant 继续可用。
+Debug 开发须显式 `npm run dev` 和 `dotnet run --project desktop/src/PersonalAiWorkspace.Desktop -c Debug -p:MainWorkspaceDev=true`。
+仅固定 loopback5173；Release 拒绝 dev property，没有自动 dev-server fallback。
+主题设置仅在私有 WebView 会话内保留；关闭时清理浏览数据。没有浏览器个人数据存储。
 
 Windows可双击仓库根目录的`start-workspace.cmd`：按需构建、启动/复用Ollama与Runtime并唤出Assistant。
 启动脚本构建跳过测试，不下载模型、不自动配对、不重置Memory；关闭启动窗口不会停止后台应用。

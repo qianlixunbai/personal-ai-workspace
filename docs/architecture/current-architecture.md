@@ -1,4 +1,36 @@
-# Current Architecture — M4 User-Controlled Conversation Foundation
+# Current Architecture — M5 Unified Main Workspace UI
+
+## Current M5A hybrid shell
+
+M5 — Unified Main Workspace UI is OPEN; M5A is IMPLEMENTED / PARTIAL, awaiting real Windows
+IME accessibility acceptance. Security/privacy and the real shell foundation pass; no Closing GO
+is claimed. ADR-008/009/010 are Accepted.
+WPF owns lifetime/single instance/tray/hotkey/UIA/clipboard/helper processes/WinCred/dialogs,
+WebView2 lifecycle/focus and bridge security. React owns shell layout/navigation/presentation/
+loading/errors/focus and session-local theme. Runtime owns durable Memory/Conversation,
+execution/TaskManager/context/provider/Ollama/backup validation/SQLite. Core has no WebView2 dependency.
+
+Production chain: bundled React → typed allowlisted WebMessage bridge → existing WPF-owned
+RuntimeClient → external Runtime. The fixed virtual HTTPS origin exposes only validated frontend
+build output, with strict CSP/resource/navigation/frame/popup/download/permission policies.
+Bearer, Browser credential, pairing proof, backup bytes/paths and arbitrary native capabilities
+never enter JS. Runtime security/CORS/Browser permissions are unchanged.
+
+Only safe bootstrap/status and seven explicit native entries exist. No React business operation
+has migrated; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
+single-instance activation and the selection hotkey retain their existing behavior.
+
+Dedicated account-private MainWorkspace InPrivate profile, disabled autofill/password saving,
+controlled AllProfile cleanup and synthetic UDF evidence establish the practical privacy boundary.
+There is no forensic erasure claim. Missing WebView2/assets or initialization/page/process failures
+provide native fallback. External Runtime mode and process ownership are unchanged.
+
+Frontend npm/lockfile/Vite production assets are built and verified by Desktop build/publish;
+ordinary users need no Node/Vite. Explicit fixed-loopback Debug development compiles out of
+Release. Distribution provisioning, installers and supervisors remain deferred. Retirement
+requires a later scope, equivalent security/privacy/regression/Windows acceptance and review.
+
+Current implementation and evidence: [M5A Closing Report](../milestones/M5A-CLOSING-REPORT.md).
 
 **M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
 M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
@@ -19,10 +51,10 @@ Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-0
 
 Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollama recovery/continue、ADR-006 compatibility与privacy/security **PASS**。
 历史Closing Reports保留当时的candidate/OPEN及Git记录；正式发布另须实时remote验证、ff-only merge、push/post-push fetch。
-Unified Main Workspace UI（React + WebView2 inside WPF Native Shell）**NOT STARTED**；
+M4 closing 时 Main Workspace 尚未开始；当前 M5A shell 实现与验收见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-下一阶段等待新的Scope Review、Architecture decision与Implementation prompt。
+M5B–M5E 等待独立实施与审查；M5A 结束后停在 Architecture / Closing Review。
 
 ## M4C current architecture
 

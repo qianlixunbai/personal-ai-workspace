@@ -1,5 +1,21 @@
 # Personal AI Workspace — Current Status
 
+## Current M5 implementation
+
+**M5 — Unified Main Workspace UI：OPEN。**
+**M5A — Main Workspace Shell Foundation：IMPLEMENTED / PARTIAL — AWAITING REAL WINDOWS IME ACCEPTANCE。**
+Published main/origin baseline remains `d1d7be9e904387862b663a8bab7c72bb89d392c5`。
+Implementation branch：`m5a-main-workspace-shell`。M5B–M5E 未开始，没有业务迁移或旧窗口退役。
+ADR-008/009/010 Accepted：ownership、trusted WebView2/least-privilege bridge 与 bundled frontend distribution。
+Implementation commit：`233244475078a33f85c89edf801b2f3effa0d524`。
+Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**；build/publish、真实 WPF/WebView2/bundled React/Runtime shell foundation、
+native entries、navigation/frame/popup/download/permission、reload/stale response、fallback、UDF/privacy audit、hotkey/UIA/clipboard 回归 **PASS**。
+Workspace recovery、Memory-only integrated recovery、Translate/Summarize/stateless Ask、synthetic HTTP Browser Batch/security 回归 **PASS**。
+真实拼音 IME 自动化未确认；仅中文显示/合成 composition events 通过。实际 DPI100%、工具栏125% zoom 通过，mixed-DPI 多显示器未实测。
+因此 M5A 不宣称 Closing Candidate / CLOSED — GO。M5 仍 OPEN，等待真实 IME accessibility acceptance 与 Architecture / Closing Review。
+恢复回归前两次模型标记回答断言失败，完整逻辑恢复校验均通过；加安全诊断后第三次原断言通过，未改变 Runtime 语义或放宽断言。
+完整证据、40项报告与下一步：[M5A Closing Report](milestones/M5A-CLOSING-REPORT.md)。
+
 **M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
 M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
 Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-007 — **Accepted**。
@@ -30,9 +46,9 @@ ADR-001..007均 **Accepted**；[ADR-007](ADR/ADR-007-logical-workspace-backup-re
 M4 is now complete：durable Conversation、multi-turn execution、explicit per-turn Memory、Memory + Conversation recovery/portability。
 [M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
 
-**Next milestone has NOT started.** Candidate：Unified Main Workspace UI，React + WebView2 inside WPF Native Shell；
-等待新的 Scope Review、Architecture decision 与 Implementation prompt。
-Remaining deferred scope：Main Workspace UI、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+**M5A has started under the approved architecture.** React + WebView2 inside WPF Native Shell；
+M5A 停在 Architecture / Closing Review；M5B–M5E 尚未实施。
+Remaining deferred scope：Main Workspace 业务页面迁移、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
 cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。
 
