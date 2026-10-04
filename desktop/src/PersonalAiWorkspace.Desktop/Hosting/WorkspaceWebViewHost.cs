@@ -15,6 +15,8 @@ internal sealed class WorkspaceWebViewHost
     private readonly IWorkspaceNativeActions native;
     private readonly Action<string> fallback;
     private readonly string assetFolder;
+    private readonly Func<bool> confirmDiscard;
+    internal bool HasDirtyEditor => bridge?.EditorDirty == true;
     private WorkspaceBridge? bridge;
     private WorkspaceContentPolicy? policy;
     private CoreWebView2Environment? environment;
@@ -33,8 +35,8 @@ internal sealed class WorkspaceWebViewHost
     internal int BlockedPermissions { get; private set; }
     internal int BlockedDownloads { get; private set; }
 
-    internal WorkspaceWebViewHost(WebView2 view, IWorkspaceNativeActions native, Action<string> fallback, string? assetFolder = null)
-    { this.view = view; this.native = native; this.fallback = fallback; this.assetFolder = assetFolder ?? Path.Combine(AppContext.BaseDirectory, "MainWorkspace"); }
+    internal WorkspaceWebViewHost(WebView2 view, IWorkspaceNativeActions native, Action<string> fallback, string? assetFolder = null, Func<bool>? confirmDiscard = null)
+    { this.view = view; this.native = native; this.fallback = fallback; this.assetFolder = assetFolder ?? Path.Combine(AppContext.BaseDirectory, "MainWorkspace"); this.confirmDiscard = confirmDiscard ?? (() => false); }
 
     internal async Task InitializeAsync()
     {
@@ -81,6 +83,8 @@ internal sealed class WorkspaceWebViewHost
             core.NavigationStarting += (_, e) =>
             {
                 if (!policy.Document(e.Uri)) { e.Cancel = true; BlockedNavigations++; return; }
+                // Confirm before rotating the document/session. Cancellation preserves both.
+                if (HasDirtyEditor && !confirmDiscard()) { e.Cancel = true; return; }
                 navigation = e.NavigationId;
                 bridge.BeginDocument(e.Uri);
             };

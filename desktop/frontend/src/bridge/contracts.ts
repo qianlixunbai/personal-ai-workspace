@@ -5,7 +5,8 @@ export const nativeMethods = [
 export type NativeMethod = typeof nativeMethods[number]
 export const businessMethods = ['assistant.selectMemories', 'assistant.submit', 'translate.submit', 'operations.get', 'operations.cancel', 'operations.copyResult'] as const
 export const conversationMethods = ['conversations.list', 'conversations.get', 'conversations.create', 'conversations.rename', 'conversations.archive', 'conversations.unarchive', 'conversations.delete', 'conversations.selectMemories', 'conversations.clearMemories', 'conversations.send', 'conversations.cancelPending'] as const
-export type Method = 'shell.bootstrap' | 'shell.refreshStatus' | NativeMethod | typeof businessMethods[number] | typeof conversationMethods[number]
+export const memoryMethods = ['memory.list', 'memory.get', 'memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete', 'memory.editorState'] as const
+export type Method = 'shell.bootstrap' | 'shell.refreshStatus' | NativeMethod | typeof businessMethods[number] | typeof conversationMethods[number] | typeof memoryMethods[number]
 export interface MemoryRef { memoryId: string; revision: string; position: number }
 export interface SelectedMemory extends MemoryRef { title: string }
 export interface MemoryChoice { changed: boolean; selectedMemoryRefs: SelectedMemory[] }
@@ -19,6 +20,7 @@ export const safeCodes = [
   'ProviderUnavailable', 'ModelUnavailable', 'PolicyDenied', 'InvalidRequest', 'InvalidResponse', 'TaskNotFound',
   'Cancelled', 'TimedOut', 'ClientTimeout', 'ProviderResponseInvalid', 'InternalError', 'OutcomeUnknown',
   'MemorySelectionStale', 'MemoryAskBudget', 'MemoryStorageUnavailable', 'MemorySchemaUnsupported',
+  'MemoryInvalid', 'MemoryNotFound', 'MemoryRevisionConflict', 'MemoryLimitExceeded',
   'ConversationNotFound', 'ConversationInvalid', 'ConversationConflict', 'ConversationLimitExceeded', 'ConversationStorageUnavailable',
 ] as const
 export interface ShellStatus {

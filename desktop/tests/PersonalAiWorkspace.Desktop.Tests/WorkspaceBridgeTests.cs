@@ -59,7 +59,7 @@ public sealed class WorkspaceBridgeTests
     { using var f = new Fixture(); await f.Receive(f.Request(session: Guid.NewGuid().ToString("D"))); await f.Receive(f.Request(version: 2)); Assert.Empty(f.Sent); }
     [Theory]
     [InlineData("native.openWindow")][InlineData("native.fetch")][InlineData("native.openPath")]
-    [InlineData("conversation.send")][InlineData("memory.create")][InlineData("task.cancel")]
+    [InlineData("conversation.send")][InlineData("memory.invoke")][InlineData("task.cancel")]
     public async Task GenericAndFutureDomainMethodsAreAbsent(string method)
     { using var f = new Fixture(); await f.Receive(f.Request(method)); Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened); }
     [Fact] public async Task PayloadMustBeExactlyEmptyAndNoArbitraryUrlPathOrExecutableIsAccepted()

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { NativeMethod, ShellStatus } from '../bridge/contracts'
 import { pages, pageFromHash } from './navigation'
 import { readTheme, saveTheme } from './theme'
-import { WorkspacePage } from '../pages/WorkspacePage'
+import { SettingsPage } from '../pages/SettingsPage'
+import { MemoryPage } from '../pages/MemoryPage'
+import type { MemoryLeaveGuard } from '../pages/MemoryPage'
 import { OperationPage } from '../pages/OperationPage'
 import { ConversationsPage } from '../pages/ConversationsPage'
 
@@ -16,6 +18,14 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [notice, setNotice] = useState('正在连接工作区…')
   const generation = useRef(0)
   const heading = useRef<HTMLHeadingElement>(null)
+  const pageRef = useRef(page); pageRef.current = page
+  const leaveMemory = useRef<MemoryLeaveGuard>(leave => leave())
+  const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
+  const navigate = (next: typeof page) => {
+    if (next === pageRef.current) return
+    const commit = () => { history.replaceState(null, '', `#/${next}`); setPage(next); heading.current?.focus({ preventScroll: true }) }
+    if (pageRef.current === 'memory') leaveMemory.current(commit); else commit()
+  }
   useEffect(() => {
     let disposed = false
     const bootstrap = () => {
@@ -32,7 +42,12 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     return () => { disposed = true; generation.current++; unsubscribe(); clearTimeout(timer) }
   }, [bridge])
   useEffect(() => {
-    const route = () => { setPage(pageFromHash(location.hash)); heading.current?.focus({ preventScroll: true }) }
+    const route = () => {
+      const next = pageFromHash(location.hash)
+      if (next === pageRef.current) return
+      if (pageRef.current === 'memory') history.replaceState(null, '', '#/memory')
+      navigate(next)
+    }
     window.addEventListener('hashchange', route)
     return () => window.removeEventListener('hashchange', route)
   }, [])
@@ -51,7 +66,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   return <div className="workspace">
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>跳到页面内容</a>
     <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true">P</span><div>Personal AI<span>你的本机工作区</span></div></div>
-      <nav aria-label="工作区页面">{pages.map((item, index) => <a key={item.id} href={`#/${item.id}`} aria-current={item.id === page ? 'page' : undefined}>
+      <nav aria-label="工作区页面">{pages.map((item, index) => <a key={item.id} href={`#/${item.id}`} onClick={event => { event.preventDefault(); navigate(item.id) }} aria-current={item.id === page ? 'page' : undefined}>
         <span className="nav-number" aria-hidden="true">0{index + 1}</span>{item.name}</a>)}</nav>
       <div className="sidebar-bottom"><span className="local-badge"><span className="dot online" /> Local only</span><p>内容由本机 Runtime 管理</p>
         <button className="theme-button" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}>切换到{theme === 'light' ? '深色' : '浅色'}主题</button></div>
@@ -61,7 +76,8 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} openNative={() => { void run('native.openLegacyAssistant') }} /></div>)}
         <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} openNative={() => { void run('native.openConversations') }} /></div>
-        {page !== 'assistant' && page !== 'translate' && page !== 'conversations' && <WorkspacePage page={page} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
+        <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} openBackup={() => { void run('native.openMemoryBackup') }} openNative={() => { void run('native.openMemory') }} /></div>
+        {page === 'settings' && <SettingsPage status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
         {error && <p role="alert" className="error">{error}</p>}<p role="status" className="operation-status">{notice}</p>
       </div><footer>Personal AI Workspace<span>本机 · 明确选择 · 由你控制</span></footer>
     </main>

@@ -28,6 +28,9 @@ public sealed class UiaTests
                     var panel = new StackPanel();
                     panel.Children.Add(input); panel.Children.Add(password); panel.Children.Add(button);
                     source.RootVisual = panel;
+                    // Let WPF complete the hidden fixture's layout/provider initialization before
+                    // an MTA client asks UIA for its tree. No ambient window or selection is read.
+                    await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     input.Select(18, 16);
                     async Task<SelectionResult> Probe(bool protectedInput, ControlType? controlType = null) => await Task.Run(() =>
                     {

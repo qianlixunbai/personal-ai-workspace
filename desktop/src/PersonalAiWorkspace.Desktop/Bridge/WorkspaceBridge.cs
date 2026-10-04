@@ -20,6 +20,7 @@ internal interface IWorkspaceNativeActions
 {
     WorkspaceOperations? Operations => null;
     WorkspaceConversations? Conversations => null;
+    WorkspaceMemory? Memory => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
@@ -41,6 +42,8 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly IWorkspaceNativeActions native;
     private readonly WorkspaceOperations? operations;
     private readonly WorkspaceConversations? conversations;
+    private readonly WorkspaceMemory? memory;
+    internal bool EditorDirty { get; private set; }
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
     private CancellationTokenSource sessionLifetime = new();
@@ -61,16 +64,18 @@ internal sealed class WorkspaceBridge : IDisposable
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
-    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; this.send = send; }
+    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; this.send = send; }
 
     internal void BeginDocument(string address)
     {
         Invalidate();
         if (!policy.Document(address)) return;
         document = address;
+        EditorDirty = false;
         SessionId = Guid.NewGuid().ToString("D");
         operations?.BeginSession(SessionId);
         conversations?.BeginSession(SessionId);
+        memory?.BeginSession(SessionId);
     }
 
     internal void Ready(string currentDocument)
@@ -84,6 +89,7 @@ internal sealed class WorkspaceBridge : IDisposable
     {
         operations?.EndSession(SessionId);
         conversations?.EndSession(SessionId);
+        memory?.EndSession(SessionId);
         ready = false; document = null; SessionId = ""; requests.Clear(); pending = 0;
         sessionLifetime.Cancel(); sessionLifetime.Dispose(); sessionLifetime = new();
     }
@@ -117,7 +123,25 @@ internal sealed class WorkspaceBridge : IDisposable
         try
         {
             object result;
-            if (ConversationMethods.Contains(method))
+            if (method == "memory.editorState")
+            {
+                EditorDirty = payload.GetProperty("dirty").GetBoolean();
+                result = new { acknowledged = true };
+            }
+            else if (MemoryMethods.Contains(method))
+            {
+                if (memory is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Memory 暂时不可用，请打开原生窗口。");
+                var id = method is "memory.list" or "memory.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("memoryId").GetString()!, "D");
+                result = method switch
+                {
+                    "memory.list" => await memory.ListAsync(session, ReadMemoryQuery(payload), cancellation),
+                    "memory.get" => await memory.GetAsync(session, id, cancellation),
+                    "memory.create" => await memory.CreateAsync(session, new(ReadMemoryType(payload), payload.GetProperty("title").GetString()!, payload.GetProperty("content").GetString()!), cancellation),
+                    "memory.update" => await memory.UpdateAsync(session, id, new(ReadRevision(payload), ReadMemoryType(payload), payload.GetProperty("title").GetString()!, payload.GetProperty("content").GetString()!), cancellation),
+                    _ => await memory.LifecycleAsync(session, id, ReadRevision(payload), method, cancellation)
+                };
+            }
+            else if (ConversationMethods.Contains(method))
             {
                 if (conversations is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Conversation 暂时不可用，请打开原生窗口。");
                 var id = method is "conversations.list" or "conversations.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
@@ -202,10 +226,13 @@ internal sealed class WorkspaceBridge : IDisposable
     { "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
       "conversations.send", "conversations.cancelPending" };
+    internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
+    { "memory.list", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
     private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method is "shell.bootstrap" or "shell.refreshStatus" || NativeMethods.ContainsKey(method)
             || method == "assistant.selectMemories") return Fields(payload);
@@ -218,6 +245,40 @@ internal sealed class WorkspaceBridge : IDisposable
             || !Text(payload, "mode", 9, out var mode) || mode is not ("Ask" or "Summarize")
             || !Text(payload, "text", mode == "Ask" ? 3000 : 6000, out _)) return false;
         return ValidReferences(payload, mode == "Summarize");
+    }
+    private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
+    private static MemoryQuery ReadMemoryQuery(JsonElement payload) => new(payload.GetProperty("query").GetString()!,
+        Enum.Parse<MemoryStatus>(payload.GetProperty("status").GetString()!),
+        payload.GetProperty("type").ValueKind == JsonValueKind.Null ? null : ReadMemoryType(payload), payload.GetProperty("page").GetInt32(), WorkspaceMemory.PageSize);
+    private static long ReadRevision(JsonElement payload) => long.Parse(payload.GetProperty("expectedRevision").GetString()!, NumberStyles.None, CultureInfo.InvariantCulture);
+    private static bool ValidMemoryPayload(string method, JsonElement payload)
+    {
+        if (method == "memory.editorState") return Fields(payload, "dirty") && payload.GetProperty("dirty").ValueKind is JsonValueKind.True or JsonValueKind.False;
+        if (method == "memory.list")
+        {
+            if (!Fields(payload, "query", "status", "type", "page") || payload.GetProperty("query").ValueKind != JsonValueKind.String
+                || !Text(payload, "status", 8, out var status) || status is not ("ACTIVE" or "ARCHIVED")
+                || payload.GetProperty("type").ValueKind != JsonValueKind.Null && (!Text(payload, "type", 12, out var type) || type is not ("PREFERENCE" or "PROJECT_NOTE"))
+                || !Page(payload) || payload.GetProperty("page").GetInt32() > 49) return false;
+            try { ReadMemoryQuery(payload).Validate(); return true; } catch (DesktopException) { return false; }
+        }
+        string[] fields = method switch
+        {
+            "memory.create" => ["type", "title", "content"],
+            "memory.get" => ["memoryId"],
+            "memory.update" => ["memoryId", "expectedRevision", "type", "title", "content"],
+            _ => ["memoryId", "expectedRevision"]
+        };
+        if (!Fields(payload, fields)) return false;
+        if (method != "memory.create" && (!Text(payload, "memoryId", 36, out var id) || !CanonicalId(id))) return false;
+        if (method is not ("memory.get" or "memory.create") && (!Text(payload, "expectedRevision", 19, out var revision)
+            || revision[0] is < '1' or > '9' || revision.Any(x => x is < '0' or > '9')
+            || !long.TryParse(revision, NumberStyles.None, CultureInfo.InvariantCulture, out _))) return false;
+        if (method is not ("memory.create" or "memory.update")) return true;
+        if (!Text(payload, "type", 12, out var value) || value is not ("PREFERENCE" or "PROJECT_NOTE")
+            || !Text(payload, "title", 320, out _) || !Text(payload, "content", 2000, out _)) return false;
+        try { new MemoryCreateInput(ReadMemoryType(payload), payload.GetProperty("title").GetString()!, payload.GetProperty("content").GetString()!).Validate(); return true; }
+        catch (DesktopException) { return false; }
     }
     private static bool ValidConversationPayload(string method, JsonElement payload)
     {

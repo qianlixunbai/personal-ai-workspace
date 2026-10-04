@@ -189,6 +189,9 @@ try {
     $auditPaths += @(Get-ChildItem -LiteralPath (Join-Path $repo 'target/classes'),(Join-Path $repo 'target/test-classes'),(Join-Path $repo 'desktop') -Recurse -File | Where-Object { $_.FullName -match '[\\/](bin|obj|classes|test-classes)[\\/]' } | ForEach-Object FullName)
     $auditPaths += @(Get-ChildItem -LiteralPath $runDirectory -Filter '*evidence*' -File | ForEach-Object FullName)
     foreach ($path in $auditPaths) {
+        # git ls-files includes tracked deletions in an uncommitted migration.
+        # Audit the current working tree; newly added files remain in auditPaths.
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($path))
         foreach ($secret in @($native,$credentialA,$credentialB,$sessionA.pairingSecret,$sessionB.pairingSecret)) {
             if ($content.Contains($secret)) { throw 'Source/build/evidence secret audit failed.' }

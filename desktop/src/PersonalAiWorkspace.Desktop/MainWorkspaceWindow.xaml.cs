@@ -13,11 +13,16 @@ public partial class MainWorkspaceWindow : Window
     private readonly IWorkspaceNativeActions native;
     private bool shuttingDown;
     private bool closed;
+    private readonly Func<bool> confirmDiscard;
+    internal bool TryDiscardEditor() => !Host.HasDirtyEditor || confirmDiscard();
     internal WorkspaceWebViewHost Host { get; }
     internal bool FallbackVisible => Fallback.Visibility == Visibility.Visible;
-    internal MainWorkspaceWindow(IWorkspaceNativeActions native, string? assetFolder = null)
+    internal MainWorkspaceWindow(IWorkspaceNativeActions native, string? assetFolder = null, Func<bool>? confirmation = null)
     {
         this.native = native;
+        confirmDiscard = confirmation ?? (() => MessageBox.Show(this,
+            "丢弃 Memory 未保存的修改并继续？", "Memory", MessageBoxButton.YesNo,
+            MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         InitializeComponent();
         Host = new WorkspaceWebViewHost(Browser, native, message =>
         {
@@ -26,7 +31,7 @@ public partial class MainWorkspaceWindow : Window
             FallbackMessage.Text = message;
             Fallback.Visibility = Visibility.Visible;
             NativeAssistantButton.Focus();
-        }, assetFolder);
+        }, assetFolder, confirmDiscard);
         Loaded += async (_, _) =>
         {
             await Host.InitializeAsync();
@@ -52,6 +57,7 @@ public partial class MainWorkspaceWindow : Window
         if (closed) return;
         e.Cancel = true;
         if (shuttingDown) return;
+        if (!TryDiscardEditor()) return;
         shuttingDown = true;
         await Host.CloseAsync();
         closed = true;
