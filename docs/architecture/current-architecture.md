@@ -1,17 +1,32 @@
-# Current Architecture — M4C Workspace Logical Backup / Restore
+# Current Architecture — M4 User-Controlled Conversation Foundation
 
-**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
-M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
-Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
-M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
-Local git fetch at M4C start: FAILED due to GitHub connectivity.
-Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
-No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
+**M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
+M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
+Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-001..007 — **Accepted**。
 
+## M4 final architecture
+
+- Conversation Domain：durable、linear、immutable，SQLite Workspace-owned；Conversation ≠ Memory ≠ transient Task。
+- Execution：persist USER before execution → shared bounded TaskManager → LOCAL_ONLY Ollama → terminal outcome persistence。
+  cancel/timeout 与 stale-result rejection 保持；startup PENDING fail-closed reconciliation，不 replay。
+- Context：Runtime-owned system → explicit current-turn Memory → prior complete SUCCEEDED Turns → current USER once；bounded context window。
+- Memory：explicit per-turn only，exact revision snapshot；无 automatic retrieval/save/extraction。
+- Recovery：Workspace logical backup v1 = Memory + durable Conversation；Memory-only ADR-006 remains independent，format1/schema1不变。
+- Restore：new/empty target only；no merge、no overwrite、no hot swap、no auto switch；restored Conversation可继续，Memory仍须显式选择。
+- Portable：logical source data only；Task state not portable，无 taskId/PENDING/live Task restoration。
+  Workspace DB schema version 与 logical format/section versions 独立。
+- Browser：Translate-only；Ordinary Ask：single-turn/stateless；native-only personal-data APIs，plaintext warnings。
+
+Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollama recovery/continue、ADR-006 compatibility与privacy/security **PASS**。
+历史Closing Reports保留当时的candidate/OPEN及Git记录；正式发布另须实时remote验证、ff-only merge、push/post-push fetch。
+Unified Main Workspace UI（React + WebView2 inside WPF Native Shell）**NOT STARTED**；
+Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
+edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
+下一阶段等待新的Scope Review、Architecture decision与Implementation prompt。
 
 ## M4C current architecture
 
-[ADR-007](../ADR/ADR-007-logical-workspace-backup-restore.md)完整定义新portable contract，尚待Architecture/Closing Review。
+[ADR-007](../ADR/ADR-007-logical-workspace-backup-restore.md)已Accepted，完整定义独立portable contract。
 ADR-006仍Accepted，Memory-only format1/schema1/fresh-v1 restore保持；Workspace DB仍v3，无新增migration。
 Workspace format1包含Memory source + Conversation terminal history，不包含taskId/PENDING/transient execution。
 同一SQLite read transaction提供counts/digest/streamed export；SHA-256采用排序后的length-prefixed UTF-8 canonical values。
@@ -22,7 +37,7 @@ Native-only GET export / POST validate / POST restore；Browser所有route/metho
 Raw restore body避免巨大JSON envelope复制；target通过bounded UTF-8/base64url header传入，request header limit64KiB。
 理论安全上限101,393,896,192bytes，完整保留当前domain capacity；大文件需磁盘/时间并可能延迟SQLite writer。
 真实isolated recovery中original已删除，恢复逐字段exact、startup0replay、oldTask404、WPF search/reopen/realOllama continue+explicitMemory PASS。
-M4保持OPEN、等待Closing Review；没有Finance/Knowledge/RAG/Agent/autoMemory/cloud/sync/scheduler/React/WebView2 Main Workspace。
+M4 — CLOSED — GO；Finance/Knowledge/RAG/Agent/autoMemory/cloud/sync/scheduler/React/WebView2 Main Workspace仍未实现。
 
 ## M4B current architecture decisions
 
@@ -59,7 +74,7 @@ M4保持OPEN、等待Closing Review；没有Finance/Knowledge/RAG/Agent/autoMemo
 - 只保存controlled failure enum，不保存raw exception/provider body/stacktrace/prompt/secret。
   admission evidence只有sequence/count/input sizes，ToString redacted；无title/Message/Memory/context/provider output日志。SQLite仍本地明文+OS账户权限。
 
-以上长期规则由本架构文档承载；所有六个Accepted ADR保持，未新增通用框架或机械ADR。
+以上长期规则由本架构文档承载；ADR-001..006保持Accepted，ADR-007现已Accepted，未新增通用框架。
 M4B当时不实现M4C backup/restore/portable recovery；当前新增能力见上方与ADR-007。无React/WebView2/streaming/RAG/Knowledge/Finance/Agent/Browser Conversation/edit/regenerate/branching。
 完整证据与limitations见[M4B Closing Report](../milestones/M4B-CLOSING-REPORT.md)。
 
@@ -473,4 +488,4 @@ Finance Reality Sync 尚未完成；本机没有验证学校笔记本工作区�
 本次不修改 local-ai-assistant；M2B-2B 历史最终 acceptance 已完成。
 **B11 inline BR layout — DEFERRED；B12 mutation debounce starvation — DEFERRED**，M2 CLOSED 不表示修复。
 M3A Memory foundation 已实现；RAG、tool calling、完整 React/WebView2 Workspace 未建立。
-Post-M2 Test Suite Simplification / M3C-2 / M3已CLOSED — GO；M3 publication已完成。Finance frozen；M4A状态见本文开头，M4整体OPEN。
+Post-M2 Test Suite Simplification / M3C-2 / M3已CLOSED — GO；M3 publication已完成。Finance frozen；M4当前状态见本文开头：CLOSED — GO。

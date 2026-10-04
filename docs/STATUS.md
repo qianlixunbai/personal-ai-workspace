@@ -1,35 +1,44 @@
 # Personal AI Workspace — Current Status
 
-**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
-M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
-Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
-M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
-Local git fetch at M4C start: FAILED due to GitHub connectivity.
-Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
-No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
-
+**M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
+M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
+Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-007 — **Accepted**。
+Formal Delivery 必须成功实时 fetch、核验远端基线、fast-forward-only merge、push main 与 post-push fetch；
+M4C 开工时的 external verification exception 不适用于正式发布。
 
 Updated: 2026-10-04 (Asia/Shanghai)
 
 此文件是当前阶段、完成状态、验证证据与遗留项的唯一事实来源。
 README 负责启动/API 使用；ADR 负责已采用决策。
 
-## 当前 M4C 结果
+## Final M4 Closing baseline
 
-本地Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。Workspace format1 / section1 / DBv3。
+Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；本次仅 approval sync，不重跑全套测试。
+Workspace Backup format：`personal-ai-workspace.workspace-backup`；formatVersion：**1**；
+Memory section：**schema1**；Conversation section：**schema1**；Workspace DB：**v3**。
+Memory-only Backup：**format1/schema1 preserved**；ADR-006 独立保持 Accepted。
 真实WPF/HTTP/SQLite/Ollama recovery PASS：original删除后仅凭backup恢复，逐字段logical equality、
 Memory search、Conversation reopen、真实Ollama续聊与explicit restored Memory、startup0replay/oldTask404均PASS。
 M4A/M4B、旧Memory-only recovery、native Translate/Summarize/stateless Ask、Browser Batch/security与privacy audit回归PASS。
 3个合成测试临时目录因automatic approval review拒绝cleanup而保留；详见[M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)。
 
-ADR-001..006仍Accepted；新增[ADR-007](ADR/ADR-007-logical-workspace-backup-restore.md)记录独立Workspace portability contract，等待Review。
-M4 Final Closing Candidate — GO；这不是M4 CLOSED — GO。没有main merge/push、tag/release或Main Workspace UI。
-Local main/cached origin/main仍是published M4B baseline；本机开工fetch失败，Architecture Review外部实时核验支持本次开工。
-任何main merge/push/formal delivery前须重新实时验证remote；连接仍失败则等Architecture/Delivery Review，不自行发布。
+Final acceptance **PASS**：real Workspace export、original Workspace unavailable recovery、restored Runtime boot / WPF、
+Memory search/use、Conversation reopen、restored Conversation continue with real Ollama、explicit restored Memory、
+no replay、Browser Translate-only、ordinary Ask single-turn/stateless、privacy/security。
+
+ADR-001..007均 **Accepted**；[ADR-007](ADR/ADR-007-logical-workspace-backup-restore.md)定义独立Workspace portability contract。
+M4 is now complete：durable Conversation、multi-turn execution、explicit per-turn Memory、Memory + Conversation recovery/portability。
+[M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
+
+**Next milestone has NOT started.** Candidate：Unified Main Workspace UI，React + WebView2 inside WPF Native Shell；
+等待新的 Scope Review、Architecture decision 与 Implementation prompt。
+Remaining deferred scope：Main Workspace UI、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
+cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。
 
 ## Historical M4B execution and closing snapshot
 
-以下保留M4B形成时的执行/验收事实；当前published状态以上方M4C baseline为准。
+以下保留M4B形成时的执行/验收事实与Git状态；当前状态以上方Final M4 Closing baseline为准。
 
 
 
@@ -663,7 +672,7 @@ M1 FINAL CLOSING REVIEW 已完成，closing commit 已 merge/push；M1 历史验
 M1.5 / M2A / M2B-1 / M2B-2A / M2B-2B-R1 / M2B-2B 均 CLOSED — GO；M2 — Browser Convergence 正式 CLOSED — GO。
 Finance Reality Sync 是未来 Finance 集成的前置条件，不是本轮任务。
 
-M3C-2与M3均CLOSED — GO，publication已完成。Finance Reality Sync仍是独立前置条件；Finance仍冻结，M4A状态见开头，M4整体OPEN。
+M3C-2与M3均CLOSED — GO，publication已完成。Finance Reality Sync仍是独立前置条件；Finance仍冻结，M4当前状态见开头：CLOSED — GO。
 
 ## Git 交付
 

@@ -1,15 +1,20 @@
 # Personal AI Workspace
 
-**M4C — IMPLEMENTED / LOCAL ACCEPTANCE PASS；M4 — OPEN。**
-M4B — CLOSED — GO / published。M4 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Closing Review。
-Published baseline: `bf2297e516456a0c0b49c10aea9ff2e6daf2d74f`。
-M4C Delivery / Reality Gate: PASS WITH REMOTE VERIFIED EXTERNALLY。
-Local git fetch at M4C start: FAILED due to GitHub connectivity.
-Remote freshness: VERIFIED EXTERNALLY by Architecture Review；verified remote main equals the baseline above.
-No main merge/push/formal delivery until renewed live remote verification and Architecture / Delivery Review.
+**M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
+M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
+Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；[ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md)：**Accepted**。
 
+Final verified closing baseline：Java **105 PASS** / Desktop **136 PASS**；Final recovery **PASS**；
+Real Windows / WPF / HTTP / SQLite / Ollama **PASS**；Workspace logical backup / restore **PASS**；
+Memory-only ADR-006 compatibility **PASS**；privacy/security **PASS**。这些是既有 closing 验收结果，approval sync 不重跑全套测试。
 
-独立、local-first 的共享 AI Runtime。M4C 在 `m4c-workspace-backup-restore` 本地实现，未 merge/push。
+**M4 is now complete.** 包含 durable Conversation、multi-turn execution、explicit per-turn Memory，以及 Memory + Conversation recovery/portability。
+Main Workspace UI（WPF Native Shell 内的 React + WebView2）、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+Agent/Tools/TOOL role、Browser Conversation、streaming、edit/regenerate/branching、automatic Memory、
+cloud backup、encryption/password、scheduled/incremental backup、multi-device sync 均未实现。
+Next major milestone candidate：Unified Main Workspace UI；**NOT STARTED**，等待新的 Scope Review、Architecture decision 与 Implementation prompt。
+
+独立、local-first 的共享 AI Runtime。正式发布须成功实时 fetch、核验远端基线、fast-forward-only merge、push main 与 post-push fetch。
 当前证据与限制见 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md)；当前阶段唯一事实来源为 [STATUS](docs/STATUS.md)。
 
 **M2 — Browser Convergence：CLOSED — GO**。
@@ -68,8 +73,8 @@ python -X utf8 scripts/workspace-backup-smoke.py
 ```
 
 真实恢复脚本只使用隔离合成数据，删除original Workspace后，以真实WPF/HTTP/SQLite/Ollama验证恢复与续聊。
-本地Java105/Desktop136 PASS；Browser继续Translate-only，普通Ask继续stateless。
-M4保持OPEN；不会开始React/WebView2 Main Workspace。
+Final closing baseline：Java105/Desktop136 PASS；Browser继续Translate-only，普通Ask继续stateless。
+M4 — CLOSED — GO；React/WebView2 Main Workspace — NOT STARTED。
 
 ## M4B — Multi-turn Conversation
 
@@ -115,7 +120,7 @@ python -X utf8 scripts/conversation-execution-smoke.py
 
 真实 smoke 使用隔离临时数据和凭据，驱动生产 WPF entry/controls、HTTP、SQLite、Ollama，验证多轮、逐轮 Memory、cancel、reopen/continue、失败与启动无重放。
 真实 timeout 未稳定制造；自动 queue/execution timeout 测试是主证据。完整结果见 [M4B Closing Report](docs/milestones/M4B-CLOSING-REPORT.md)。
-M4B历史closing时尚无Conversation portable backup；当前恢复能力与证据见上方M4C。M4仍OPEN，等待Architecture/Closing Review。
+M4B历史closing时尚无Conversation portable backup；当前恢复能力与证据见上方M4C。M4现已通过Architecture/Closing Review，CLOSED — GO。
 
 ## M4A — Conversation Domain & Persistence（历史 closing 基线）
 

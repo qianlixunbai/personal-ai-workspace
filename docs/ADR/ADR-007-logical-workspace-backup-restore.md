@@ -1,6 +1,6 @@
 # ADR-007 — Versioned Logical Workspace Backup / Restore
 
-Status: Implemented locally; pending Architecture / Closing Review.
+Status: Accepted
 
 Date: 2026-10-04 (Asia/Shanghai)
 
