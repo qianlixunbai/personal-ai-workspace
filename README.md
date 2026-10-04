@@ -1,20 +1,24 @@
 # Personal AI Workspace
 
-**M5 — Unified Main Workspace UI：OPEN。M5A / M5B / M5C：CLOSED — GO。**
+**M5 — Unified Main Workspace UI：OPEN。M5A / M5B / M5C / M5D：CLOSED — GO。**
 **M5C — Conversations Migration：CLOSED — GO。M5C Architecture / Closing Review：GO。**
-**M5D — Memory + Settings Migration：IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5D CLOSING CANDIDATE — GO。M5E — NOT STARTED。**
-本轮只实现 M5D，基于实时 fetch 核验的 `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`。
+**M5D — Memory + Settings Migration：CLOSED — GO。M5D Architecture / Closing Review：GO。M5E — NOT STARTED。**
+M5D 正式批准同步与 Git delivery，交付前 published main 基线为 `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`。
 React Memory 已支持显式 CRUD、区分大小写的字面搜索、status/type filters、每页20项、精确 Int64 revision、
 dirty/conflict/missing/outcome unknown 保护；Runtime SQLite 仍是唯一持久化真相。
-列表 bridge 只返回 metadata，完整正文仅在明确选择、Save 或 lifecycle 时返回。无 autosave 或自动记忆。
+`memory.list` 只返回 `id/type/title/status/revision/source/createdAt/updatedAt` metadata，不返回 `content`；读取正文须 explicit `memory.get`。
+create / explicit Save / archive / restore 的确认响应可返回完整 snapshot；无 autosave 或自动记忆。
 Settings 显示实际版本、Runtime/credential/WebView 状态与 Refresh，并通过固定入口进入原生凭据、配对和备份维护。
 数据库与备份为本机明文；文件路径、备份字节、秘密与模型配置不进入 React。全部 legacy native windows 保留。
-本地 suites：Java105 / Desktop251 / Frontend103 PASS，0 failure/error/skip。真实 Windows Memory 标题/正文拼音、CRUD/search/paging、
+Published test baseline（Architecture Review 已批准）：Java **105 PASS** / Desktop **251 PASS** / Frontend **103 PASS**，0 failure/error/skip。
+正式交付只检查文档 diff 与 Git 状态，不重跑 full test suite 或 Windows acceptance；证据继承 approved M5D Closing Candidate。
+已批准真实 Windows Memory 标题/正文拼音、CRUD/search/paging、
 conflict/missing/dirty/native close/reload、Settings 与两种隔离恢复全部 PASS；M5A/B/C、原生 Memory、Browser Translate-only 回归 PASS。
-仅推荐关闭候选 GO，等待 Architecture / Closing Review；M5 保持 OPEN。
-证据、62节设计/验收记录与限制见 [M5D Closing Report](docs/milestones/M5D-CLOSING-REPORT.md)。
+**REAL WINDOWS PINYIN / REAL REVISION CONFLICT / DIRTY EDIT PROTECTION / MEMORY & WORKSPACE BACKUP REGRESSION / PRIVACY & UDF AUDIT — PASS。**
+M5 保持 OPEN，M5E — Product Consolidation / Packaging / Final Acceptance 尚未开始。
+证据、62节设计/验收记录与限制见 [M5D Closing Report](docs/milestones/M5D-CLOSING-REPORT.md)，保留形成时 IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO 的历史快照，不追改为 CLOSED。
 
-M5D 验收要求 Windows 桌面可交互、8765/18767空闲及既有本机 Ollama 模型可用：
+M5D 历史验收复现说明（本轮 Formal Delivery 不执行）：要求 Windows 桌面可交互、8765/18767空闲及既有本机 Ollama 模型可用：
 
 ```powershell
 .\mvnw.cmd clean verify

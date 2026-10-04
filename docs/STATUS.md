@@ -1,6 +1,6 @@
 # Personal AI Workspace — Current Status
 
-## Current M5 status — M5D implementation
+## Current M5 status — M5D approved formal delivery
 
 | Milestone | 当前正式状态 |
 | --- | --- |
@@ -8,32 +8,50 @@
 | M5A — Main Workspace Shell Foundation | CLOSED — GO |
 | M5B — Assistant + Desktop Translate Migration | CLOSED — GO |
 | M5C — Conversations Migration | CLOSED — GO |
-| M5D — Memory + Settings Migration | IMPLEMENTED / LOCAL ACCEPTANCE PASS |
+| M5D — Memory + Settings Migration | CLOSED — GO |
 | M5E — Product Consolidation / Packaging / Final Acceptance | NOT STARTED |
 
 **M5C — CLOSED — GO。M5C Architecture / Closing Review：GO。**
+**M5D — CLOSED — GO。M5D Architecture / Closing Review：GO。**
 ADR-001..010 **Accepted**，无新增 ADR；M5A / M5B Architecture / Closing Review 的既有 GO 状态保持。
-M5 — Unified Main Workspace UI 仍 **OPEN**；**M5D CLOSING CANDIDATE — GO**，等待 Architecture / Closing Review，M5E — NOT STARTED。
+M5 — Unified Main Workspace UI 仍 **OPEN**；M5E — Product Consolidation / Packaging / Final Acceptance — NOT STARTED。
 
-### M5D current implementation
+### M5D approved capabilities and delivery baseline
 
-Reality Gate：clean main，成功实时 fetch 后 HEAD/main/origin/main 为 `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`。
-仅本地 branch `m5d-memory-settings-migration`。未 merge/push/tag/release，未开始 M5E。
+Pre-delivery published main：`4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`；本轮从 clean `m5d-memory-settings-migration` 核验本地 main 与实时 fetch 后 origin/main 一致。
+Implementation：`6e6423dc552e2578e22753c16101e55240cc099e`。
+Historical closing docs：`c7c151c05e3ed4348c3faab2b47d900309097a71`，由实际 git log 核验完整 SHA。
+Architecture approval 使用独立 `docs: approve M5D memory and settings migration` commit，不改写既有历史。
+Formal Delivery 要求 fresh remote baseline、ancestry PASS、fast-forward-only merge、只 push main、post-push fetch 与 clean main 后安全删除本地 feature branch；实际发布 SHA 与清理结果见 final delivery report / 实时 Git。M5E 未开始。
 React Memory → typed allowlisted bridge → application RuntimeClient → existing Runtime API/SQLite；Java/Core production、schema、backup formats、Browser权限不变。
 八个明确 `memory.*` 方法含仅 boolean 的 `memory.editorState` UI保护信号；list metadata-only、fixed20、session list/create authorization，最多1000 IDs，delete撤销，reload重新授权。
+Approved Memory：ACTIVE / ARCHIVED、PREFERENCE / PROJECT_NOTE、literal search/filter、20-item bounded pagination、explicit get、create/manual edit/explicit Save、Reload、archive/restore/physical delete、dirty protection 与 native Memory Backup entry。
+Runtime = sole durable Memory truth；React 仅持有当前 metadata page、loaded snapshot、editor draft、filter/search、dirty/stale/missing 与 presentation state。
+`memory.list` 只返回 id/type/title/status/revision/source/createdAt/updatedAt，不含 content；读取正文须 explicit `memory.get`。
 create/update/archive/restore/delete 均显式操作；revision canonical positive Int64 decimal string。Dirty lifecycle保留草稿，不 autosave。
+update/archive/restore/delete 均携带 expectedRevision；无 last-write-wins、force overwrite、automatic merge/retry。Archive / Restore ≠ Save，只更新 durable status/revision，draft 须后续 explicit Save 才写入 Runtime。
 selection/New/Reload/route 使用 default-safe accessible dialog；Main Workspace close/document reload 使用原生 Yes/No，默认No，拒绝保持 document/session/draft。
 conflict/missing 保留精确草稿并锁定旧条目 mutation；未知提交结果不重放。Search 为 literal case-sensitive title/content substring，显式Search/Enter。
+已批准 REAL REVISION CONFLICT：loaded N → Runtime N+1 → stale Save N → MEMORY_REVISION_CONFLICT → exact dirty draft 保留 / stale / mutations blocked → explicit Reload。
 Settings仅实际安全状态与固定 native maintenance entries；没有provider/model配置、Java/Ollama管理、文件路径/backup bytes/秘密到JS。
-最终 suites Java105/Desktop251/Frontend103 PASS，0 failure/error/skip；相对published baseline增加18个Desktop与37个Frontend case。
-Release默认build/publish七项保护检查PASS。M5D完整真实Windows验收233条检查记录PASS（含重复步骤，不代表233个独立gate）：
+Published test baseline（Architecture / Closing Review 已批准）：Java **105 PASS** / Desktop **251 PASS** / Frontend **103 PASS**，0 failure/error/skip；候选相对 M5C baseline 增加18个Desktop与37个Frontend case。
+**NO FULL TEST RERUN**：Formal Delivery did not rerun the full acceptance suite. Published test evidence is inherited from the approved M5D Closing Candidate.
+本轮仅 current docs approval sync 与 Git delivery；技术验证限于 git diff / diff --check、ancestry、remote freshness、fast-forward、post-push refs 与 clean working tree。
+以下全部是已批准 Closing Candidate 证据，非本轮重跑：Release默认build/publish七项保护检查PASS；M5D完整真实Windows验收233条检查记录PASS（含重复步骤，不代表233个独立gate）：
 标题/正文真实Pinyin、显式Save与exact durable值、中文/字面搜索、20项分页、CRUD/lifecycle、真实并发冲突/删除、
 dirty selection/New/route/Reload/native close/document reload、Settings真实状态/原生入口、源Runtime不可用时两种备份恢复。
 此前 `--skip-ime` 仅PARTIAL的运行不作为最终依据；最终完整运行 `realWindowsPinyin=true`、`closingGate=LOCAL_ACCEPTANCE_PASS`。
 M5A shell/security/hotkey/UIA/clipboard、M5B Assistant/Translate/真实Pinyin/explicit Memory、M5C multi-turn/per-turn Memory/真实Pinyin/recovery、
 legacy Memory CRUD/Ask/Backup、Workspace Backup、Browser Translate-only synthetic HTTP+real Ollama均重新PASS。
 UDF374 files与14种fresh Memory markers/临时bearer/source/build/log/evidence/archive审计0 unexpected matches；仅theme持久化。
-[M5D Closing Report](milestones/M5D-CLOSING-REPORT.md)记录实现commit、全部gate、性能与验收边界。未自行关闭M5D，未开始M5E。
+**REAL WINDOWS PINYIN / REAL MEMORY CRUD / REAL LITERAL SEARCH, FILTER & PAGINATION / REAL REVISION CONFLICT / DIRTY EDIT PROTECTION / MEMORY BACKUP & RESTORE / WORKSPACE BACKUP REGRESSION / PRIVACY & UDF AUDIT — PASS。**
+Native 继续拥有 Credential Manager、pairing secrets、file pickers、backup paths/bytes 与 restore validation；React 仅固定 entry invocation 与 safe status。ADR-006/007 format/schema 未变：Memory Backup 明文、new/empty target、no merge/hot swap；Workspace Backup 是 Memory + Conversation portable logical state。
+Browser companion = Translate-only，无 Browser Memory/Conversation/Workspace Backup 或 CORS/permission widening。Theme 是唯一 localStorage domain exception；Memory/Conversation/drafts/search 无 localStorage/sessionStorage/IndexedDB/service worker/Cache API/content-bearing URL。
+[M5D Closing Report](milestones/M5D-CLOSING-REPORT.md)保留形成时 **IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO、M5 — OPEN、M5E — NOT STARTED** 的历史快照；M5A/B/C Closing Reports 与 ADR bodies 均保持原样。正式 M5D CLOSED — GO 由 current docs 记录。
+
+### M5E future testing policy — not started
+
+M5E 采用 change-triggered regression：changed components 与 affected trust boundaries 必测；cross-boundary critical smoke 在 closing 前一次；此前已批准 real-Windows gates 仅在 owning/shared code 改变时重跑；full regression 在 M5E final closing 一次。本轮不启动 M5E。
 
 ### M5C previous approved delivery history
 
@@ -150,7 +168,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## Final M4 Closing baseline
 
-Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；M4 approval sync 当时不重跑全套测试；当前 M5C 回归见页首。
+Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；M4 approval sync 当时不重跑全套测试；当前 M5D approved baseline 见页首。
 Workspace Backup format：`personal-ai-workspace.workspace-backup`；formatVersion：**1**；
 Memory section：**schema1**；Conversation section：**schema1**；Workspace DB：**v3**。
 Memory-only Backup：**format1/schema1 preserved**；ADR-006 独立保持 Accepted。
@@ -168,7 +186,7 @@ M4 is now complete：durable Conversation、multi-turn execution、explicit per-
 [M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
 
 **M5A — CLOSED — GO under the approved architecture.** React + WebView2 inside WPF Native Shell；
-M5A / M5B / M5C Architecture / Closing Review 已批准 GO；M5A / M5B / M5C CLOSED — GO；M5 仍 OPEN，当前M5D状态见页首，M5E NOT STARTED。
+M5A / M5B / M5C / M5D Architecture / Closing Review 已批准 GO；M5A / M5B / M5C / M5D CLOSED — GO；M5 仍 OPEN，M5E NOT STARTED。
 Remaining deferred scope：旧窗口退役与产品收口、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
 cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。

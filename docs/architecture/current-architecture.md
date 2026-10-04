@@ -2,8 +2,10 @@
 
 ## Current M5D Memory and Settings
 
-**M5D — IMPLEMENTED / LOCAL ACCEPTANCE PASS. M5D CLOSING CANDIDATE — GO. M5 — OPEN. M5E — NOT STARTED.**
-M5A/M5B/M5C remain CLOSED — GO. Baseline: `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`, verified by live fetch from clean main.
+**M5D — CLOSED — GO. M5D Architecture / Closing Review: GO. M5 — OPEN. M5E — NOT STARTED.**
+M5A/M5B/M5C remain CLOSED — GO. Pre-delivery published main: `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`, verified against local main and live-fetched origin/main from the clean M5D branch.
+Implementation: `6e6423dc552e2578e22753c16101e55240cc099e`; historical closing docs: `c7c151c05e3ed4348c3faab2b47d900309097a71`, verified by actual git log.
+Approval sync is the separate `docs: approve M5D memory and settings migration` commit. Delivery requires fresh remote baseline, ancestry, fast-forward-only merge, push main and post-push fetch before safe local feature cleanup; existing history is not rewritten.
 No new ADR: ADR-001..010 remain Accepted. Java/Core production, API, SQLite schema, backup formats, security/Browser permissions and domain limits are unchanged.
 
 ```text
@@ -11,11 +13,13 @@ React Memory → typed WPF bridge → application-owned RuntimeClient → native
 React Settings → safe shell status / fixed native entries → existing WPF maintenance
 ```
 
-Runtime SQLite is the sole durable Memory truth. React keeps one metadata list page, one explicitly loaded snapshot, exact local draft and UI state in RAM.
+Runtime = sole durable Memory truth, backed by SQLite. React keeps only the current metadata page, explicitly loaded snapshot, editor draft, filter/search state, dirty/stale/missing state and presentation state in RAM.
+Approved Memory capabilities: ACTIVE / ARCHIVED, PREFERENCE / PROJECT_NOTE, literal search/filter, 20-item bounded pagination, metadata-only list, explicit get, create, manual edit, explicit Save, Reload, archive, restore, physical delete, dirty-edit protection and native Memory Backup entry.
 No autosave, automatic extraction/search/selection, semantic search, RAG, second database, browser domain storage, content/IDs/query in URL or direct HTTP.
 `WorkspaceMemory` keeps only bounded session authorization; list/create authorize real IDs, delete revokes, document rotation clears authority and suppresses late replies.
 At most1000 authorized Memory IDs; list always20, page0..49, no preload-all path. Runtime lists retain their existing full contract; the Host projects exactly
-`id,type,title,status,revision,source,createdAt,updatedAt` before posting to JS. Full `content` crosses only get/create/update/archive/restore.
+`id,type,title,status,revision,source,createdAt,updatedAt` before posting to JS. `memory.list` never returns `content`; reading a body requires explicit `memory.get`.
+Confirmed create/update/archive/restore responses may also return the full snapshot. Metadata-only list is the approved M5D privacy / least-data baseline.
 
 The exact v1 additions are:
 
@@ -31,32 +35,47 @@ memory.editorState
 ```
 
 `memory.editorState` is strictly `{dirty:boolean}` with `{acknowledged:true}`; no text, logging or durable state. It protects real native close/reload.
+It carries no title, content, Memory body, path or credential. The bridge remains typed, versioned, allowlisted, origin/session checked and bounded.
 Existing origin/document/session/requestId checks, strict schemas, 8 pending,4096 request IDs,32KiB requests/64KiB responses remain.
 Only existing `conversations.get` retains1MiB. Legal worst escaping fits Memory budgets, with serialization tests; no truncation or enlarged global limit.
 Memory revisions are canonical positive decimal Int64 strings from invariant .NET `long`, including values above JS safe integer, without Number conversion.
+Update/archive/restore/delete use `expectedRevision`, covering the full positive Int64 range; no last-write-wins, force overwrite, automatic merge or automatic retry.
 Core validates title160 scalars, body2000 scalars AND2000 UTF-16 AND8192 UTF-8, query160, valid Unicode/no NUL and1000 domain capacity.
 Search stays explicit button/Enter, literal case-sensitive title/content substring: existing FTS5 trigram for >=3 scalars, instr for shorter, no SQL/FTS syntax from JS.
 
 Create/Update happen only on Save. Exact draft is compared with loaded type/title/content; no normalization/truncation.
 Archive/Restore with dirty fields update loaded status/revision while preserving draft; next explicit Save uses that new revision, including editing ARCHIVED items as in MemoryWindow.
+Archive / Restore ≠ Save: lifecycle mutations update durable status/revision, and only a later explicit Save persists the local draft.
 Conflict preserves draft, marks stale and blocks mutation until explicit Reload/discard. Missing preserves draft, blocks the old identity and never auto-recreates.
+Approved real conflict: React loads N → Runtime changes to N+1 → stale Save N → `MEMORY_REVISION_CONFLICT` → exact local dirty draft preserved → stale / mutations blocked → explicit Reload required.
 Delete has a default-safe confirmation stating physical irreversible Workspace deletion, dirty discard and no forensic erasure guarantee.
 Mutation timeout/transport/unverifiable response means Outcome unknown, freezes mutations and never retries; confirmed success with failed follow-up list is reported separately.
 Search/filter/refresh/page changes preserve draft. Selection/New/Reload/route use a labelled modal with Cancel focus, Escape, focus trap/return.
 Native close/document reload ask Yes/No with defaultNo before cleanup/session rotation; decline keeps the same document/session/draft. Renderer failure retains native dirty state.
+Approved dirty protection covers selecting another Memory, New, Reload, route away, Main Workspace close and trusted document reload. Cancel preserves the exact draft; confirmation permits discard. Drafts are not persisted in browser storage.
 Session changes clear presentation and dialog state; generation guards prevent late old-session responses/errors from repopulating UI.
 
 Settings shows safe applicationVersion, Runtime reachability, credential enum, WebView state and Refresh; reachability/authentication are not all-model readiness.
 Fixed native credential, Browser Pairing, Memory Backup, Workspace Backup and legacy Assistant entries reuse existing production windows.
 Bearer, pairing proof, file path, backup bytes, runtime data path and provider/model settings stay native. No configuration mutation bridge or process manager.
+Settings has no model/provider selector, Ollama URL/temperature/system prompt editor, Runtime supervisor/process restart, auto-start toggle, cloud settings or sync settings.
 SQLite/backups remain plaintext protected by the OS account boundary; same-account/admin process isolation and forensic erase are not promised.
 Native file choices + file IO + Runtime-owned validation/restore remain ADR-006/007 workflows, new/empty target only, no hot replacement/switching.
+WPF/native retains ownership of Windows Credential Manager, Browser pairing secrets, file pickers, backup paths/bytes and restore validation orchestration; React owns only fixed entry invocation and safe status.
+Memory Backup remains native/plaintext/new-or-empty-target/no-merge/no-hot-swap. Workspace Backup remains Memory + Conversation portable logical state; M5D changes no format/schema.
+Browser companion remains Translate-only: no Browser Memory, Conversation or Workspace Backup; no CORS or permission widening.
+Theme remains the only localStorage domain exception. Memory/Conversation/drafts/search use no localStorage, sessionStorage, IndexedDB, service worker, Cache API or content-bearing URL.
 All legacy windows, MemorySelectionWindow and M5B/M5C explicit selectors remain in place.
-Final local suites: Java105 / Desktop251 / Frontend103 PASS, no failures/errors/skips; default Release build/publish safeguards PASS.
+Published test baseline, approved by Architecture / Closing Review: Java **105 PASS** / Desktop **251 PASS** / Frontend **103 PASS**, no failures/errors/skips; approved default Release build/publish safeguards PASS.
+Formal Delivery did not rerun the full acceptance suite. Published test evidence is inherited from the approved M5D Closing Candidate.
+This delivery changes current docs only; verification is limited to Git diff/diff --check, ancestry, remote freshness, fast-forward delivery, post-push refs and clean working tree.
 Real Windows Memory title/body Pinyin, CRUD/search/paging, conflict/missing/dirty/native guards, actual Settings and isolated native Memory/Workspace recovery PASS.
 M5A/B/C, hotkey/UIA/clipboard, legacy Memory, Workspace Backup and Translate-only Browser synthetic HTTP/real Ollama regressions PASS.
-UDF and fresh-marker/source/build/log/evidence/archive privacy audits PASS. This is a closing candidate awaiting Architecture / Closing Review.
-See [M5D Closing Report](../milestones/M5D-CLOSING-REPORT.md) for all62 sections, measured performance and explicit acceptance limitations.
+**REAL WINDOWS PINYIN — PASS; REAL MEMORY CRUD — PASS; REAL LITERAL SEARCH / FILTER / PAGINATION — PASS; REAL REVISION CONFLICT — PASS; DIRTY EDIT PROTECTION — PASS; MEMORY BACKUP / RESTORE — PASS; WORKSPACE BACKUP REGRESSION — PASS; PRIVACY / UDF AUDIT — PASS.**
+Approved production Memory title and content textarea Pinyin: actual composition → committed Chinese → explicit Save → Runtime durable exact value → Get / Reload exact value.
+UDF and fresh-marker/source/build/log/evidence/archive privacy audits PASS, inherited from the approved candidate.
+See [M5D Closing Report](../milestones/M5D-CLOSING-REPORT.md) for all62 sections, measured performance and explicit acceptance limitations. It retains the accurate historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO, M5 OPEN and M5E NOT STARTED snapshot; M5A/B/C closing reports and ADR-001..010 bodies are unchanged.
+M5 remains OPEN because M5E — Product Consolidation / Packaging / Final Acceptance is NOT STARTED. No M5E execution is part of this delivery.
 
 ## M5C approved implementation history
 
@@ -330,7 +349,7 @@ Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollam
 M4 closing 时 Main Workspace 尚未开始；当前 M5C Conversation migration、M5B业务与M5A shell基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A / M5B / M5C Architecture / Closing Review 已 GO；M5A / M5B / M5C CLOSED — GO，当前M5D状态见页首，M5E NOT STARTED；M5仍OPEN。
+M5A / M5B / M5C / M5D Architecture / Closing Review 已 GO；M5A / M5B / M5C / M5D CLOSED — GO，M5E NOT STARTED；M5仍OPEN。
 
 ## M4C current architecture
 
