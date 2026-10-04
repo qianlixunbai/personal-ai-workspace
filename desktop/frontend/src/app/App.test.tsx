@@ -20,8 +20,7 @@ it('shows the five real navigation routes with safe status and no fake domain da
   expect(pageFromHash('#/unknown')).toBe('assistant')
 })
 it('native entry buttons issue only fixed methods and refresh displays unavailable honestly', async () => {
-  const { port } = await shell(); fireEvent.click(screen.getByRole('button', { name: /打开原生 Assistant/ }))
-  expect(port.sent[1]?.method).toBe('native.openLegacyAssistant'); await act(async () => { port.reply(1, { opened: true }) })
+  const { port } = await shell(); expect(screen.queryByRole('button', { name: /打开原生/ })).toBeNull()
   await act(async () => { location.hash = '#/settings'; window.dispatchEvent(new Event('hashchange')) })
   for (const [title, method] of [['凭据管理', 'native.openCredentialFlow'], ['Browser Pairing', 'native.openBrowserPairing'], ['Memory Backup', 'native.openMemoryBackup'], ['Workspace Backup', 'native.openWorkspaceBackup']]) {
     fireEvent.click(screen.getByRole('button', { name: `打开${title}` })); expect(port.sent.at(-1)?.method).toBe(method)
@@ -32,7 +31,7 @@ it('native entry buttons issue only fixed methods and refresh displays unavailab
   expect(screen.getByText('不可连接')).toBeTruthy(); expect(screen.getByText('未导入')).toBeTruthy()
 })
 it('renders hostile error text as text without script or markup', async () => {
-  const { port } = await shell(); fireEvent.click(screen.getByRole('button', { name: /打开原生 Assistant/ }))
+  const { port } = await shell(); await act(async () => { location.hash = '#/settings'; window.dispatchEvent(new Event('hashchange')) }); fireEvent.click(screen.getByRole('button', { name: '打开凭据管理' }))
   const request = port.sent[1]!
   await act(async () => { port.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'NATIVE_UNAVAILABLE', message: '<script>window.pwned=1</script><img src=x onerror=alert(1)>' } }) })
   expect(screen.getByRole('alert').textContent).toContain('<script>'); expect(screen.getByRole('alert').querySelector('script,img')).toBeNull()
@@ -44,5 +43,5 @@ it('persists only bounded theme preference and handles unavailable storage', asy
 })
 it('shows a native opening instruction when run outside Desktop', () => {
   const client = new WorkspaceClient(undefined); clients.push(client); render(<App bridge={client} />)
-  expect(screen.getByRole('alert').textContent).toContain('通过桌面'); expect(screen.getByRole('button', { name: /打开原生 Assistant/ }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('alert').textContent).toContain('通过桌面'); expect(screen.queryByRole('button', { name: /打开原生/ })).toBeNull()
 })

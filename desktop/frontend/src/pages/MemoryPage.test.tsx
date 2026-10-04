@@ -14,7 +14,7 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(x => x.dispose()); vi.res
 const click = async (name: string | RegExp) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
 async function setup(port = new MemoryService()) {
   const bridge = new WorkspaceClient(port); clients.push(bridge); port.session(); let guard: MemoryLeaveGuard = leave => leave()
-  render(<MemoryPage bridge={bridge} enabled visible registerLeave={next => { guard = next; return () => {} }} openBackup={() => { void bridge.open('native.openMemoryBackup') }} openNative={() => { void bridge.open('native.openMemory') }} />)
+  render(<MemoryPage bridge={bridge} enabled visible registerLeave={next => { guard = next; return () => {} }} openBackup={() => { void bridge.open('native.openMemoryBackup') }} />)
   await screen.findByRole('button', { name: /^Synthetic Memory 1 PROJECT_NOTE/ })
   return { port, bridge, leave: (action: () => void) => guard(action), title: screen.getByLabelText('Memory title') as HTMLInputElement, content: screen.getByLabelText('Memory content') as HTMLTextAreaElement }
 }

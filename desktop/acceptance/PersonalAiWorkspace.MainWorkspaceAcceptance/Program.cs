@@ -93,7 +93,7 @@ internal static class Program
         }
         else await Task.Delay(150);
         await request;
-        Require(app.MainWindow is AssistantWindow assistant && assistant.IsVisible, method + "-native-surface");
+        Require(app.Windows.Cast<Window>().OfType<AssistantWindow>().Single().IsVisible, method + "-native-surface");
     }
     private static async Task Drive()
     {
@@ -118,14 +118,11 @@ internal static class Program
             await Js("document.querySelector('a[href=\"#/" + route + "\"]').click()");
             await WaitJs("document.querySelector('h1')?.textContent.toLowerCase() === '" + route + "'", "sidebar-" + route);
         }
-        await OpenEntry("native.openLegacyAssistant", null);
-        await OpenEntry("native.openConversations", typeof(ConversationWindow));
-        await OpenEntry("native.openMemory", typeof(MemoryWindow));
         await OpenEntry("native.openBrowserPairing", typeof(BrowserPairingWindow));
         await OpenEntry("native.openMemoryBackup", typeof(MemoryBackupWindow));
         await OpenEntry("native.openWorkspaceBackup", typeof(WorkspaceBackupWindow));
         await OpenEntry("native.openCredentialFlow", null);
-        Require(((AssistantWindow)app.MainWindow).ImportButton.IsKeyboardFocusWithin, "credential-flow-native-import-focus");
+        Require((app.Windows.Cast<Window>().OfType<AssistantWindow>().Single()).ImportButton.IsKeyboardFocusWithin, "credential-flow-native-import-focus");
         await HotkeyRegression();
         shell.ReturnFocus(); await Task.Delay(100);
         await WaitJs("document.hasFocus()", "wpf-to-webview-focus-return");
@@ -219,7 +216,7 @@ internal static class Program
         uint clipboardBefore = Native.GetClipboardSequenceNumber();
         foreach (byte key in new byte[] { 0x11, 0x12, 0x10, 0x54 }) keybd_event(key, 0, 0, UIntPtr.Zero);
         foreach (byte key in new byte[] { 0x54, 0x10, 0x12, 0x11 }) keybd_event(key, 0, 2, UIntPtr.Zero);
-        var assistant = (AssistantWindow)app.MainWindow;
+        var assistant = app.Windows.Cast<Window>().OfType<AssistantWindow>().Single();
         await Wait(() => assistant.ResultText.Text.Contains("你好", StringComparison.Ordinal), "real-hotkey-uia-translate-ollama", 140);
         Require(assistant.InputText.Text == "Hello, world!" && !app.Busy, "hotkey-selected-text-only");
         Require(clipboardBefore == Native.GetClipboardSequenceNumber(), "uia-hotkey-leaves-clipboard-unchanged");

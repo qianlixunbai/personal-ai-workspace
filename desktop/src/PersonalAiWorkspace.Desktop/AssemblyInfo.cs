@@ -9,3 +9,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.AssistantTranslateAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.ConversationsWorkspaceAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MemorySettingsAcceptance")]
+[assembly: InternalsVisibleTo("PersonalAiWorkspace.ProductAcceptance")]

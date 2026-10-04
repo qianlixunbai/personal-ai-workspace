@@ -54,9 +54,6 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static IReadOnlyDictionary<string, NativeWorkspaceEntry> NativeMethods { get; } =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, NativeWorkspaceEntry>(new Dictionary<string, NativeWorkspaceEntry>
         {
-            ["native.openLegacyAssistant"] = NativeWorkspaceEntry.LegacyAssistant,
-            ["native.openConversations"] = NativeWorkspaceEntry.Conversations,
-            ["native.openMemory"] = NativeWorkspaceEntry.Memory,
             ["native.openBrowserPairing"] = NativeWorkspaceEntry.BrowserPairing,
             ["native.openMemoryBackup"] = NativeWorkspaceEntry.MemoryBackup,
             ["native.openWorkspaceBackup"] = NativeWorkspaceEntry.WorkspaceBackup,

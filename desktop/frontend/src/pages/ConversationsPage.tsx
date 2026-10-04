@@ -11,8 +11,8 @@ const failureText: Record<FailureCode, string> = {
 const safeText = (problem: unknown) => problem instanceof BridgeError ? problem.message : '工作区暂时不可用，请刷新后检查。'
 type Pending = { turnId: string; canCancel: boolean } | null
 
-export function ConversationsPage({ bridge, enabled, visible, openNative }: {
-  bridge: WorkspaceClient; enabled: boolean; visible: boolean; openNative: () => void
+export function ConversationsPage({ bridge, enabled, visible }: {
+  bridge: WorkspaceClient; enabled: boolean; visible: boolean
 }) {
   const [status, setStatus] = useState<ConversationStatus>('ACTIVE')
   const [pages, setPages] = useState({ ACTIVE: 0, ARCHIVED: 0 })
@@ -202,7 +202,6 @@ export function ConversationsPage({ bridge, enabled, visible, openNative }: {
       <div className="pagination"><button disabled={!enabled || busy || listLoading || pages[status] === 0} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] - 1 }))}>Previous</button>
         <span>{pages[status] + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 10))}</span>
         <button disabled={!enabled || busy || listLoading || !list || (pages[status] + 1) * 10 >= list.total} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] + 1 }))}>Next</button></div>
-      <button className="secondary" disabled={!enabled || busy} onClick={openNative}>打开原生 Conversations</button>
     </section>
     <section className="card conversation-detail" aria-labelledby="conversation-detail-title" aria-busy={historyLoading}>
       <div className="card-heading"><h2 id="conversation-detail-title"><bdi>{detail?.conversation.title ?? '选择或新建会话'}</bdi></h2>

@@ -1,33 +1,56 @@
 # Personal AI Workspace
 
-**M5 — Unified Main Workspace UI：OPEN。M5A / M5B / M5C / M5D：CLOSED — GO。**
-**M5C — Conversations Migration：CLOSED — GO。M5C Architecture / Closing Review：GO。**
-**M5D — Memory + Settings Migration：CLOSED — GO。M5D Architecture / Closing Review：GO。M5E — NOT STARTED。**
-M5D 正式批准同步与 Git delivery，交付前 published main 基线为 `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`。
-React Memory 已支持显式 CRUD、区分大小写的字面搜索、status/type filters、每页20项、精确 Int64 revision、
-dirty/conflict/missing/outcome unknown 保护；Runtime SQLite 仍是唯一持久化真相。
-`memory.list` 只返回 `id/type/title/status/revision/source/createdAt/updatedAt` metadata，不返回 `content`；读取正文须 explicit `memory.get`。
-create / explicit Save / archive / restore 的确认响应可返回完整 snapshot；无 autosave 或自动记忆。
-Settings 显示实际版本、Runtime/credential/WebView 状态与 Refresh，并通过固定入口进入原生凭据、配对和备份维护。
-数据库与备份为本机明文；文件路径、备份字节、秘密与模型配置不进入 React。全部 legacy native windows 保留。
-Published test baseline（Architecture Review 已批准）：Java **105 PASS** / Desktop **251 PASS** / Frontend **103 PASS**，0 failure/error/skip。
-正式交付只检查文档 diff 与 Git 状态，不重跑 full test suite 或 Windows acceptance；证据继承 approved M5D Closing Candidate。
-已批准真实 Windows Memory 标题/正文拼音、CRUD/search/paging、
-conflict/missing/dirty/native close/reload、Settings 与两种隔离恢复全部 PASS；M5A/B/C、原生 Memory、Browser Translate-only 回归 PASS。
-**REAL WINDOWS PINYIN / REAL REVISION CONFLICT / DIRTY EDIT PROTECTION / MEMORY & WORKSPACE BACKUP REGRESSION / PRIVACY & UDF AUDIT — PASS。**
-M5 保持 OPEN，M5E — Product Consolidation / Packaging / Final Acceptance 尚未开始。
-证据、62节设计/验收记录与限制见 [M5D Closing Report](docs/milestones/M5D-CLOSING-REPORT.md)，保留形成时 IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO 的历史快照，不追改为 CLOSED。
+Personal AI Workspace 是 local-first Windows AI 工作区：Assistant 单轮问答/摘要、持久多轮 Conversations、用户手动管理的 Memory、Translate 和 Settings。所有推理由本机 Ollama 执行；没有云端 fallback、自动 Memory 或同步。
 
-M5D 历史验收复现说明（本轮 Formal Delivery 不执行）：要求 Windows 桌面可交互、8765/18767空闲及既有本机 Ollama 模型可用：
+**M5A / M5B / M5C / M5D — CLOSED — GO。M5E — IN PROGRESS。M5 — OPEN。**
+M5E 将 Main Workspace 收口为默认 Windows 产品入口，并建立 portable Release bundle；候选必须完成包内产品验收后才能进入 Architecture / Final Closing Review。当前状态见 [STATUS](docs/STATUS.md)。
+
+## 产品与架构
+
+正常启动、第二次启动、launcher、托盘双击与 Open Personal AI Workspace 都打开或激活 Main Workspace；默认 Assistant 页面。缺少凭据仍打开工作区，Settings 明确显示 Missing，用户通过原生凭据管理显式导入。
+
+React → 固定可信 WebView2 origin → typed allowlisted WPF bridge → application-owned RuntimeClient → Java Runtime / SQLite / Ollama。
+Runtime 是 Memory 与 Conversation 的唯一持久化真相；React 没有直接 Runtime HTTP、凭据或第二数据库。Memory 由用户逐次明确选择；下一次 Ask / Turn 不自动继承。
+
+WPF 拥有应用生命周期、single instance、tray、快捷键、UIA/controlled clipboard、helper、Credential Manager、Memory selector、Browser Pairing 与两种备份。Quick Assistant / Quick Translate 保留原生快捷工作流与 fallback。健康 React 页面不再提供旧 Memory/Conversation/Assistant 窗口入口；三个对应 JS bridge 权限已移除。原生 implementation 保留。Browser companion 仍仅 Translate。
+
+## 开发运行
+
+构建需要 Java 21、Maven Wrapper、.NET 10 SDK、Node/npm；推理需要 Ollama 和已安装的 `qwen3.5:4b`。React 页面需要 Microsoft Edge WebView2 Evergreen Runtime。
 
 ```powershell
-.\mvnw.cmd clean verify
-npm --prefix desktop/frontend run build
-python -X utf8 scripts/memory-settings-workspace-smoke.py
+.\start-workspace.cmd
+# 或指定一个私有 Workspace 数据目录：
+.\scripts\start-workspace.ps1 -DataDirectory 'C:\your-private-workspace'
 ```
 
-脚本只使用隔离 synthetic 数据、专用凭据与任务自有进程。`--skip-ime` 只检查其余 gate，整体明确保留 PARTIAL；
-插入中文或 synthetic composition 不等同真实 Windows 拼音。
+Repository developer launcher 可构建源码；产品 release launcher 单独维护。
+
+## 构建与运行 portable 包
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1
+.\artifacts\PersonalAiWorkspace-win-x64\start-workspace.cmd
+```
+
+包包含 self-contained win-x64 Release WPF、production React、应用 Runtime JAR、launcher、用户 README、manifest 与 SHA-256。普通运行不需要 Node/npm、Maven、Git、Visual Studio、.NET SDK/runtime 或源码仓库。Java 21、Ollama/configured model、WebView2 是用户前提，不自动下载。
+
+输出位于 ignored `artifacts/`；存在的候选不会被脚本覆盖，可用 `-OutputName` 另建。已有 verified frontend/JAR 的开发流水线可传 `-FrontendPrebuilt -RuntimePrebuilt`；Desktop 仍须 self-contained publish。
+
+包目录可移动；状态不写入包。首次在 Settings 点击凭据管理，在原生窗口明确选择 `%LOCALAPPDATA%\PersonalAiWorkspace\RuntimeState\Auth\client-token`。launcher 只以该私有文件认证 Runtime，不导入 Windows Credential Manager。健康现有 Runtime 必须同时通过 readiness 与认证契约才能复用；未知端口占用 fail closed。
+
+## 存储、隐私与限制
+
+Workspace 默认 `%USERPROFILE%\.personal-ai-workspace\data`；release Runtime auth/browser registry/logs 默认 `%LOCALAPPDATA%\PersonalAiWorkspace\RuntimeState`，与数据目录、包目录分离并设置 owner-only ACL。WebView 使用独立 account-local InPrivate profile。
+
+数据库与备份都是明文；OS 账户与权限提供边界，不承诺加密或取证级擦除。Workspace Backup 包含 Memory + terminal Conversation，恢复到新/空目录；用户明确以该目录重启 Runtime 后使用恢复数据。关闭 Main Workspace 保留托盘，tray Exit 退出 Desktop；Runtime/Ollama 继续由外部管理。
+
+当前交付是 unsigned portable folder，提供损坏检测而非签名/真实性保证；MSI/MSIX、updater、bundled JRE/Ollama、云同步均 deferred。Knowledge/RAG/Finance/Agent、streaming、edit/regenerate/branching、automatic Memory 不在本轮。
+
+## 已批准 milestone 历史
+
+以下保留 M5A/B/C/D 和更早阶段的历史事实；其当时入口与权限由上方 M5E 当前行为取代，不追改 historical closing reports。Published M5D baseline：Java 105 / Desktop 251 / Frontend 103 PASS，ADR-001..010 Accepted。
+[M5A](docs/milestones/M5A-CLOSING-REPORT.md) · [M5B](docs/milestones/M5B-CLOSING-REPORT.md) · [M5C](docs/milestones/M5C-CLOSING-REPORT.md) · [M5D](docs/milestones/M5D-CLOSING-REPORT.md)。
 
 ## M5C approved baseline history
 

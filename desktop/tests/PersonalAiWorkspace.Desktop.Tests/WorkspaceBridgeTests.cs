@@ -58,6 +58,7 @@ public sealed class WorkspaceBridgeTests
     [Fact] public async Task FakeSessionAndUnsupportedVersionAreDropped()
     { using var f = new Fixture(); await f.Receive(f.Request(session: Guid.NewGuid().ToString("D"))); await f.Receive(f.Request(version: 2)); Assert.Empty(f.Sent); }
     [Theory]
+    [InlineData("native.openLegacyAssistant")][InlineData("native.openConversations")][InlineData("native.openMemory")]
     [InlineData("native.openWindow")][InlineData("native.fetch")][InlineData("native.openPath")]
     [InlineData("conversation.send")][InlineData("memory.invoke")][InlineData("task.cancel")]
     public async Task GenericAndFutureDomainMethodsAreAbsent(string method)
@@ -66,7 +67,7 @@ public sealed class WorkspaceBridgeTests
     {
         using var f = new Fixture();
         foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, "{}", new object[0] })
-            await f.Receive(f.Request("native.openLegacyAssistant", payload: value));
+            await f.Receive(f.Request("native.openCredentialFlow", payload: value));
         Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
     }
     [Fact] public async Task MalformedUnknownDuplicateAndMissingFieldsAreRejected()
@@ -82,7 +83,7 @@ public sealed class WorkspaceBridgeTests
     { using var f = new Fixture(); await f.Receive(f.Request(id: id)); Assert.Empty(f.Sent); }
     [Fact] public async Task DuplicateRequestIdCannotReplayNativeOperation()
     {
-        using var f = new Fixture(); string request = f.Request("native.openMemory"); await f.Receive(request); await f.Receive(request);
+        using var f = new Fixture(); string request = f.Request("native.openMemoryBackup"); await f.Receive(request); await f.Receive(request);
         Assert.Single(f.Native.Opened); Assert.Single(f.Sent);
     }
     [Fact] public async Task BothUtf8BytesAndEnvelopeLengthAreBounded()
@@ -101,15 +102,27 @@ public sealed class WorkspaceBridgeTests
     {
         using var f = new Fixture(); f.Native.Waiting = new();
         var pending = Enumerable.Range(0, WorkspaceBridge.MaximumPending).Select(_ => f.Receive(f.Request())).ToArray();
-        await f.Receive(f.Request("native.openMemory")); Assert.Empty(f.Native.Opened);
+        await f.Receive(f.Request("native.openMemoryBackup")); Assert.Empty(f.Native.Opened);
         f.Native.Waiting.SetResult(Actions.Status()); await Task.WhenAll(pending); f.Native.Waiting = null; f.Sent.Clear();
-        for (int i = WorkspaceBridge.MaximumPending; i < WorkspaceBridge.MaximumRequestsPerSession; i++) await f.Receive(f.Request("native.openMemory"));
-        int before = f.Native.Opened.Count; await f.Receive(f.Request("native.openMemory")); Assert.Equal(before, f.Native.Opened.Count);
+        for (int i = WorkspaceBridge.MaximumPending; i < WorkspaceBridge.MaximumRequestsPerSession; i++) await f.Receive(f.Request("native.openMemoryBackup"));
+        int before = f.Native.Opened.Count; await f.Receive(f.Request("native.openMemoryBackup")); Assert.Equal(before, f.Native.Opened.Count);
     }
     [Fact] public async Task EveryNativeEntryMapsToExactlyOneRealEnumeratedTarget()
     {
         using var f = new Fixture(); foreach (string method in WorkspaceBridge.NativeMethods.Keys) await f.Receive(f.Request(method));
-        Assert.Equal(Enum.GetValues<NativeWorkspaceEntry>().Order(), f.Native.Opened.Order());
+        Assert.Equal(new[] { NativeWorkspaceEntry.BrowserPairing, NativeWorkspaceEntry.MemoryBackup, NativeWorkspaceEntry.WorkspaceBackup, NativeWorkspaceEntry.CredentialFlow }.Order(), f.Native.Opened.Order());
+    }
+    [Theory]
+    [InlineData("native.openCredentialFlow")][InlineData("native.openBrowserPairing")]
+    [InlineData("native.openMemoryBackup")][InlineData("native.openWorkspaceBackup")]
+    public async Task MaintenanceEntriesStillRequireTrustedOriginAndCurrentSession(string method)
+    {
+        using var f = new Fixture();
+        await f.Receive(f.Request(method), source: "https://evil.invalid/index.html");
+        await f.Receive(f.Request(method, session: Guid.NewGuid().ToString("D")));
+        Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
+        await f.Receive(f.Request(method));
+        Assert.Single(f.Native.Opened); Assert.Single(f.Sent);
     }
     private sealed class Handler(HttpStatusCode credentialCode) : HttpMessageHandler
     {

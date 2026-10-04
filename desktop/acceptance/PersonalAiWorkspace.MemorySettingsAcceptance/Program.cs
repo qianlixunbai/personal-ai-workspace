@@ -225,7 +225,7 @@ internal static class Program
             app.Windows.Cast<Window>().Single(x => x.GetType() == type && x.IsVisible).Close(); await opening; await WaitJs("document.querySelector('.operation-status').textContent==='原生入口已打开'", "native-entry-returned");
         }
         await Js("[...document.querySelectorAll('.maintenance-row')].find(x=>x.querySelector('h3').textContent==='凭据管理').querySelector('button').click()");
-        await Wait(() => app.MainWindow.IsVisible, "native-credential-management-entry"); ((AssistantWindow)app.MainWindow).Close(); shell.ReturnFocus();
+        await Wait(() => app.Windows.Cast<Window>().OfType<AssistantWindow>().Single().IsVisible, "native-credential-management-entry"); (app.Windows.Cast<Window>().OfType<AssistantWindow>().Single()).Close(); shell.ReturnFocus();
         Require(await Js("!document.querySelector('.settings-notices').querySelector('input,select,textarea') && !document.body.textContent.includes(" + JsonSerializer.Serialize(token) + ")") == "true", "settings-no-secret-or-fake-configuration");
     }
     private sealed class MemoryFiles : IMemoryBackupFiles

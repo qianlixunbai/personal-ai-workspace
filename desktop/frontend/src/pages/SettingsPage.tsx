@@ -5,13 +5,12 @@ const maintenance: { method: NativeMethod; title: string; description: string }[
   { method: 'native.openBrowserPairing', title: 'Browser Pairing', description: '在原生窗口中明确授权浏览器扩展使用翻译。' },
   { method: 'native.openMemoryBackup', title: 'Memory Backup', description: '导出或恢复 Memory；文件选择、正文与恢复验证由原生窗口和 Runtime 管理。' },
   { method: 'native.openWorkspaceBackup', title: 'Workspace Backup', description: '导出或恢复 Memory 与已完成的对话；恢复到新建或空目录。' },
-  { method: 'native.openLegacyAssistant', title: '原生 Assistant', description: '打开快捷原生 Assistant 与现有维护功能。' },
 ]
 export function SettingsPage({ status, busy, open, refresh }: {
   status: ShellStatus | null; busy: boolean; open: (method: NativeMethod) => void; refresh: () => void
 }) {
   return <><section className="card" aria-labelledby="settings-status-title"><div className="card-heading"><h2 id="settings-status-title">本机运行状态</h2><button className="secondary" onClick={refresh} disabled={busy || !status}>刷新状态</button></div>
-    <StatusPanel status={status} /><dl className="status-list"><div><dt>Application version</dt><dd>{status?.applicationVersion ?? '等待检查'}</dd></div><div><dt>WebView</dt><dd>{status?.webView ?? '等待检查'}</dd></div></dl>
+    <StatusPanel status={status} /><dl className="status-list"><div><dt>Application version</dt><dd>{status?.applicationVersion ?? '等待检查'}</dd></div><div><dt>Credential</dt><dd>{status?.credential ?? '等待检查'}</dd></div><div><dt>WebView</dt><dd>{status?.webView ?? '等待检查'}</dd></div></dl>
     <p className="hint">Runtime 可连接与凭据状态不代表所有模型或能力就绪。模型可用性会在具体操作中确认。</p></section>
     <section aria-labelledby="maintenance-title"><h2 id="maintenance-title" className="section-title">原生维护入口</h2><div className="maintenance-list">{maintenance.map(entry => <article className="maintenance-row" key={entry.method}>
       <div><h3>{entry.title}</h3><p>{entry.description}</p></div><button className="secondary" onClick={() => open(entry.method)} disabled={busy || !status?.nativeEntries.includes(entry.method)}>打开<span className="sr-only"> {entry.title}</span></button>

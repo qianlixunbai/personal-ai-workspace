@@ -58,6 +58,9 @@ desktop/frontend/node_modules/
 desktop/frontend/dist/
 desktop/frontend/coverage/
 
+# Local portable Release candidates (never published before final review)
+artifacts/
+
 # Default logical Memory exports and task-owned backup staging
 memory-backup.json
 *.memory-backup.json

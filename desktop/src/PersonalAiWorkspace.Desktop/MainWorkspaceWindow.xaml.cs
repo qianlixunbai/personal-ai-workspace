@@ -30,15 +30,16 @@ public partial class MainWorkspaceWindow : Window
             FallbackTitle.Text = "工作区暂时不可用";
             FallbackMessage.Text = message;
             Fallback.Visibility = Visibility.Visible;
+            NativeAssistantButton.Visibility = Visibility.Visible;
             NativeAssistantButton.Focus();
         }, assetFolder, confirmDiscard);
         Loaded += async (_, _) =>
         {
             await Host.InitializeAsync();
-            if (Host.SessionId.Length > 0 && !closed) Fallback.Visibility = Visibility.Collapsed;
+            if (Host.SessionId.Length > 0 && !closed) { Fallback.Visibility = Visibility.Collapsed; NativeAssistantButton.Visibility = Visibility.Collapsed; }
         };
         Browser.NavigationCompleted += (_, e) =>
-        { if (e.IsSuccess && Host.SessionId.Length > 0 && !closed) Fallback.Visibility = Visibility.Collapsed; };
+        { if (e.IsSuccess && Host.SessionId.Length > 0 && !closed) { Fallback.Visibility = Visibility.Collapsed; NativeAssistantButton.Visibility = Visibility.Collapsed; } };
         Closing += CloseSafely;
     }
     private async void OpenAssistant(object sender, RoutedEventArgs e)

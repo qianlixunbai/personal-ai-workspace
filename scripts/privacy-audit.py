@@ -98,8 +98,8 @@ def scan(data, label, patterns_on, privacy_on, depth=0, frontend=False):
 
 
 files = set(root / name for name in sources)
-for folder in ['target', 'desktop', '.verification', '.runtime']:
-    files.update(p for p in (root / folder).rglob('*') if p.is_file() and p.resolve() not in token_paths and p.suffix != '.png'
+for folder in ['target', 'desktop', '.verification', '.runtime', 'artifacts']:
+    files.update(p for p in (root / folder).rglob('*') if p.is_file() and p.resolve() not in token_paths
                  and 'node_modules' not in p.parts)
 for path in sorted(files):
     if path.is_file():

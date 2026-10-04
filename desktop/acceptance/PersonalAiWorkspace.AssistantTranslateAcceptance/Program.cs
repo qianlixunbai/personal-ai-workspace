@@ -203,7 +203,7 @@ internal static class Program
     private static async Task NativeRegression()
     {
         await ((IWorkspaceNativeActions)app).OpenAsync(NativeWorkspaceEntry.LegacyAssistant, default);
-        var native = (AssistantWindow)app.MainWindow;
+        var native = app.Windows.Cast<Window>().OfType<AssistantWindow>().Single();
         foreach (var operation in new[] { (Index: 1, Input: Case("summary"), Name: "native-summarize"), (Index: 2, Input: Case("nextAsk"), Name: "native-stateless-ask") })
         {
             native.ActionSelector.SelectedIndex = operation.Index; native.InputText.Text = operation.Input;

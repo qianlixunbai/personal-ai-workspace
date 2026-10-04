@@ -37,7 +37,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     }
     const unsubscribe = bridge.onSession(bootstrap)
     if (bridge.ready) bootstrap()
-    const timer = setTimeout(() => { if (!disposed && !bridge.ready) { setBusy(false); setError('无法连接工作区，请使用上方的原生 Assistant。'); setNotice('') } }, 12_000)
+    const timer = setTimeout(() => { if (!disposed && !bridge.ready) { setBusy(false); setError('无法连接工作区，请从托盘打开 Quick Assistant，或关闭后重新打开工作区。'); setNotice('') } }, 12_000)
     if (!bridge.available) { setBusy(false); setError('请通过桌面 Main Workspace 打开此页面。'); setNotice('') }
     return () => { disposed = true; generation.current++; unsubscribe(); clearTimeout(timer) }
   }, [bridge])
@@ -74,9 +74,9 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     <main id="main-content" tabIndex={-1}><header className="page-header"><div><p className="eyebrow">MAIN WORKSPACE</p><h1 ref={heading} tabIndex={-1}>{current.name}</h1><p>{current.subtitle}</p></div><span className="shell-badge">原生功能可用</span></header>
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
-          <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} openNative={() => { void run('native.openLegacyAssistant') }} /></div>)}
-        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} openNative={() => { void run('native.openConversations') }} /></div>
-        <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} openBackup={() => { void run('native.openMemoryBackup') }} openNative={() => { void run('native.openMemory') }} /></div>
+          <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}
+        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} /></div>
+        <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
         {page === 'settings' && <SettingsPage status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
         {error && <p role="alert" className="error">{error}</p>}<p role="status" className="operation-status">{notice}</p>
       </div><footer>Personal AI Workspace<span>本机 · 明确选择 · 由你控制</span></footer>

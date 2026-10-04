@@ -11,7 +11,7 @@
                     <Button Content="−" Click="ZoomOut" Padding="10,5" Margin="2,0" AutomationProperties.Name="缩小工作区" />
                     <Button x:Name="ZoomResetButton" Content="100%" Click="ResetZoom" Padding="10,5" Margin="2,0" AutomationProperties.Name="恢复工作区缩放" />
                     <Button x:Name="ZoomInButton" Content="+" Click="ZoomIn" Padding="10,5" Margin="2,0" AutomationProperties.Name="放大工作区" />
-                    <Button x:Name="NativeAssistantButton" Content="原生 Assistant" Click="OpenAssistant" Padding="12,5" Margin="4,0" AutomationProperties.Name="打开原生 Assistant" />
+                    <Button x:Name="NativeAssistantButton" Content="Quick Assistant" Click="OpenAssistant" Visibility="Collapsed" Padding="12,5" Margin="4,0" AutomationProperties.Name="打开 Quick Assistant fallback" />
                     <Button Content="聚焦工作区" Click="FocusWorkspace" Padding="12,5" Margin="4,0" />
                 </StackPanel>
                 <TextBlock Text="Personal AI Workspace" VerticalAlignment="Center" FontWeight="SemiBold" />
@@ -22,8 +22,8 @@
             <Border x:Name="Fallback" Background="#F6F7F9" Padding="40">
                 <StackPanel VerticalAlignment="Center" MaxWidth="520">
                     <TextBlock x:Name="FallbackTitle" Text="正在打开工作区…" FontSize="26" FontWeight="SemiBold" />
-                    <TextBlock x:Name="FallbackMessage" Text="原生功能可从上方 Assistant 按钮打开。" TextWrapping="Wrap" Margin="0,16,0,24" />
-                    <Button Content="打开原生 Assistant" Click="OpenAssistant" HorizontalAlignment="Left" Padding="16,9" />
+                    <TextBlock x:Name="FallbackMessage" Text="等待期间可打开 Quick Assistant；托盘也提供此原生快捷入口。" TextWrapping="Wrap" Margin="0,16,0,24" />
+                    <Button Content="打开 Quick Assistant fallback" Click="OpenAssistant" HorizontalAlignment="Left" Padding="16,9" />
                 </StackPanel>
             </Border>
         </Grid>

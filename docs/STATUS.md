@@ -1,5 +1,20 @@
 # Personal AI Workspace — Current Status
 
+## Current M5E implementation
+
+M5A / M5B / M5C / M5D — CLOSED — GO。
+**M5E — IN PROGRESS。M5 — OPEN。**
+Published baseline `a1c17b441d1d29088d16894da92f50d2f1d3f642`，clean main / HEAD / main / live-fetched origin/main Reality Gate PASS。
+Branch `m5e-product-consolidation-packaging`；no merge/push/tag/release。
+
+Main Workspace becomes the default startup, second-instance, launcher and tray destination. Credential Missing no longer forces legacy UI. Native quick/hotkey/privileged surfaces stay implemented; healthy React no longer advertises legacy domain windows. Three legacy JS native-open methods are removed; four Settings maintenance methods remain.
+Self-contained win-x64 portable packaging includes Desktop, production React, application JAR, launcher, user README, manifest and SHA-256. Java 21/Ollama/WebView2 remain prerequisites. Runtime auth/log state is private and separate from package/data.
+Changed components/trust boundaries are tested during implementation; one final full automated regression and one compact packaged product flow are required before candidate GO. Real product acceptance is still in progress; no local acceptance PASS or closing GO is claimed yet.
+
+## Approved M5D delivery history
+
+The following section preserves the earlier delivery snapshot; its M5E NOT STARTED references describe that earlier phase. Current M5E status is above.
+
 ## Current M5 status — M5D approved formal delivery
 
 | Milestone | 当前正式状态 |

@@ -7,6 +7,7 @@ it.each(['Ready', 'Missing', 'Invalid', 'Unavailable'] as const)('displays real 
   render(<SettingsPage status={{ ...status, runtime: 'Unavailable', credential }} busy={false} open={() => {}} refresh={() => {}} />)
   expect(screen.getByText('不可连接')).toBeTruthy(); expect(screen.getByText('1.0.0.0')).toBeTruthy(); expect(screen.getByText('Available')).toBeTruthy()
   expect(screen.getByText(/不代表所有模型或能力就绪/)).toBeTruthy(); expect(document.querySelector('input,select,textarea')).toBeNull()
+  expect(screen.getByText(credential)).toBeTruthy(); expect(screen.queryByRole('button', { name: /原生 Assistant/ })).toBeNull()
 })
 it('refreshes explicitly and offers fixed native maintenance and accurate privacy notices', () => {
   const open = vi.fn(), refresh = vi.fn(); render(<SettingsPage status={status} busy={false} open={open} refresh={refresh} />)

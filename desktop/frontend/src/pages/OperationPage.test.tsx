@@ -12,7 +12,7 @@ const clients: WorkspaceClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.dispose()); vi.useRealTimers(); localStorage.clear(); history.replaceState(null, '', '/'); vi.restoreAllMocks() })
 function page(kind: 'assistant' | 'translate' = 'assistant') {
   const port = new Port(); const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
-  render(<OperationPage kind={kind} bridge={bridge} enabled status={status} openNative={() => {}} />)
+  render(<OperationPage kind={kind} bridge={bridge} enabled status={status} />)
   return { port, bridge, input: screen.getByRole('textbox') }
 }
 async function reply(port: Port, value: unknown, index = port.sent.length - 1) { await act(async () => { port.reply(index, value) }) }

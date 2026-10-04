@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <!-- Acceptance consumes shipped assemblies. It must never rebuild Desktop/Core. -->
+  <ItemGroup>
+    <Reference Include="PersonalAiWorkspace.Desktop"><HintPath>$(PackageDirectory)/desktop/PersonalAiWorkspace.Desktop.dll</HintPath></Reference>
+    <Reference Include="PersonalAiWorkspace.Core"><HintPath>$(PackageDirectory)/desktop/PersonalAiWorkspace.Core.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core"><HintPath>$(PackageDirectory)/desktop/Microsoft.Web.WebView2.Core.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf"><HintPath>$(PackageDirectory)/desktop/Microsoft.Web.WebView2.Wpf.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="RequirePackage" BeforeTargets="ResolveReferences"><Error Condition="!Exists('$(PackageDirectory)/desktop/PersonalAiWorkspace.Desktop.dll')" Text="Pass the fixed portable PackageDirectory; no source build is allowed." /></Target>
+</Project>

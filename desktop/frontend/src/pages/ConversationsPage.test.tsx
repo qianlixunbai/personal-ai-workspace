@@ -49,7 +49,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clients.splice(0).forEach(x => x.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
 async function setup(config: Partial<Service> = {}) {
   const port = Object.assign(new Service(), config), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
-  render(<ConversationsPage bridge={bridge} enabled visible openNative={() => { void bridge.open('native.openConversations') }} />)
+  render(<ConversationsPage bridge={bridge} enabled visible />)
   await screen.findByLabelText('会话消息')
   return { port, bridge, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }

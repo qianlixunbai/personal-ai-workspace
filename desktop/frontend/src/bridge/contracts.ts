@@ -1,5 +1,4 @@
 export const nativeMethods = [
-  'native.openLegacyAssistant', 'native.openConversations', 'native.openMemory',
   'native.openBrowserPairing', 'native.openMemoryBackup', 'native.openWorkspaceBackup', 'native.openCredentialFlow',
 ] as const
 export type NativeMethod = typeof nativeMethods[number]

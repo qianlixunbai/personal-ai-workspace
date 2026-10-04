@@ -1,5 +1,23 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
+## Current M5E product consolidation and portable packaging
+
+**M5E — IN PROGRESS。M5 — OPEN。M5A/B/C/D — CLOSED — GO。** ADR-001..010 remain Accepted; no new durable architecture.
+
+React is the normal product surface for Assistant / Conversations / Memory / Translate / Settings. WPF owns shell/lifecycle/tray, single instance, selection hotkey, UIA/controlled clipboard/helpers, Quick Assistant/fallback, credential flow, Memory selector, Browser Pairing and backup/file/confirmation flows. Normal launch, second instance, launcher activation, tray double-click and primary Open all target MainWorkspaceWindow. Missing credentials leave Main Workspace open with safe status and explicit native import.
+
+The JS-accessible native allowlist is exactly `native.openCredentialFlow`, `native.openBrowserPairing`, `native.openMemoryBackup`, `native.openWorkspaceBackup`. `native.openLegacyAssistant`, `native.openConversations`, `native.openMemory` are retired from WebMessage admission and fail closed as unknown methods. WPF fallback/hotkey still call native flows directly. Domain methods, origin/session/schema/budget guards, Runtime sole truth and Browser Translate-only permissions stay unchanged.
+
+`scripts/package-windows.ps1` publishes self-contained Release/win-x64 WPF with bundled verified React and packages the existing application JAR without JRE. Ignored output includes launcher, prerequisites README, real component versions/commit/build timestamp and SHA-256 manifest. Release launcher runs only package/service/state preflight and starts/reuses services/Desktop; no developer tools, source build, install, model download or automatic WinCred import.
+
+Java 21, installed Ollama/configured model and Evergreen WebView2 remain external requirements. Runtime is externally owned; launcher startup does not create a supervisor or exit-time service ownership. Readiness plus authenticated native provider contract is required for reuse, otherwise fail closed without killing unknown processes. Workspace data defaults to existing `${user.home}/.personal-ai-workspace/data`; auth/browser registry/logs use owner-only `%LOCALAPPDATA%/PersonalAiWorkspace/RuntimeState`, outside package/repository/data. WebView keeps its separate fixed private profile.
+
+Unsigned portable folder; installer/updater, embedded Java/Ollama and encryption remain deferred. Current acceptance results will be recorded in the M5E report after actual package gates finish.
+
+## Approved M5D implementation history
+
+The following preserves the earlier review/delivery snapshot; M5E NOT STARTED references describe that phase. Current ownership/entry/allowlist is specified above.
+
 ## Current M5D Memory and Settings
 
 **M5D — CLOSED — GO. M5D Architecture / Closing Review: GO. M5 — OPEN. M5E — NOT STARTED.**

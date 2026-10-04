@@ -59,22 +59,21 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         base.OnStartup(e);
         window = new AssistantWindow(this, runtime);
-        MainWindow = window;
         messages = new HwndSource(new HwndSourceParameters("Personal AI Assistant messages")
         { ParentWindow = new IntPtr(-3), WindowStyle = 0, Width = 0, Height = 0 });
         messages.AddHook(WindowMessage);
         try { hotkey = new HotkeyRegistration(messages.Handle); }
         catch (InvalidOperationException failure) { window.HotkeyText.Text = failure.Message; }
         trayMenu = new Forms.ContextMenuStrip();
-        trayMenu.Items.Add("打开 Main Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
-        trayMenu.Items.Add("打开 Assistant", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
+        trayMenu.Items.Add("Open Personal AI Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
+        trayMenu.Items.Add("Quick Assistant / Quick Translate", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
         trayMenu.Items.Add("检查 Runtime", null, async (_, _) => await CheckHealthAsync());
         trayMenu.Items.Add("退出", null, async (_, _) => await ExitAsync());
-        tray = new Forms.NotifyIcon { Icon = SystemIcons.Application, Text = "Personal AI Assistant · Local Only", ContextMenuStrip = trayMenu, Visible = true };
-        tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowAssistant);
-        single.Listen(() => Dispatcher.BeginInvoke(ShowAssistant));
-        bool credentialReady = RefreshCredentialStatus();
-        if (!credentialReady || hotkey is null) ShowAssistant();
+        tray = new Forms.NotifyIcon { Icon = SystemIcons.Application, Text = "Personal AI Workspace · Local Only", ContextMenuStrip = trayMenu, Visible = true };
+        tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowWorkspace);
+        single.Listen(() => Dispatcher.BeginInvoke(ShowWorkspace));
+        RefreshCredentialStatus();
+        ShowWorkspace();
         await CheckHealthAsync();
     }
     private IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -106,6 +105,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             workspace = new MainWorkspaceWindow(this);
             workspace.Closed += (_, _) => workspace = null;
         }
+        MainWindow = workspace;
         workspace.Show();
         if (workspace.WindowState == WindowState.Minimized) workspace.WindowState = WindowState.Normal;
         workspace.Activate();
@@ -129,10 +129,18 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         cancellation.ThrowIfCancellationRequested();
         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
+        bool quickWasVisible = window.IsVisible;
         ShowAssistant();
         if (entry == NativeWorkspaceEntry.LegacyAssistant) return Task.CompletedTask;
         try { window.OpenWorkspaceEntry(entry); }
-        finally { if (entry != NativeWorkspaceEntry.CredentialFlow) workspace?.ReturnFocus(); }
+        finally
+        {
+            if (entry != NativeWorkspaceEntry.CredentialFlow)
+            {
+                if (!quickWasVisible) window.Hide();
+                workspace?.ReturnFocus();
+            }
+        }
         return Task.CompletedTask;
     }
     private async Task CaptureAsync(IntPtr foreground)

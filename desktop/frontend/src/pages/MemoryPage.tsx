@@ -7,9 +7,9 @@ import { ConfirmationDialog } from '../components/ConfirmationDialog'
 export type MemoryLeaveGuard = (leave: () => void) => void
 const message = (problem: unknown) => problem instanceof BridgeError ? problem.message : 'Memory 暂时不可用，请显式刷新或重新加载。'
 type Confirmation = { title: string; text: string; confirmText: string; action: () => void } | null
-export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup, openNative }: {
+export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup }: {
   bridge: WorkspaceClient; enabled: boolean; visible: boolean; registerLeave: (guard: MemoryLeaveGuard) => () => void
-  openBackup: () => void; openNative: () => void
+  openBackup: () => void
 }) {
   const [query, setQuery] = useState<MemoryQuery>({ query: '', status: 'ACTIVE', type: null, page: 0 })
   const [search, setSearch] = useState('')
@@ -149,7 +149,6 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
   return <div className="memory-page">
     <div className="card-heading memory-toolbar"><p className="hint">手动保存 · 明确选择 · 无自动记忆</p><div>
       <button className="secondary" disabled={disabled} onClick={openBackup}>Memory Backup / Restore</button>{' '}
-      <button className="secondary" disabled={disabled} onClick={openNative}>打开原生 Memory</button>
     </div></div>
     <div className="memory-layout">
       <section className="card memory-list" aria-labelledby="memory-list-title"><h2 id="memory-list-title">Memory 列表</h2>

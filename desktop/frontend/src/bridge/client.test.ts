@@ -6,7 +6,7 @@ export function connected() { const port = new Port(); const client = new Worksp
 afterEach(() => { clients.splice(0).forEach(client => client.dispose()); vi.useRealTimers() })
 describe('versioned bridge', () => {
   it('correlates out of order status and native responses with empty payloads', async () => {
-    const { port, client } = connected(); const first = client.bootstrap(); const second = client.open('native.openMemory')
+    const { port, client } = connected(); const first = client.bootstrap(); const second = client.open('native.openMemoryBackup')
     port.reply(1, { opened: true }); port.reply(0); await expect(second).resolves.toEqual({ opened: true }); await expect(first).resolves.toEqual(status)
     expect(port.sent.every(request => Object.keys(request).length === 5 && JSON.stringify(request.payload) === '{}')).toBe(true)
   })
@@ -19,7 +19,7 @@ describe('versioned bridge', () => {
     await Promise.resolve(); expect(finished).toBe(false); port.reply(); await expect(request).resolves.toEqual(status)
   })
   it('invalidates pending requests on reload without replay', async () => {
-    const { port, client } = connected(); const request = client.open('native.openMemory'); const checked = expect(request).rejects.toThrow('重新加载')
+    const { port, client } = connected(); const request = client.open('native.openMemoryBackup'); const checked = expect(request).rejects.toThrow('重新加载')
     port.session('22222222-2222-4222-8222-222222222222'); await checked; port.reply(0, { opened: true }); expect(port.sent).toHaveLength(1)
     const next = client.bootstrap(); port.reply(1); await expect(next).resolves.toEqual(status)
   })
@@ -30,5 +30,8 @@ describe('versioned bridge', () => {
   it('has no browser fallback transport or generic method', async () => {
     const client = new WorkspaceClient(undefined); await expect(client.bootstrap()).rejects.toThrow('尚未连接')
     const { port, client: live } = connected(); await expect(live.open('native.fetch' as never)).rejects.toThrow('不可用'); expect(port.sent).toHaveLength(0)
+  })
+  it.each(['native.openLegacyAssistant', 'native.openConversations', 'native.openMemory'])('rejects retired native method %s without sending a WebMessage', async method => {
+    const { port, client } = connected(); await expect(client.open(method as never)).rejects.toThrow('不可用'); expect(port.sent).toHaveLength(0)
   })
 })

@@ -14,8 +14,8 @@ const statusText: Record<Phase, string> = {
   TimedOut: 'TimedOut · 已超出执行时间预算', OutcomeUnknown: 'Outcome unknown · 未确认执行结果；不会自动重发',
 }
 
-export function OperationPage({ kind, bridge, enabled, status, openNative, visible = true }: {
-  kind: 'assistant' | 'translate'; bridge: WorkspaceClient; enabled: boolean; status: ShellStatus | null; openNative: () => void; visible?: boolean
+export function OperationPage({ kind, bridge, enabled, status, visible = true }: {
+  kind: 'assistant' | 'translate'; bridge: WorkspaceClient; enabled: boolean; status: ShellStatus | null; visible?: boolean
 }) {
   const [text, setText] = useState('')
   const [mode, setMode] = useState<'Ask' | 'Summarize'>('Ask')
@@ -131,8 +131,7 @@ export function OperationPage({ kind, bridge, enabled, status, openNative, visib
   }
   return <>
     <section className="card operation-card" aria-labelledby={`${kind}-editor-title`}>
-      <div className="card-heading"><h2 id={`${kind}-editor-title`}>{kind === 'assistant' ? '问答与摘要' : '翻译文本'}</h2>
-        <button className="secondary" onClick={openNative} disabled={!enabled}>打开原生 Assistant</button></div>
+      <div className="card-heading"><h2 id={`${kind}-editor-title`}>{kind === 'assistant' ? '问答与摘要' : '翻译文本'}</h2></div>
       {kind === 'assistant' ? <>
         <label htmlFor="assistant-mode">操作</label><select id="assistant-mode" value={mode} disabled={busy} onChange={event => {
           generation.current++; setMode(event.target.value as 'Ask' | 'Summarize'); setMemories([]); setStale(false)
