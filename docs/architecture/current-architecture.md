@@ -2,27 +2,49 @@
 
 ## Current M5A hybrid shell
 
-M5 — Unified Main Workspace UI is OPEN; M5A is IMPLEMENTED / PARTIAL, awaiting real Windows
-IME accessibility acceptance. Security/privacy and the real shell foundation pass; no Closing GO
-is claimed. ADR-008/009/010 are Accepted.
+M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
+**M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
+M5B — Assistant + Desktop Translate Migration: **NOT STARTED**; M5C — Conversations Migration: **NOT STARTED**;
+M5D — Memory + Settings Migration: **NOT STARTED**; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
+Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
+This approval sync records the existing acceptance results; it introduces no implementation or test behavior changes.
 WPF owns lifetime/single instance/tray/hotkey/UIA/clipboard/helper processes/WinCred/dialogs,
 WebView2 lifecycle/focus and bridge security. React owns shell layout/navigation/presentation/
 loading/errors/focus and session-local theme. Runtime owns durable Memory/Conversation,
 execution/TaskManager/context/provider/Ollama/backup validation/SQLite. Core has no WebView2 dependency.
 
-Production chain: bundled React → typed allowlisted WebMessage bridge → existing WPF-owned
-RuntimeClient → external Runtime. The fixed virtual HTTPS origin exposes only validated frontend
-build output, with strict CSP/resource/navigation/frame/popup/download/permission policies.
+Production chain: bundled React / TypeScript / Vite → typed allowlisted WebMessage bridge → existing WPF-owned
+RuntimeClient → external Runtime. The five routes are Assistant, Conversations, Memory, Translate and Settings.
+The fixed virtual HTTPS origin exposes only validated frontend build output, with strict CSP/resource policy.
+External navigation, frames, popup/new window, downloads and permissions are denied; production DevTools are disabled.
+The bridge is versioned, typed, allowlisted, bounded and origin/session validated, with stale response suppression.
 Bearer, Browser credential, pairing proof, backup bytes/paths and arbitrary native capabilities
-never enter JS. Runtime security/CORS/Browser permissions are unchanged.
+never enter JS. React does not directly call Runtime. No CORS widening occurs; Browser remains Translate-only.
 
 Only safe bootstrap/status and seven explicit native entries exist. No React business operation
 has migrated; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
-single-instance activation and the selection hotkey retain their existing behavior.
+single-instance activation and the selection hotkey retain their existing behavior. No production surface is retired;
+incremental migration remains required. React domain CRUD, AI execution, domain submit and task polling are not implemented.
+
+The complete M5A allowlist remains:
+
+```text
+shell.bootstrap
+shell.refreshStatus
+native.openLegacyAssistant
+native.openConversations
+native.openMemory
+native.openBrowserPairing
+native.openMemoryBackup
+native.openWorkspaceBackup
+native.openCredentialFlow
+```
 
 Dedicated account-private MainWorkspace InPrivate profile, disabled autofill/password saving,
 controlled AllProfile cleanup and synthetic UDF evidence establish the practical privacy boundary.
-There is no forensic erasure claim. Missing WebView2/assets or initialization/page/process failures
+React is not authoritative storage for domain data; USER/Memory logging, remote analytics and CDN are absent.
+The synthetic UDF marker scan passed with zero matches; there is no forensic erasure claim.
+Missing WebView2/assets or initialization/page/process failures
 provide native fallback. External Runtime mode and process ownership are unchanged.
 
 Frontend npm/lockfile/Vite production assets are built and verified by Desktop build/publish;
@@ -30,7 +52,22 @@ ordinary users need no Node/Vite. Explicit fixed-loopback Debug development comp
 Release. Distribution provisioning, installers and supervisors remain deferred. Retirement
 requires a later scope, equivalent security/privacy/regression/Windows acceptance and review.
 
-Current implementation and evidence: [M5A Closing Report](../milestones/M5A-CLOSING-REPORT.md).
+Chinese rendering / keyboard / focus / composition plumbing **PASS**. Actual Windows Pinyin IME
+was not established during M5A acceptance; synthetic composition events do not prove real IME acceptance.
+Architecture Review decided this is **NOT an M5A blocker**, because the production M5A shell has no domain text editor.
+Native Pinyin IME is **DEFERRED TO M5B HARD CLOSING GATE**. M5B must use Windows Pinyin in a real
+React Assistant input and/or React Translate input to verify:
+
+```text
+IME composition → committed Chinese text → actual submit path → correct Runtime input
+```
+
+**M5B cannot CLOSED — GO before this gate passes.** M5B has not started; no input editor or IME acceptance work begins in this approval sync.
+M5A formal delivery stops after publication, awaiting a new M5B Scope / Implementation Prompt.
+
+Historical implementation and evidence: [M5A Closing Report](../milestones/M5A-CLOSING-REPORT.md).
+That report retains its accurate IMPLEMENTED / PARTIAL / AWAITING REAL WINDOWS IME ACCEPTANCE snapshot;
+the current formal status and Architecture Review gate reclassification are recorded here and in [STATUS](../STATUS.md).
 
 **M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
 M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
@@ -54,7 +91,7 @@ Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollam
 M4 closing 时 Main Workspace 尚未开始；当前 M5A shell 实现与验收见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5B–M5E 等待独立实施与审查；M5A 结束后停在 Architecture / Closing Review。
+M5A Architecture / Closing Review 已 GO；M5B–M5E 均 NOT STARTED，等待独立 scope、实施与审查；M5 仍 OPEN。
 
 ## M4C current architecture
 

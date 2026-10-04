@@ -1,11 +1,15 @@
 # Personal AI Workspace
 
-**M5 — Unified Main Workspace UI：OPEN；M5A — IMPLEMENTED / PARTIAL。**
-Main Workspace shell、真实 Windows foundation、安全/隐私与回归通过；真实 Windows 拼音 IME 输入尚未确认，等待 accessibility acceptance。
-Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**；[M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md) 记录完整证据与限制。
-本轮只实施 M5A，未迁移 Assistant/Translate/Conversation/Memory 的业务操作。
+**M5 — Unified Main Workspace UI：OPEN；M5A — Main Workspace Shell Foundation：CLOSED — GO。**
+M5A Architecture / Closing Review：**GO**。Main Workspace shell、真实 Windows foundation、安全/隐私与回归通过。
+Final acceptance baseline：Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**；本轮只同步批准与正式交付，不重跑或修改测试。
+[M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md) 保留形成时 IMPLEMENTED / PARTIAL 与 IME 未完成的历史记录；当前正式状态见 [STATUS](docs/STATUS.md)。
+Chinese rendering / keyboard / focus / composition plumbing **PASS**；Actual Windows Pinyin IME 在 M5A 验收中未确认。
+Architecture Review 决定其不阻塞 M5A：当前 production shell 没有业务文本输入框；**Native Pinyin IME — DEFERRED TO M5B HARD CLOSING GATE**。
+M5B 必须在真实 React Assistant and/or Translate input 中验证 IME composition → committed Chinese text → actual submit path → correct Runtime input；Gate PASS 前不能 CLOSED — GO。
+M5A 完成 shell foundation；Assistant/Translate/Conversation/Memory 的 React 业务操作尚未迁移。
 托盘“打开 Main Workspace”进入五页导航与真实原生入口；原生 Assistant 与全部现有窗口继续可用。
-决策：[ADR-008](docs/ADR/ADR-008-hybrid-main-workspace-ownership.md)、[ADR-009](docs/ADR/ADR-009-webview2-trusted-content-bridge.md)、[ADR-010](docs/ADR/ADR-010-frontend-build-desktop-distribution.md)。
+决策：[ADR-008](docs/ADR/ADR-008-hybrid-main-workspace-ownership.md)、[ADR-009](docs/ADR/ADR-009-webview2-trusted-content-bridge.md)、[ADR-010](docs/ADR/ADR-010-frontend-build-desktop-distribution.md)：**Accepted**。
 
 **M4 — User-Controlled Conversation Foundation：CLOSED — GO。**
 M4A — CLOSED — GO；M4B — CLOSED — GO；M4C — CLOSED — GO。
@@ -20,10 +24,11 @@ Main Workspace 业务页面迁移、Finance integration / Reality Sync、Knowled
 Agent/Tools/TOOL role、Browser Conversation、streaming、edit/regenerate/branching、automatic Memory、
 cloud backup、encryption/password、scheduled/incremental backup、multi-device sync 均未实现。
 M5 milestone split：M5A Shell Foundation；M5B Assistant + Desktop Translate；M5C Conversations；M5D Memory + Settings；M5E Consolidation/Packaging/Final Acceptance。
-M5B–M5E 未开始；M5A 实现后停在 Architecture / Closing Review，不 merge/push main、tag 或 release。
+**M5B — NOT STARTED；M5C — NOT STARTED；M5D — NOT STARTED；M5E — NOT STARTED。**
+M5A Architecture / Closing Review 已批准；正式交付后停止，等待新的 M5B Scope / Implementation Prompt。
 
 独立、local-first 的共享 AI Runtime。正式发布须成功实时 fetch、核验远端基线、fast-forward-only merge、push main 与 post-push fetch。
-当前证据与限制见 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md)；当前阶段唯一事实来源为 [STATUS](docs/STATUS.md)。
+M5A 证据与限制见 [M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md)；M4 恢复历史见 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md)；当前阶段唯一事实来源为 [STATUS](docs/STATUS.md)。
 
 **M2 — Browser Convergence：CLOSED — GO**。
 **M3 — User-Controlled Memory Foundation：CLOSED — GO；M3A / M3B / M3C-1：CLOSED — GO**。
