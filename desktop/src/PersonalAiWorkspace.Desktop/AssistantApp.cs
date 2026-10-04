@@ -227,6 +227,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         exitRequested = true;
         window.CloseMemorySelector(); window.ClearMemorySelection();
         window.CloseBrowserPairing();
+        window.CloseWorkspaceBackup();
         hotkey?.Dispose();
         operation?.RequestCancel();
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
@@ -246,6 +247,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         if (cleanedUp) return;
         cleanedUp = true;
         window?.CloseBrowserPairing();
+        window?.CloseWorkspaceBackup();
         window?.CloseMemorySelector();
         single.StopListening();
         lifetime.Cancel();

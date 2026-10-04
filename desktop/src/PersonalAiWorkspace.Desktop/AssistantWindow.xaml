@@ -36,6 +36,7 @@
       <Button x:Name="PairBrowserButton" Content="Pair Browser…" Click="PairBrowser"/>
       <Button x:Name="MemoryButton" Content="Memory…" Click="OpenMemory"/>
       <Button x:Name="ConversationButton" Content="Conversation…" Click="OpenConversation"/>
+      <Button x:Name="WorkspaceBackupButton" Content="Workspace Backup…" Click="OpenWorkspaceBackup"/>
     </WrapPanel>
     <StackPanel Grid.Row="2" Margin="0,0,0,8">
       <CheckBox x:Name="CopyFallback" IsChecked="True" Content="UIA 不支持时，允许一次受控 Copy"/>

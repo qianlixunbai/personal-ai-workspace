@@ -137,28 +137,42 @@ public final class MemoryStore implements AutoCloseable {
                         row.id().toString(), row.type().name(), row.title(), row.content(), row.status().name(), row.revision(),
                         row.source().name(), row.createdAt().toEpochMilli(), row.updatedAt().toEpochMilli())) { statement.executeUpdate(); }
             }
-            rebuildIndex();
-            if (!allSource().equals(rows) || number("PRAGMA user_version") != SCHEMA_VERSION
-                    || number("SELECT count(*) FROM memory_fts") != rows.size()
-                    || number("SELECT count(*) FROM memory_items m LEFT JOIN memory_fts f ON f.rowid=m.rowid WHERE f.rowid IS NULL OR f.title!=m.title OR f.content!=m.content") != 0)
-                throw error(ErrorCode.MEMORY_RESTORE_FAILED);
-            execute("INSERT INTO memory_fts(memory_fts) VALUES('integrity-check')");
-            try (var statement = connection.createStatement(); var result = statement.executeQuery("PRAGMA quick_check")) {
-                if (!result.next() || !"ok".equals(result.getString(1)) || result.next()) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
-            }
-            // Exercise the actual search contract on every source, including archived records.
-            for (MemoryItem row : rows) {
-                String query = row.title().substring(0, row.title().offsetByCodePoints(0, Math.min(3, row.title().codePointCount(0, row.title().length()))));
-                String sql = query.codePointCount(0, query.length()) >= 3
-                        ? "SELECT count(*) FROM memory_fts f JOIN memory_items m ON m.rowid=f.rowid WHERE m.id=? AND memory_fts MATCH ?"
-                        : "SELECT count(*) FROM memory_items WHERE id=? AND instr(title,?)>0";
-                String value = query.codePointCount(0, query.length()) >= 3 ? "\"" + query.replace("\"", "\"\"") + "\"" : query;
-                try (var statement = prepare(sql, row.id().toString(), value); var result = statement.executeQuery()) {
-                    if (!result.next() || result.getLong(1) != 1) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
-                }
-            }
+            verifyReconstruction(rows, SCHEMA_VERSION);
             return null;
         });
+    }
+
+    /** Staging Workspace only: caller streams logical rows inside this single transaction. */
+    public synchronized void reconstructWorkspace(java.util.function.Function<Connection, List<MemoryItem>> loader) {
+        transaction(true, () -> {
+            if (number("SELECT count(*) FROM memory_items") != 0 || number("SELECT count(*) FROM conversations") != 0)
+                throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
+            var rows = loader.apply(connection);
+            verifyReconstruction(rows, WorkspaceSchema.VERSION);
+            return null;
+        });
+    }
+    private void verifyReconstruction(List<MemoryItem> rows, long expectedVersion) throws SQLException {
+        rebuildIndex();
+        if (!allSource().equals(rows) || number("PRAGMA user_version") != expectedVersion
+                || number("SELECT count(*) FROM memory_fts") != rows.size()
+                || number("SELECT count(*) FROM memory_items m LEFT JOIN memory_fts f ON f.rowid=m.rowid WHERE f.rowid IS NULL OR f.title!=m.title OR f.content!=m.content") != 0)
+            throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+        execute("INSERT INTO memory_fts(memory_fts) VALUES('integrity-check')");
+        try (var statement = connection.createStatement(); var result = statement.executeQuery("PRAGMA quick_check")) {
+            if (!result.next() || !"ok".equals(result.getString(1)) || result.next()) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+        }
+        // Exercise the actual search contract on every source, including archived records.
+        for (MemoryItem row : rows) {
+            String query = row.title().substring(0, row.title().offsetByCodePoints(0, Math.min(3, row.title().codePointCount(0, row.title().length()))));
+            String sql = query.codePointCount(0, query.length()) >= 3
+                ? "SELECT count(*) FROM memory_fts f JOIN memory_items m ON m.rowid=f.rowid WHERE m.id=? AND memory_fts MATCH ?"
+                : "SELECT count(*) FROM memory_items WHERE id=? AND instr(title,?)>0";
+            String value = query.codePointCount(0, query.length()) >= 3 ? "\"" + query.replace("\"", "\"\"") + "\"" : query;
+            try (var statement = prepare(sql, row.id().toString(), value); var result = statement.executeQuery()) {
+                if (!result.next() || result.getLong(1) != 1) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+            }
+        }
     }
 
     public synchronized MemoryItem create(MemoryItem.Type type, String title, String content) {

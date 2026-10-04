@@ -84,6 +84,15 @@ final class LocalClientFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
+            boolean workspaceBackup = identity.clientType().equals("native") && method.equals("POST")
+                    && List.of("/api/v1/workspace/backup/restore", "/api/v1/workspace/backup/validate").contains(path);
+            if (workspaceBackup) {
+                if (request.getContentLengthLong() > io.github.qianlixunbai.workspace.backup.WorkspaceBackupService.MAX_BYTES) {
+                    reject(response, 413, ErrorCode.WORKSPACE_BACKUP_TOO_LARGE); return;
+                }
+                // Authentication/Browser denial has already completed. Controller parses a bounded stream.
+                chain.doFilter(request, response); return;
+            }
             boolean restore = identity.clientType().equals("native") && method.equals("POST")
                     && path.equals("/api/v1/memory/backup/restore");
             int limit = restore ? MemoryBackup.MAX_RESTORE_BYTES : 32768;

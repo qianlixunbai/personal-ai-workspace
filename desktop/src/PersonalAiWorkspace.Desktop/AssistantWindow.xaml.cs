@@ -24,17 +24,20 @@ public partial class AssistantWindow : Window
 {
     private readonly IAssistantController app;
     private readonly RuntimeClient? runtime;
+    private readonly IWorkspaceBackupFiles? workspaceBackupFiles;
     private BrowserPairingWindow? pairingWindow;
     private MemoryWindow? memoryWindow;
     private ConversationWindow? conversationWindow;
+    private WorkspaceBackupWindow? workspaceBackupWindow;
     private MemorySelectionWindow? selectionWindow;
     private IReadOnlyList<MemorySelection> selectedMemory = Array.Empty<MemorySelection>();
     internal bool MemoryNeedsReview { get; private set; }
     internal IReadOnlyList<MemoryReference> MemoryReferences => Array.AsReadOnly(selectedMemory.Select(x => x.Reference).ToArray());
-    internal AssistantWindow(IAssistantController app, RuntimeClient? runtime = null)
+    internal AssistantWindow(IAssistantController app, RuntimeClient? runtime = null, IWorkspaceBackupFiles? workspaceBackupFiles = null)
     {
         this.app = app;
         this.runtime = runtime;
+        this.workspaceBackupFiles = workspaceBackupFiles;
         InitializeComponent();
         Closing += HideOnClose;
     }
@@ -50,6 +53,7 @@ public partial class AssistantWindow : Window
         PairBrowserButton.IsEnabled = !busy && runtime is not null;
         MemoryButton.IsEnabled = !busy && runtime is not null;
         ConversationButton.IsEnabled = !busy && runtime is not null;
+        WorkspaceBackupButton.IsEnabled = !busy && runtime is not null;
         UseMemoryButton.IsEnabled = !busy && runtime is not null;
         ClearMemoryButton.IsEnabled = !busy && selectedMemory.Count > 0;
         TranslateButton.IsEnabled = !busy && !MemoryNeedsReview;
@@ -66,6 +70,7 @@ public partial class AssistantWindow : Window
         if (!CloseMemory()) { e.Cancel = true; return; }
         CloseBrowserPairing();
         conversationWindow?.Close();
+        workspaceBackupWindow?.Close();
         CloseMemorySelector(); ClearMemorySelection();
         if (app.Exiting) return;
         e.Cancel = true;
@@ -116,6 +121,14 @@ public partial class AssistantWindow : Window
         finally { pairingWindow = null; }
     }
     internal void CloseBrowserPairing() => pairingWindow?.Close();
+    internal void CloseWorkspaceBackup() => workspaceBackupWindow?.Close();
+    private void OpenWorkspaceBackup(object sender, RoutedEventArgs e)
+    {
+        if (app.Busy || app.Exiting || runtime is null || workspaceBackupWindow is not null) return;
+        workspaceBackupWindow = new WorkspaceBackupWindow(runtime, workspaceBackupFiles) { Owner = this };
+        try { workspaceBackupWindow.ShowDialog(); }
+        finally { workspaceBackupWindow = null; }
+    }
     private void OpenMemory(object sender, RoutedEventArgs e)
     {
         if (app.Busy || app.Exiting || runtime is null || memoryWindow is not null) return;

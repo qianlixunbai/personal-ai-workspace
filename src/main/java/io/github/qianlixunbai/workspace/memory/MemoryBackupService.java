@@ -14,6 +14,19 @@ public final class MemoryBackupService {
         this.current = current.toAbsolutePath().normalize(); this.token = token; this.beforePublish = beforePublish;
     }
     public MemoryBackup.Metadata restore(MemoryBackup backup, String targetDirectory) {
+        restoreDatabase(targetDirectory, staging -> {
+            try (var store = new MemoryStore(staging, token, false)) { store.reconstruct(backup.items()); }
+        });
+        return backup.metadata();
+    }
+    /** Shared ADR-006 publication boundary; builder only receives the task-owned staging directory. */
+    public void restoreDatabase(String targetDirectory, java.util.function.Consumer<Path> builder) {
+        restoreDatabase(targetDirectory, builder, false);
+    }
+    public void restoreWorkspaceDatabase(String targetDirectory, java.util.function.Consumer<Path> builder) {
+        restoreDatabase(targetDirectory, builder, true);
+    }
+    private void restoreDatabase(String targetDirectory, java.util.function.Consumer<Path> builder, boolean workspace) {
         Path staging = null;
         try {
             if (targetDirectory == null || targetDirectory.length() > 8192) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
@@ -28,11 +41,12 @@ public final class MemoryBackupService {
             emptyOrNew(target);
             var directoryIdentity = existed ? Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class,
                     LinkOption.NOFOLLOW_LINKS) : null;
-            staging = Files.createTempDirectory(parent, ".memory-restore-");
-            try (var store = new MemoryStore(staging, token, false)) { store.reconstruct(backup.items()); }
+            staging = Files.createTempDirectory(parent, workspace ? ".workspace-restore-" : ".memory-restore-");
+            builder.accept(staging);
             beforePublish.run();
             // Recheck after the potentially slow reconstruction. Unknown states are never replaced.
             PrivateMemoryDirectory.noLinks(target); emptyOrNew(target);
+            if (!Files.getFileStore(staging).equals(Files.getFileStore(parent))) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
             if (existed != Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
             if (existed) {
                 var identityNow = Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -49,19 +63,21 @@ public final class MemoryBackupService {
                 // No REPLACE_EXISTING, no cross-volume copy, no fallback that could overwrite a racing target.
                 Files.move(staging, target); staging = null;
             }
-            return backup.metadata();
         } catch (WorkspaceException controlled) {
+            if (controlled.error().code().name().startsWith("WORKSPACE_BACKUP_")) throw controlled;
             if (controlled.error().code() == ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY) throw controlled;
             throw error(ErrorCode.MEMORY_RESTORE_FAILED);
         } catch (FileAlreadyExistsException ignored) { throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY); }
         catch (Exception ignored) { throw error(ErrorCode.MEMORY_RESTORE_FAILED); }
         finally {
             if (staging != null) {
+                boolean cleanupFailed = false;
                 // Only the unpredictable task-owned sibling and known SQLite files; never recursive user-directory deletion.
                 for (String name : List.of("memory.db", "memory.db-journal", "memory.db-wal", "memory.db-shm")) {
-                    try { Files.deleteIfExists(staging.resolve(name)); } catch (Exception ignored) { }
+                    try { Files.deleteIfExists(staging.resolve(name)); } catch (Exception ignored) { cleanupFailed = true; }
                 }
-                try { Files.delete(staging); } catch (Exception ignored) { }
+                try { Files.delete(staging); } catch (Exception ignored) { cleanupFailed = true; }
+                if (workspace && cleanupFailed) throw error(ErrorCode.WORKSPACE_RESTORE_FAILED);
             }
         }
     }

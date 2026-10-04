@@ -1,0 +1,18 @@
+<Window x:Class="PersonalAiWorkspace.Desktop.WorkspaceBackupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Workspace Backup / Restore" Width="650" Height="510" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="24">
+    <TextBlock Text="Workspace Backup / Restore" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/>
+    <TextBlock x:Name="PlaintextWarning" Text="Export includes Memory and Conversation history in plaintext.&#10;No encryption or password protection.&#10;Protect this file like other personal documents.&#10;SHA-256 detects damage; it does not prove authenticity." TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <Button x:Name="ExportButton" Content="Export Workspace Backup…" Click="Export" Padding="10,8" HorizontalAlignment="Left" Margin="0,0,0,16"/>
+    <TextBlock x:Name="RestoreWarning" Text="Restore creates a NEW Workspace data directory.&#10;It does not merge or overwrite your current Workspace.&#10;Choose a new or empty directory, then start Runtime/Desktop with it." TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <WrapPanel>
+      <Button x:Name="ChooseButton" Content="Choose / Validate Backup…" Click="Choose" Padding="10,8" Margin="0,0,12,0"/>
+      <Button x:Name="RestoreButton" Content="Restore to NEW / EMPTY directory…" Click="Restore" Padding="10,8" IsEnabled="False"/>
+    </WrapPanel>
+    <TextBlock x:Name="PreviewText" Text="No validated file selected." TextWrapping="Wrap" Margin="0,14,0,10"/>
+    <TextBlock x:Name="StatusText" Text="Ready · Explicit user action only" TextWrapping="Wrap" Margin="0,0,0,12"/>
+    <Button Content="Close / Cancel" Click="CloseBackup" Padding="10,6" HorizontalAlignment="Right"/>
+  </StackPanel>
+</Window>

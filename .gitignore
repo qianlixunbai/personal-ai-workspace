@@ -58,3 +58,10 @@ memory-backup.json
 *.memory-backup.json
 .memory-export-*
 .memory-restore-*
+
+# Workspace logical backup personal data
+*.workspace-backup.json
+workspace-backup.json
+.workspace-export-*
+.workspace-restore-*
+.workspace-validation-*

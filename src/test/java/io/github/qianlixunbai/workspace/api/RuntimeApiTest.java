@@ -977,4 +977,37 @@ class RuntimeApiTest {
             try (var paths = Files.walk(root)) { for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path); }
         }
     }
+    @Test void workspaceStreamingHttpNativeOnlyFullValidationAndNoPending(CapturedOutput logs) throws Exception {
+        String base="/api/v1/workspace/backup";var client=pairBrowser("chrome-extension://"+"o".repeat(32));
+        for(String path:List.of(base,base+"/validate",base+"/restore")) {
+            String method=path.equals(base)?"GET":"POST";
+            assertEquals(403,browser(method,path,method.equals("POST")?"x".repeat(50000):null,client.credential(),client.origin()).statusCode());
+            assertTrue(List.of(401,403).contains(browser(method,path,null,client.credential(),null).statusCode()));
+            assertEquals(401,send(method,path,null,false).statusCode());
+            assertEquals(401,browser(method,path,null,token(),"https://example.com").statusCode());
+            assertEquals(401,http.send(browserRequest(path,client.origin()).header("Access-Control-Request-Method",method)
+                    .method("OPTIONS",HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        var c=conversations.create("synthetic workspace HTTP title");privateValues.add(c.title());
+        Path root=Files.createTempDirectory("workspace-logical-http-");
+        try {
+            var t=conversations.createTurnWithUserMessage(c.id(),"synthetic workspace HTTP content");privateValues.add("synthetic workspace HTTP content");
+            var conflict=send("GET",base,null,true);assertEquals(409,conflict.statusCode());assertEquals("WORKSPACE_BACKUP_CONFLICT",tree(conflict).path("code").asString());
+            conversations.completeTurnWithAssistantMessage(c.id(),t.id(),"synthetic workspace HTTP answer");privateValues.add("synthetic workspace HTTP answer");
+            var backup=send("GET",base,null,true);assertEquals(200,backup.statusCode());assertEquals("no-store",backup.headers().firstValue("Cache-Control").orElseThrow());
+            assertFalse(backup.body().contains("taskId"));var valid=send("POST",base+"/validate",backup.body()+" ".repeat(33000),true);assertEquals(200,valid.statusCode());
+            var current=Files.readAllBytes(MEMORY.resolve("memory.db"));
+            String target=root.resolve("restored").toString();String encoded=java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(target.getBytes(StandardCharsets.UTF_8));
+            var request=HttpRequest.newBuilder(uri(base+"/restore")).header("Authorization","Bearer "+token()).header("Content-Type","application/json")
+                    .header("X-Workspace-Restore-Target",encoded).POST(HttpRequest.BodyPublishers.ofString(backup.body()+" ".repeat(33000))).build();
+            assertEquals(200,http.send(request,HttpResponse.BodyHandlers.ofString()).statusCode());assertArrayEquals(current,Files.readAllBytes(MEMORY.resolve("memory.db")));
+            assertEquals(409,http.send(request,HttpResponse.BodyHandlers.ofString()).statusCode());
+            for(String bad:List.of(backup.body()+"{}",backup.body().replace("synthetic workspace HTTP content","tampered"),"{}"))
+                assertEquals(400,send("POST",base+"/validate",bad,true).statusCode());
+            assertFalse(logs.getAll().contains(target));
+        } finally {
+            conversations.delete(c.id());try(var paths=Files.walk(root)){for(Path p:paths.sorted(java.util.Comparator.reverseOrder()).toList())Files.delete(p);}
+        }
+    }
+
 }

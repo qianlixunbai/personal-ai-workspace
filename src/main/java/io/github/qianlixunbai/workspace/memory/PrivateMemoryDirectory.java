@@ -6,10 +6,10 @@ import java.nio.file.attribute.*;
 import java.util.*;
 
 /** OS account/filesystem protection, not encryption. No personal text or path in errors. */
-final class PrivateMemoryDirectory {
+public final class PrivateMemoryDirectory {
     private PrivateMemoryDirectory() {}
 
-    static Path prepare(Path directory, Path tokenFile) throws IOException {
+    public static Path prepare(Path directory, Path tokenFile) throws IOException {
         Path data = directory.toAbsolutePath().normalize();
         validateLocation(data, tokenFile);
         Files.createDirectories(data);
@@ -33,7 +33,7 @@ final class PrivateMemoryDirectory {
         return database;
     }
 
-    static void validateLocation(Path data, Path tokenFile) throws IOException {
+    public static void validateLocation(Path data, Path tokenFile) throws IOException {
         Path credentials = tokenFile.toAbsolutePath().normalize().getParent();
         Path working = Path.of("").toAbsolutePath().normalize();
         if (data.equals(working) || insideProject(data) || data.startsWith(credentials) || credentials.startsWith(data))
@@ -54,7 +54,7 @@ final class PrivateMemoryDirectory {
         return false;
     }
 
-    static void noLinks(Path path) throws IOException {
+    public static void noLinks(Path path) throws IOException {
         for (Path part = path; part != null; part = part.getParent()) {
             if (Files.exists(part, LinkOption.NOFOLLOW_LINKS)) {
                 var attributes = Files.readAttributes(part, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -64,7 +64,7 @@ final class PrivateMemoryDirectory {
         }
     }
 
-    static void protect(Path path, boolean directory) throws IOException {
+    public static void protect(Path path, boolean directory) throws IOException {
         var lookup = path.getFileSystem().getUserPrincipalLookupService();
         UserPrincipal account = lookup.lookupPrincipalByName(System.getProperty("user.name"));
         if (!Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).equals(account))

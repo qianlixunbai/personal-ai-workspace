@@ -8,6 +8,10 @@ import java.nio.file.Path;
 @Configuration
 public class MemoryConfiguration {
     @Bean
+    io.github.qianlixunbai.workspace.backup.WorkspaceBackupService workspaceBackupService(MemoryStore store, RuntimeProperties properties) {
+        return new io.github.qianlixunbai.workspace.backup.WorkspaceBackupService(store, properties.security().tokenFile());
+    }
+    @Bean
     MemoryBackupService memoryBackupService(@Value("${workspace.data-directory}") Path directory, RuntimeProperties properties) {
         return new MemoryBackupService(directory, properties.security().tokenFile());
     }

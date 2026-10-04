@@ -3,6 +3,13 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case WORKSPACE_BACKUP_INVALID -> "Workspace backup is invalid or damaged.";
+            case WORKSPACE_BACKUP_UNSUPPORTED -> "Workspace backup version is unsupported.";
+            case WORKSPACE_BACKUP_TOO_LARGE -> "Workspace backup exceeds its size budget.";
+            case WORKSPACE_BACKUP_CONFLICT -> "Wait for pending turns to finish or Cancel before backing up.";
+            case WORKSPACE_EXPORT_FAILED -> "Workspace export could not be completed.";
+            case WORKSPACE_RESTORE_FAILED -> "Workspace restore could not be confirmed.";
+            case WORKSPACE_RESTORE_TARGET_NOT_EMPTY -> "Restore requires a new or empty data directory.";
             case CONVERSATION_NOT_FOUND -> "Conversation or turn does not exist.";
             case CONVERSATION_INVALID -> "Conversation request is invalid.";
             case CONVERSATION_CONFLICT -> "Conversation or turn state does not allow this operation.";

@@ -20,7 +20,7 @@ public sealed partial class RuntimeClient : IDisposable
     public RuntimeClient(HttpMessageHandler handler, Func<string?> credential)
     {
         this.credential = credential;
-        http = new HttpClient(handler) { BaseAddress = Endpoint, Timeout = TimeSpan.FromSeconds(8) };
+        http = new HttpClient(handler) { BaseAddress = Endpoint, Timeout = Timeout.InfiniteTimeSpan };
     }
 
     public async Task CheckHealthAsync(CancellationToken cancellationToken)

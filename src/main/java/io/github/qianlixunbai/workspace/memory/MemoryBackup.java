@@ -94,13 +94,7 @@ public record MemoryBackup(Instant createdAt, List<MemoryItem> items, String con
                 throw error(ErrorCode.MEMORY_BACKUP_INVALID);
             Set<UUID> ids = new HashSet<>(); List<MemoryItem> rows = new ArrayList<>();
             for (JsonNode node : array) {
-                fields(node, "id", "type", "title", "content", "status", "revision", "source", "createdAt", "updatedAt");
-                String id = string(node, "id");
-                if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
-                var row = new MemoryItem(UUID.fromString(id), MemoryItem.Type.valueOf(string(node, "type")), string(node, "title"),
-                        string(node, "content"), MemoryItem.Status.valueOf(string(node, "status")), integer(node, "revision"),
-                        MemoryItem.Source.valueOf(string(node, "source")), time(string(node, "createdAt")), time(string(node, "updatedAt")));
-                validateRow(row);
+                var row = readRow(node);
                 if (!ids.add(row.id())) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
                 rows.add(row);
             }
@@ -114,6 +108,16 @@ public record MemoryBackup(Instant createdAt, List<MemoryItem> items, String con
             throw error(ErrorCode.MEMORY_BACKUP_INVALID);
         } catch (Exception ignored) { throw error(ErrorCode.MEMORY_BACKUP_INVALID); }
     }
+    public static MemoryItem readRow(JsonNode node) {
+        fields(node, "id", "type", "title", "content", "status", "revision", "source", "createdAt", "updatedAt");
+        String id = string(node, "id");
+        if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
+        var row = new MemoryItem(UUID.fromString(id), MemoryItem.Type.valueOf(string(node, "type")), string(node, "title"),
+                string(node, "content"), MemoryItem.Status.valueOf(string(node, "status")), integer(node, "revision"),
+                MemoryItem.Source.valueOf(string(node, "source")), time(string(node, "createdAt")), time(string(node, "updatedAt")));
+        validateRow(row);
+        return row;
+    }
     public static void fields(JsonNode root, String... expected) {
         if (root == null || !root.isObject() || root.size() != expected.length) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
         for (String name : expected) if (!root.has(name)) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
@@ -123,19 +127,19 @@ public record MemoryBackup(Instant createdAt, List<MemoryItem> items, String con
         if (node == null || !node.isString()) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
         return node.asString();
     }
-    private static long integer(JsonNode root, String name) {
+    public static long integer(JsonNode root, String name) {
         JsonNode node = root.get(name);
         if (node == null || !node.isIntegralNumber() || !node.canConvertToLong()) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
         return node.asLong();
     }
-    private static Instant time(String value) {
+    public static Instant time(String value) {
         Instant time = Instant.parse(value);
         // SQLite v1 stores milliseconds. Reject any timestamp that reconstruction would truncate.
         if (!time.equals(Instant.ofEpochMilli(time.toEpochMilli())) || !time.toString().equals(value))
             throw error(ErrorCode.MEMORY_BACKUP_INVALID);
         return time;
     }
-    private static void validateRow(MemoryItem row) {
+    public static void validateRow(MemoryItem row) {
         text(row.type(), row.title(), row.content()); revision(row.revision());
         if (row.id() == null || row.id().equals(new UUID(0, 0)) || row.status() == null || row.source() != MemoryItem.Source.MANUAL
                 || row.updatedAt().isBefore(row.createdAt())) throw error(ErrorCode.MEMORY_BACKUP_INVALID);
@@ -151,7 +155,7 @@ public record MemoryBackup(Instant createdAt, List<MemoryItem> items, String con
         }
         return HexFormat.of().formatHex(checksum.digest());
     }
-    private static void strings(DataOutputStream out, String... values) throws IOException {
+    public static void strings(DataOutputStream out, String... values) throws IOException {
         for (String value : values) { byte[] bytes = value.getBytes(StandardCharsets.UTF_8); out.writeInt(bytes.length); out.write(bytes); }
     }
 }

@@ -43,6 +43,8 @@ def encodings(value):
 
 needles = [encoded for value in secrets if value for encoded in encodings(value)]
 private_bodies = payload.get('logBodies', []) + [
+    'M4C-HISTORY-731', 'M4C-MEMORY-492', 'Synthetic M4C terminal user',
+    'synthetic workspace HTTP title', 'synthetic workspace HTTP content', 'synthetic workspace HTTP answer',
     'ORBIT-731', 'QUARTZ-492', 'VECTOR-268', 'CURRENT_USER', 'OLD_ASSISTANT',
     'Synthetic interrupted user instruction',
     'conversation-private-title', 'conversation-private-user', 'conversation-private-assistant',
@@ -96,15 +98,17 @@ for path in sorted(files):
                 if node.tag in ['system-out', 'system-err', 'failure', 'error']:
                     scan(ET.tostring(node, encoding='utf-8'), label + ':' + node.tag, False, True)
 artifacts = [name for name in tracked if re.search(r'(^|/)(target|bin|obj|\.runtime|\.verification|\.vs|TestResults)(/|$)|\.(log|jar|dll|exe|zip|trx|db|sqlite|sqlite3)(-(wal|shm|journal))?$', name)]
+backup_artifacts = [name for name in tracked if re.search(r'(^|/)(workspace-backup|memory-backup)\.json$|\.(workspace-backup|memory-backup)\.json$', name)]
 ignore_ok = all(subprocess.run(['git', '-C', str(root), 'check-ignore', '-q', name]).returncode == 0 for name in [
+    'workspace-backup.json', 'check.workspace-backup.json', '.workspace-export-check', '.workspace-restore-check', '.workspace-validation-check',
     '.runtime/client-token', '.verification/browser-batch-smoke-evidence.json', 'target/personal-ai-workspace-0.1.0.jar',
     'memory.db', 'memory.db-wal', 'memory.db-shm', 'memory.db-journal',
     'desktop/src/PersonalAiWorkspace.Desktop/bin/check.dll', 'desktop/src/PersonalAiWorkspace.Desktop/obj/check.json',
     'desktop/tests/PersonalAiWorkspace.Desktop.Tests/TestResults/check.trx'])
-report = dict(result='PASS' if not matches and not artifacts and ignore_ok else 'FAIL', sourceFiles=len(sources),
+report = dict(result='PASS' if not matches and not artifacts and not backup_artifacts and ignore_ok else 'FAIL', sourceFiles=len(sources),
               files=len(files), byteAndArchiveChecks=checks, archives=archives, actualNativeCredentials=len(native),
-              ephemeralSecrets=len(payload.get('secrets', [])), matches=len(matches), trackedBuildArtifacts=len(artifacts), ignorePassed=ignore_ok)
+              ephemeralSecrets=len(payload.get('secrets', [])), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok)
 print(json.dumps(report, indent=2))
 if report['result'] != 'PASS':
-    print(json.dumps(dict(matchedFiles=matches, artifacts=artifacts)))
+    print(json.dumps(dict(matchedFiles=matches, artifacts=artifacts, backupArtifacts=backup_artifacts)))
     sys.exit(1)

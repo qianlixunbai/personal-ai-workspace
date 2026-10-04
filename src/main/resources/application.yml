@@ -1,7 +1,8 @@
 server:
   address: 127.0.0.1
   port: 8765
-  max-http-request-header-size: 8KB
+  # Native Workspace restore carries the explicit UTF-8/base64url target (<=8192 UTF-16 units).
+  max-http-request-header-size: 64KB
   tomcat:
     threads:
       max: 20
