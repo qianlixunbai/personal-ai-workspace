@@ -1,13 +1,65 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
-## Current M5A hybrid shell
+## Current M5B Assistant / Desktop Single Translate
+
+M5B is **IMPLEMENTED / LOCAL ACCEPTANCE PASS**, **CLOSING CANDIDATE — GO**, awaiting Architecture / Closing Review,
+on local `m5b-assistant-translate-migration`, from published
+`8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains OPEN; M5A CLOSED — GO;
+M5C–M5E NOT STARTED. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
+
+Bundled React owns two production controlled editors: Assistant Ask/Summarize and Desktop
+Single Translate (zh-CN/en/ja, existing native choices). Input, selection metadata and plain-text
+results exist only in bounded presentation state. Enter/Shift+Enter insert a newline; Ctrl+Enter
+submits only outside native/React composition and keyCode229. Buttons remain explicit paths.
+No Markdown/HTML, direct HTTP, browser clipboard, domain storage, replay or automatic Memory.
+
+The existing v1 bridge adds exactly `assistant.selectMemories`, `assistant.submit`,
+`translate.submit`, `operations.get`, `operations.cancel`, `operations.copyResult`.
+Exact payload/field/duplicate/enum/bounds/origin/document/session/requestId checks still apply.
+Requests retain32KiB; replies allow64KiB because a verified8192-byte result can JSON-escape to49152bytes.
+Eight pending requests /4096 consumed IDs per document remain. No task IDs, bearer, provider/model/
+profile/systemPrompt/history/endpoint/path/HTTP/native generic proxy crosses the bridge.
+
+Application-owned WorkspaceOperations reuses the application RuntimeClient and shared
+AssistantOperation poll/cancel/deadline/best-effort cleanup; the native and React paths share
+execution semantics. Only accepted tasks enter the registry. Opaque UUIDs bind session, capability,
+Runtime task ID/prompt version and transient verified state/result. Admission reserves capacity;
+at most16 accepted/reserved operations. Active entries never evict. Terminal/error entries expire
+after2minutes on access or the30s cleanup timer. No durable store/history or raw diagnostics.
+operations.get returns the shared runner's strictly validated Runtime snapshots; no second poller.
+Copy admits only the current session's owned SUCCEEDED verified result. Cancel acknowledges a
+request and Runtime decides terminal truth; cancellation does not guarantee immediate GPU stop.
+Routes/reload/close do not cancel accepted tasks; app exit reuses bounded best-effort cancellation.
+Reload rotates session, suppresses stale replies, loses presentation state and cannot replay.
+
+The native MemorySelectionWindow remains the only picker/preview. Host selection authority
+rejects forged/out-of-order/changed references. React receives title/memoryId/decimal Int64 revision/
+position only, never Memory content/collection. Ask with selected references uses Memory Ask;
+zero references uses ordinary Ask. Summarize never takes Memory. Accepted admission consumes host
+and React selection immediately; pre-admission stale retains UI until explicit reselect/clear.
+POST transport/deadline/unverifiable reply marks shared admission outcome unknown without changing
+underlying RuntimeClient errors. UI shows safe Outcome unknown; neither path automatically resends.
+Ordinary Ask/Summarize/Translate do not read/write Conversation or save Memory.
+
+Real Release WPF/WebView2/bundled React/Ollama business flows PASS. **REAL WINDOWS PINYIN IME PASS**
+in the production Assistant editor: physical keyboard input, native candidate selection and
+commit, no submission during candidate Enter, exact React/bridge/Runtime provider-input assertions
+in test-owned memory, one admission and real Ollama completion. No synthetic composition/value
+insertion/clipboard substitution is counted as this gate. InPrivate UDF business scan:303files,
+0 matches; synthetic input/result/title/Chinese marker and temporary bearer. No forensic erase.
+Final suites: Java105 / Desktop197 / Frontend33, all PASS. Native WPF Ask/Summarize, hotkey/UIA Translate,
+security shell, Workspace/Memory-only recovery and Browser Translate-only protocol/real Ollama regressions PASS.
+Implementation: `8bfc362196233297302997bf23cf9052147ef2f9`; no main merge/push or future milestone work.
+Full evidence and limitations: [M5B Closing Report](../milestones/M5B-CLOSING-REPORT.md).
+
+## M5A accepted foundation and historical acceptance
 
 M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
 **M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
-M5B — Assistant + Desktop Translate Migration: **NOT STARTED**; M5C — Conversations Migration: **NOT STARTED**;
+M5B — Assistant + Desktop Translate Migration: **IMPLEMENTED / LOCAL ACCEPTANCE PASS**; M5C — Conversations Migration: **NOT STARTED**;
 M5D — Memory + Settings Migration: **NOT STARTED**; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
 Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
-This approval sync records the existing acceptance results; it introduces no implementation or test behavior changes.
+The historical M5A approval sync recorded existing acceptance results without changing implementation or tests.
 WPF owns lifetime/single instance/tray/hotkey/UIA/clipboard/helper processes/WinCred/dialogs,
 WebView2 lifecycle/focus and bridge security. React owns shell layout/navigation/presentation/
 loading/errors/focus and session-local theme. Runtime owns durable Memory/Conversation,
@@ -21,10 +73,10 @@ The bridge is versioned, typed, allowlisted, bounded and origin/session validate
 Bearer, Browser credential, pairing proof, backup bytes/paths and arbitrary native capabilities
 never enter JS. React does not directly call Runtime. No CORS widening occurs; Browser remains Translate-only.
 
-Only safe bootstrap/status and seven explicit native entries exist. No React business operation
-has migrated; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
+M5A introduced safe bootstrap/status and seven explicit native entries. M5B business methods are
+listed above; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
 single-instance activation and the selection hotkey retain their existing behavior. No production surface is retired;
-incremental migration remains required. React domain CRUD, AI execution, domain submit and task polling are not implemented.
+incremental migration remains required. Conversation/Memory CRUD and Settings mutation remain native.
 
 The complete M5A allowlist remains:
 
@@ -62,8 +114,8 @@ React Assistant input and/or React Translate input to verify:
 IME composition → committed Chinese text → actual submit path → correct Runtime input
 ```
 
-**M5B cannot CLOSED — GO before this gate passes.** M5B has not started; no input editor or IME acceptance work begins in this approval sync.
-M5A formal delivery stops after publication, awaiting a new M5B Scope / Implementation Prompt.
+**M5B cannot CLOSED — GO before this gate passes.** Current M5B production Assistant acceptance
+passed the real IME gate; M5A's historical synthetic input probe remains separate evidence.
 
 Historical implementation and evidence: [M5A Closing Report](../milestones/M5A-CLOSING-REPORT.md).
 That report retains its accurate IMPLEMENTED / PARTIAL / AWAITING REAL WINDOWS IME ACCEPTANCE snapshot;
@@ -88,10 +140,10 @@ Architecture / Closing Review：**M4 FINAL CLOSING — APPROVED — GO**；ADR-0
 
 Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollama recovery/continue、ADR-006 compatibility与privacy/security **PASS**。
 历史Closing Reports保留当时的candidate/OPEN及Git记录；正式发布另须实时remote验证、ff-only merge、push/post-push fetch。
-M4 closing 时 Main Workspace 尚未开始；当前 M5A shell 实现与验收见页首。
+M4 closing 时 Main Workspace 尚未开始；当前 M5B 业务迁移与 M5A shell 基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A Architecture / Closing Review 已 GO；M5B–M5E 均 NOT STARTED，等待独立 scope、实施与审查；M5 仍 OPEN。
+M5A Architecture / Closing Review 已 GO；M5B IMPLEMENTED / LOCAL ACCEPTANCE PASS，M5C–M5E NOT STARTED；M5 仍 OPEN。
 
 ## M4C current architecture
 
