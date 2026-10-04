@@ -5,8 +5,25 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <FrontendRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../frontend'))</FrontendRoot>
+    <MainWorkspaceDev Condition="'$(MainWorkspaceDev)' == ''">false</MainWorkspaceDev>
+    <DefineConstants Condition="'$(MainWorkspaceDev)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);WORKSPACE_DEV</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
   </ItemGroup>
+  <Target Name="BuildMainWorkspaceFrontend" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(MainWorkspaceDev)' == 'true' and '$(Configuration)' != 'Debug'" Text="MainWorkspaceDev is Debug-only. Release requires bundled production assets." />
+    <Exec WorkingDirectory="$(FrontendRoot)" Command="npm ci --no-fund --no-audit" Condition="'$(FrontendSkipBuild)' != 'true'" />
+    <Exec WorkingDirectory="$(FrontendRoot)" Command="npm run build" Condition="'$(FrontendSkipBuild)' != 'true'" />
+    <Error Condition="!Exists('$(FrontendRoot)/dist/workspace-assets.json')" Text="Main Workspace assets missing. Run npm ci and npm run build in desktop/frontend." />
+    <Exec WorkingDirectory="$(FrontendRoot)" Command="node scripts/assets.mjs --verify" />
+    <ItemGroup>
+      <Content Remove="$(FrontendRoot)/dist/**/*" />
+      <_WorkspaceAssets Remove="@(_WorkspaceAssets)" />
+      <_WorkspaceAssets Include="$(FrontendRoot)/dist/**/*" />
+      <Content Include="@(_WorkspaceAssets)" Link="MainWorkspace/%(_WorkspaceAssets.RecursiveDir)%(_WorkspaceAssets.Filename)%(_WorkspaceAssets.Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -178,8 +178,8 @@ def main():
                 safe = json.loads(result.stdout)
             except ValueError:
                 raise RuntimeError("safe-wpf-evidence") from None
-            require(result.returncode == 0 and safe.get("result") == "PASS", "wpf-" + phase + "-" + safe.get("check", "complete"))
             evidence["wpf-" + phase] = safe
+            require(result.returncode == 0 and safe.get("result") == "PASS", "wpf-" + phase + "-" + safe.get("check", "complete"))
 
         try:
             start(source)

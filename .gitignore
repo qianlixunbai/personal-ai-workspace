@@ -53,6 +53,11 @@ build/
 # Python verification helpers
 __pycache__/
 
+# Main Workspace generated frontend assets and dependencies
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+desktop/frontend/coverage/
+
 # Default logical Memory exports and task-owned backup staging
 memory-backup.json
 *.memory-backup.json

@@ -5,17 +5,19 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using PersonalAiWorkspace.Core;
+using PersonalAiWorkspace.Desktop.Bridge;
 using Forms = System.Windows.Forms;
 
 namespace PersonalAiWorkspace.Desktop;
 
-internal sealed class AssistantApp : Application, IAssistantController
+internal sealed class AssistantApp : Application, IAssistantController, IWorkspaceNativeActions
 {
     private readonly SingleInstance single;
-    private readonly CredentialStore credentials = new();
+    private readonly CredentialStore credentials;
     private readonly CancellationTokenSource lifetime = new();
     private readonly RuntimeClient runtime;
     private AssistantWindow window = null!;
+    private MainWorkspaceWindow? workspace;
     private Forms.NotifyIcon? tray;
     private Forms.ContextMenuStrip? trayMenu;
     private HwndSource? messages;
@@ -29,9 +31,13 @@ internal sealed class AssistantApp : Application, IAssistantController
     public bool Busy => capturing || operation is not null;
     public bool Exiting { get; private set; }
 
-    internal AssistantApp(SingleInstance single)
+    internal Forms.ContextMenuStrip? TrayMenu => trayMenu;
+    internal MainWorkspaceWindow? Workspace => workspace;
+    internal bool TrayVisible => tray?.Visible == true;
+    internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null)
     {
         this.single = single;
+        credentials = testCredentials ?? new CredentialStore();
         runtime = new RuntimeClient(() => credentials.Load());
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += (_, error) =>
@@ -53,6 +59,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         try { hotkey = new HotkeyRegistration(messages.Handle); }
         catch (InvalidOperationException failure) { window.HotkeyText.Text = failure.Message; }
         trayMenu = new Forms.ContextMenuStrip();
+        trayMenu.Items.Add("打开 Main Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
         trayMenu.Items.Add("打开 Assistant", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
         trayMenu.Items.Add("检查 Runtime", null, async (_, _) => await CheckHealthAsync());
         trayMenu.Items.Add("退出", null, async (_, _) => await ExitAsync());
@@ -83,6 +90,30 @@ internal sealed class AssistantApp : Application, IAssistantController
         window.Show();
         if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
         window.Activate();
+    }
+    internal void ShowWorkspace()
+    {
+        if (exitRequested) return;
+        if (workspace is null)
+        {
+            workspace = new MainWorkspaceWindow(this);
+            workspace.Closed += (_, _) => workspace = null;
+        }
+        workspace.Show();
+        if (workspace.WindowState == WindowState.Minimized) workspace.WindowState = WindowState.Normal;
+        workspace.Activate();
+    }
+    Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
+        new WorkspaceStatusProbe(runtime, credentials.Load).ReadAsync(cancellation);
+    Task IWorkspaceNativeActions.OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
+        ShowAssistant();
+        if (entry == NativeWorkspaceEntry.LegacyAssistant) return Task.CompletedTask;
+        try { window.OpenWorkspaceEntry(entry); }
+        finally { if (entry != NativeWorkspaceEntry.CredentialFlow) workspace?.ReturnFocus(); }
+        return Task.CompletedTask;
     }
     private async Task CaptureAsync(IntPtr foreground)
     {
@@ -225,6 +256,7 @@ internal sealed class AssistantApp : Application, IAssistantController
         if (exitRequested) return;
         if (!window.CloseMemory()) return;
         exitRequested = true;
+        if (workspace is not null) await workspace.ShutdownAsync();
         window.CloseMemorySelector(); window.ClearMemorySelection();
         window.CloseBrowserPairing();
         window.CloseWorkspaceBackup();
@@ -248,6 +280,8 @@ internal sealed class AssistantApp : Application, IAssistantController
         cleanedUp = true;
         window?.CloseBrowserPairing();
         window?.CloseWorkspaceBackup();
+        // Normal exit awaits profile cleanup in ExitAsync. Emergency exit still disposes the controller.
+        workspace?.DisposeImmediately();
         window?.CloseMemorySelector();
         single.StopListening();
         lifetime.Cancel();

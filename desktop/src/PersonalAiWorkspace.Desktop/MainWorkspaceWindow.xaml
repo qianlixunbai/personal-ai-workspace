@@ -1,0 +1,31 @@
+<Window x:Class="PersonalAiWorkspace.Desktop.MainWorkspaceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Personal AI Workspace" Width="1160" Height="790" MinWidth="780" MinHeight="540"
+        WindowStartupLocation="CenterScreen" Background="#F6F7F9">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#DCE0E6" BorderThickness="0,0,0,1" Padding="12,6">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button Content="−" Click="ZoomOut" Padding="10,5" Margin="2,0" AutomationProperties.Name="缩小工作区" />
+                    <Button x:Name="ZoomResetButton" Content="100%" Click="ResetZoom" Padding="10,5" Margin="2,0" AutomationProperties.Name="恢复工作区缩放" />
+                    <Button x:Name="ZoomInButton" Content="+" Click="ZoomIn" Padding="10,5" Margin="2,0" AutomationProperties.Name="放大工作区" />
+                    <Button x:Name="NativeAssistantButton" Content="原生 Assistant" Click="OpenAssistant" Padding="12,5" Margin="4,0" AutomationProperties.Name="打开原生 Assistant" />
+                    <Button Content="聚焦工作区" Click="FocusWorkspace" Padding="12,5" Margin="4,0" />
+                </StackPanel>
+                <TextBlock Text="Personal AI Workspace" VerticalAlignment="Center" FontWeight="SemiBold" />
+            </DockPanel>
+        </Border>
+        <Grid>
+            <wv:WebView2 x:Name="Browser" AutomationProperties.Name="Main Workspace 页面" />
+            <Border x:Name="Fallback" Background="#F6F7F9" Padding="40">
+                <StackPanel VerticalAlignment="Center" MaxWidth="520">
+                    <TextBlock x:Name="FallbackTitle" Text="正在打开工作区…" FontSize="26" FontWeight="SemiBold" />
+                    <TextBlock x:Name="FallbackMessage" Text="原生功能可从上方 Assistant 按钮打开。" TextWrapping="Wrap" Margin="0,16,0,24" />
+                    <Button Content="打开原生 Assistant" Click="OpenAssistant" HorizontalAlignment="Left" Padding="16,9" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

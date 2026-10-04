@@ -11,6 +11,7 @@ internal static class Program
 {
     static readonly Application application=new(){ShutdownMode=ShutdownMode.OnExplicitShutdown};
     static readonly List<string> checks=[];static string stage="configuration";static AssistantWindow? assistant;
+    static readonly Dictionary<string,object?> diagnostics=[];
     static string Setting(string name)=>Environment.GetEnvironmentVariable("M4C_"+name)??throw new InvalidOperationException();
     static void Require(bool condition,string check){stage=check;if(!condition)throw new InvalidOperationException();checks.Add(check);}
     static async Task Wait(Func<bool> condition,string check,int seconds=180){stage=check;var until=DateTime.UtcNow.AddSeconds(seconds);while(!condition()){if(DateTime.UtcNow>until)throw new TimeoutException();await Task.Delay(50);}}
@@ -33,7 +34,7 @@ internal static class Program
                 using var runtime=new RuntimeClient(()=>File.ReadAllText(Setting("TOKEN_FILE")).Trim());assistant=new AssistantWindow(new Controller(),runtime,new Files());assistant.Show();
                 if(args[0]=="recover")await Recover(runtime);else await Backup(args[0]);
                 Console.WriteLine(JsonSerializer.Serialize(new{result="PASS",realWpf=true,realHttp=true,realOllama=args[0]=="recover",checks}));code=0;
-            }catch(Exception){Console.WriteLine(JsonSerializer.Serialize(new{result="FAIL",check=stage}));}
+            }catch(Exception){Console.WriteLine(JsonSerializer.Serialize(new{result="FAIL",check=stage,diagnostics}));}
             finally{foreach(var w in application.Windows.Cast<Window>().ToArray())w.Close();dispatcher.InvokeShutdown();}
         }));Dispatcher.Run();return code;
     }
@@ -70,6 +71,10 @@ internal static class Program
                 Require(window.Detail.Turns.Count(t=>t.Status==ConversationTurnStatus.SUCCEEDED)==2&&window.History.Text.Contains("[FAILED"),"restored-outcome-labels");
                 window.Input.Text="What synthetic code word did I give you at the start? Reply with only that code word.";Click(window.SendButton);
                 await Wait(()=>!window.Busy&&window.Detail.TotalTurns==6,"restored-history-real-ollama");
+                diagnostics["turnStatus"]=window.Detail.Turns.Last().Status.ToString();
+                diagnostics["failureCode"]=window.Detail.Turns.Last().FailureCode?.ToString();
+                diagnostics["answerCharacters"]=window.Detail.Turns.Last().AssistantMessage?.Content.Length??0;
+                diagnostics["markerInRestoredPriorHistory"]=window.Detail.Turns.Take(5).Any(t=>t.UserMessage.Content.Contains("M4C-HISTORY-731"));
                 Require(window.Detail.Turns.Last().AssistantMessage?.Content.Contains("M4C-HISTORY-731")==true,"restored-context-answer");
                 var picked=new TaskCompletionSource();
                 _=Dispatcher.CurrentDispatcher.BeginInvoke(new Action(async()=>{

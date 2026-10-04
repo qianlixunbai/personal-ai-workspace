@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using PersonalAiWorkspace.Core;
+using PersonalAiWorkspace.Desktop.Bridge;
 
 namespace PersonalAiWorkspace.Desktop;
 
@@ -29,6 +30,7 @@ public partial class AssistantWindow : Window
     private MemoryWindow? memoryWindow;
     private ConversationWindow? conversationWindow;
     private WorkspaceBackupWindow? workspaceBackupWindow;
+    private MemoryBackupWindow? memoryBackupWindow;
     private MemorySelectionWindow? selectionWindow;
     private IReadOnlyList<MemorySelection> selectedMemory = Array.Empty<MemorySelection>();
     internal bool MemoryNeedsReview { get; private set; }
@@ -71,6 +73,7 @@ public partial class AssistantWindow : Window
         CloseBrowserPairing();
         conversationWindow?.Close();
         workspaceBackupWindow?.Close();
+        memoryBackupWindow?.Close();
         CloseMemorySelector(); ClearMemorySelection();
         if (app.Exiting) return;
         e.Cancel = true;
@@ -121,7 +124,25 @@ public partial class AssistantWindow : Window
         finally { pairingWindow = null; }
     }
     internal void CloseBrowserPairing() => pairingWindow?.Close();
-    internal void CloseWorkspaceBackup() => workspaceBackupWindow?.Close();
+    internal void CloseWorkspaceBackup() { workspaceBackupWindow?.Close(); memoryBackupWindow?.Close(); }
+    internal void OpenWorkspaceEntry(NativeWorkspaceEntry entry)
+    {
+        var click = new RoutedEventArgs(Button.ClickEvent);
+        switch (entry)
+        {
+            case NativeWorkspaceEntry.Conversations: OpenConversation(this, click); break;
+            case NativeWorkspaceEntry.Memory: OpenMemory(this, click); break;
+            case NativeWorkspaceEntry.BrowserPairing: PairBrowser(this, click); break;
+            case NativeWorkspaceEntry.WorkspaceBackup: OpenWorkspaceBackup(this, click); break;
+            case NativeWorkspaceEntry.MemoryBackup:
+                if (app.Busy || app.Exiting || runtime is null || memoryBackupWindow is not null) throw new InvalidOperationException();
+                memoryBackupWindow = new MemoryBackupWindow(runtime) { Owner = this };
+                try { memoryBackupWindow.ShowDialog(); } finally { memoryBackupWindow = null; }
+                break;
+            case NativeWorkspaceEntry.CredentialFlow: ImportButton.Focus(); break;
+            default: throw new InvalidOperationException("Unknown native entry.");
+        }
+    }
     private void OpenWorkspaceBackup(object sender, RoutedEventArgs e)
     {
         if (app.Busy || app.Exiting || runtime is null || workspaceBackupWindow is not null) return;
