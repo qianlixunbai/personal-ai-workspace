@@ -2,20 +2,26 @@
 
 ## Current M5B Assistant / Desktop Single Translate
 
-M5B is **IMPLEMENTED / LOCAL ACCEPTANCE PASS**, **CLOSING CANDIDATE — GO**, awaiting Architecture / Closing Review,
-on local `m5b-assistant-translate-migration`, from published
-`8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains OPEN; M5A CLOSED — GO;
-M5C–M5E NOT STARTED. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
+M5B is **CLOSED — GO**. **M5B Architecture / Closing Review: GO.**
+The implementation branch is `m5b-assistant-translate-migration`, from the pre-delivery published baseline
+`8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains **OPEN**; M5A is **CLOSED — GO**.
+M5C — Conversations Migration, M5D — Memory + Settings Migration and M5E — Consolidation / Packaging / Final Acceptance
+are all **NOT STARTED**. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
 
 Bundled React owns two production controlled editors: Assistant Ask/Summarize and Desktop
 Single Translate (zh-CN/en/ja, existing native choices). Input, selection metadata and plain-text
 results exist only in bounded presentation state. Enter/Shift+Enter insert a newline; Ctrl+Enter
 submits only outside native/React composition and keyCode229. Buttons remain explicit paths.
 No Markdown/HTML, direct HTTP, browser clipboard, domain storage, replay or automatic Memory.
+Assistant supports ordinary Ask, Summarize and explicit Memory Ask, with submit / polling / cancel /
+terminal result / native-owned Copy Result. Translate supports target language, submit / polling /
+cancel / result / copy. Browser DOM/Batch/Dynamic/Restore remain owned by the Browser companion.
 
 The existing v1 bridge adds exactly `assistant.selectMemories`, `assistant.submit`,
 `translate.submit`, `operations.get`, `operations.cancel`, `operations.copyResult`.
 Exact payload/field/duplicate/enum/bounds/origin/document/session/requestId checks still apply.
+The bridge remains typed, versioned, allowlisted, origin/session checked and bounded, with no generic proxy.
+There is no Conversation React bridge, Memory CRUD React bridge or Settings mutation bridge.
 Requests retain32KiB; replies allow64KiB because a verified8192-byte result can JSON-escape to49152bytes.
 Eight pending requests /4096 consumed IDs per document remain. No task IDs, bearer, provider/model/
 profile/systemPrompt/history/endpoint/path/HTTP/native generic proxy crosses the bridge.
@@ -39,24 +45,39 @@ zero references uses ordinary Ask. Summarize never takes Memory. Accepted admiss
 and React selection immediately; pre-admission stale retains UI until explicit reselect/clear.
 POST transport/deadline/unverifiable reply marks shared admission outcome unknown without changing
 underlying RuntimeClient errors. UI shows safe Outcome unknown; neither path automatically resends.
+Ordinary Ask is single-turn / stateless / no Conversation persistence. Summarize is stateless /
+no Memory / no Conversation. Explicit Memory Ask is explicit-only / exact revision /
+native Memory selector authorization / no automatic retrieval.
 Ordinary Ask/Summarize/Translate do not read/write Conversation or save Memory.
 
-Real Release WPF/WebView2/bundled React/Ollama business flows PASS. **REAL WINDOWS PINYIN IME PASS**
+Real Release WPF/WebView2/bundled React/Ollama business flows PASS. **REAL WINDOWS PINYIN IME — PASS**
 in the production Assistant editor: physical keyboard input, native candidate selection and
 commit, no submission during candidate Enter, exact React/bridge/Runtime provider-input assertions
-in test-owned memory, one admission and real Ollama completion. No synthetic composition/value
+in test-owned memory, one admission and real Ollama completion. The approved chain is:
+
+```text
+Pinyin composition → committed Chinese text → explicit Submit → React exact value → WPF bridge exact input → Runtime/provider exact input → real Ollama completion
+```
+
+No synthetic composition/value
 insertion/clipboard substitution is counted as this gate. InPrivate UDF business scan:303files,
 0 matches; synthetic input/result/title/Chinese marker and temporary bearer. No forensic erase.
-Final suites: Java105 / Desktop197 / Frontend33, all PASS. Native WPF Ask/Summarize, hotkey/UIA Translate,
+Approved final acceptance baseline: Java **105 PASS** / Desktop **197 PASS** / Frontend **33 PASS**.
+This approval sync and formal delivery record the existing acceptance results; the full suites are not rerun.
+Native WPF Ask/Summarize, hotkey/UIA Translate,
 security shell, Workspace/Memory-only recovery and Browser Translate-only protocol/real Ollama regressions PASS.
-Implementation: `8bfc362196233297302997bf23cf9052147ef2f9`; no main merge/push or future milestone work.
-Full evidence and limitations: [M5B Closing Report](../milestones/M5B-CLOSING-REPORT.md).
+Implementation: `8bfc362196233297302997bf23cf9052147ef2f9`;
+historical documentation / closing: `e456030df3c4e01ced11d28c21e3f4c95a057d50`.
+Approval uses a separate docs commit. Formal delivery requires fresh remote baseline verification,
+ancestry PASS, fast-forward-only merge, push main and post-push fetch before local branch cleanup.
+Full evidence and limitations: [M5B Closing Report](../milestones/M5B-CLOSING-REPORT.md), preserved with its
+historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO and M5 OPEN snapshot.
 
 ## M5A accepted foundation and historical acceptance
 
 M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
 **M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
-M5B — Assistant + Desktop Translate Migration: **IMPLEMENTED / LOCAL ACCEPTANCE PASS**; M5C — Conversations Migration: **NOT STARTED**;
+M5B — Assistant + Desktop Translate Migration: **CLOSED — GO**; M5C — Conversations Migration: **NOT STARTED**;
 M5D — Memory + Settings Migration: **NOT STARTED**; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
 Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
 The historical M5A approval sync recorded existing acceptance results without changing implementation or tests.
@@ -107,15 +128,11 @@ requires a later scope, equivalent security/privacy/regression/Windows acceptanc
 Chinese rendering / keyboard / focus / composition plumbing **PASS**. Actual Windows Pinyin IME
 was not established during M5A acceptance; synthetic composition events do not prove real IME acceptance.
 Architecture Review decided this is **NOT an M5A blocker**, because the production M5A shell has no domain text editor.
-Native Pinyin IME is **DEFERRED TO M5B HARD CLOSING GATE**. M5B must use Windows Pinyin in a real
-React Assistant input and/or React Translate input to verify:
-
-```text
-IME composition → committed Chinese text → actual submit path → correct Runtime input
-```
-
-**M5B cannot CLOSED — GO before this gate passes.** Current M5B production Assistant acceptance
-passed the real IME gate; M5A's historical synthetic input probe remains separate evidence.
+Native Pinyin IME was **DEFERRED TO M5B HARD CLOSING GATE** during M5A approval.
+The M5B production React Assistant editor has now passed the real Windows Pinyin chain recorded above,
+including exact Runtime/provider input and real Ollama completion. **REAL WINDOWS PINYIN IME — PASS**
+is approved by M5B Architecture / Closing Review. Synthetic composition does not replace real acceptance;
+M5A's historical synthetic input probe remains separate evidence. Test phrase/body is not recorded here.
 
 Historical implementation and evidence: [M5A Closing Report](../milestones/M5A-CLOSING-REPORT.md).
 That report retains its accurate IMPLEMENTED / PARTIAL / AWAITING REAL WINDOWS IME ACCEPTANCE snapshot;
@@ -143,7 +160,7 @@ Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollam
 M4 closing 时 Main Workspace 尚未开始；当前 M5B 业务迁移与 M5A shell 基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A Architecture / Closing Review 已 GO；M5B IMPLEMENTED / LOCAL ACCEPTANCE PASS，M5C–M5E NOT STARTED；M5 仍 OPEN。
+M5A / M5B Architecture / Closing Review 已 GO；M5B CLOSED — GO，M5C–M5E NOT STARTED；M5 仍 OPEN。
 
 ## M4C current architecture
 

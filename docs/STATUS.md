@@ -1,30 +1,40 @@
 # Personal AI Workspace — Current Status
 
-## Current M5 status — M5B Local Acceptance
+## Current M5 status — M5B Architecture Approval
 
 | Milestone | 当前正式状态 |
 | --- | --- |
 | M5 — Unified Main Workspace UI | OPEN |
 | M5A — Main Workspace Shell Foundation | CLOSED — GO |
-| M5B — Assistant + Desktop Translate Migration | IMPLEMENTED / LOCAL ACCEPTANCE PASS |
+| M5B — Assistant + Desktop Translate Migration | CLOSED — GO |
 | M5C — Conversations Migration | NOT STARTED |
 | M5D — Memory + Settings Migration | NOT STARTED |
 | M5E — Product Consolidation / Packaging / Final Acceptance | NOT STARTED |
 
-**M5A Architecture / Closing Review：GO。** M5A 完成不代表 M5 整体完成。
+**M5A Architecture / Closing Review：GO。M5B Architecture / Closing Review：GO。** M5A / M5B 完成不代表 M5 整体完成。
 ADR-001..010 **Accepted**；ADR-008/009/010 分别确立 ownership、trusted WebView2/least-privilege bridge 与 bundled frontend distribution。
 M5B 当前只迁移 Assistant / Desktop Single Translate；没有旧窗口退役，M5C–M5E 未开始。
 真实 React Ask / Summarize / explicit Memory Ask / Single Translate / cancel / copy 已通过；
-**REAL WINDOWS PINYIN IME PASS**：production Assistant，实际键盘拼音/候选/commit，经 bridge 提交与 Runtime provider input exact in-memory assertion。
-**M5B CLOSING CANDIDATE — GO**，等待 Architecture / Closing Review；未自行 CLOSED — GO。
-最终 Java **105 PASS** / Desktop **197 PASS** / Frontend **33 PASS**，0 failure/error/skip。
+**REAL WINDOWS PINYIN IME — PASS**：production React Assistant editor，实际键盘拼音/候选/commit、explicit Submit、exact React/WPF bridge/Runtime/provider input 与真实 Ollama completion。
+**M5B — CLOSED — GO**，Architecture / Closing Review 已正式批准；M5 仍 **OPEN**。
+已批准最终验收基线：Java **105 PASS** / Desktop **197 PASS** / Frontend **33 PASS**，0 failure/error/skip。本轮只同步批准状态与正式交付，不重跑全套测试。
 业务 UDF / evidence / log privacy PASS，303 UDF files / 0 matches；9类synthetic marker及实际临时bearer。
 真实WPF Ask/Summarize/Translate、explicit Memory Ask、native picker、hotkey/UIA/clipboard、安全 shell、
 Workspace recovery、Memory-only recovery、Browser Translate-only synthetic HTTP/real Ollama 回归 PASS。
 Browser 是协议/真实推理回归，未重新运行 Chrome GUI；screen reader / mixed-DPI hardware 未验收。
-Baseline：`8bf5aac70630fae730ea5ba1d101b42a5e277af5`；branch：`m5b-assistant-translate-migration`；
-implementation：`8bfc362196233297302997bf23cf9052147ef2f9`；无 merge/push/tag/release/branch deletion。
-[M5B Closing Report](milestones/M5B-CLOSING-REPORT.md) 记录46项范围、证据、性能和限制；M5A Closing Report 原样保留。
+M5B 开工及正式交付前 published main baseline：`8bf5aac70630fae730ea5ba1d101b42a5e277af5`；implementation branch：`m5b-assistant-translate-migration`。
+Implementation：`8bfc362196233297302997bf23cf9052147ef2f9`；historical documentation / closing：`e456030df3c4e01ced11d28c21e3f4c95a057d50`。
+Architecture approval sync 使用后续独立 docs commit；正式交付必须成功实时 fetch / baseline 验证、ancestry PASS、fast-forward-only merge、仅 push main 与 post-push fetch，成功后才删除已合并本地 feature branch。
+[M5B Closing Report](milestones/M5B-CLOSING-REPORT.md) 记录46项范围、证据、性能和限制，保留形成时的 **IMPLEMENTED / LOCAL ACCEPTANCE PASS**、**M5B CLOSING CANDIDATE — GO**、**M5 — OPEN**；不追改历史报告。M5A Closing Report 亦原样保留。
+
+### M5B approved capabilities and boundaries
+
+- Assistant：ordinary Ask / Summarize / explicit Memory Ask，支持 submit / polling / cancel / terminal result / native-owned Copy Result。
+- ordinary Ask：single-turn / stateless / no Conversation persistence；Summarize：stateless / no Memory / no Conversation。
+- explicit Memory Ask：explicit-only / exact revision / native Memory selector authorization / no automatic retrieval。
+- Translate：Desktop Single Translate、target language、submit / polling / cancel / result / copy；Browser DOM/Batch/Dynamic/Restore 仍属于 Browser companion。
+- Bridge：typed / versioned / allowlisted / origin/session checked / bounded / no generic proxy；没有 Conversation React bridge、Memory CRUD React bridge 或 Settings mutation bridge。
+- Remaining scope：M5C Conversations Migration、M5D Memory + Settings Migration、M5E Consolidation / Packaging / Final Acceptance 均 NOT STARTED；M5 保持 OPEN。
 
 M5A 开工时 published main baseline：`d1d7be9e904387862b663a8bab7c72bb89d392c5`。
 Implementation：`233244475078a33f85c89edf801b2f3effa0d524`；
@@ -67,21 +77,21 @@ native.openCredentialFlow
 `assistant.selectMemories`、`assistant.submit`、`translate.submit`、`operations.get`、`operations.cancel`、`operations.copyResult`。
 Host-owned bounded transient operations，React 只使用 opaque operationId；不开放 Conversation/Memory CRUD、Settings mutation、generic proxy。
 
-### Native Pinyin IME — M5B HARD CLOSING GATE
+### Real Windows Pinyin IME — PASS
 
 Chinese rendering / keyboard / focus / composition plumbing **PASS**。
 **Actual Windows Pinyin IME was not established during M5A acceptance.** 合成 composition events 不等同于真实拼音 IME 验收。
 Architecture Review 正式决定：**This is NOT an M5A blocker**，因为 M5A production React shell 没有真正的业务文本输入控件。
 M5A 当时状态为 **DEFERRED TO M5B HARD CLOSING GATE**，没有声称 IME 已通过；当前 M5B 的独立真实验收已通过。
 
-M5B 必须在真实 React Assistant input and/or React Translate input 中使用 Windows 拼音输入法，验证：
+M5B 已在 production React Assistant editor 中使用真实 Windows 拼音输入法，完成以下验收链：
 
 ```text
-IME composition → committed Chinese text → actual submit path → correct Runtime input
+Pinyin composition → committed Chinese text → explicit Submit → React exact value → WPF bridge exact input → Runtime/provider exact input → real Ollama completion
 ```
 
-此 Gate PASS 前，**M5B cannot CLOSED — GO**。当前 M5B 已在真实 production Assistant 中通过该 Gate；
-历史 M5A 的 synthetic textarea / IME probe 不能替代该证据。当前全量回归已通过，等待 Architecture / Closing Review。
+**REAL WINDOWS PINYIN IME — PASS**；此 hard closing gate 随 M5B Architecture / Closing Review 正式批准。
+没有使用 synthetic composition 替代真实 acceptance；历史 M5A 的 synthetic textarea / IME probe 保留为独立历史证据。测试 phrase/body 不写入 current docs。
 
 [M5A Closing Report](milestones/M5A-CLOSING-REPORT.md) 保留形成时 **IMPLEMENTED / PARTIAL — AWAITING REAL WINDOWS IME ACCEPTANCE** 的准确历史、40项证据与限制。
 该报告不追改为 CLOSED — GO；Architecture Review 后的当前正式状态与 Gate 调整以本节为准。
@@ -117,7 +127,7 @@ M4 is now complete：durable Conversation、multi-turn execution、explicit per-
 [M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
 
 **M5A — CLOSED — GO under the approved architecture.** React + WebView2 inside WPF Native Shell；
-Architecture / Closing Review 已批准；M5 仍 OPEN，M5B IMPLEMENTED / LOCAL ACCEPTANCE PASS，M5C–M5E NOT STARTED。
+M5A / M5B Architecture / Closing Review 已批准；M5 仍 OPEN，M5B CLOSED — GO，M5C–M5E NOT STARTED。
 Remaining deferred scope：Conversations / Memory management / full Settings 的 React 迁移、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
 cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。
