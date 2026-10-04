@@ -1,11 +1,68 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
-## Current M5C durable Conversations
+## Current M5D Memory and Settings
+
+**M5D — IMPLEMENTED / LOCAL ACCEPTANCE PASS. M5D CLOSING CANDIDATE — GO. M5 — OPEN. M5E — NOT STARTED.**
+M5A/M5B/M5C remain CLOSED — GO. Baseline: `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`, verified by live fetch from clean main.
+No new ADR: ADR-001..010 remain Accepted. Java/Core production, API, SQLite schema, backup formats, security/Browser permissions and domain limits are unchanged.
+
+```text
+React Memory → typed WPF bridge → application-owned RuntimeClient → native-only Runtime API → SQLite
+React Settings → safe shell status / fixed native entries → existing WPF maintenance
+```
+
+Runtime SQLite is the sole durable Memory truth. React keeps one metadata list page, one explicitly loaded snapshot, exact local draft and UI state in RAM.
+No autosave, automatic extraction/search/selection, semantic search, RAG, second database, browser domain storage, content/IDs/query in URL or direct HTTP.
+`WorkspaceMemory` keeps only bounded session authorization; list/create authorize real IDs, delete revokes, document rotation clears authority and suppresses late replies.
+At most1000 authorized Memory IDs; list always20, page0..49, no preload-all path. Runtime lists retain their existing full contract; the Host projects exactly
+`id,type,title,status,revision,source,createdAt,updatedAt` before posting to JS. Full `content` crosses only get/create/update/archive/restore.
+
+The exact v1 additions are:
+
+```text
+memory.list
+memory.get
+memory.create
+memory.update
+memory.archive
+memory.restore
+memory.delete
+memory.editorState
+```
+
+`memory.editorState` is strictly `{dirty:boolean}` with `{acknowledged:true}`; no text, logging or durable state. It protects real native close/reload.
+Existing origin/document/session/requestId checks, strict schemas, 8 pending,4096 request IDs,32KiB requests/64KiB responses remain.
+Only existing `conversations.get` retains1MiB. Legal worst escaping fits Memory budgets, with serialization tests; no truncation or enlarged global limit.
+Memory revisions are canonical positive decimal Int64 strings from invariant .NET `long`, including values above JS safe integer, without Number conversion.
+Core validates title160 scalars, body2000 scalars AND2000 UTF-16 AND8192 UTF-8, query160, valid Unicode/no NUL and1000 domain capacity.
+Search stays explicit button/Enter, literal case-sensitive title/content substring: existing FTS5 trigram for >=3 scalars, instr for shorter, no SQL/FTS syntax from JS.
+
+Create/Update happen only on Save. Exact draft is compared with loaded type/title/content; no normalization/truncation.
+Archive/Restore with dirty fields update loaded status/revision while preserving draft; next explicit Save uses that new revision, including editing ARCHIVED items as in MemoryWindow.
+Conflict preserves draft, marks stale and blocks mutation until explicit Reload/discard. Missing preserves draft, blocks the old identity and never auto-recreates.
+Delete has a default-safe confirmation stating physical irreversible Workspace deletion, dirty discard and no forensic erasure guarantee.
+Mutation timeout/transport/unverifiable response means Outcome unknown, freezes mutations and never retries; confirmed success with failed follow-up list is reported separately.
+Search/filter/refresh/page changes preserve draft. Selection/New/Reload/route use a labelled modal with Cancel focus, Escape, focus trap/return.
+Native close/document reload ask Yes/No with defaultNo before cleanup/session rotation; decline keeps the same document/session/draft. Renderer failure retains native dirty state.
+Session changes clear presentation and dialog state; generation guards prevent late old-session responses/errors from repopulating UI.
+
+Settings shows safe applicationVersion, Runtime reachability, credential enum, WebView state and Refresh; reachability/authentication are not all-model readiness.
+Fixed native credential, Browser Pairing, Memory Backup, Workspace Backup and legacy Assistant entries reuse existing production windows.
+Bearer, pairing proof, file path, backup bytes, runtime data path and provider/model settings stay native. No configuration mutation bridge or process manager.
+SQLite/backups remain plaintext protected by the OS account boundary; same-account/admin process isolation and forensic erase are not promised.
+Native file choices + file IO + Runtime-owned validation/restore remain ADR-006/007 workflows, new/empty target only, no hot replacement/switching.
+All legacy windows, MemorySelectionWindow and M5B/M5C explicit selectors remain in place.
+Final local suites: Java105 / Desktop251 / Frontend103 PASS, no failures/errors/skips; default Release build/publish safeguards PASS.
+Real Windows Memory title/body Pinyin, CRUD/search/paging, conflict/missing/dirty/native guards, actual Settings and isolated native Memory/Workspace recovery PASS.
+M5A/B/C, hotkey/UIA/clipboard, legacy Memory, Workspace Backup and Translate-only Browser synthetic HTTP/real Ollama regressions PASS.
+UDF and fresh-marker/source/build/log/evidence/archive privacy audits PASS. This is a closing candidate awaiting Architecture / Closing Review.
+See [M5D Closing Report](../milestones/M5D-CLOSING-REPORT.md) for all62 sections, measured performance and explicit acceptance limitations.
+
+## M5C approved implementation history
 
 **M5C — CLOSED — GO. M5C Architecture / Closing Review: GO. M5 — OPEN.**
-M5A/M5B remain CLOSED — GO. M5D — Memory + Settings Migration and M5E — Product Consolidation /
-Packaging / Final Acceptance are **NOT STARTED**; their remaining scope keeps M5 OPEN.
-This round is limited to M5C approval sync and formal delivery; M5D has not started.
+M5A/M5B remain CLOSED — GO. M5D/M5E had not started at M5C approval; current M5D status is above. M5 remains OPEN.
+The following records M5C approval sync and formal delivery history.
 Pre-delivery published baseline `7b6dbdfeece1d4ab8179ec6cd5ce7f730e6aee14`; implementation branch `m5c-conversations-migration`.
 Implementation `084171306874f36166077b44dcd0143502ed66c5`;
 historical documentation / closing `8edf0a71876618e7f2db9662756fbb6b71173699`, verified by real git log.
@@ -108,7 +165,7 @@ Main shell/old business/native quick path/UIA/clipboard/Memory/backup/Browser re
 Plain text rendering and **UDF privacy scan PASS**: 374 UDF files and source/build/nested archives/log/evidence,
 0 content/credential matches; no concrete private markers are recorded here and no forensic erasure is claimed.
 All legacy windows remain, including `native.openConversations` fallback. Memory management and
-full Settings remain native. No M5D/M5E or deferred-domain work is included.
+full Settings were native at M5C delivery; that historical scope included no M5D/M5E work.
 Full60-section evidence, reproducible commands, observations and limits:
 [M5C Closing Report](../milestones/M5C-CLOSING-REPORT.md). It retains its accurate historical
 M5C — IMPLEMENTED / LOCAL ACCEPTANCE PASS, M5C CLOSING CANDIDATE — GO and M5 — OPEN snapshot;
@@ -119,7 +176,7 @@ post-review formal status is recorded in current docs, without rewriting the clo
 M5B is **CLOSED — GO**. **M5B Architecture / Closing Review: GO.**
 The implementation branch is `m5b-assistant-translate-migration`, from the pre-delivery published baseline
 `8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains **OPEN**; M5A is **CLOSED — GO**.
-M5C approved implementation and CLOSED — GO status are recorded above; M5D and M5E remain **NOT STARTED**. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
+M5C approved implementation and CLOSED — GO status are recorded above; current M5D progress is at the top, M5E remains NOT STARTED. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
 
 Bundled React owns two production controlled editors: Assistant Ask/Summarize and Desktop
 Single Translate (zh-CN/en/ja, existing native choices). Input, selection metadata and plain-text
@@ -134,7 +191,7 @@ The existing v1 bridge adds exactly `assistant.selectMemories`, `assistant.submi
 `translate.submit`, `operations.get`, `operations.cancel`, `operations.copyResult`.
 Exact payload/field/duplicate/enum/bounds/origin/document/session/requestId checks still apply.
 The bridge remains typed, versioned, allowlisted, origin/session checked and bounded, with no generic proxy.
-M5B introduced no Conversation bridge; M5C now adds it separately. Memory CRUD and Settings mutation bridges remain absent.
+M5B introduced no Conversation or Memory CRUD bridge; later M5C/M5D add explicit methods separately. Settings configuration mutation remains absent.
 Requests retain32KiB; replies allow64KiB because a verified8192-byte result can JSON-escape to49152bytes.
 Eight pending requests /4096 consumed IDs per document remain. No task IDs, bearer, provider/model/
 profile/systemPrompt/history/endpoint/path/HTTP/native generic proxy crosses the bridge.
@@ -191,7 +248,7 @@ historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO and M5 
 M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
 **M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
 M5B — Assistant + Desktop Translate Migration: **CLOSED — GO**; M5C — Conversations Migration: **CLOSED — GO**;
-M5D — Memory + Settings Migration: **NOT STARTED**; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
+Current M5D progress is at the top; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
 Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
 The historical M5A approval sync recorded existing acceptance results without changing implementation or tests.
 WPF owns lifetime/single instance/tray/hotkey/UIA/clipboard/helper processes/WinCred/dialogs,
@@ -210,7 +267,7 @@ never enter JS. React does not directly call Runtime. No CORS widening occurs; B
 M5A introduced safe bootstrap/status and seven explicit native entries. M5B business methods are
 listed above; every legacy window remains. Tray Main Workspace is explicit; quick native Assistant,
 single-instance activation and the selection hotkey retain their existing behavior. No production surface is retired;
-incremental migration remains required. Memory CRUD and Settings mutation remain native; M5C Conversation presentation is described above.
+incremental migration remains required. M5A had native Memory CRUD/maintenance; current explicit Memory migration is described above. Settings configuration mutation remains absent.
 
 The complete M5A allowlist remains:
 
@@ -273,7 +330,7 @@ Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollam
 M4 closing 时 Main Workspace 尚未开始；当前 M5C Conversation migration、M5B业务与M5A shell基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A / M5B / M5C Architecture / Closing Review 已 GO；M5A / M5B / M5C CLOSED — GO，M5D/M5E NOT STARTED；M5仍OPEN。
+M5A / M5B / M5C Architecture / Closing Review 已 GO；M5A / M5B / M5C CLOSED — GO，当前M5D状态见页首，M5E NOT STARTED；M5仍OPEN。
 
 ## M4C current architecture
 

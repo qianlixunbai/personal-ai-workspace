@@ -2,8 +2,30 @@
 
 **M5 — Unified Main Workspace UI：OPEN。M5A / M5B / M5C：CLOSED — GO。**
 **M5C — Conversations Migration：CLOSED — GO。M5C Architecture / Closing Review：GO。**
-M5D — Memory + Settings、M5E — Consolidation / Packaging / Final Acceptance 均 **NOT STARTED**。
-M5 仍 OPEN，因为 M5D / M5E 尚未完成；本轮止于 M5C approval sync 与 formal delivery，不开始 M5D。
+**M5D — Memory + Settings Migration：IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5D CLOSING CANDIDATE — GO。M5E — NOT STARTED。**
+本轮只实现 M5D，基于实时 fetch 核验的 `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`。
+React Memory 已支持显式 CRUD、区分大小写的字面搜索、status/type filters、每页20项、精确 Int64 revision、
+dirty/conflict/missing/outcome unknown 保护；Runtime SQLite 仍是唯一持久化真相。
+列表 bridge 只返回 metadata，完整正文仅在明确选择、Save 或 lifecycle 时返回。无 autosave 或自动记忆。
+Settings 显示实际版本、Runtime/credential/WebView 状态与 Refresh，并通过固定入口进入原生凭据、配对和备份维护。
+数据库与备份为本机明文；文件路径、备份字节、秘密与模型配置不进入 React。全部 legacy native windows 保留。
+本地 suites：Java105 / Desktop251 / Frontend103 PASS，0 failure/error/skip。真实 Windows Memory 标题/正文拼音、CRUD/search/paging、
+conflict/missing/dirty/native close/reload、Settings 与两种隔离恢复全部 PASS；M5A/B/C、原生 Memory、Browser Translate-only 回归 PASS。
+仅推荐关闭候选 GO，等待 Architecture / Closing Review；M5 保持 OPEN。
+证据、62节设计/验收记录与限制见 [M5D Closing Report](docs/milestones/M5D-CLOSING-REPORT.md)。
+
+M5D 验收要求 Windows 桌面可交互、8765/18767空闲及既有本机 Ollama 模型可用：
+
+```powershell
+.\mvnw.cmd clean verify
+npm --prefix desktop/frontend run build
+python -X utf8 scripts/memory-settings-workspace-smoke.py
+```
+
+脚本只使用隔离 synthetic 数据、专用凭据与任务自有进程。`--skip-ime` 只检查其余 gate，整体明确保留 PARTIAL；
+插入中文或 synthetic composition 不等同真实 Windows 拼音。
+
+## M5C approved baseline history
 
 已批准的 React Main Workspace Conversations 支持 ACTIVE / ARCHIVED、paged list、create、manual rename、paged durable history、
 per-turn explicit Memory、send、PENDING 观察与 cancel、archive / unarchive / delete、durable failure states 和 reload / reopen / restart recovery。
@@ -35,7 +57,7 @@ Conversations 为 durable multi-turn domain，独立于 M5B transient operation 
 会话编辑器支持 Enter 换行、composition 完成后 Ctrl+Enter 或 Send；切换会话丢弃草稿并清除本轮 Memory，不取消已接受执行。
 Archive：ACTIVE → ARCHIVED，阻止新 Turn，但不 cancel accepted PENDING execution；Unarchive 使用同一 Conversation ID 回到 ACTIVE。
 Delete 是 physical irreversible delete，Runtime conflict 在 PENDING 时阻止删除；无 cancel-then-delete / force delete。删除 dialog 默认聚焦 Cancel。
-全部 legacy native windows 保留，包括 `native.openConversations` fallback；Memory management / Settings maintenance 仍为原生入口。
+全部 legacy native windows 保留，包括 `native.openConversations` fallback；M5C 当时 Memory management / Settings maintenance 仍为原生入口。
 Conversation content 仅作 in-memory presentation；React 不拥有 durable transcript、second database、IndexedDB Conversation truth 或 localStorage Conversation history。
 React 不直接请求 Runtime；localStorage 仅 theme，无 IndexedDB / sessionStorage / service worker domain state，无 content in URL；plain text rendering，UDF privacy scan PASS。
 Browser companion 继续 Translate-only；ADR-001..010 **Accepted**，Java production / schema / backup format 无改动。
@@ -57,7 +79,7 @@ M5B 回归：`python -X utf8 scripts/assistant-translate-smoke.py`。
 M5A shell 的真实 IME 当时 deferred，M5B 的生产 Assistant 编辑器已正式通过；M5C implementation acceptance 对新 Conversation 编辑器单独完成真实验收。
 M4 — User-Controlled Conversation Foundation **CLOSED — GO**，包含 durable Conversation、multi-turn execution、explicit per-turn Memory 与 logical Workspace recovery。
 [M4C Closing Report](docs/milestones/M4C-CLOSING-REPORT.md) 与 [ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md) 保持原样。
-Memory / full Settings React 迁移、旧窗口退役、installer/updater/Java bundling、Finance/Knowledge/RAG/Agent、Browser Conversation、
+旧窗口退役、installer/updater/Java bundling、Finance/Knowledge/RAG/Agent、Browser Conversation、
 streaming、edit/regenerate/branching、automatic Memory、Markdown、attachments 与跨设备同步均继续 deferred。
 
 独立、local-first 的共享 AI Runtime。正式发布须成功实时 fetch、核验远端基线、fast-forward-only merge、push main 与 post-push fetch。
