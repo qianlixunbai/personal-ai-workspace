@@ -18,6 +18,7 @@ internal static class Program
         public Task ImportCredentialAsync(string file)=>Task.CompletedTask;public void ForgetCredential(){}
     }
     [STAThread] static int Main(string[] args) {
+        var phase=args.Length>0?args[0]:"initial";
         _ = application; int code=1;var dispatcher=Dispatcher.CurrentDispatcher;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
         dispatcher.BeginInvoke(new Action(async()=>{
@@ -32,12 +33,12 @@ internal static class Program
                         window=Application.Current?.Windows.OfType<ConversationWindow>().FirstOrDefault()
                             ?? dispatcherWindows().OfType<ConversationWindow>().First();
                         await Wait(()=>!window.Busy && window.IsLoaded,"conversation-window-loaded");
-                        await Drive(runtime,args.Length>0?args[0]:"initial");finished.SetResult();
+                        await Drive(runtime,phase);finished.SetResult();
                     } catch(Exception ex) {finished.SetException(ex);} finally {window?.Close();}
                 }),DispatcherPriority.Background);
                 stage="open-conversation-button";assistant.ConversationButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await finished.Task;
                 Require(window!.Input.Text.Length==0&&window.History.Text.Length==0,"close-clears-sensitive-ui");
-                Console.WriteLine(JsonSerializer.Serialize(new{result="PASS",realWpf=true,realHttp=true,realOllama=true,conversationId,checks}));code=0;
+                Console.WriteLine(JsonSerializer.Serialize(new{result="PASS",realWpf=true,realHttp=true,realOllama=phase is "initial" or "reopen",conversationId,checks}));code=0;
             } catch(Exception) {Console.WriteLine(JsonSerializer.Serialize(new{result="FAIL",check=stage}));}
             finally {window?.Close();assistant?.Close();dispatcher.InvokeShutdown();}
         }));Dispatcher.Run();return code;
