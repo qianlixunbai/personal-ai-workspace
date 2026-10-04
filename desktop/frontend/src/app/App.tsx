@@ -5,6 +5,7 @@ import { pages, pageFromHash } from './navigation'
 import { readTheme, saveTheme } from './theme'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { OperationPage } from '../pages/OperationPage'
+import { ConversationsPage } from '../pages/ConversationsPage'
 
 export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [page, setPage] = useState(() => pageFromHash(location.hash))
@@ -59,7 +60,8 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} openNative={() => { void run('native.openLegacyAssistant') }} /></div>)}
-        {page !== 'assistant' && page !== 'translate' && <WorkspacePage page={page} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
+        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} openNative={() => { void run('native.openConversations') }} /></div>
+        {page !== 'assistant' && page !== 'translate' && page !== 'conversations' && <WorkspacePage page={page} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
         {error && <p role="alert" className="error">{error}</p>}<p role="status" className="operation-status">{notice}</p>
       </div><footer>Personal AI Workspace<span>本机 · 明确选择 · 由你控制</span></footer>
     </main>

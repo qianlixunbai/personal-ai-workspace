@@ -1,11 +1,14 @@
-import { businessMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
+import { businessMethods, conversationMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
+import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
+import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus } from './conversations'
+import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
 
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
-const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit'
+const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; operationId?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; operationId?: string; conversationId?: string; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -23,9 +26,20 @@ export class WorkspaceClient {
   getOperation(operationId: string) { return this.request('operations.get', { operationId }) as Promise<OperationView> }
   cancelOperation(operationId: string) { return this.request('operations.cancel', { operationId }) as Promise<{ requested: true }> }
   copyResult(operationId: string) { return this.request('operations.copyResult', { operationId }) as Promise<{ copied: true }> }
+  listConversations(status: ConversationStatus, page: number) { return this.request('conversations.list', { status, page }) as Promise<ConversationList> }
+  getConversation(conversationId: string, page: number) { return this.request('conversations.get', { conversationId, page }) as Promise<ConversationDetail> }
+  createConversation() { return this.request('conversations.create') as Promise<Conversation> }
+  renameConversation(conversationId: string, title: string) { return this.request('conversations.rename', { conversationId, title }) as Promise<Conversation> }
+  archiveConversation(conversationId: string) { return this.request('conversations.archive', { conversationId }) as Promise<Conversation> }
+  unarchiveConversation(conversationId: string) { return this.request('conversations.unarchive', { conversationId }) as Promise<Conversation> }
+  deleteConversation(conversationId: string) { return this.request('conversations.delete', { conversationId }) as Promise<{ deleted: true }> }
+  selectConversationMemories(conversationId: string) { return this.request('conversations.selectMemories', { conversationId }) as Promise<MemoryChoice> }
+  clearConversationMemories(conversationId: string) { return this.request('conversations.clearMemories', { conversationId }) as Promise<{ cleared: true }> }
+  sendConversation(conversationId: string, message: string, selectedMemoryRefs: MemoryRef[]) { return this.request('conversations.send', { conversationId, message, selectedMemoryRefs }) as Promise<ConversationAdmission> }
+  cancelConversationPending(conversationId: string, turnId: string) { return this.request('conversations.cancelPending', { conversationId, turnId }) as Promise<{ requested: true }> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods, ...conversationMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -33,14 +47,21 @@ export class WorkspaceClient {
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(submission(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('native.') || method === 'assistant.selectMemories' ? 300_000 : 15_000)
-      this.pending.set(requestId, { method, ...(isObject(payload) && typeof payload.operationId === 'string' ? { operationId: payload.operationId } : {}), resolve, reject, timer })
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('native.') || method.endsWith('.selectMemories') ? 300_000 : 15_000)
+      this.pending.set(requestId, { method, ...(isObject(payload) ? {
+        ...(typeof payload.operationId === 'string' ? { operationId: payload.operationId } : {}),
+        ...(typeof payload.conversationId === 'string' ? { conversationId: payload.conversationId } : {}),
+        ...(typeof payload.page === 'number' ? { page: payload.page } : {}),
+        ...(typeof payload.status === 'string' ? { status: payload.status } : {}),
+      } : {}), resolve, reject, timer })
       try { this.port!.postMessage(request) }
       catch { clearTimeout(timer); this.pending.delete(requestId); reject(submission(method) ? unknownOutcome() : new BridgeError('RuntimeUnavailable', '工作区通信不可用。')) }
     })
   }
   private receive = ({ data }: { data: unknown }) => {
-    if (!isObject(data) || new TextEncoder().encode(JSON.stringify(data)).length > 64 * 1024) return
+    if (!isObject(data)) return
+    const bytes = new TextEncoder().encode(JSON.stringify(data)).length
+    if (bytes > conversationResponseBytes) return
     if (data.type === 'shell.session') {
       if (!exactFields(data, ['type', 'version', 'sessionId']) || data.version !== 1 || !isId(data.sessionId)) return
       if (data.sessionId === this.session) return
@@ -52,12 +73,21 @@ export class WorkspaceClient {
     if (data.version !== 1 || data.sessionId !== this.session || !isId(data.requestId)) return
     const pending = this.pending.get(data.requestId)
     if (!pending) return
+    if (bytes > (pending.method === 'conversations.get' ? conversationResponseBytes : 64 * 1024)) return
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
-        : pending.method === 'assistant.selectMemories' ? isMemoryChoice(data.result)
+        : pending.method === 'conversations.list' ? isConversationList(data.result) && data.result.page === pending.page && data.result.items.every(x => x.status === pending.status)
+        : pending.method === 'conversations.get' ? isConversationDetail(data.result) && data.result.conversation.id === pending.conversationId && data.result.page === pending.page
+        : pending.method === 'conversations.send' ? isAdmission(data.result) && data.result.conversationId === pending.conversationId
+        : ['conversations.create', 'conversations.rename', 'conversations.archive', 'conversations.unarchive'].includes(pending.method) ? isConversation(data.result)
+          && (!pending.conversationId || data.result.id === pending.conversationId)
+          && (pending.method === 'conversations.archive' ? data.result.status === 'ARCHIVED' : pending.method === 'conversations.unarchive' || pending.method === 'conversations.create' ? data.result.status === 'ACTIVE' : true)
+        : pending.method.endsWith('.selectMemories') ? isMemoryChoice(data.result)
+        : pending.method === 'conversations.delete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
+        : pending.method === 'conversations.clearMemories' ? isObject(data.result) && exactFields(data.result, ['cleared']) && data.result.cleared === true
         : submission(pending.method) || pending.method === 'operations.get' ? isOperation(data.result) && (!pending.operationId || data.result.operationId === pending.operationId)
-        : pending.method === 'operations.cancel' ? isObject(data.result) && exactFields(data.result, ['requested']) && data.result.requested === true
+        : pending.method === 'operations.cancel' || pending.method === 'conversations.cancelPending' ? isObject(data.result) && exactFields(data.result, ['requested']) && data.result.requested === true
         : pending.method === 'operations.copyResult' ? isObject(data.result) && exactFields(data.result, ['copied']) && data.result.copied === true
         : isObject(data.result) && exactFields(data.result, ['opened']) && data.result.opened === true
       if (valid) {

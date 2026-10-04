@@ -7,3 +7,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.WorkspaceBackupAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MainWorkspaceAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.AssistantTranslateAcceptance")]
+[assembly: InternalsVisibleTo("PersonalAiWorkspace.ConversationsWorkspaceAcceptance")]

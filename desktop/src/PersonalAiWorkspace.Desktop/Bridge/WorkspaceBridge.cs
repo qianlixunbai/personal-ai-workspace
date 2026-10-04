@@ -19,6 +19,7 @@ internal sealed record ShellStatus(int BridgeVersion, string ApplicationVersion,
 internal interface IWorkspaceNativeActions
 {
     WorkspaceOperations? Operations => null;
+    WorkspaceConversations? Conversations => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
@@ -28,6 +29,10 @@ internal sealed class WorkspaceBridge : IDisposable
     internal const int Version = 1;
     internal const int MaximumBytes = 32 * 1024;
     internal const int MaximumResponseBytes = 64 * 1024; // 8192 output bytes can JSON-escape to 49152 bytes.
+    // 20 messages * 8192 UTF-8 bytes * 6 worst JSON escaping = 983040.
+    // 1920 title + <= 40 KiB for 10 turns, 40 refs, UUID/time/enum fields and envelope.
+    // No truncation; all other methods retain 64 KiB.
+    internal const int MaximumConversationResponseBytes = 1024 * 1024;
     internal const int MaximumRequestsPerSession = 4096;
     internal const int MaximumPending = 8;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -35,6 +40,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly WorkspaceContentPolicy policy;
     private readonly IWorkspaceNativeActions native;
     private readonly WorkspaceOperations? operations;
+    private readonly WorkspaceConversations? conversations;
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
     private CancellationTokenSource sessionLifetime = new();
@@ -55,7 +61,7 @@ internal sealed class WorkspaceBridge : IDisposable
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
-    { this.policy = policy; this.native = native; operations = native.Operations; this.send = send; }
+    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; this.send = send; }
 
     internal void BeginDocument(string address)
     {
@@ -64,6 +70,7 @@ internal sealed class WorkspaceBridge : IDisposable
         document = address;
         SessionId = Guid.NewGuid().ToString("D");
         operations?.BeginSession(SessionId);
+        conversations?.BeginSession(SessionId);
     }
 
     internal void Ready(string currentDocument)
@@ -76,6 +83,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal void Invalidate()
     {
         operations?.EndSession(SessionId);
+        conversations?.EndSession(SessionId);
         ready = false; document = null; SessionId = ""; requests.Clear(); pending = 0;
         sessionLifetime.Cancel(); sessionLifetime.Dispose(); sessionLifetime = new();
     }
@@ -109,7 +117,23 @@ internal sealed class WorkspaceBridge : IDisposable
         try
         {
             object result;
-            if (BusinessMethods.Contains(method))
+            if (ConversationMethods.Contains(method))
+            {
+                if (conversations is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Conversation 暂时不可用，请打开原生窗口。");
+                var id = method is "conversations.list" or "conversations.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
+                result = method switch
+                {
+                    "conversations.list" => await conversations.ListAsync(session, Enum.Parse<ConversationStatus>(payload.GetProperty("status").GetString()!), payload.GetProperty("page").GetInt32(), cancellation),
+                    "conversations.get" => await conversations.GetAsync(session, id, payload.GetProperty("page").GetInt32(), cancellation),
+                    "conversations.create" => await conversations.CreateAsync(session, cancellation),
+                    "conversations.selectMemories" => await conversations.SelectAsync(session, id, cancellation),
+                    "conversations.clearMemories" => conversations.ClearMemories(session, id),
+                    "conversations.send" => await conversations.SendAsync(session, id, payload.GetProperty("message").GetString()!, ReadReferences(payload)),
+                    "conversations.cancelPending" => await conversations.CancelAsync(session, id, Guid.ParseExact(payload.GetProperty("turnId").GetString()!, "D"), cancellation),
+                    _ => await conversations.MutateAsync(session, id, method, method == "conversations.rename" ? payload.GetProperty("title").GetString() : null, cancellation)
+                };
+            }
+            else if (BusinessMethods.Contains(method))
             {
                 if (operations is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "业务操作暂时不可用，请使用原生 Assistant。");
                 result = method switch
@@ -156,21 +180,33 @@ internal sealed class WorkspaceBridge : IDisposable
                 error = new { code = "NATIVE_UNAVAILABLE", message = "原生操作暂时不可用，请从托盘打开 Assistant 后重试。" } };
         }
         finally { if (session == SessionId) pending--; }
-        if (ready && session == SessionId && !cancellation.IsCancellationRequested) Send(response);
+        if (ready && session == SessionId && !cancellation.IsCancellationRequested) Send(response, method, session, requestId);
     }
 
-    private void Send(object value)
+    private void Send(object value, string? method = null, string? session = null, string? requestId = null)
     {
         string message = JsonSerializer.Serialize(value, Json);
-        if (Encoding.UTF8.GetByteCount(message) > MaximumResponseBytes) return;
+        if (Encoding.UTF8.GetByteCount(message) > (method == "conversations.get" ? MaximumConversationResponseBytes : MaximumResponseBytes))
+        {
+            if (requestId is null) return;
+            message = JsonSerializer.Serialize(new { version = Version, sessionId = session, requestId, ok = false,
+                error = new WorkspaceSafeError("InvalidResponse", ErrorText.For(DesktopError.InvalidResponse)) }, Json);
+        }
         send(message);
     }
     internal static bool CanonicalId(string value) => Guid.TryParseExact(value, "D", out var id)
         && id != Guid.Empty && id.ToString("D") == value;
     internal static readonly IReadOnlySet<string> BusinessMethods = new HashSet<string>(StringComparer.Ordinal)
     { "assistant.selectMemories", "assistant.submit", "translate.submit", "operations.get", "operations.cancel", "operations.copyResult" };
+    internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
+    { "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
+      "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
+      "conversations.send", "conversations.cancelPending" };
+    private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()
+        .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method is "shell.bootstrap" or "shell.refreshStatus" || NativeMethods.ContainsKey(method)
             || method == "assistant.selectMemories") return Fields(payload);
         if (method is "operations.get" or "operations.cancel" or "operations.copyResult")
@@ -181,9 +217,39 @@ internal sealed class WorkspaceBridge : IDisposable
         if (method != "assistant.submit" || !Fields(payload, "mode", "text", "selectedMemoryRefs")
             || !Text(payload, "mode", 9, out var mode) || mode is not ("Ask" or "Summarize")
             || !Text(payload, "text", mode == "Ask" ? 3000 : 6000, out _)) return false;
+        return ValidReferences(payload, mode == "Summarize");
+    }
+    private static bool ValidConversationPayload(string method, JsonElement payload)
+    {
+        if (method == "conversations.create") return Fields(payload);
+        if (method == "conversations.list") return Fields(payload, "status", "page")
+            && Text(payload, "status", 8, out var status) && status is "ACTIVE" or "ARCHIVED" && Page(payload);
+        string[] fields = method switch
+        {
+            "conversations.get" => ["conversationId", "page"],
+            "conversations.rename" => ["conversationId", "title"],
+            "conversations.send" => ["conversationId", "message", "selectedMemoryRefs"],
+            "conversations.cancelPending" => ["conversationId", "turnId"],
+            _ => ["conversationId"]
+        };
+        if (!Fields(payload, fields) || !Text(payload, "conversationId", 36, out var id) || !CanonicalId(id)) return false;
+        return method switch
+        {
+            "conversations.get" => Page(payload),
+            // 160 Unicode scalar values may occupy 320 UTF-16 units. Core validates text.
+            "conversations.rename" => Text(payload, "title", 320, out _),
+            "conversations.send" => Text(payload, "message", 3000, out _) && ValidReferences(payload),
+            "conversations.cancelPending" => Text(payload, "turnId", 36, out var turn) && CanonicalId(turn),
+            _ => true
+        };
+    }
+    private static bool Page(JsonElement payload) => payload.GetProperty("page").ValueKind == JsonValueKind.Number
+        && payload.GetProperty("page").TryGetInt32(out var page) && page is >= 0 and <= 99;
+    private static bool ValidReferences(JsonElement payload, bool empty = false)
+    {
         var references = payload.GetProperty("selectedMemoryRefs");
         if (references.ValueKind != JsonValueKind.Array || references.GetArrayLength() > 4
-            || mode == "Summarize" && references.GetArrayLength() != 0) return false;
+            || empty && references.GetArrayLength() != 0) return false;
         int position = 0;
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var reference in references.EnumerateArray())

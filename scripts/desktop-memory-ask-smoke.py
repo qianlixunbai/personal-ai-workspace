@@ -128,8 +128,14 @@ def main():
             if db.execute("SELECT count(*) FROM memory_items").fetchone()[0] != 0:
                 raise RuntimeError("sqlite-delete-verification")
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if any("task" in name or "conversation" in name or "selection" in name for name in tables):
+            # M4's existing Workspace v3 creates durable Conversation tables at
+            # startup. Stateless Memory Ask must leave all four empty; absence
+            # of the schema was an obsolete M3-only assertion.
+            conversation_tables = {'conversations', 'conversation_turns', 'conversation_messages', 'conversation_memory_selections'}
+            if any('task' in name or (('conversation' in name or 'selection' in name) and name not in conversation_tables) for name in tables):
                 raise RuntimeError("unexpected-persistence")
+            if not conversation_tables.issubset(tables) or any(db.execute('SELECT count(*) FROM ' + name).fetchone()[0] for name in conversation_tables):
+                raise RuntimeError("stateless-memory-ask-created-conversation-history")
         database_bytes = (data / "memory.db").read_bytes()
         if any(value in database_bytes for value in [b"What is the synthetic project codename?", b"Reply with exactly READY.", b'"question":', b'"memory":', b"READY"]):
             raise RuntimeError("sqlite-question-answer-context-byte-audit")
@@ -137,6 +143,7 @@ def main():
                         credentialManagerUntouched=True, sqliteVerified=True, browserDenied=True,
                         logPrivacy=True, runtimeStopped=True)
     evidence["temporaryDataRemoved"] = True
+    evidence["noConversationHistory"] = True
     evidence_path = root / ".verification/m3c1-memory-ask-evidence.json"
     evidence_path.parent.mkdir(exist_ok=True)
     evidence_path.write_text(json.dumps(evidence, indent=2), "utf-8")

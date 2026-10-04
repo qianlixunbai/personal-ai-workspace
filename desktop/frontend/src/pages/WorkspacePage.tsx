@@ -2,7 +2,6 @@ import type { NativeMethod, ShellStatus } from '../bridge/contracts'
 import type { Page } from '../app/navigation'
 import { StatusPanel } from '../components/StatusPanel'
 const content = {
-  conversations: { title: '接着上次的对话', description: '查看已保存的对话、继续交流或管理归档，请打开当前 Conversations 窗口。', method: 'native.openConversations', action: '打开 Conversations', label: '已保存的对话' },
   memory: { title: '保留值得复用的内容', description: '创建、编辑和管理你明确保存的 Memory，请打开当前 Memory 窗口。', method: 'native.openMemory', action: '打开 Memory', label: '手动保存 · 明确选择' },
 } as const
 const maintenance: { method: NativeMethod; title: string; description: string }[] = [
@@ -12,7 +11,7 @@ const maintenance: { method: NativeMethod; title: string; description: string }[
   { method: 'native.openWorkspaceBackup', title: 'Workspace Backup', description: '导出或恢复 Memory 与已完成的对话。' },
 ]
 export function WorkspacePage({ page, status, busy, open, refresh }: {
-  page: Exclude<Page, 'assistant' | 'translate'>; status: ShellStatus | null; busy: boolean; open: (method: NativeMethod) => void; refresh: () => void
+  page: Exclude<Page, 'assistant' | 'translate' | 'conversations'>; status: ShellStatus | null; busy: boolean; open: (method: NativeMethod) => void; refresh: () => void
 }) {
   const enabled = (method: NativeMethod) => !busy && !!status?.nativeEntries.includes(method)
   if (page === 'settings') return <>

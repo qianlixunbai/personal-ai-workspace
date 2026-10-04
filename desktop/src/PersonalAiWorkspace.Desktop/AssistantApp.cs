@@ -17,6 +17,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private readonly CancellationTokenSource lifetime = new();
     private readonly RuntimeClient runtime;
     private readonly WorkspaceOperations workspaceOperations;
+    private readonly WorkspaceConversations workspaceConversations;
     private MemorySelectionWindow? workspaceSelector;
     private AssistantWindow window = null!;
     private MainWorkspaceWindow? workspace;
@@ -42,6 +43,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         credentials = testCredentials ?? new CredentialStore();
         runtime = new RuntimeClient(() => credentials.Load());
         workspaceOperations = new WorkspaceOperations(runtime, SelectWorkspaceMemoryAsync, text => Clipboard.SetText(text));
+        workspaceConversations = new WorkspaceConversations(runtime, SelectWorkspaceMemoryAsync);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += (_, error) =>
         {
@@ -109,6 +111,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
         new WorkspaceStatusProbe(runtime, credentials.Load).ReadAsync(cancellation);
     WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
+    WorkspaceConversations IWorkspaceNativeActions.Conversations => workspaceConversations;
     private Task<System.Collections.Generic.IReadOnlyList<MemorySelection>?> SelectWorkspaceMemoryAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();

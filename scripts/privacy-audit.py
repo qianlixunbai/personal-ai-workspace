@@ -22,6 +22,13 @@ def git_files(*args):
 tracked = git_files()
 sources = set(tracked + git_files('--others', '--exclude-standard'))
 secrets = set(payload.get('secrets', []))
+# M5C fixtures provide fresh unique title/user/assistant/failed-user/Memory/IME
+# markers only through stdin. Search all source/build/archive bytes for these,
+# including ignored outputs; keep their values out of reports and diagnostics.
+conversation_markers = payload.get('conversationMarkers', [])
+if not isinstance(conversation_markers, list) or any(not isinstance(value, str) or not value for value in conversation_markers):
+    raise ValueError('Conversation marker input must be a nonempty-string list')
+secrets.update(conversation_markers)
 native = set()
 token_paths = set()
 for folder in ['.runtime', '.verification', 'target']:
@@ -121,7 +128,7 @@ bridge_sources = list((root / 'desktop/src/PersonalAiWorkspace.Desktop/Bridge').
 bridge_no_content_diagnostics = all(not re.search(r'Console\.|Debug\.Write|Trace\.Write|ILogger|LogInformation|LogError|LogWarning', p.read_text('utf-8')) for p in bridge_sources)
 report = dict(result='PASS' if not matches and not artifacts and not backup_artifacts and ignore_ok and frontend_isolated and bridge_no_content_diagnostics else 'FAIL', sourceFiles=len(sources),
               files=len(files), byteAndArchiveChecks=checks, archives=archives, actualNativeCredentials=len(native),
-              ephemeralSecrets=len(payload.get('secrets', [])), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok,
+              ephemeralSecrets=len(payload.get('secrets', [])), conversationMarkers=len(conversation_markers), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok,
               frontendNoDirectNetworkOrDomainStorage=frontend_isolated, bridgeNoContentDiagnostics=bridge_no_content_diagnostics)
 print(json.dumps(report, indent=2))
 if report['result'] != 'PASS':
