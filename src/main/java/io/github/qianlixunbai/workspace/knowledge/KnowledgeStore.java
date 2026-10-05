@@ -265,11 +265,13 @@ public final class KnowledgeStore implements AutoCloseable {
         return sql(()->{try(var s=statement("SELECT * FROM revisions WHERE doc_id=? AND revision=?",doc,rev);var r=s.executeQuery()){
             if(!r.next())throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);String text=r.getString("text");
             if(offset>text.length()||offset>0&&offset<text.length()&&Character.isLowSurrogate(text.charAt(offset)))throw error(ErrorCode.INVALID_REQUEST);
-            int end=Math.min(text.length(),offset+PREVIEW_UNITS);if(end<text.length()&&Character.isLowSurrogate(text.charAt(end)))end--;
             // Recreate only bounded structural interpretation of already verified immutable normalized text.
-            var representation=KnowledgeParser.represent(text,r.getString("type"),()->false);final int bound=end;
-            // <= 4096 one-character headings could be too large: send only the locator at the range start.
+            var representation=KnowledgeParser.represent(text,r.getString("type"),()->false);
             var locations=representation.locators().stream().filter(x->x.startOffset()<=offset&&x.endOffset()>offset).limit(1).toList();
+            int end=Math.min(text.length(),offset+PREVIEW_UNITS);
+            // A preview range stays inside one structural locator, including heading boundaries.
+            if(!locations.isEmpty())end=Math.min(end,locations.getFirst().endOffset());
+            if(end<text.length()&&Character.isLowSurrogate(text.charAt(end)))end--;
             return new Preview(doc,revision,offset,text.substring(offset,end),end<text.length()?end:null,locations,r.getString("parser"),r.getString("normalizer"));
         }});
     }
