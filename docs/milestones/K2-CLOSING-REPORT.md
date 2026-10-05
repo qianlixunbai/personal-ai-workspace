@@ -2,9 +2,9 @@
 
 日期：2026-10-06（Asia/Shanghai）。
 
-当前仍为 **K2 PARTIAL / BLOCKED**。本轮恢复了原始 helper bug，但后续真实 WPF flow 在
-新的 async storage assertion 失败，严格 STOP。见文末「Blocker Recovery Attempt 2」。
-以下首次 attempt 的事实和原始 STOP 记录保留，不代表原始 bug 尚未修复。
+当前仍为 **K2 PARTIAL / BLOCKED**。原始 helper 与 async storage assertion 已修复，第三轮
+真实 WPF flow 在首个 Pinyin 物理按键前的前台窗口检查失败，严格 STOP。
+见文末「Blocker Recovery Attempt 3」。以下两次历史失败及 STOP 记录保留。
 
 ## Historical Attempt 1 — Result / Exact Blocker
 
@@ -229,3 +229,63 @@ final docs HEAD 由交付 `git rev-parse HEAD` 输出确定，交付树应 clean
 下一步需窄授权修复 async JS Boolean 读取，再完成尚缺 Windows/Pinyin/privacy/launcher gates；
 继续继承固定 production candidate 的全量回归，不机械重跑。全部 gates PASS 后交 Architecture Guard
 独立 Closing Review。
+
+## Blocker Recovery Attempt 3 — 2026-10-06
+
+起始 HEAD `d07ae1be1ee81dad01e410b1d7f7cc30b60fd0b0`，feature branch/tree/ancestry 正常且 clean。
+command-local proxy fresh fetch 成功，main / origin/main 仍为指定 K1 baseline
+`2323124f76ce34522c78016f2540dccc5e9ed983`。
+
+### Exact Async Root Cause / Minimal Remediation
+
+历史 attempt 2 只捕获异常类型。原 `Require()` 使用 `new InvalidOperationException()`，
+没有自定义 message；stack 和 resolved JS Boolean 未保留，不能补造历史 message/stack。
+本轮一次嵌入真实 flow 的 focused smoke 实测 `(async()=>true)()` 经 `ExecuteScriptAsync`
+返回 JSON `"{}"`，不是 `"true"`；await C# API completion 不等于取得 Promise resolved Boolean。
+失败确实发生于 completed storage assertion 结果读取之前，不是生产泄漏证据。
+
+修复提交 `061f9c8481efd358cf9296fbfaf28224b829f85c`：仅 acceptance `Program.cs`。
+`AsyncBoolean()` 在页面内 await 表达式，将 done/ok/value 保存在临时变量，复用现有
+10 秒有界 `WaitJs` 取得完成后的 Boolean，最后删除临时变量；不使用额外自动化框架。
+IndexedDB databases 和 Cache namespaces 为空的原严格条件保留，实际正结果证明当前 fresh
+query 不在两种存储内，没有降级为 API-exists/no-exception，也没有输出私有 browser data。
+失败诊断只输出固定 assertion label、exception type、本 driver 方法名与行号；不输出 raw
+HTTP/credential/source/query exception text、文件路径或其他 private data。
+
+### 本轮实际执行 / New Blocker / STOP
+
+| 验证 | 实际结果 |
+| --- | --- |
+| acceptance driver Release compile | 1 次 PASS；FrontendSkipBuild=true |
+| async focused smoke | 1 次 PASS，嵌入同一 WPF execution：legacy Promise object / completed Boolean |
+| Windows integrated flow | 1 次 FAIL，production WPF/WebView2/React/Runtime 真正启动 |
+| IndexedDB / Cache query privacy | PASS，completed positive Boolean；当前两个 namespace 均为空 |
+| Bridge metadata / literal snippet / 125% overflow | PASS |
+| Pinyin owning gate | FAIL 前置焦点检查；真实 composition / Enter guard / Chinese search NOT EXECUTED |
+| 后续 lifecycle / stale / rebuild / recovery / backup | NOT EXECUTED |
+| 完整 fresh-canary logs/UDF/build/package privacy | NOT EXECUTED |
+| Minimal actual launcher sanity | NOT EXECUTED |
+
+精确新失败：driver gate/message `physical-keyboard-workspace-focus`，
+`InvalidOperationException`；wrapper gate `real-acceptance-physical-keyboard-workspace-focus`，
+`RuntimeError`。安全 stack：`Program.Require:47` → `<Pinyin>d__37.MoveNext:116`
+→ `<Drive>d__34.MoveNext:89` → `<<Main>b__18_2>d.MoveNext:34`。
+`pinyin-installed` 已通过，但第一轮 `yusuan` 的首个字符前
+`Native.GetForegroundWindow()==hwnd` 为 false，`Key()` 尚未调用。
+这是 harness/environment 前台窗口前置条件失败；未证明 production bug 或真实 IME 行为失败。
+没有进一步诊断/修复/重跑，也没有执行其余 gates。清理后 fixture Runtime/acceptance 进程
+不存在，8765/18768 无监听。安全 evidence 为 ignored `.verification/k2-attempt.json`。
+
+### Inherited Evidence / Final State
+
+没有新增 production test，没有重跑已通过 query-race regression 或 Java 134 / Desktop 273 /
+Frontend 119 full suites；没有 production build/publish、历史 IME/browser/stress/package matrix
+或真实 Ollama inference。生产候选及 package identity 继续是
+`3a5efc1d8e1fe2060c7b7a648b4339b21bb1e790`，生产代码/packaging inputs 未变。
+V1 Roadmap 未改写或扩展；只同步 current docs 的准确 blocker，保留 attempt 1/2 历史。
+
+本轮一条 WPF execution 内的 smoke/assertion labels 不算独立执行或成功 integrated acceptance。
+最终分支 `k2-deterministic-lexical-retrieval`；final docs HEAD 以交付 Git 输出为准，树 clean。
+无 merge main/push/tag/release。**K2 PARTIAL / BLOCKED，尚不构成 CLOSING CANDIDATE。**
+下一步需窄授权核对并恢复 Pinyin 前台窗口前置条件，再完成缺失 gates；全部通过后交由
+Architecture Guard 独立 Closing Review。

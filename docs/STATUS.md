@@ -12,7 +12,8 @@ Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 知识 schema v1 / Knowledge Backup v1 保持；Browser Translate-only，无自动 AI context。
 最终 Java 134 / Desktop 273 / Frontend 119、production build / local Release publish PASS。
 首次 Windows attempt 的 upload JSON/bytes TypeError 已按新授权修复；单条 query-race regression PASS。
-本轮一次真实 WPF flow 在 `no-indexeddb-or-cache-query-storage` async assertion 失败，按 STOP RULE 停止。
+第三轮 async smoke / IndexedDB / Cache assertion PASS；一次真实 WPF flow 在
+`physical-keyboard-workspace-focus` 失败，未发送首个 Pinyin 按键，按 STOP RULE 停止。
 完整 Windows/Pinyin、fresh-canary privacy 和 launcher 未完成，不构成 closing candidate。
 见 [K2 阻塞报告](milestones/K2-CLOSING-REPORT.md)。
 以下 K1 正式批准章节是先前交付快照。

@@ -14,8 +14,9 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 查询不进入 URL、持久存储或日志。Browser 仍 Translate-only；K2 无 AI/Ollama/Finance 依赖。
 最终 Java 134 / Desktop 273 / Frontend 119、生产构建与本地 Release publish PASS。
 首次 Windows attempt 在 driver 启动前出现 upload JSON/bytes TypeError，已按新授权分离请求/响应模式。
-恢复后单条 query-race regression PASS；本轮一次真实 WPF flow 在 IndexedDB/Cache async assertion
-失败并 STOP。Pinyin、完整 Windows flow、fresh-canary 隐私和 launcher 未完成；
+单条 query-race regression 已 PASS；第三轮 async smoke 与 IndexedDB/Cache assertion PASS。
+本轮一次真实 WPF flow 在 Pinyin 首个物理按键前的前台窗口检查失败并 STOP。
+真实 composition、完整 Windows flow、fresh-canary 隐私和 launcher 未完成；
 详见 [K2 阻塞报告](docs/milestones/K2-CLOSING-REPORT.md)。
 以下 K1 章节保留已批准的历史基线语境。
 

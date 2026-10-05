@@ -15,8 +15,9 @@ POST search / GET status / POST rebuild 仅 native；Browser 在 body 处理前�
 不进入 URL/storage/logs；结果不会进入 AI prompt/Memory。K3/K4 未开始，Finance 保持冻结。
 K2 PARTIAL / BLOCKED；最终 Java 134 / Desktop 273 / Frontend 119 与 production build / publish PASS。
 首次 Windows attempt 的 upload JSON/bytes TypeError 已修复，生产实现未变；单条 query-race regression PASS。
-本轮一次真实 WPF flow 在 IndexedDB/Cache async assertion 失败并 STOP；Pinyin、完整 Windows flow、
-fresh-canary privacy、launcher 未完成。见 [K2 阻塞报告](../milestones/K2-CLOSING-REPORT.md)。
+第三轮通过 async smoke 与 IndexedDB/Cache assertion；一次真实 WPF flow 在首个 Pinyin 按键前
+的前台窗口检查失败并 STOP。真实 composition、完整 Windows flow、fresh-canary privacy、launcher
+未完成。见 [K2 阻塞报告](../milestones/K2-CLOSING-REPORT.md)。
 以下章节保留 K1 及更早正式交付的历史语境。
 
 ## K1 approved implementation architecture — CLOSED — GO
