@@ -11,7 +11,7 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop.Bridge;
 
-internal enum NativeWorkspaceEntry { LegacyAssistant, Conversations, Memory, BrowserPairing, MemoryBackup, WorkspaceBackup, CredentialFlow }
+internal enum NativeWorkspaceEntry { LegacyAssistant, Conversations, Memory, BrowserPairing, MemoryBackup, WorkspaceBackup, CredentialFlow, KnowledgeBackup }
 internal enum ShellRuntimeState { Available, Unavailable }
 internal enum ShellCredentialState { Ready, Missing, Invalid, Unavailable }
 internal sealed record ShellStatus(int BridgeVersion, string ApplicationVersion, ShellRuntimeState Runtime,
@@ -59,6 +59,7 @@ internal sealed class WorkspaceBridge : IDisposable
             ["native.openBrowserPairing"] = NativeWorkspaceEntry.BrowserPairing,
             ["native.openMemoryBackup"] = NativeWorkspaceEntry.MemoryBackup,
             ["native.openWorkspaceBackup"] = NativeWorkspaceEntry.WorkspaceBackup,
+            ["native.openKnowledgeBackup"] = NativeWorkspaceEntry.KnowledgeBackup,
             ["native.openCredentialFlow"] = NativeWorkspaceEntry.CredentialFlow
         });
 

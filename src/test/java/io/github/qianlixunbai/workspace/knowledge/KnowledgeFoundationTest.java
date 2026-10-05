@@ -127,6 +127,17 @@ class KnowledgeFoundationTest {
             assertTrue(bytes(json).length<64*1024);assertFalse(json.contains(temporary.toString()));
         }
     }
+    @Test void tenRevisionLimitStillAllowsSameBytesNoOpAndCorpusReservationIsBounded()throws Exception {
+        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
+            var first=importBytes(store,ingestion,null,null,"limit.txt",bytes("revision-1"));String doc=first.documentId();
+            for(int i=2;i<=10;i++)assertEquals(Integer.toString(i),importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-"+i)).sourceRevision());
+            assertEquals("10",importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-10")).sourceRevision());
+            assertEquals("KNOWLEDGE_LIMIT_EXCEEDED",importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-11")).errorCode());
+            assertEquals("10",store.get(doc).currentReadyRevision());
+            for(int i=0;i<255;i++)store.admit(UUID.randomUUID().toString(),null,null,"reserved.txt",KnowledgeLimits.SOURCE_BYTES);
+            code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"quota.txt",KnowledgeLimits.SOURCE_BYTES,InputStream.nullInputStream()));
+        }
+    }
     @Test void deleteJournalRollsBackWhileDocumentExistsAndCompletesAfterCommit()throws Exception {
         String id,token=UUID.randomUUID().toString();
         try(var store=open();var ingestion=new KnowledgeIngestion(store)){

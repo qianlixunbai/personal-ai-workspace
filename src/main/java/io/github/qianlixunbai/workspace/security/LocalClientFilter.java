@@ -84,6 +84,12 @@ final class LocalClientFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
+            boolean knowledgeBackup=identity.clientType().equals("native") && method.equals("POST")
+                    && List.of("/api/v1/knowledge/backup/validate","/api/v1/knowledge/backup/restore").contains(path);
+            if(knowledgeBackup){if(request.getContentLengthLong()>io.github.qianlixunbai.workspace.knowledge.KnowledgeLimits.BACKUP_BYTES){
+                reject(response,413,ErrorCode.KNOWLEDGE_BACKUP_TOO_LARGE);return;}
+                chain.doFilter(request,response);return;
+            }
             boolean knowledgeUpload=identity.clientType().equals("native") && method.equals("POST") && path.equals("/api/v1/knowledge/imports");
             if(knowledgeUpload) {
                 if(request.getContentLengthLong()>io.github.qianlixunbai.workspace.knowledge.KnowledgeLimits.SOURCE_BYTES) {

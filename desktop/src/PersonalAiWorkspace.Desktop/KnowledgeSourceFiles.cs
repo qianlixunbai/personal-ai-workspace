@@ -30,9 +30,15 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
     }
     internal static KnowledgeSourceFile Open(string path)
     {
+        string filename=Path.GetFileName(path);RuntimeClient.ValidateKnowledgeFilename(filename);
+        return new(OpenRegular(path,RuntimeClient.MaximumKnowledgeSourceBytes),filename);
+    }
+    internal static FileStream OpenBackup(string path)=>OpenRegular(path,RuntimeClient.MaximumKnowledgeBackupBytes);
+    private static FileStream OpenRegular(string path,long maximum)
+    {
         SafeFileHandle? handle=null;FileStream? file=null;
         try {
-            LocalPath(path);string filename=Path.GetFileName(path);RuntimeClient.ValidateKnowledgeFilename(filename);
+            LocalPath(path);
             // OPEN_REPARSE_POINT binds validation to the object actually opened, never a Runtime path reopen.
             handle=CreateFile(path,0x80000000,1,IntPtr.Zero,3,0x00200000|0x08000000|0x40000000,IntPtr.Zero);
             if(handle.IsInvalid||GetFileType(handle)!=1||!GetFileInformationByHandleEx(handle,9,out var info,(uint)Marshal.SizeOf<AttributeTag>())
@@ -42,8 +48,8 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
             if(!final.StartsWith(@"\\?\",StringComparison.Ordinal)||final.StartsWith(@"\\?\UNC\",StringComparison.OrdinalIgnoreCase))throw new IOException();
             LocalPath(final[4..]);file=new FileStream(handle,FileAccess.Read,65536,true);handle=null;
             if(file.Length<=0)throw new DesktopException(DesktopError.KnowledgeInvalidSource);
-            if(file.Length>RuntimeClient.MaximumKnowledgeSourceBytes)throw new DesktopException(DesktopError.KnowledgeSourceTooLarge);
-            var result=new KnowledgeSourceFile(file,filename);file=null;return result;
+            if(file.Length>maximum)throw new DesktopException(maximum==RuntimeClient.MaximumKnowledgeSourceBytes?DesktopError.KnowledgeSourceTooLarge:DesktopError.KnowledgeBackupTooLarge);
+            var result=file;file=null;return result;
         }catch(DesktopException){throw;}catch(Exception){throw new DesktopException(DesktopError.KnowledgeInvalidSource);}
         finally{file?.Dispose();handle?.Dispose();}
     }

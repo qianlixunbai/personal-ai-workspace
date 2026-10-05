@@ -45,15 +45,15 @@ public final class KnowledgeStore implements AutoCloseable {
         }catch(WorkspaceException e){close();throw e;}
         catch(Exception e){close();throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);}
     }
-    private void schema() throws SQLException {
-        exec("""
+    private static final List<String> SCHEMA_DDL=List.of(
+        """
             CREATE TABLE documents(id TEXT PRIMARY KEY, title TEXT NOT NULL,
               status TEXT NOT NULL CHECK(status IN ('ACTIVE','ARCHIVED')),
               version INTEGER NOT NULL CHECK(version>0), current_revision INTEGER,
               created TEXT NOT NULL, updated TEXT NOT NULL, last_job TEXT,
               FOREIGN KEY(id,current_revision) REFERENCES revisions(doc_id,revision) DEFERRABLE INITIALLY DEFERRED)
-            """);
-        exec("""
+            """,
+        """
             CREATE TABLE revisions(doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
               revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 10), digest TEXT NOT NULL,
               filename TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('TXT','MARKDOWN')),
@@ -61,18 +61,27 @@ public final class KnowledgeStore implements AutoCloseable {
               parser TEXT NOT NULL, normalizer TEXT NOT NULL, representation_digest TEXT NOT NULL,
               text TEXT NOT NULL,locators TEXT NOT NULL,lines INTEGER NOT NULL CHECK(lines BETWEEN 1 AND 100000),
               artifact_bytes INTEGER NOT NULL CHECK(artifact_bytes>0), PRIMARY KEY(doc_id,revision),UNIQUE(doc_id,digest))
-            """);
-        exec("CREATE INDEX revisions_digest ON revisions(digest)");
-        exec("CREATE TRIGGER revision_immutable BEFORE UPDATE ON revisions BEGIN SELECT RAISE(ABORT,'Immutable Knowledge revision'); END");
-        exec("""
+            """,
+        "CREATE INDEX revisions_digest ON revisions(digest)",
+        "CREATE TRIGGER revision_immutable BEFORE UPDATE ON revisions BEGIN SELECT RAISE(ABORT,'Immutable Knowledge revision'); END",
+        """
             CREATE TABLE jobs(id TEXT PRIMARY KEY,doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
               state TEXT NOT NULL CHECK(state IN ('PENDING','PARSING','READY','FAILED','CANCELLED','INTERRUPTED')),
               error TEXT,revision INTEGER NOT NULL,filename TEXT NOT NULL,type TEXT NOT NULL,
               size INTEGER NOT NULL CHECK(size>0 AND size<=8388608),expected_version INTEGER NOT NULL,created TEXT NOT NULL)
-            """);
-        exec("CREATE TABLE deletes(doc_id TEXT PRIMARY KEY,token TEXT NOT NULL UNIQUE,revisions TEXT NOT NULL,expected_version INTEGER NOT NULL)");
+            """,
+        "CREATE TABLE deletes(doc_id TEXT PRIMARY KEY,token TEXT NOT NULL UNIQUE,revisions TEXT NOT NULL,expected_version INTEGER NOT NULL)"
+    );
+    private void schema()throws SQLException {for(String ddl:SCHEMA_DDL)exec(ddl);}
+    private static Map<String,String> definitions(Connection connection)throws SQLException{
+        Map<String,String> definitions=new TreeMap<>();try(var s=connection.createStatement();var r=s.executeQuery("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")){
+            while(r.next())definitions.put(r.getString(1)+":"+r.getString(2),r.getString(3).strip());}return definitions;
     }
     private void verifySchema() throws SQLException {
+        try(var expected=DriverManager.getConnection("jdbc:sqlite::memory:")){
+            for(String ddl:SCHEMA_DDL)try(var statement=expected.createStatement()){statement.execute(ddl);}
+            if(!definitions(db).equals(definitions(expected)))throw error(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
+        }
         Map<String,List<String>> columns=Map.of(
             "documents",List.of("id","title","status","version","current_revision","created","updated","last_job"),
             "revisions",List.of("doc_id","revision","digest","filename","type","bytes","imported","parser","normalizer","representation_digest","text","locators","lines","artifact_bytes"),
@@ -103,8 +112,8 @@ public final class KnowledgeStore implements AutoCloseable {
     public synchronized KnowledgeDocument get(String value) {id(value);return sql(()->{try(var s=statement("SELECT * FROM documents WHERE id=?",value);var r=s.executeQuery()){
         if(!r.next())throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);return document(r);}});}
     private KnowledgeDocument document(ResultSet r)throws SQLException {
-        String request=r.getString("last_job"),state=request==null?"INTERRUPTED":job(request).state();
         String current=r.getString("current_revision");
+        String request=r.getString("last_job"),state=request==null?(current==null?"INTERRUPTED":"READY"):job(request).state();
         return new KnowledgeDocument(r.getString("id"),r.getString("title"),r.getString("status"),r.getString("version"),
                 current,r.getString("created"),r.getString("updated"),state,request);
     }
@@ -128,8 +137,8 @@ public final class KnowledgeStore implements AutoCloseable {
             if(findJob(request)!=null)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
             exec("DELETE FROM jobs WHERE state NOT IN ('PENDING','PARSING') AND id NOT IN (SELECT last_job FROM documents WHERE last_job IS NOT NULL)");
             if(scalar("SELECT count(*) FROM jobs")>=DOCUMENTS+5)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
-            if(scalar("SELECT count(*) FROM revisions")+scalar("SELECT count(*) FROM jobs WHERE state IN ('PENDING','PARSING')")>=REVISIONS
-                    ||scalar("SELECT coalesce(sum(bytes),0) FROM revisions")+scalar("SELECT coalesce(sum(size),0) FROM jobs WHERE state IN ('PENDING','PARSING')")+size>CORPUS_BYTES)
+            if(existing==null&&(scalar("SELECT count(*) FROM revisions")+scalar("SELECT count(*) FROM jobs WHERE state IN ('PENDING','PARSING')")>=REVISIONS
+                    ||scalar("SELECT coalesce(sum(bytes),0) FROM revisions")+scalar("SELECT coalesce(sum(size),0) FROM jobs WHERE state IN ('PENDING','PARSING')")+size>CORPUS_BYTES))
                 throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
             String doc=existing==null?UUID.randomUUID().toString():id(existing),now=Instant.now().toString();long metadata=1;
             if(existing==null){if(expected!=null)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
@@ -140,7 +149,6 @@ public final class KnowledgeStore implements AutoCloseable {
             if(scalar("SELECT count(*) FROM jobs WHERE doc_id=? AND state IN ('PENDING','PARSING')",doc)>0
                 ||scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
             long revision=scalar("SELECT coalesce(max(revision),0)+1 FROM revisions WHERE doc_id=?",doc);
-            if(revision>REVISIONS_PER_DOCUMENT)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
             exec("INSERT INTO jobs VALUES(?,?,'PENDING',NULL,?,?,?,?,?,?)",request,doc,revision,filename,type,size,metadata,now);
             exec("UPDATE documents SET last_job=?,updated=? WHERE id=?",request,now,doc);return job(request);
         });
@@ -163,7 +171,9 @@ public final class KnowledgeStore implements AutoCloseable {
                 }
             }
             long artifacts=(long)representation.text().getBytes(java.nio.charset.StandardCharsets.UTF_8).length+representation.locatorJson().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-            if(scalar("SELECT coalesce(sum(artifact_bytes),0) FROM revisions")+artifacts>ARTIFACT_BYTES)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
+            if(version(rev)>REVISIONS_PER_DOCUMENT||scalar("SELECT count(*) FROM revisions")>=REVISIONS
+                    ||scalar("SELECT coalesce(sum(bytes),0) FROM revisions")+size>CORPUS_BYTES
+                    ||scalar("SELECT coalesce(sum(artifact_bytes),0) FROM revisions")+artifacts>ARTIFACT_BYTES)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
             Path from=upload(request),to=source(doc,rev);PrivateKnowledgeDirectory.directory(to.getParent());
             // Job's deterministic candidate identity is durable before this filesystem publication.
             if(Files.exists(to,LinkOption.NOFOLLOW_LINKS))throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);
@@ -231,7 +241,8 @@ public final class KnowledgeStore implements AutoCloseable {
         id(doc);long requested=version(expected);
         sql(()->{if(scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0){
             if(scalar("SELECT expected_version FROM deletes WHERE doc_id=?",doc)!=requested)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
-            reconcileDelete(doc);if(scalar("SELECT count(*) FROM documents WHERE id=?",doc)==0)return null;
+            try{reconcileDelete(doc);}catch(Exception e){throw error(ErrorCode.KNOWLEDGE_DELETE_INCOMPLETE);}
+            if(scalar("SELECT count(*) FROM documents WHERE id=?",doc)==0)return null;
         }
         var current=get(doc);if(version(current.metadataVersion())!=requested||busy(doc))throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
         String token=UUID.randomUUID().toString(),revisions=String.join(",",revisions(doc).stream().map(KnowledgeDocumentRevision::sourceRevision).toList());
@@ -241,7 +252,7 @@ public final class KnowledgeStore implements AutoCloseable {
             if(Files.exists(original)){verifyDeleteFiles(original,revisions);Files.move(original,tomb,StandardCopyOption.ATOMIC_MOVE);}
             transaction(()->{exec("DELETE FROM documents WHERE id=? AND version=?",doc,requested);return null;});
             reconcileDelete(doc);return null;
-        } catch(Exception e){reconcileDelete(doc);if(e instanceof WorkspaceException controlled)throw controlled;throw error(ErrorCode.KNOWLEDGE_DELETE_INCOMPLETE);}
+        } catch(Exception e){try{reconcileDelete(doc);}catch(Exception ignored){}throw error(ErrorCode.KNOWLEDGE_DELETE_INCOMPLETE);}
         });
     }
     private void verifyDeleteFiles(Path directory,String revisions)throws IOException {

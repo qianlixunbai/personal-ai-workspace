@@ -110,11 +110,12 @@ public sealed class WorkspaceBridgeTests
     [Fact] public async Task EveryNativeEntryMapsToExactlyOneRealEnumeratedTarget()
     {
         using var f = new Fixture(); foreach (string method in WorkspaceBridge.NativeMethods.Keys) await f.Receive(f.Request(method));
-        Assert.Equal(new[] { NativeWorkspaceEntry.BrowserPairing, NativeWorkspaceEntry.MemoryBackup, NativeWorkspaceEntry.WorkspaceBackup, NativeWorkspaceEntry.CredentialFlow }.Order(), f.Native.Opened.Order());
+        Assert.Equal(new[] { NativeWorkspaceEntry.BrowserPairing, NativeWorkspaceEntry.MemoryBackup, NativeWorkspaceEntry.WorkspaceBackup, NativeWorkspaceEntry.CredentialFlow, NativeWorkspaceEntry.KnowledgeBackup }.Order(), f.Native.Opened.Order());
     }
     [Theory]
     [InlineData("native.openCredentialFlow")][InlineData("native.openBrowserPairing")]
     [InlineData("native.openMemoryBackup")][InlineData("native.openWorkspaceBackup")]
+    [InlineData("native.openKnowledgeBackup")]
     public async Task MaintenanceEntriesStillRequireTrustedOriginAndCurrentSession(string method)
     {
         using var f = new Fixture();

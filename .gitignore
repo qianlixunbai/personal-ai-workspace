@@ -73,3 +73,11 @@ workspace-backup.json
 .workspace-export-*
 .workspace-restore-*
 .workspace-validation-*
+
+# Knowledge private sources, independent backup and native export staging
+*.knowledge-backup
+*.source
+*.upload
+knowledge.lock
+.knowledge-export-*
+*.backup/

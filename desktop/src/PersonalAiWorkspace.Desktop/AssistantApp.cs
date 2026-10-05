@@ -132,6 +132,12 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         cancellation.ThrowIfCancellationRequested();
         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
+        if(entry==NativeWorkspaceEntry.KnowledgeBackup){
+            var maintenance=new KnowledgeBackupWindow(runtime){Owner=workspace??(Window)window};
+            using var registration=cancellation.Register(()=>Dispatcher.BeginInvoke(()=>maintenance.Close()));
+            try{maintenance.ShowDialog();cancellation.ThrowIfCancellationRequested();}finally{workspace?.ReturnFocus();}
+            return Task.CompletedTask;
+        }
         bool quickWasVisible = window.IsVisible;
         ShowAssistant();
         if (entry == NativeWorkspaceEntry.LegacyAssistant) return Task.CompletedTask;
