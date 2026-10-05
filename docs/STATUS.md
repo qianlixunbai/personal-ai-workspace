@@ -1,5 +1,17 @@
 # Personal AI Workspace — Current Status
 
+## T0 engineering cleanup
+
+T0 — IMPLEMENTED / LOCAL VERIFICATION PASS; T0 CLOSING CANDIDATE — GO.
+Engineering test-suite consolidation only; production behavior unchanged.
+K2 — CLOSED — GO; K3 — NOT STARTED.
+Finance Integration — BLOCKED, pending authoritative Finance Reality Sync.
+Java 132 / Desktop 194 / Frontend 38 PASS; one real Windows WorkspaceSanity execution PASS.
+Current verification commands, inherited WIP recovery and retained invariants are recorded in
+[T0 Test Suite Slimming](engineering/T0-TEST-SUITE-SLIMMING.md).
+Historical commands/results below describe their original gates; T0 does not rerun them.
+Architecture Guard independent T0 Closing Review is next; T0 is not self-declared CLOSED.
+
 ## Current K2 approved final closing
 
 [V1 Roadmap](roadmap/V1-ROADMAP.md) 是长期主线与平台能力规划入口；未来能力未因此启动。
@@ -20,7 +32,7 @@ Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 正式 Review 覆盖实际远端 K1 baseline → implementation → Closing Candidate history；
 Blocking findings / required production fixes / required new tests / required reruns 均为 0。
 下一步为 T0 — Aggressive Test Suite Consolidation / Slimming，随后 detailed V1 Roadmap expansion → K3；
-T0 是 engineering cleanup gate，不是新的 top-level product milestone；本轮不启动 T0/K3。
+T0 是 engineering cleanup gate，不是新的 top-level product milestone；K3 未启动。
 以下 K1 正式批准章节是先前交付快照。
 
 ## Current K1 approved final closing
