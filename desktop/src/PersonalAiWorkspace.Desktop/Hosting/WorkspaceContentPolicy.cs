@@ -29,7 +29,7 @@ internal sealed class WorkspaceContentPolicy
 
     internal bool Document(string address) => TrustedOrigin(address) && Uri.TryCreate(address, UriKind.Absolute, out var uri)
         && uri.Query.Length == 0 && uri.AbsolutePath is "/" or "/index.html"
-        && uri.Fragment is "" or "#/assistant" or "#/conversations" or "#/memory" or "#/translate" or "#/settings";
+        && uri.Fragment is "" or "#/assistant" or "#/conversations" or "#/memory" or "#/knowledge" or "#/translate" or "#/settings";
 
     internal bool SameDocument(string first, string second) => Document(first) && Document(second)
         && new Uri(first).GetLeftPart(UriPartial.Path) == new Uri(second).GetLeftPart(UriPartial.Path);

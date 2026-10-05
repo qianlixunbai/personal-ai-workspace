@@ -154,8 +154,8 @@ public sealed class WorkspaceBridgeTests
     [Fact] public void ProductionNavigationResourcesFramesPopupsPermissionsAndDownloadsFailClosed()
     {
         var policy = new WorkspaceContentPolicy(["assets/shell.js"]);
-        Assert.True(policy.Document(Document)); Assert.True(policy.Document(Document + "#/memory"));
-        foreach (string uri in new[] { "file:///C:/private", "http://127.0.0.1:8765", "https://external.invalid", Document + "#/knowledge", Document + "?url=x" }) Assert.False(policy.Document(uri));
+        Assert.True(policy.Document(Document)); Assert.True(policy.Document(Document + "#/memory")); Assert.True(policy.Document(Document + "#/knowledge"));
+        foreach (string uri in new[] { "file:///C:/private", "http://127.0.0.1:8765", "https://external.invalid", Document + "#/unknown", Document + "?url=x" }) Assert.False(policy.Document(uri));
         Assert.True(policy.Resource(WorkspaceContentPolicy.ProductionOrigin + "/assets/shell.js", "GET", "Script"));
         Assert.False(policy.Resource(WorkspaceContentPolicy.ProductionOrigin + "/assets/secret.js", "GET", "Script"));
         Assert.False(policy.Resource(Document, "POST", "Document")); Assert.False(policy.Resource(Document, "GET", "Fetch"));
