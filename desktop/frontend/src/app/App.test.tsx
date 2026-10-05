@@ -8,15 +8,15 @@ import { pageFromHash } from './navigation'
 const clients: WorkspaceClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.dispose()); localStorage.clear(); history.replaceState(null, '', '/'); vi.restoreAllMocks() })
 async function shell() { const port = new Port(); const client = new WorkspaceClient(port); clients.push(client); render(<App bridge={client} />); await act(async () => { port.session(); port.reply() }); return { port, client } }
-it('shows the five real navigation routes with safe status and no fake domain data', async () => {
-  await shell(); expect(screen.getByRole('navigation').querySelectorAll('a')).toHaveLength(5)
+it('shows the six real navigation routes with safe status and no fake domain data', async () => {
+  await shell(); expect(screen.getByRole('navigation').querySelectorAll('a')).toHaveLength(6)
   expect(screen.getByText('可连接')).toBeTruthy(); expect(screen.getByText('有效')).toBeTruthy()
-  for (const route of ['assistant', 'conversations', 'memory', 'translate', 'settings']) {
+  for (const route of ['assistant', 'conversations', 'memory', 'knowledge', 'translate', 'settings']) {
     await act(async () => { location.hash = `#/${route}`; window.dispatchEvent(new Event('hashchange')) })
     expect(screen.getByRole('heading', { level: 1 }).textContent?.toLowerCase()).toBe(route)
     expect(screen.getByRole('navigation').querySelector('[aria-current="page"]')?.getAttribute('href')).toBe(`#/${route}`)
   }
-  expect(document.querySelectorAll('textarea')).toHaveLength(3); expect(document.querySelector('iframe')).toBeNull(); expect(screen.queryByText('Knowledge')).toBeNull(); expect(screen.queryByText('Finance')).toBeNull()
+  expect(document.querySelectorAll('textarea')).toHaveLength(3); expect(document.querySelector('iframe')).toBeNull(); expect(screen.getByRole('link', { name: /Knowledge/ })).toBeTruthy(); expect(screen.queryByText('Finance')).toBeNull()
   expect(pageFromHash('#/unknown')).toBe('assistant')
 })
 it('native entry buttons issue only fixed methods and refresh displays unavailable honestly', async () => {

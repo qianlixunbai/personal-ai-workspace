@@ -1,5 +1,5 @@
 import type { ShellStatus, WebViewPort } from '../bridge/contracts'
-export const status: ShellStatus = { bridgeVersion: 1, applicationVersion: '1.0.0.0', runtime: 'Available', credential: 'Ready', webView: 'Available', nativeEntries: ['native.openBrowserPairing', 'native.openMemoryBackup', 'native.openWorkspaceBackup', 'native.openCredentialFlow'] }
+export const status: ShellStatus = { bridgeVersion: 1, applicationVersion: '1.0.0.0', runtime: 'Available', credential: 'Ready', webView: 'Available', nativeEntries: ['native.openBrowserPairing', 'native.openMemoryBackup', 'native.openWorkspaceBackup', 'native.openCredentialFlow', 'native.openKnowledgeBackup'] }
 export class Port implements WebViewPort {
   listener: ((event: { data: unknown }) => void) | undefined
   sent: Record<string, unknown>[] = []

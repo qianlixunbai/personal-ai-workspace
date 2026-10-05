@@ -8,6 +8,7 @@ import { MemoryPage } from '../pages/MemoryPage'
 import type { MemoryLeaveGuard } from '../pages/MemoryPage'
 import { OperationPage } from '../pages/OperationPage'
 import { ConversationsPage } from '../pages/ConversationsPage'
+import { KnowledgePage } from '../pages/KnowledgePage'
 
 export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [page, setPage] = useState(() => pageFromHash(location.hash))
@@ -77,6 +78,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}
         <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} /></div>
         <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
+        <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} /></div>
         {page === 'settings' && <SettingsPage status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
         {error && <p role="alert" className="error">{error}</p>}<p role="status" className="operation-status">{notice}</p>
       </div><footer>Personal AI Workspace<span>本机 · 明确选择 · 由你控制</span></footer>
