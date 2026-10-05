@@ -113,7 +113,8 @@ class KnowledgeLexicalIndexTest {
             ingest(store,ingestion,null,"stale.txt","freshness budget");ready(index);
             synchronized(store){for(int i=0;i<200;i++)index.rebuild();
                 code(ErrorCode.KNOWLEDGE_INDEX_NOT_READY,()->index.search("freshness",10));
-                assertTrue(Thread.getAllStackTraces().keySet().stream().filter(t->t.getName().equals("knowledge-index")).count()<=1);}
+                var field=KnowledgeLexicalIndex.class.getDeclaredField("executor");field.setAccessible(true);
+                var executor=(java.util.concurrent.ThreadPoolExecutor)field.get(index);assertEquals(1,executor.getMaximumPoolSize());assertTrue(executor.getQueue().size()<=1);}
             ready(index);assertEquals(1,index.search("freshness",10).hits().size());
             try(var db=DriverManager.getConnection("jdbc:sqlite:"+store.root().resolve("index/lexical.db"));var s=db.createStatement()){s.execute("UPDATE metadata SET v='"+"0".repeat(64)+"' WHERE k='fingerprint'");}
             code(ErrorCode.KNOWLEDGE_INDEX_NOT_READY,()->index.search("freshness",10));ready(index);

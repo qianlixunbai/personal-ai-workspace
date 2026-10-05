@@ -19,7 +19,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
     private final KnowledgeStore store;
     private final Path directory,staging,database;
     private final long maxBytes;private final int maxChunks;
-    private final ExecutorService executor=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"knowledge-index");t.setDaemon(true);return t;});
+    private final ThreadPoolExecutor executor=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1),r->{var t=new Thread(r,"knowledge-index");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
     private final AtomicBoolean running=new AtomicBoolean(),rerun=new AtomicBoolean();
     private final Object publication=new Object();
     private volatile boolean closed;
