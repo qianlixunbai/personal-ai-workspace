@@ -1,6 +1,8 @@
 import { businessMethods, conversationMethods, memoryMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
 import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob } from './knowledge'
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
+import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
+import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -53,6 +55,9 @@ export class WorkspaceClient {
   deleteMemory(memoryId: string, expectedRevision: string) { return this.request('memory.delete', { memoryId, expectedRevision }) as Promise<{ deleted: true }> }
   memoryEditorState(dirty: boolean) { return this.request('memory.editorState', { dirty }) as Promise<{ acknowledged: true }> }
   listKnowledge(status: 'ACTIVE' | 'ARCHIVED', page: number) { return this.request('knowledge.list', { status, page }) as Promise<KnowledgeList> }
+  searchKnowledge(query: string) { return this.request('knowledge.search', { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
+  knowledgeSearchStatus() { return this.request('knowledge.searchStatus') as Promise<KnowledgeSearchStatus> }
+  rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
   getKnowledge(documentId: string) { return this.request('knowledge.get', { documentId }) as Promise<KnowledgeDetail> }
   importKnowledge(documentId: string | null = null, expectedMetadataVersion: string | null = null) { return this.request('knowledge.import', { documentId, expectedMetadataVersion }) as Promise<KnowledgeImport> }
   knowledgeImportState(requestId: string) { return this.request('knowledge.importState', { requestId }) as Promise<KnowledgeJob> }
@@ -109,6 +114,8 @@ export class WorkspaceClient {
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
+        : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
+        : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)
         : pending.method === 'knowledge.list' ? isKnowledgeList(data.result) && data.result.page === pending.page && data.result.items.every(d => d.status === pending.status)
         : pending.method === 'knowledge.get' ? isKnowledgeDetail(data.result) && data.result.document.documentId === pending.documentId
         : pending.method === 'knowledge.preview' ? isKnowledgePreview(data.result) && data.result.documentId === pending.documentId && data.result.sourceRevision === pending.sourceRevision && data.result.offset === pending.offset
