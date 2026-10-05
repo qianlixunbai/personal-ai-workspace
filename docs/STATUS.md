@@ -10,8 +10,11 @@ Finance integration deferred pending authoritative Finance Reality Sync.
 K1 已实现独立 Knowledge schema v1/private sources、TXT/Markdown strict UTF-8
 deterministic ingestion、revision/digest/locator、bounded queue、reconciliation、
 native streaming、session bridge、React management 和独立 Knowledge Backup v1。
-Focused tests、真实 Windows 综合验收（1 条成功 flow，21 coverage points / 112 assertions）、
-最终一次 full regression（Java 123 / Desktop 268 / Frontend 113）、production build / minimal
+Closing Review 最小 remediation candidate：`01657440fc6ab4e83f716251bde8cda6e693b6c9`。
+`knowledge.get` WebView revision 仅含 `sourceRevision` / `sourceType` / `byteLength`，
+不暴露 `sourceDigest` / `representationDigest` 或内部解析 metadata。
+Focused tests、真实 Windows 综合验收（1 条成功 flow，21 coverage points / 116 assertions）、
+最终一次 full regression（Java 123 / Desktop 269 / Frontend 115）、production build / minimal
 packaging + actual launcher 和隐私扫描均 PASS。[K1 Closing Report](milestones/K1-CLOSING-REPORT.md)。
 仍等待独立 Architecture Guard / K1 Closing Review，未宣称 K1 CLOSED — GO。
 [ADR-011](ADR/ADR-011-knowledge-domain-storage-ingestion-recovery.md) 的 Accepted

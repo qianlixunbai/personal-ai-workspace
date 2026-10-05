@@ -27,6 +27,10 @@ Physical delete 使用 durable journal + same-volume rename；锁定源产生可
 新增 explicit `knowledge.list/get/import/importState/cancelImport/archive/restore/delete/preview`
 和 `native.openKnowledgeBackup`；最多 500 Document / 505 import identities 的 session authority，
 rotation 清空、delete 撤销、late response 不发送。React 不接收 path/upload/backup bytes。
+`knowledge.get` 使用明确的 WebView revision projection，仅暴露 UI 使用的
+`sourceRevision` / `sourceType` / `byteLength`；不暴露 `sourceDigest` / `representationDigest`、
+`parserVersion` / `normalizationVersion` / `lineCount` 或其他无 UI 需求的 revision 字段。
+Runtime/native 完整 revision DTO 保留；`knowledge.preview` 的 parser/normalization version contract 保持。
 Browser route/capability/CORS 未扩权，仍 Translate-only。Knowledge 无 AI/Ollama 依赖。
 
 Knowledge Backup v1 为无压缩的严格 framed binary container，包含小型 typed metadata、
@@ -39,7 +43,8 @@ Restore 在指定新/空 target 下 private staging reconstruct/verify，再 ato
 
 Finance integration deferred pending authoritative Finance Reality Sync.
 K0 — APPROVED — GO；K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。
-Java 123 / Desktop 268 / Frontend 113 PASS；真实 Windows 21 coverage points、独立恢复与隐私 PASS。
+Remediation candidate `01657440fc6ab4e83f716251bde8cda6e693b6c9`：Java 123 / Desktop 269 / Frontend 115 PASS；
+真实 Windows 21 coverage points / 116 assertions、独立恢复与隐私 PASS。
 K2/K3/K4 — NOT STARTED。[K1 Closing Report](../milestones/K1-CLOSING-REPORT.md)。
 ADR-011 Accepted 来源为既有 Architecture Guard approval。K1 closing 仍需独立批准。
 

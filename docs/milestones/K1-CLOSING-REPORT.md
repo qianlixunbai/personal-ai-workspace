@@ -6,6 +6,7 @@
 
 1. **Result：K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。**
    本报告提出候选，未授予 K1 CLOSED — GO；等待独立 Architecture Guard / K1 Closing Review。
+   初审唯一 blocker 是 `knowledge.get` 向 JS 透传完整 revision；本轮最小 remediation 已实现并重新验收，等待 re-review。
    K0 — APPROVED — GO；K2 / K3 / K4 — NOT STARTED。
 2. **Reality Gate：PASS。** 实施前工作区干净；通过 command-local 代理执行 fresh
    `git fetch --prune origin`，未修改全局 Git/network 配置。实际 production architecture 检查后，
@@ -13,13 +14,17 @@
 3. **Git Baseline：** Repository `qianlixunbai/personal-ai-workspace`；本地 main HEAD 与 fresh
    origin/main 均为 `8e24dbe11fc036f1ef4c7714adc621519a39c8a5`。
    分支 `k1-deterministic-knowledge-foundation` 从该精确 SHA 创建。
-   固定 implementation / acceptance candidate 为 `94c368065f4f0e604499efde3f9dea2d542a40ef`。
+   新 implementation / acceptance candidate 为 `01657440fc6ab4e83f716251bde8cda6e693b6c9`。
+   旧 `94c368065f4f0e604499efde3f9dea2d542a40ef` 保留为 pre-review candidate；
+   已发布初审 feature HEAD `89490455a70b43bc40ef14287f2e1f8612a68750` 的历史保持。
 4. **Files Changed：** Runtime 新增独立 `knowledge` package、Knowledge API/backup controllers、
    controlled error vocabulary，以及 native-only streaming filter 分支；Desktop 新增两个 RuntimeClient
    partials、原生 file-handle picker、session authority 和 Knowledge Backup window；React 新增 typed
    contract、Knowledge page / route；测试新增 Java foundation/backup、Desktop native/bridge/backup、
    React page/contract，以及 Windows acceptance project / runner。当前 README、STATUS、architecture、
-   ADR index 和 privacy audit 同步。精确清单可用 `git diff --name-only <baseline> 94c3680` 重现。
+   ADR index 和 privacy audit 同步。精确清单可用 `git diff --name-only <baseline> 0165744` 重现。
+   最小 remediation 只修改 WPF bridge projection、React contract/fixture、对应 Desktop/Frontend tests
+   和 Windows acceptance privacy assertions；Runtime/native API、持久化、ingestion、backup 与 restore 架构保持。
 5. **ADR-011：Accepted。** [ADR-011](../ADR/ADR-011-knowledge-domain-storage-ingestion-recovery.md)
    在第一笔独立 docs-only commit `5f20fc0` 写入；批准来源为用户提供的既有 Architecture Guard K0
    approval。工程师没有重新批准长期架构，没有补造缺失的 K0 历史 artifact。
@@ -103,6 +108,11 @@
     positive canonical decimal strings；JS 只用 BigInt 比较，未转成 Number。
 36. **Path Privacy：** React 不接收绝对 source/runtime/target path、raw upload bytes、base64 source
     或 backup payload。Native header 中的安全 basename / target proof 不进入 React DTO 或日志。
+    `knowledge.get` WebView revision DTO does not expose `sourceDigest` or `representationDigest`。
+    明确投影仅包含 `sourceRevision` / `sourceType` / `byteLength`，恰为当前 revision selector 使用的字段；
+    移除 revision 的 documentId / originalFilename / importedAt / parserVersion / normalizationVersion / lineCount。
+    document wrapper 及既有 response correlation 保持；Runtime/native 完整 revision DTO 保留，
+    `knowledge.preview` 的既有 parserVersion / normalizationVersion contract 保持。
 37. **Native File Picker：** genuine OpenFileDialog；WPF 以实际 opened handle 验证 disk/regular/nonempty/
     size，拒绝目录、reparse ancestry、UNC/network drive、不支持类型。FILE_SHARE_READ 阻止替换/删除。
 38. **Streaming Upload：** WPF opened file → application-owned RuntimeClient borrowed stream →
@@ -166,15 +176,20 @@ authoritative Finance Reality Sync.
 
 ## 53–64：验证与实际执行记录
 
-53. **Frontend Tests：113 PASS，11 files，0 failed。** 新增 Knowledge contract/page tests 7 个；
+53. **Frontend Tests：115 PASS，11 files，0 failed。** Knowledge contract/page tests 共 9 个；
+    remediation 新增 sanitized shape/内部字段拒绝和旧 digest-bearing bridge response 拒绝两个 regression。
     既有 App / Settings / bridge / business page regression 全部通过。
-54. **Desktop Tests：268 PASS，0 failed/skipped。** 新增 Knowledge 6、backup 3、native maintenance
+54. **Desktop Tests：269 PASS，0 failed/skipped。** 新增 Knowledge 7、backup 3、native maintenance
     session/trust 1；包括 actual Windows file handle、private ACL、session rotation/revoke、late response、
     decimal-string DTO、unknown upload read-only reconciliation、bounded backup stream / lost restore response。
+    remediation regression 检查实际 serialized `knowledge.get` 仅含三字段 revision，响应无 digest、
+    path/source bytes/backup path；另确认受信任 native DTO 仍保留两个 digest。
 55. **Java Tests：123 PASS，0 failure/error/skipped。** 新增 foundation 11、backup 6、native HTTP/Browser
-    security integration 1；既有 105 全部通过。不是沿用历史基线数字。
-56. **Focused Integration Tests：** 开发只执行 change-triggered focused tests / 必要 build；最后候选
-    `94c3680` 固定后只执行一次完整 automated regression，未机械重跑其他 heavy acceptance。
+    security integration 1；既有 105 全部通过。本轮未修改 Java，实际重新执行 full regression，数量保持 123。
+56. **Focused Integration Tests：** 本轮 change-triggered Desktop Knowledge/bridge 50 PASS，
+    Frontend Knowledge contract/page 9 PASS。新 candidate `0165744` 固定且工作区干净后，
+    Java / Desktop / Frontend 各执行一次最终完整 automated regression，并完成 frontend production build。
+    旧 `94c3680` 的 123 / 268 / 113 证据属于 pre-review 历史，未作为新 candidate 的替代证据。
 
 ```powershell
 .\mvnw.cmd --batch-mode --no-transfer-progress clean verify
@@ -186,13 +201,16 @@ npm.cmd --prefix desktop/frontend run build
 ```
 
 `FrontendSkipBuild=true` 使用已核验 production manifest，避免 Desktop build 重复 npm build；
-explicit npm production build 单独完成。Full regression 时间为 2026-10-05 20:55 Asia/Shanghai。
+explicit npm production build 单独完成。本轮 full regression 时间为 2026-10-05 21:58 Asia/Shanghai。
 
 57. **Real Windows Import：** Production WPF + real WebView2 + bundled React + real Runtime + genuine
-    native dialogs。1 条成功综合 acceptance flow，21 coverage points，112 sequential assertions。
+    native dialogs。本轮 1 条完整 PASS 综合 acceptance flow，21 coverage points，116 sequential assertions；
+    完整 evidence 于 2026-10-05 22:18 Asia/Shanghai 生成。
     flow 内必要 Runtime restart / maintenance / restored startup 共四次；没有 21 次独立产品启动。
-    开发调试曾因 native-dialog readiness / folder selection / focus automation 修复驱动并重试；发现并修复
-    精确 Knowledge WebView fragment 漏项。失败尝试不是通过的 gate，不计入最终 112 assertions。
+    本轮共四次尝试：前两次在既有实际 Tab 焦点检查超时；第三次 UI flow 完成后，UDF 隐私读取因
+    短暂文件锁中断；第四次完整 PASS。失败尝试独立保留，未作为完成 gate 或计入最终 116 assertions。
+    本地忽略提交的执行包装仅激活 test-owned window 并在完整 UDF 扫描前等待可读；成功流程没有
+    额外键盘事件，验收断言和产品代码保持。新增 digest 缺失/三字段 shape 断言分别在首次导入及恢复后执行。
 58. **Restart Durability：** fixture-held native HTTP streams 创建 durable PENDING；明确 test-owned SQL
     fixture 模拟 PARSING + unpublished source candidate crash window；只 hard-stop 自己的 Runtime。
     production startup reconciliation 清理候选、两类 job 都变 INTERRUPTED，旧 READY revision 2 保持。
@@ -203,19 +221,23 @@ explicit npm production build 单独完成。Full regression 时间为 2026-10-0
     streaming export → validate → 原目录不可用 → 空目标 restore → 显式 Runtime restart → React exact preview；
     logical DB persistent fields、全部 revisions 和 sources 哈希精确比较通过。
 61. **Privacy Audit：** 主 flow 新鲜 4 Runtime logs、375 UDF files；source/build/evidence/archive scan
-    7,455 files / 187,176 byte+archive checks，0 unexpected matches。最终 package scan 7,937 files /
-    204,006 checks / 668 archives，0 unexpected matches。tracked build artifacts 0、backup/source artifacts 0，
+    7,960 files / 204,029 byte+archive checks / 668 archives，0 unexpected matches。
+    本轮 package scan 8,449 files / 220,866 checks / 722 archives，0 unexpected matches。
+    tracked build artifacts 0、backup/source artifacts 0，
     ignore rules、frontend isolation、bridge no-content-diagnostics 均 PASS。
-    Closing 文档加入后的最终复核：7,940 files / 204,009 byte+archive checks，668 archives，
-    0 unexpected matches；额外检查第二个 Markdown preview 的 synthetic script 文本未进入 logs/bundle。
-    证据仅 safe checks/counts：`.verification/k1-knowledge-evidence.json` 与 `k1-package-evidence.json`，均忽略提交。
+    实际 JS 捕获的非空 `knowledge.get` responses 明确验证没有两个 digest，而非仅依赖正文 canary scan；
+    两次 digest 缺失断言和两次 exact revision shape 断言全部 PASS。Closing/current 文档同步后的
+    完整复核结果记录于 `.verification/k1-remediation-final-privacy.json`。
+    证据仅 safe checks/counts：`.verification/k1-knowledge-evidence.json`、
+    `k1-remediation-regression-evidence.json` 与 `k1-remediation-package-evidence.json`，均忽略提交。
 62. **Accessibility：** actual Windows Tab navigation、actual Escape cancel/focus return、default cancel
     focus、semantic labels / selected state / live status / named progressbar、125% 无横向 overflow 验证。
     Pinyin gate not applicable: K1 introduced no new production Knowledge text editor.
     未声称 full screen-reader certification。
 63. **Production Build：** Java executable JAR、TypeScript/Vite production build、Windows self-contained
-    Release publish PASS。Portable candidate `artifacts/PersonalAiWorkspace-K1-94c3680-win-x64` 共 487 files，
-    manifest commit 为 `94c3680`、sourceDirty=false；所有 package hashes、Knowledge classes、frontend
+    Release publish PASS。Portable candidate `artifacts/PersonalAiWorkspace-K1-0165744-win-x64` 共 487 files，
+    manifest commit 为 `01657440fc6ab4e83f716251bde8cda6e693b6c9`、sourceDirty=false；
+    所有 package hashes、Knowledge classes、frontend
     resources、CSP 验证通过。既有 launcher CheckOnly 和 actual isolated startup PASS，独立 knowledge.db
     创建；不执行 Ollama inference，不改变既有 Ollama 进程。Launcher automation 修复 Windows inherited
     pipe handle 等待问题后改用 test-owned file redirection；未修改生产 launcher/packaging logic。
@@ -247,7 +269,7 @@ explicit npm production build 单独完成。Full regression 时间为 2026-10-0
 | 18 Exact parity | persistent DB rows + source hashes + production preview |
 | 19 Scope honesty | Settings excludes Knowledge from Workspace Backup |
 | 20 Browser | real paired credential Knowledge denial |
-| 21 Privacy | fresh logs/UDF/source/temp/build/package scans |
+| 21 Privacy | knowledge.get digest absence / exact revision shape + fresh logs/UDF/source/temp/build/package scans |
 
 **coverage points ≠ independent executions ≠ independent gates。** 上表不是 21 次独立执行，
 也不构成 21 个互相独立的统计样本。独立 evidence 层为 focused tests、一次 full regression、
@@ -263,11 +285,15 @@ explicit npm production build 单独完成。Full regression 时间为 2026-10-0
     context、Conversation Knowledge、PDF/DOCX/OCR、Finance integration、cloud sync、agents/tools framework。
     K2/K3/K4 必须等候独立授权。
 67. **Git Status：** Implementation commits 顺序为 `5f20fc0`、`69c295d`、`c096eb9`、`421fca1`、
-    `a349b14`、`694f42e`、`eebb360`、`94c3680`。Candidate 固定和 packaging 时工作区干净。
-    本报告与最终当前状态更新由之后的独立 docs-only closing commit 承载，不改变 binary candidate SHA；
-    提交后检查 `git status --short` 为空。没有 push、merge、reset、force push、tag/release、分支删除。
+    `a349b14`、`694f42e`、`eebb360`、`94c3680`，之后为独立 docs-only `8949045` 和
+    独立 remediation `0165744`（`fix: minimize knowledge bridge revision metadata`）。
+    新 candidate 固定和 packaging 时工作区干净。本报告与最终当前状态更新由之后的独立 docs-only
+    commit 承载，不改变新 binary candidate SHA；发布目标仅 `k1-deterministic-knowledge-foundation`。
+    既有 commit 未改写；main baseline 为 `8e24dbe11fc036f1ef4c7714adc621519a39c8a5`。
+    没有 merge/reset/rebase/amend/force push、tag/release、分支删除或启动 K2。
     历史 ADR-001..010 和 M0–M5 closing reports 未修改。
 68. **Recommended Next Step：** Architecture Guard / K1 Closing Review 评审 ADR-011 authority、
-    publication/reconciliation、native/session/file/backup 边界和本报告。评审前保持
+    publication/reconciliation、native/session/file/backup 边界及本轮 least-data revision projection 和实际 privacy evidence。
+    等待 Architecture Guard re-review。评审前保持
     K1 IMPLEMENTED / LOCAL ACCEPTANCE PASS + CLOSING CANDIDATE GO，不宣称 K1 CLOSED — GO。
     Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。实施代理在此 STOP。

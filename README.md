@@ -9,10 +9,11 @@ M0–M5 保持 CLOSED — GO。Finance integration deferred pending authoritativ
 Knowledge 是独立参考来源领域：通过 Windows 原生 picker 导入严格 UTF-8 TXT/MD/Markdown，
 Runtime 在 `workspace.data-directory/knowledge/` 私有保存 `knowledge.db` 和原始源副本。
 React `#/knowledge` 只管理 metadata、processing 状态、revision、纯文本分页预览与生命周期。
+`knowledge.get` 的 WebView revision 仅含 `sourceRevision` / `sourceType` / `byteLength`，不暴露 source/content digests 或内部解析 metadata。
 旧 READY 在更新失败时保持可用；未知上传结果只查询，不自动重发。
 独立 Knowledge Backup v1 支持流式导出/验证和新/空 Workspace data directory 恢复。
 **Workspace Backup v1 只包含 Memory + Conversation，不包含 Knowledge。**
-真实 Windows 综合验收、隐私扫描及最终一次完整回归已通过：Java 123 / Desktop 268 / Frontend 113。
+Closing Review 最小 remediation 后，真实 Windows 综合验收、隐私扫描及最终一次完整回归已通过：Java 123 / Desktop 269 / Frontend 115。
 详见 [K1 Closing Report](docs/milestones/K1-CLOSING-REPORT.md)。仍等待独立 Architecture Guard / K1 Closing Review；未宣称 K1 CLOSED。
 不提供检索、RAG、模型 Knowledge context 或 Conversation Knowledge。
 
