@@ -20,7 +20,9 @@ public enum DesktopError
     KnowledgeQueueFull, KnowledgeIngestionFailed, KnowledgeInterrupted, KnowledgeCancelled,
     KnowledgeStorageUnavailable, KnowledgeSchemaUnsupported, KnowledgeDeleteIncomplete,
     KnowledgeBackupInvalid, KnowledgeBackupUnsupported, KnowledgeBackupTooLarge, KnowledgeBackupConflict,
-    KnowledgeRestoreTargetNotEmpty, KnowledgeRestoreFailed, KnowledgeExportFailed, KnowledgeFileUnavailable
+    KnowledgeRestoreTargetNotEmpty, KnowledgeRestoreFailed, KnowledgeExportFailed, KnowledgeFileUnavailable,
+    KnowledgeSearchInvalid, KnowledgeQueryTooComplex, KnowledgeIndexNotReady, KnowledgeIndexUnavailable,
+    KnowledgeIndexLimitExceeded, KnowledgeIndexRebuildFailed
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -32,6 +34,12 @@ public static class ErrorText
 {
     public static string For(DesktopError error) => error switch
     {
+        DesktopError.KnowledgeSearchInvalid => "请输入有效、非空的关键词。",
+        DesktopError.KnowledgeQueryTooComplex => "检索最多 128 个 Unicode 字符和 32 个不同词法 token，请缩短关键词。",
+        DesktopError.KnowledgeIndexNotReady => "关键词索引正在重建，请等待后显式重试。",
+        DesktopError.KnowledgeIndexUnavailable => "关键词索引暂时不可用，可显式重建。",
+        DesktopError.KnowledgeIndexLimitExceeded => "派生检索索引超过容量上限；Knowledge 源数据保持可用。",
+        DesktopError.KnowledgeIndexRebuildFailed => "关键词索引重建失败；Knowledge 源数据保持可用。",
         DesktopError.ConversationNotFound => "Conversation or turn does not exist.",
         DesktopError.KnowledgeInvalidSource => "源文件须为本机普通文件，包含有效、非空的纯文本；不接受链接或二进制内容。",
         DesktopError.KnowledgeUnsupportedType => "仅支持严格 UTF-8 的 TXT、MD 或 Markdown 文件。",

@@ -130,6 +130,9 @@ internal sealed class WorkspaceBridge : IDisposable
                 if(knowledge is null)throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Knowledge 暂时不可用。");
                 string? id=payload.TryGetProperty("documentId",out var documentId)&&documentId.ValueKind==JsonValueKind.String?documentId.GetString():null;
                 result=method switch {
+                    "knowledge.search"=>await knowledge.SearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("limit").GetInt32(),cancellation),
+                    "knowledge.searchStatus"=>await knowledge.SearchStatusAsync(session,cancellation),
+                    "knowledge.rebuildSearchIndex"=>await knowledge.RebuildSearchAsync(session,cancellation),
                     "knowledge.list"=>await knowledge.ListAsync(session,payload.GetProperty("status").GetString()!,payload.GetProperty("page").GetInt32(),cancellation),
                     "knowledge.get"=>await knowledge.GetAsync(session,id!,cancellation),
                     "knowledge.preview"=>await knowledge.PreviewAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
@@ -265,9 +268,12 @@ internal sealed class WorkspaceBridge : IDisposable
     }
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
+        if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex")return Fields(p);
+        if(method=="knowledge.search")return Fields(p,"query","limit")&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128
+            &&!query.Any(char.IsControl)&&p.GetProperty("limit").ValueKind==JsonValueKind.Number&&p.GetProperty("limit").TryGetInt32(out int limit)&&limit is >=1 and <=10;
         bool Id(string name)=>Text(p,name,36,out var id)&&CanonicalId(id);
         bool Version(string name)=>Text(p,name,19,out var v)&&v[0] is >= '1' and <= '9'&&v.All(x=>x is >= '0' and <= '9')&&long.TryParse(v,NumberStyles.None,CultureInfo.InvariantCulture,out _);
         if(method=="knowledge.list")return Fields(p,"status","page")&&Text(p,"status",8,out var s)&&s is "ACTIVE" or "ARCHIVED"&&Page(p)&&p.GetProperty("page").GetInt32()<25;
