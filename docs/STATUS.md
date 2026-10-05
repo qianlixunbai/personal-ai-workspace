@@ -1,26 +1,74 @@
 # Personal AI Workspace — Current Status
 
-## Current M5E local closing candidate
+## Current M5 approved final closing
 
-M5A / M5B / M5C / M5D — CLOSED — GO。
-**M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5 — OPEN。**
-**M5E CLOSING CANDIDATE — GO。M5 FINAL CLOSING CANDIDATE — GO。** Waiting for Architecture / Final Closing Review; neither M5E nor M5 is closed by this implementation candidate.
-Published baseline `a1c17b441d1d29088d16894da92f50d2f1d3f642`，clean main / HEAD / main / live-fetched origin/main Reality Gate PASS。
-Branch `m5e-product-consolidation-packaging`；no merge/push/tag/release。
+**M5 — Unified Main Workspace UI：CLOSED — GO。**
+**M5 FINAL CLOSING — APPROVED — GO。** Architecture / Final Closing Review 已正式批准。
+
+| Milestone | 当前正式状态 |
+| --- | --- |
+| M0 / M1 / M1.5 / M2 / M3 / M4 | CLOSED — GO |
+| M5 — Unified Main Workspace UI | CLOSED — GO |
+| M5A — Main Workspace Shell Foundation | CLOSED — GO |
+| M5B — Assistant + Desktop Translate Migration | CLOSED — GO |
+| M5C — Conversations Migration | CLOSED — GO |
+| M5D — Memory + Settings Migration | CLOSED — GO |
+| M5E — Product Consolidation / Packaging / Final Acceptance | CLOSED — GO |
+
+Pre-delivery published main baseline：`a1c17b441d1d29088d16894da92f50d2f1d3f642`。Formal Delivery 从 clean `m5e-product-consolidation-packaging` 开始，local main 与首次成功 live-fetched origin/main 均等于该 baseline，remote main only。
+Implementation：`bcf7d5f8e20c05e516ae22cbff40d17a18567222`。
+Historical closing docs：`82fb7d4cf7ae2f7b518a79b64c5c4c828f030e3b`，完整 SHA 由实际 git log 核验。
+Architecture approval 使用独立 `docs: approve M5 unified workspace final closing` commit；不改写既有提交。Source publication 按再次 live fetch / 固定 baseline、ancestry、fast-forward-only merge、只 push main、post-push fetch 与 clean main 后安全删除 local feature branch 的顺序执行。最终 SHA 与发布/清理结果见 Final Formal Delivery Report / 实时 Git；无 tag、GitHub Release 或 ignored package 上传。
 
 Main Workspace becomes the default startup, second-instance, launcher and tray destination. Credential Missing no longer forces legacy UI. Native quick/hotkey/privileged surfaces stay implemented; healthy React no longer advertises legacy domain windows. Three legacy JS native-open methods are removed; four Settings maintenance methods remain.
 Self-contained win-x64 portable packaging includes Desktop, production React, application JAR, launcher, user README, manifest and SHA-256. Java 21/Ollama/WebView2 remain prerequisites. Runtime auth/log state is private and separate from package/data.
-Implementation commit `bcf7d5f8e20c05e516ae22cbff40d17a18567222`; final ignored package `artifacts/PersonalAiWorkspace-win-x64`, manifest sourceDirty=false, 487 payload files plus manifest/checksums. One final full automated regression: Java **105 PASS**, Desktop **258 PASS**, Frontend **106 PASS**; production frontend build and self-contained package publish PASS. Package negative/security checks: **13 PASS**.
+Portable Windows Release Bundle — validated。Final ignored package `artifacts/PersonalAiWorkspace-win-x64` 的固定 payload 来自 approved implementation commit `bcf7d5f8e20c05e516ae22cbff40d17a18567222`，manifest sourceDirty=false，487 payload files plus manifest/checksums。后续 historical closing / architecture approval commits 只修改 documentation：package payload identity ≠ final docs-only repository HEAD，不重新 build package。Package artifact publication 留待单独决定。
+
+Published test baseline：Java **105 PASS**, Desktop **258 PASS**, Frontend **106 PASS**。Final full automated regression was run once before Architecture / Final Closing Review；production frontend build / self-contained package publish / 13 package negative-security checks 均为 approved candidate evidence。
+
+No full test suite or Windows acceptance was rerun during Final Formal Delivery.
+The published evidence is inherited from the approved M5E / M5 Final Closing Candidate.
+本轮只做三份 current docs approval sync 与 Git publication；验证限于 diff / diff --check、commit scope、remote freshness、ancestry、fast-forward、post-push refs 与 clean working tree。
 Final real packaged Windows flow PASS: actual shipped EXE/default main/tray/second launch; Missing credential and explicit native flow; real Ollama; one native Windows Pinyin input; durable two-turn/reload; Memory create/edit/search; explicit Memory once and no next-operation inheritance; native hotkey/UIA Translate; Workspace export/restore with exact logical parity; maintenance entries; renderer-crash/invalid-asset native fallback. Package/UDF/full source-output-log-evidence-archive privacy audit: **0 unexpected matches**. User Ollama and credentials were preserved; isolated acceptance Runtime/Desktop cleaned up.
-[M5E Closing Report](milestones/M5E-CLOSING-REPORT.md) records the precise fixtures, 374-file UDF audit, package identity, test policy, limitations and review handoff. Historical heavy acceptance was not mechanically rerun. Portable unsigned folder, Java/Ollama/WebView2 prerequisites, plaintext DB/backups, no installer/updater remain disclosed.
+[M5E Closing Report](milestones/M5E-CLOSING-REPORT.md) records the precise fixtures, 374-file UDF audit, package identity, test policy, limitations and historical review handoff；保留形成时 IMPLEMENTED / LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO、M5 — OPEN，不追改为 CLOSED。M5A/B/C/D Closing Reports 与 ADR bodies 同样不修改。
+
+### Approved final gates
+
+以下全部继承 approved M5E / M5 Final Closing Candidate，不是本轮重跑：
+
+```text
+PORTABLE WINDOWS RELEASE PACKAGE — PASS
+PACKAGED MAIN WORKSPACE — PASS
+REAL OLLAMA — PASS
+REAL WINDOWS PINYIN — PASS
+DURABLE CONVERSATION — PASS
+MEMORY — PASS
+EXPLICIT MEMORY — PASS
+HOTKEY / SELECTION TRANSLATE — PASS
+WORKSPACE RECOVERY — PASS
+NATIVE FALLBACK — PASS
+PRIVACY / PACKAGE AUDIT — PASS
+```
+
+### Final product ownership and accepted limitations
+
+React Main Workspace = Assistant / Conversations / Memory / Translate / Settings；normal launch、second-instance activation、tray Open / double-click、release launcher 默认进入 Main Workspace。Legacy Assistant = Quick Assistant / fallback，不是主产品窗口。
+WPF = application lifecycle、single instance、tray、WebView2 host/security、selection/UIA/clipboard、global hotkey、Quick Assistant/fallback、MemorySelectionWindow、credential flow、Browser Pairing、Memory Backup、Workspace Backup、native dialogs/confirmations。
+Runtime = durable Memory / Conversation、TaskManager、context assembly、provider policy、Ollama execution、backup semantics、SQLite。
+Native maintenance methods 恰好为 `native.openCredentialFlow`、`native.openBrowserPairing`、`native.openMemoryBackup`、`native.openWorkspaceBackup`；`native.openLegacyAssistant`、`native.openConversations`、`native.openMemory` 已退休，不再是 WebMessage authority。WPF fallback implementation 保留。
+
+ordinary Assistant Ask = stateless；Conversation = durable multi-turn；Memory = manual/user-controlled；explicit Memory = exact revision；Browser = Translate-only。
+无 automatic Memory、semantic retrieval、RAG、Knowledge、Finance、Agent/Tools、streaming、edit/regenerate/branching。
+Java 21 required；Ollama required；configured model required；WebView2 Evergreen required。
+Unsigned portable folder、no installer/updater/code-signed release、no bundled JRE/Ollama、plaintext local DB、plaintext backups、no cloud sync 均为 accepted limitations，不是 unfinished M5 work。ADR-001..010 — Accepted，无新 ADR。
 
 ## Approved M5D delivery history
 
-The following section preserves the earlier delivery snapshot; its M5E NOT STARTED references describe that earlier phase. Current M5E status is above.
+The following sections preserve earlier delivery snapshots; their OPEN / NOT STARTED references and old bridge lists describe those earlier phases. Current M5 CLOSED — GO status, final ownership and native allowlist are above.
 
-## Current M5 status — M5D approved formal delivery
+## Historical M5 status at M5D approved formal delivery
 
-| Milestone | 当前正式状态 |
+| Milestone | 当时正式状态（历史快照） |
 | --- | --- |
 | M5 — Unified Main Workspace UI | OPEN |
 | M5A — Main Workspace Shell Foundation | CLOSED — GO |
@@ -111,7 +159,7 @@ Host-owned bounded transient operations只用于Assistant/Translate；M5C的11�
 生产Assistant editor真实Windows Pinyin已经Architecture/Closing Review批准；M5C implementation acceptance 中 M5B真实拼音与业务回归再次PASS。
 M5B原实现：`8bfc362196233297302997bf23cf9052147ef2f9`；historical docs：`e456030df3c4e01ced11d28c21e3f4c95a057d50`。
 [M5B Closing Report](milestones/M5B-CLOSING-REPORT.md) 保留其46节历史快照；[M5A Closing Report](milestones/M5A-CLOSING-REPORT.md)亦不追改。
-M5B approval 当时 M5D/M5E未开始；当前M5D进展见页首，M5保持OPEN。
+M5B approval 当时 M5D/M5E未开始、M5 OPEN；当前 M5 final approved status 见页首。
 
 M5A 开工时 published main baseline：`d1d7be9e904387862b663a8bab7c72bb89d392c5`。
 Implementation：`233244475078a33f85c89edf801b2f3effa0d524`；
@@ -120,7 +168,7 @@ Formal Delivery 仅允许实时 fetch / baseline 验证、ancestry PASS、fast-f
 
 ### M5A final acceptance baseline
 
-Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**。这是 M5A 历史验收基线；当前 M5C 回归结果见页首。
+Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**。这是 M5A 历史验收基线；当前 M5 final approved baseline 见页首。
 Build/publish、真实 WPF/WebView2/bundled React/Runtime shell foundation、native entries、
 navigation/frame/popup/download/permission、reload/stale response、fallback、UDF/privacy audit、hotkey/UIA/clipboard 回归 **PASS**。
 Workspace recovery、Memory-only integrated recovery、Translate/Summarize/stateless Ask、synthetic HTTP Browser Batch/security 回归 **PASS**。
@@ -186,7 +234,7 @@ README 负责启动/API 使用；ADR 负责已采用决策。
 
 ## Final M4 Closing baseline
 
-Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；M4 approval sync 当时不重跑全套测试；当前 M5D approved baseline 见页首。
+Java **105 PASS** / Desktop **136 PASS**，0fail/error/skip。这是既有 closing 验收基线；M4 approval sync 当时不重跑全套测试；当前 M5 final approved baseline 见页首。
 Workspace Backup format：`personal-ai-workspace.workspace-backup`；formatVersion：**1**；
 Memory section：**schema1**；Conversation section：**schema1**；Workspace DB：**v3**。
 Memory-only Backup：**format1/schema1 preserved**；ADR-006 独立保持 Accepted。
@@ -204,8 +252,8 @@ M4 is now complete：durable Conversation、multi-turn execution、explicit per-
 [M4C Closing Report](milestones/M4C-CLOSING-REPORT.md)保留形成时的 candidate / M4 OPEN 和 historical Git state；M4A/M4B Closing Reports亦不改写。
 
 **M5A — CLOSED — GO under the approved architecture.** React + WebView2 inside WPF Native Shell；
-M5A / M5B / M5C / M5D Architecture / Closing Review 已批准 GO；M5A / M5B / M5C / M5D CLOSED — GO；M5 仍 OPEN，M5E NOT STARTED。
-Remaining deferred scope：旧窗口退役与产品收口、Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
+M5A / M5B / M5C / M5D / M5E Architecture / Closing Review 已批准 GO；M5A / M5B / M5C / M5D / M5E CLOSED — GO；M5 CLOSED — GO。旧窗口的默认入口与 JS authority 已在 M5E 退休，原生 fallback 保留；产品收口已完成。
+Remaining deferred scope：Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、
 Agent/Tools/TOOL role、Browser Conversation、token streaming、message edit/regenerate/branching、automatic Memory、
 cloud backup、backup encryption/password、scheduled/incremental backup、multi-device sync。
 

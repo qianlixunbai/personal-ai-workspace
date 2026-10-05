@@ -1,10 +1,10 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
-## Current M5E product consolidation and portable packaging
+## Current M5 approved product architecture and portable packaging
 
-**M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5E CLOSING CANDIDATE — GO。M5 FINAL CLOSING CANDIDATE — GO。M5 — OPEN。M5A/B/C/D — CLOSED — GO。** ADR-001..010 remain Accepted; no new durable architecture. Architecture / Final Closing Review is pending.
+**M5 — Unified Main Workspace UI：CLOSED — GO。M5A / M5B / M5C / M5D / M5E — CLOSED — GO。M5 FINAL CLOSING — APPROVED — GO。** Architecture / Final Closing Review has formally approved the final architecture. ADR-001..010 — Accepted; no new ADR or durable architecture.
 
-React is the normal product surface for Assistant / Conversations / Memory / Translate / Settings. WPF owns shell/lifecycle/tray, single instance, selection hotkey, UIA/controlled clipboard/helpers, Quick Assistant/fallback, credential flow, Memory selector, Browser Pairing and backup/file/confirmation flows. Normal launch, second instance, launcher activation, tray double-click and primary Open all target MainWorkspaceWindow. Missing credentials leave Main Workspace open with safe status and explicit native import.
+React Main Workspace is the main product surface for Assistant / Conversations / Memory / Translate / Settings. WPF owns application lifecycle, single instance, tray, WebView2 host/security, selection/UIA/controlled clipboard/helpers, global hotkey, Quick Assistant/fallback, MemorySelectionWindow, credential flow, Browser Pairing, Memory Backup, Workspace Backup and native dialogs/confirmations. Runtime owns durable Memory / Conversation, TaskManager, context assembly, provider policy, Ollama execution, backup semantics and SQLite. Normal launch, second-instance activation, release launcher, tray double-click and primary Open all target MainWorkspaceWindow. Legacy Assistant is Quick Assistant / fallback, not the main product window. Missing credentials leave Main Workspace open with safe status and explicit native import.
 
 The JS-accessible native allowlist is exactly `native.openCredentialFlow`, `native.openBrowserPairing`, `native.openMemoryBackup`, `native.openWorkspaceBackup`. `native.openLegacyAssistant`, `native.openConversations`, `native.openMemory` are retired from WebMessage admission and fail closed as unknown methods. WPF fallback/hotkey still call native flows directly. Domain methods, origin/session/schema/budget guards, Runtime sole truth and Browser Translate-only permissions stay unchanged.
 
@@ -12,13 +12,21 @@ The JS-accessible native allowlist is exactly `native.openCredentialFlow`, `nati
 
 Java 21, installed Ollama/configured model and Evergreen WebView2 remain external requirements. Runtime is externally owned; launcher startup does not create a supervisor or exit-time service ownership. Readiness plus authenticated native provider contract is required for reuse, otherwise fail closed without killing unknown processes. Workspace data defaults to existing `${user.home}/.personal-ai-workspace/data`; auth/browser registry/logs use owner-only `%LOCALAPPDATA%/PersonalAiWorkspace/RuntimeState`, outside package/repository/data. WebView keeps its separate fixed private profile.
 
-Unsigned portable folder; installer/updater, embedded Java/Ollama and encryption remain deferred. The fixed clean implementation package passed real Windows entry/tray/single-instance, Ollama, native Pinyin, durable Conversation, Memory, explicit context, hotkey/UIA, Workspace recovery, native maintenance and renderer/asset fallback acceptance. Runtime/Browser/schema/Core ownership code did not change. Final automated totals: Java 105 / Desktop 258 / Frontend 106 PASS; package security checks 13 PASS; full privacy/package/UDF audit 0 unexpected matches. Exact evidence, limits and package hashes: [M5E Closing Report](../milestones/M5E-CLOSING-REPORT.md). This is local acceptance, not final architecture approval or publication.
+Portable Windows Release Bundle — validated. It contains self-contained .NET Desktop, bundled production React, the Runtime application JAR, release launcher, README, manifest and SHA-256 checksums. The fixed accepted payload identity is implementation commit `bcf7d5f8e20c05e516ae22cbff40d17a18567222`; historical closing docs `82fb7d4cf7ae2f7b518a79b64c5c4c828f030e3b` and the separate `docs: approve M5 unified workspace final closing` commit change documentation only. Package payload identity ≠ final docs-only repository HEAD; the package is not rebuilt for approval sync. Formal Delivery publishes source main only, with no tag, GitHub Release or ignored package upload; artifact publication remains a separate decision.
+
+Unsigned portable folder, no installer/MSI/MSIX/updater/code signing, no bundled JRE/Ollama, plaintext local DB/backups and no cloud sync are accepted limitations, not unfinished M5 work. Java 21 required; Ollama required; configured model required; WebView2 Evergreen required. Ordinary Assistant Ask = stateless; Conversation = durable multi-turn; Memory = manual/user-controlled; explicit Memory = exact revision; Browser = Translate-only. No automatic Memory, semantic retrieval, RAG, Knowledge, Finance, Agent/Tools, streaming or edit/regenerate/branching.
+
+The approved fixed implementation package passed real Windows entry/tray/single-instance, Ollama, native Pinyin, durable Conversation, Memory, explicit context, hotkey/UIA, Workspace recovery, native maintenance and renderer/asset fallback acceptance. Runtime/Browser/schema/Core ownership code did not change. Published automated baseline: Java **105 PASS** / Desktop **258 PASS** / Frontend **106 PASS**; the final full automated regression was run once before Architecture / Final Closing Review. Package security checks 13 PASS; full privacy/package/UDF audit 0 unexpected matches. Exact evidence, limits and package hashes: [M5E Closing Report](../milestones/M5E-CLOSING-REPORT.md), preserved with its accurate candidate / M5 OPEN snapshot.
+
+No full test suite or Windows acceptance was rerun during Final Formal Delivery.
+The published evidence is inherited from the approved M5E / M5 Final Closing Candidate.
+Approval sync changes only README, STATUS and current architecture; historical Closing Reports and ADR bodies remain unchanged. Delivery verification uses diff/diff --check, fresh remote baseline, ancestry, fast-forward-only merge, push main, post-push fetch and clean working tree.
 
 ## Approved M5D implementation history
 
-The following preserves the earlier review/delivery snapshot; M5E NOT STARTED references describe that phase. Current ownership/entry/allowlist is specified above.
+The following sections preserve earlier review/delivery snapshots; their OPEN / NOT STARTED references and old bridge lists describe those earlier phases. Current M5 CLOSED — GO status and final ownership/entry/allowlist are specified above.
 
-## Current M5D Memory and Settings
+## Historical M5D Memory and Settings approval
 
 **M5D — CLOSED — GO. M5D Architecture / Closing Review: GO. M5 — OPEN. M5E — NOT STARTED.**
 M5A/M5B/M5C remain CLOSED — GO. Pre-delivery published main: `4f97a03f4317f02370e2a5bb10f80eb7ce6ad61d`, verified against local main and live-fetched origin/main from the clean M5D branch.
@@ -93,12 +101,12 @@ M5A/B/C, hotkey/UIA/clipboard, legacy Memory, Workspace Backup and Translate-onl
 Approved production Memory title and content textarea Pinyin: actual composition → committed Chinese → explicit Save → Runtime durable exact value → Get / Reload exact value.
 UDF and fresh-marker/source/build/log/evidence/archive privacy audits PASS, inherited from the approved candidate.
 See [M5D Closing Report](../milestones/M5D-CLOSING-REPORT.md) for all62 sections, measured performance and explicit acceptance limitations. It retains the accurate historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO, M5 OPEN and M5E NOT STARTED snapshot; M5A/B/C closing reports and ADR-001..010 bodies are unchanged.
-M5 remains OPEN because M5E — Product Consolidation / Packaging / Final Acceptance is NOT STARTED. No M5E execution is part of this delivery.
+At M5D delivery, M5 remained OPEN because M5E — Product Consolidation / Packaging / Final Acceptance was NOT STARTED. Current M5 final approved status is specified above.
 
 ## M5C approved implementation history
 
 **M5C — CLOSED — GO. M5C Architecture / Closing Review: GO. M5 — OPEN.**
-M5A/M5B remain CLOSED — GO. M5D/M5E had not started at M5C approval; current M5D status is above. M5 remains OPEN.
+M5A/M5B were CLOSED — GO. M5D/M5E had not started at M5C approval and M5 was OPEN; current M5 final approved status is above.
 The following records M5C approval sync and formal delivery history.
 Pre-delivery published baseline `7b6dbdfeece1d4ab8179ec6cd5ce7f730e6aee14`; implementation branch `m5c-conversations-migration`.
 Implementation `084171306874f36166077b44dcd0143502ed66c5`;
@@ -212,8 +220,8 @@ post-review formal status is recorded in current docs, without rewriting the clo
 
 M5B is **CLOSED — GO**. **M5B Architecture / Closing Review: GO.**
 The implementation branch is `m5b-assistant-translate-migration`, from the pre-delivery published baseline
-`8bf5aac70630fae730ea5ba1d101b42a5e277af5`. M5 remains **OPEN**; M5A is **CLOSED — GO**.
-M5C approved implementation and CLOSED — GO status are recorded above; current M5D progress is at the top, M5E remains NOT STARTED. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
+`8bf5aac70630fae730ea5ba1d101b42a5e277af5`. At M5B approval, M5 was **OPEN** and M5A was **CLOSED — GO**.
+M5C approved implementation history is recorded above; current M5 final approved status is at the top. ADR-001..010 remain Accepted. No new ADR or Runtime/Browser permission change.
 
 Bundled React owns two production controlled editors: Assistant Ask/Summarize and Desktop
 Single Translate (zh-CN/en/ja, existing native choices). Input, selection metadata and plain-text
@@ -282,10 +290,10 @@ historical IMPLEMENTED / LOCAL ACCEPTANCE PASS, CLOSING CANDIDATE — GO and M5 
 
 ## M5A accepted foundation and historical acceptance
 
-M5 — Unified Main Workspace UI is **OPEN**; M5A — Main Workspace Shell Foundation is **CLOSED — GO**.
+At M5A approval, M5 — Unified Main Workspace UI was **OPEN**; M5A — Main Workspace Shell Foundation was **CLOSED — GO**.
 **M5A Architecture / Closing Review: GO.** ADR-001..010 are Accepted, including ADR-008/009/010.
 M5B — Assistant + Desktop Translate Migration: **CLOSED — GO**; M5C — Conversations Migration: **CLOSED — GO**;
-Current M5D progress is at the top; M5E — Product Consolidation / Packaging / Final Acceptance: **NOT STARTED**.
+M5E — Product Consolidation / Packaging / Final Acceptance was **NOT STARTED** at this historical stage; current M5 final approved status is at the top.
 Final M5A acceptance baseline: Java **105 PASS** / Desktop **168 PASS** / Frontend **14 PASS**.
 The historical M5A approval sync recorded existing acceptance results without changing implementation or tests.
 WPF owns lifetime/single instance/tray/hotkey/UIA/clipboard/helper processes/WinCred/dialogs,
@@ -367,7 +375,7 @@ Final closing evidence：Java105/Desktop136、real Windows/WPF/HTTP/SQLite/Ollam
 M4 closing 时 Main Workspace 尚未开始；当前 M5C Conversation migration、M5B业务与M5A shell基础见页首。
 Finance integration / Reality Sync、Knowledge/RAG/embeddings/vector DB、Agent/Tools/TOOL role、Browser Conversation、streaming、
 edit/regenerate/branching、automatic Memory、cloud/encrypted/scheduled/incremental backup、multi-device sync仍未实现。
-M5A / M5B / M5C / M5D Architecture / Closing Review 已 GO；M5A / M5B / M5C / M5D CLOSED — GO，M5E NOT STARTED；M5仍OPEN。
+M5A / M5B / M5C / M5D / M5E Architecture / Closing Review 已 GO；M5A / M5B / M5C / M5D / M5E CLOSED — GO；M5 CLOSED — GO，M5 FINAL CLOSING — APPROVED — GO。
 
 ## M4C current architecture
 

@@ -2,8 +2,11 @@
 
 Personal AI Workspace 是 local-first Windows AI 工作区：Assistant 单轮问答/摘要、持久多轮 Conversations、用户手动管理的 Memory、Translate 和 Settings。所有推理由本机 Ollama 执行；没有云端 fallback、自动 Memory 或同步。
 
-**M5A / M5B / M5C / M5D — CLOSED — GO。M5E — IMPLEMENTED / LOCAL ACCEPTANCE PASS。M5 — OPEN。**
-M5E CLOSING CANDIDATE — GO；M5 FINAL CLOSING CANDIDATE — GO，等待 Architecture / Final Closing Review。Main Workspace 默认产品入口与 portable Release bundle 已完成本地验收。最终回归：Java 105 / Desktop 258 / Frontend 106 PASS。范围、包身份和真实 Windows 证据见 [M5E Closing Report](docs/milestones/M5E-CLOSING-REPORT.md)，当前状态见 [STATUS](docs/STATUS.md)。
+**M5 — Unified Main Workspace UI：CLOSED — GO。M5A / M5B / M5C / M5D / M5E — CLOSED — GO。**
+**M5 FINAL CLOSING — APPROVED — GO。** Architecture / Final Closing Review 已正式批准；Main Workspace 为主产品入口，Portable Windows Release Bundle — validated。Published test baseline：Java **105 PASS** / Desktop **258 PASS** / Frontend **106 PASS**。最终 full automated regression 在 Architecture / Final Closing Review 前只执行一次。范围、包身份和真实 Windows 证据见 [M5E Closing Report](docs/milestones/M5E-CLOSING-REPORT.md)，当前正式状态见 [STATUS](docs/STATUS.md)。ADR-001..010 — Accepted。
+
+No full test suite or Windows acceptance was rerun during Final Formal Delivery.
+The published evidence is inherited from the approved M5E / M5 Final Closing Candidate.
 
 ## 产品与架构
 
@@ -12,7 +15,11 @@ M5E CLOSING CANDIDATE — GO；M5 FINAL CLOSING CANDIDATE — GO，等待 Archit
 React → 固定可信 WebView2 origin → typed allowlisted WPF bridge → application-owned RuntimeClient → Java Runtime / SQLite / Ollama。
 Runtime 是 Memory 与 Conversation 的唯一持久化真相；React 没有直接 Runtime HTTP、凭据或第二数据库。Memory 由用户逐次明确选择；下一次 Ask / Turn 不自动继承。
 
-WPF 拥有应用生命周期、single instance、tray、快捷键、UIA/controlled clipboard、helper、Credential Manager、Memory selector、Browser Pairing 与两种备份。Quick Assistant / Quick Translate 保留原生快捷工作流与 fallback。健康 React 页面不再提供旧 Memory/Conversation/Assistant 窗口入口；三个对应 JS bridge 权限已移除。原生 implementation 保留。Browser companion 仍仅 Translate。
+React Main Workspace 包含 Assistant、Conversations、Memory、Translate、Settings。WPF 拥有应用生命周期、single instance、tray、WebView2 host/security、快捷键、UIA/controlled clipboard、helper、credential flow、MemorySelectionWindow、Browser Pairing、Memory Backup、Workspace Backup 与原生 dialogs/confirmations。Runtime 拥有 durable Memory / Conversation、TaskManager、context assembly、provider policy、Ollama execution、backup semantics 与 SQLite。
+
+Legacy Assistant 的正式角色为 Quick Assistant / fallback，保留原生快捷工作流，不是主产品窗口。Native maintenance allowlist 恰好为 `native.openCredentialFlow`、`native.openBrowserPairing`、`native.openMemoryBackup`、`native.openWorkspaceBackup`。`native.openLegacyAssistant`、`native.openConversations`、`native.openMemory` 已退休，不再是 WebMessage authority；WPF fallback implementation 保留。
+
+普通 Assistant Ask = stateless；Conversation = durable multi-turn；Memory = manual/user-controlled；explicit Memory = exact revision；Browser = Translate-only。
 
 ## 开发运行
 
@@ -35,6 +42,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.
 
 包包含 self-contained win-x64 Release WPF、production React、应用 Runtime JAR、launcher、用户 README、manifest 与 SHA-256。普通运行不需要 Node/npm、Maven、Git、Visual Studio、.NET SDK/runtime 或源码仓库。Java 21、Ollama/configured model、WebView2 是用户前提，不自动下载。
 
+已验收固定包的 payload identity 为 implementation commit `bcf7d5f8e20c05e516ae22cbff40d17a18567222`。后续 historical closing commit `82fb7d4cf7ae2f7b518a79b64c5c4c828f030e3b` 与独立 architecture approval commit 只修改 documentation；package payload identity ≠ final docs-only repository HEAD，不因文档批准重建包。本次 Formal Delivery 仅 merge/push source main；无 tag、GitHub Release 或 ignored local package 上传。Package artifact publication 留待单独决定。
+
 输出位于 ignored `artifacts/`；存在的候选不会被脚本覆盖，可用 `-OutputName` 另建。已有 verified frontend/JAR 的开发流水线可传 `-FrontendPrebuilt -RuntimePrebuilt`；Desktop 仍须 self-contained publish。
 
 包目录可移动；状态不写入包。首次在 Settings 点击凭据管理，在原生窗口明确选择 `%LOCALAPPDATA%\PersonalAiWorkspace\RuntimeState\Auth\client-token`。launcher 只以该私有文件认证 Runtime，不导入 Windows Credential Manager。健康现有 Runtime 必须同时通过 readiness 与认证契约才能复用；未知端口占用 fail closed。
@@ -45,7 +54,7 @@ Workspace 默认 `%USERPROFILE%\.personal-ai-workspace\data`；release Runtime a
 
 数据库与备份都是明文；OS 账户与权限提供边界，不承诺加密或取证级擦除。Workspace Backup 包含 Memory + terminal Conversation，恢复到新/空目录；用户明确以该目录重启 Runtime 后使用恢复数据。关闭 Main Workspace 保留托盘，tray Exit 退出 Desktop；Runtime/Ollama 继续由外部管理。
 
-当前交付是 unsigned portable folder，提供损坏检测而非签名/真实性保证；MSI/MSIX、updater、bundled JRE/Ollama、云同步均 deferred。Knowledge/RAG/Finance/Agent、streaming、edit/regenerate/branching、automatic Memory 不在本轮。
+当前交付是 unsigned portable folder，提供损坏检测而非签名/真实性保证；无 installer/MSI/MSIX、code signing、updater、bundled JRE/Ollama、云同步。Java 21、Ollama、configured model、WebView2 Evergreen required；plaintext local DB / plaintext backups 是 accepted limitations，不是 unfinished M5 work。Knowledge、semantic retrieval/RAG、Finance、Agent/Tools、streaming、edit/regenerate/branching、automatic Memory 不在产品范围内。
 
 ## 已批准 milestone 历史
 
