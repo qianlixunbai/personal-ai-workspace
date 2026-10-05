@@ -977,6 +977,29 @@ class RuntimeApiTest {
             try (var paths = Files.walk(root)) { for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path); }
         }
     }
+    @Test void knowledgeNativeStreamingAndBrowserDenialBeforeReadingBody(CapturedOutput logs)throws Exception {
+        var client=pairBrowser("chrome-extension://"+"k".repeat(32));String base="/api/v1/knowledge";
+        for(String path:List.of(base+"/documents",base+"/imports",base+"/documents/"+java.util.UUID.randomUUID()+"/preview",base+"/backup",base+"/backup/validate",base+"/backup/restore")){
+            String method=path.endsWith("imports")||path.endsWith("validate")||path.endsWith("restore")?"POST":"GET";
+            assertEquals(403,browser(method,path,method.equals("POST")?"x".repeat(50000):null,client.credential(),client.origin()).statusCode());
+            assertTrue(List.of(401,403).contains(browser(method,path,null,client.credential(),null).statusCode()));
+            assertEquals(401,http.send(browserRequest(path,client.origin()).header("Access-Control-Request-Method",method).method("OPTIONS",HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString()).statusCode());
+        }
+        String marker="knowledge-private-source-"+java.util.UUID.randomUUID(),requestId=java.util.UUID.randomUUID().toString();privateValues.add(marker);
+        var request=HttpRequest.newBuilder(uri(base+"/imports")).header("Authorization","Bearer "+token()).header("Content-Type","application/octet-stream")
+            .header("X-Knowledge-Request",requestId).header("X-Knowledge-Size",Integer.toString(marker.length()))
+            .header("X-Knowledge-Filename",java.util.Base64.getUrlEncoder().withoutPadding().encodeToString("fixture.txt".getBytes(StandardCharsets.UTF_8)))
+            .POST(HttpRequest.BodyPublishers.ofString(marker)).build();
+        var admitted=http.send(request,HttpResponse.BodyHandlers.ofString());assertEquals(200,admitted.statusCode());String doc=tree(admitted).path("documentId").asString();
+        try{
+            long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);JsonNode job;
+            do{job=tree(send("GET",base+"/imports/"+requestId,null,true));if(job.path("state").asString().equals("READY"))break;assertTrue(System.nanoTime()<until);Thread.sleep(5);}while(true);
+            var preview=send("GET",base+"/documents/"+doc+"/preview?revision=1",null,true);assertEquals(marker,tree(preview).path("text").asString());assertFalse(preview.body().contains(MEMORY.toString()));
+            assertEquals(413,send("POST","/api/v1/memory/items","x".repeat(32769),true).statusCode());
+            assertFalse(logs.getAll().contains(marker));
+        }finally{var current=tree(send("GET",base+"/documents/"+doc,null,true)).path("document").path("metadataVersion").asString();
+            assertEquals(200,send("DELETE",base+"/documents/"+doc,json.writeValueAsString(Map.of("expectedMetadataVersion",current)),true).statusCode());}
+    }
     @Test void workspaceStreamingHttpNativeOnlyFullValidationAndNoPending(CapturedOutput logs) throws Exception {
         String base="/api/v1/workspace/backup";var client=pairBrowser("chrome-extension://"+"o".repeat(32));
         for(String path:List.of(base,base+"/validate",base+"/restore")) {

@@ -3,6 +3,28 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case KNOWLEDGE_INVALID_SOURCE -> "Knowledge source is invalid or contains binary data.";
+            case KNOWLEDGE_UNSUPPORTED_TYPE -> "Only UTF-8 TXT and Markdown sources are supported.";
+            case KNOWLEDGE_INVALID_UTF8 -> "Knowledge source must be valid UTF-8.";
+            case KNOWLEDGE_SOURCE_TOO_LARGE -> "Knowledge source exceeds its size budget.";
+            case KNOWLEDGE_LIMIT_EXCEEDED -> "Knowledge capacity or representation limit exceeded.";
+            case KNOWLEDGE_DUPLICATE_SOURCE -> "Source already belongs to a different Knowledge document.";
+            case KNOWLEDGE_REVISION_CONFLICT -> "Knowledge document changed or is busy. Read it again.";
+            case KNOWLEDGE_NOT_FOUND -> "Knowledge document, revision or import does not exist.";
+            case KNOWLEDGE_QUEUE_FULL -> "Knowledge ingestion capacity is full.";
+            case KNOWLEDGE_INGESTION_FAILED -> "Knowledge ingestion could not be completed.";
+            case KNOWLEDGE_INTERRUPTED -> "Knowledge ingestion was interrupted. Check import state before retrying.";
+            case KNOWLEDGE_CANCELLED -> "Knowledge ingestion was cancelled.";
+            case KNOWLEDGE_STORAGE_UNAVAILABLE -> "Knowledge storage is unavailable.";
+            case KNOWLEDGE_SCHEMA_UNSUPPORTED -> "Knowledge schema or parser version is unsupported.";
+            case KNOWLEDGE_DELETE_INCOMPLETE -> "Knowledge deletion is incomplete. Retry explicitly.";
+            case KNOWLEDGE_BACKUP_INVALID -> "Knowledge backup is invalid or damaged.";
+            case KNOWLEDGE_BACKUP_UNSUPPORTED -> "Knowledge backup version is unsupported.";
+            case KNOWLEDGE_BACKUP_TOO_LARGE -> "Knowledge backup exceeds its size budget.";
+            case KNOWLEDGE_BACKUP_CONFLICT -> "Wait for Knowledge imports and deletions before backup.";
+            case KNOWLEDGE_RESTORE_TARGET_NOT_EMPTY -> "Restore requires a new or empty data directory.";
+            case KNOWLEDGE_RESTORE_FAILED -> "Knowledge restore could not be confirmed.";
+            case KNOWLEDGE_EXPORT_FAILED -> "Knowledge export could not be completed.";
             case WORKSPACE_BACKUP_INVALID -> "Workspace backup is invalid or damaged.";
             case WORKSPACE_BACKUP_UNSUPPORTED -> "Workspace backup version is unsupported.";
             case WORKSPACE_BACKUP_TOO_LARGE -> "Workspace backup exceeds its size budget.";

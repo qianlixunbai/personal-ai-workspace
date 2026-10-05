@@ -84,6 +84,14 @@ final class LocalClientFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
+            boolean knowledgeUpload=identity.clientType().equals("native") && method.equals("POST") && path.equals("/api/v1/knowledge/imports");
+            if(knowledgeUpload) {
+                if(request.getContentLengthLong()>io.github.qianlixunbai.workspace.knowledge.KnowledgeLimits.SOURCE_BYTES) {
+                    reject(response,413,ErrorCode.KNOWLEDGE_SOURCE_TOO_LARGE);return;
+                }
+                // Only this exact native route bypasses JSON buffering. Ingestion bounds the stream.
+                chain.doFilter(request,response);return;
+            }
             boolean workspaceBackup = identity.clientType().equals("native") && method.equals("POST")
                     && List.of("/api/v1/workspace/backup/restore", "/api/v1/workspace/backup/validate").contains(path);
             if (workspaceBackup) {
