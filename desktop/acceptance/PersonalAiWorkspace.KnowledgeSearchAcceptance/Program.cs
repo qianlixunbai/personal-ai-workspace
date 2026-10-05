@@ -18,13 +18,18 @@ internal static class Program
     private static AssistantApp app=null!;private static MainWorkspaceWindow shell=null!;private static RuntimeClient runtime=null!;
     private static JsonElement cases;private static string stage="configuration";private static readonly List<string> checks=[];
     private static int code=1;private static string? failure,failureMessage;private static string[]? failureStack;private static bool realIme;
+    private static bool foregroundFallbackUsed,foregroundAttachSucceeded,foregroundDetachSucceeded;
     private static string Setting(string name)=>Environment.GetEnvironmentVariable("K2_"+name)!;
     private static string Case(string name)=>cases.GetProperty(name).GetString()!;
     [DllImport("user32.dll")]private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")]private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")]private static extern bool IsChild(IntPtr parent,IntPtr child);
+    [DllImport("user32.dll")]private static extern bool AttachThreadInput(uint first,uint second,bool attach);
+    [DllImport("kernel32.dll")]private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")]private static extern bool PostMessage(IntPtr window,uint message,IntPtr first,IntPtr second);
     [DllImport("user32.dll")]private static extern IntPtr GetKeyboardLayout(uint thread);
     [DllImport("user32.dll")]private static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
-    private static void Key(byte key){keybd_event(key,0,0,UIntPtr.Zero);keybd_event(key,0,2,UIntPtr.Zero);}
+    private static void Key(byte key){Require(Native.GetForegroundWindow()==new WindowInteropHelper(shell).Handle,"physical-keyboard-workspace-focus");keybd_event(key,0,0,UIntPtr.Zero);keybd_event(key,0,2,UIntPtr.Zero);}
     [STAThread]private static int Main()
     {
         cases=JsonDocument.Parse(Setting("CASES")).RootElement.Clone();string token=File.ReadAllText(Setting("TOKEN_FILE")).Trim();
@@ -41,7 +46,7 @@ internal static class Program
         try{app.Run();}finally{app.Cleanup();runtime.Dispose();credentials.Forget();}
         Console.WriteLine(JsonSerializer.Serialize(new{result=code==0?"PASS":"FAIL",check=stage,failureType=failure,failureMessage,failureStack,checks,
             productionWpf=true,realWebView2=true,bundledReact=true,realRuntime=true,realWindowsPinyin=realIme,
-            independentExecutions=1}));return code;
+            foregroundFallbackUsed,foregroundAttachSucceeded,foregroundDetachSucceeded,independentExecutions=1}));return code;
     }
     private static void Stage(string value){stage=value;File.WriteAllText(Setting("PROGRESS"),JsonSerializer.Serialize(new{check=value,completedChecks=checks.Count}));}
     private static void Require(bool value,string name){Stage(name);if(!value)throw new InvalidOperationException(name);checks.Add(name);}
@@ -106,22 +111,52 @@ internal static class Program
         do{job=await runtime.GetKnowledgeImportAsync(id,default);if(job.State is not ("PENDING" or "PARSING"))break;await Task.Delay(100);}while(DateTime.UtcNow<end);
         Require(job.State==expected,"source-update-terminal-"+expected.ToLowerInvariant());}
     private static async Task Update(KnowledgeDocument doc,string text){using var bytes=new MemoryStream(Encoding.UTF8.GetBytes(text));var job=await runtime.UploadKnowledgeAsync(bytes,doc.Title,Guid.NewGuid().ToString("D"),doc.DocumentId,doc.MetadataVersion,default);await Job(job.RequestId,"READY");}
+    private static async Task<IntPtr> PreparePhysicalInput()
+    {
+        shell.Dispatcher.VerifyAccess();var hwnd=new WindowInteropHelper(shell).Handle;
+        Native.GetWindowThreadProcessId(hwnd,out uint owner);
+        Require(IsWindow(hwnd)&&owner==(uint)Environment.ProcessId,"physical-input-owned-live-window");
+        if(!shell.IsVisible)shell.Show();if(shell.WindowState==WindowState.Minimized)shell.WindowState=WindowState.Normal;
+        shell.ReturnFocus();SetForegroundWindow(hwnd);
+        var until=DateTime.UtcNow.AddSeconds(1);
+        while(Native.GetForegroundWindow()!=hwnd&&DateTime.UtcNow<until)await Task.Delay(50);
+        if(Native.GetForegroundWindow()!=hwnd){
+            // Last-resort acceptance path already used by Product/MainWorkspace acceptance.
+            uint current=GetCurrentThreadId(),foreground=Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out _);
+            foregroundFallbackUsed=true;
+            Require(foreground!=0&&foreground!=current,"physical-input-foreground-thread-available");
+            bool attached=AttachThreadInput(current,foreground,true);foregroundAttachSucceeded=attached;
+            try{if(attached){SetForegroundWindow(hwnd);shell.ReturnFocus();}}
+            finally{if(attached)foregroundDetachSucceeded=AttachThreadInput(current,foreground,false);}
+            Require(attached&&foregroundDetachSucceeded,"physical-input-foreground-attachment-cleaned");
+            until=DateTime.UtcNow.AddSeconds(2);
+            while(Native.GetForegroundWindow()!=hwnd&&DateTime.UtcNow<until)await Task.Delay(50);
+        }
+        Require(IsWindow(hwnd)&&Native.GetForegroundWindow()==hwnd,"physical-input-workspace-foreground-established");
+        shell.Browser.Focus();await Js("document.getElementById('knowledge-search-query').focus()");
+        await WaitJs("document.hasFocus()&&document.activeElement===document.getElementById('knowledge-search-query')&&!document.activeElement.disabled","physical-input-search-target-focused",3);
+        var focus=Native.FocusWindow(hwnd);
+        Require(Native.GetForegroundWindow()==hwnd&&focus!=IntPtr.Zero&&IsChild(hwnd,focus),"physical-input-webview-child-focused");
+        return hwnd;
+    }
     private static async Task Pinyin()
     {
         Stage("native-pinyin");await Js("(()=>{window.__ime={start:0,end:0,update:0,composing:false,premature:0,submits:0};const t=document.getElementById('knowledge-search-query');t.addEventListener('compositionstart',()=>{window.__ime.start++;window.__ime.composing=true});t.addEventListener('compositionupdate',()=>window.__ime.update++);t.addEventListener('compositionend',()=>{window.__ime.end++;window.__ime.composing=false});const post=chrome.webview.postMessage.bind(chrome.webview);chrome.webview.postMessage=m=>{if(m.method==='knowledge.search'){window.__ime.submits++;if(window.__ime.composing)window.__ime.premature++}post(m)}})()");
         var original=Forms.InputLanguage.CurrentInputLanguage;var chinese=Forms.InputLanguage.InstalledInputLanguages.Cast<Forms.InputLanguage>().FirstOrDefault(x=>x.Culture.Name=="zh-CN");Require(chinese is not null,"pinyin-installed");
-        var hwnd=new WindowInteropHelper(shell).Handle;shell.ReturnFocus();SetForegroundWindow(hwnd);var focus=Native.FocusWindow(hwnd);var layout=GetKeyboardLayout(Native.GetWindowThreadProcessId(focus,out _));
+        var hwnd=await PreparePhysicalInput();var focus=Native.FocusWindow(hwnd);var layout=GetKeyboardLayout(Native.GetWindowThreadProcessId(focus,out _));
         try{
-            Forms.InputLanguage.CurrentInputLanguage=chinese!;PostMessage(focus,0x0050,IntPtr.Zero,chinese!.Handle);await Js("document.getElementById('knowledge-search-query').focus()");await Task.Delay(300);
-            foreach(char letter in "yusuan"){Require(Native.GetForegroundWindow()==hwnd,"physical-keyboard-workspace-focus");Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}
+            Forms.InputLanguage.CurrentInputLanguage=chinese!;PostMessage(focus,0x0050,IntPtr.Zero,chinese!.Handle);await Task.Delay(300);await PreparePhysicalInput();
+            foreach(char letter in "yusuan"){Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}
             Require(await Js("window.__ime.composing&&window.__ime.start>0&&window.__ime.update>0") =="true","genuine-pinyin-before-composition-enter");
             Key(0x0D);await WaitJs("!window.__ime.composing","composition-enter-commits");
             Require(await Js("window.__ime.submits===0&&window.__ime.premature===0") =="true","composition-enter-does-not-submit");
             await Input("");
-            foreach(char letter in "yusuan"){Require(Native.GetForegroundWindow()==hwnd,"physical-keyboard-workspace-focus");Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}Key(0x20);await Task.Delay(300);
+            foreach(char letter in "yusuan"){Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}Key(0x20);await Task.Delay(300);
             Require(await Js("window.__ime.start>0&&window.__ime.update>0&&window.__ime.end>0&&window.__ime.submits===0&&document.getElementById('knowledge-search-query').value==='预算'") =="true","genuine-pinyin-composition-committed-query");
             Key(0x0D);await WaitJs("document.querySelector('.knowledge-search h3')!==null","physical-enter-search-submit");
             Require(await Js("window.__ime.submits===1&&window.__ime.premature===0") =="true","pinyin-no-premature-query");Require((await Hits()).GetArrayLength()==3,"chinese-lexical-results");realIme=true;
+            Require(await Js("!location.href.includes('预算')&&!location.href.includes(encodeURIComponent('预算'))&&!JSON.stringify({...localStorage,...sessionStorage}).includes('预算')") =="true","pinyin-query-absent-url-storage");
+            Require(await AsyncBoolean("(async()=> (await indexedDB.databases()).length===0&&(await caches.keys()).length===0)()"),"pinyin-query-absent-indexeddb-cache");
         }finally{PostMessage(focus,0x0050,IntPtr.Zero,layout);Forms.InputLanguage.CurrentInputLanguage=original;}
     }
 }
