@@ -4,18 +4,20 @@
 
 [V1 Roadmap](roadmap/V1-ROADMAP.md) 是长期主线与平台能力规划入口；未来能力未因此启动。
 
-K2 PARTIAL / BLOCKED；Architecture Guard K2 Architecture Review — APPROVED — GO。
+K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO。
+Architecture Guard K2 Architecture Review — APPROVED — GO；等待独立 Closing Review。
 M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO；K3 / K4 — NOT STARTED。
 Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 独立 derived FTS5/BM25 index、版本化 lexical analyzer/chunker、corpus fingerprint freshness、
 单 worker / 单 coalesced rerun、native-only POST 搜索、typed session bridge 与页面内关键词检索已实施。
 知识 schema v1 / Knowledge Backup v1 保持；Browser Translate-only，无自动 AI context。
 最终 Java 134 / Desktop 273 / Frontend 119、production build / local Release publish PASS。
-首次 Windows attempt 的 upload JSON/bytes TypeError 已按新授权修复；单条 query-race regression PASS。
-第三轮 async smoke / IndexedDB / Cache assertion PASS；一次真实 WPF flow 在
-`physical-keyboard-workspace-focus` 失败，未发送首个 Pinyin 按键，按 STOP RULE 停止。
-完整 Windows/Pinyin、fresh-canary privacy 和 launcher 未完成，不构成 closing candidate。
-见 [K2 阻塞报告](milestones/K2-CLOSING-REPORT.md)。
+第四轮一次真实 Windows integrated flow PASS，完成 Pinyin/composition Enter、中文检索、
+生命周期/revision、索引恢复、Backup restore/rebuild parity 和 Browser denial；fresh-canary privacy
+0 matches；一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`，无 production 改动。
+不重跑 full suites/query-race/build/publish；单条 query-race 的既有 PASS 继承。
+前三次 harness 失败和 STOP 记录见 [K2 Closing Report](milestones/K2-CLOSING-REPORT.md)。
+未 merge/push/tag/release，未启动 K3；K2 尚未 CLOSED。
 以下 K1 正式批准章节是先前交付快照。
 
 ## Current K1 approved final closing

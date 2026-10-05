@@ -17,7 +17,7 @@ K2 implementation spec 或未来功能已实现的声明。当前证据见 [Curr
 | 07 | M5 | CLOSED — GO |
 | 08 | K0 | APPROVED — GO |
 | 09 | K1 | CLOSED — GO |
-| 10 | K2 | Deterministic Lexical Retrieval；当前阶段，PARTIAL / BLOCKED，待缺失 hard gates |
+| 10 | K2 | Deterministic Lexical Retrieval；当前阶段，IMPLEMENTED / LOCAL ACCEPTANCE PASS；CLOSING CANDIDATE — GO，待独立 Closing Review |
 | 11 | K3 | Grounded Knowledge Answer + Citations；NOT STARTED |
 | 12 | W1 | Controlled Web Access；NOT STARTED |
 | 13 | V1 | Multimodal / Vision Foundation；NOT STARTED |

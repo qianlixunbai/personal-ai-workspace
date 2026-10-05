@@ -1,10 +1,11 @@
-# K2 — Deterministic Lexical Retrieval — 阻塞报告
+# K2 — Deterministic Lexical Retrieval — Closing Candidate
 
 日期：2026-10-06（Asia/Shanghai）。
 
-当前仍为 **K2 PARTIAL / BLOCKED**。原始 helper 与 async storage assertion 已修复，第三轮
-真实 WPF flow 在首个 Pinyin 物理按键前的前台窗口检查失败，严格 STOP。
-见文末「Blocker Recovery Attempt 3」。以下两次历史失败及 STOP 记录保留。
+当前为 **K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO**。
+第四轮一次真实 Windows integrated flow、Pinyin、fresh-canary privacy 和最小 actual launcher PASS。
+见文末「Blocker Recovery Attempt 4」。以下前三次历史失败和正确执行 STOP 的事实保留。
+**不是 K2 CLOSED — GO；正式 closing authority 仍属于 Architecture Guard。**
 
 ## Historical Attempt 1 — Result / Exact Blocker
 
@@ -289,3 +290,91 @@ V1 Roadmap 未改写或扩展；只同步 current docs 的准确 blocker，保�
 无 merge main/push/tag/release。**K2 PARTIAL / BLOCKED，尚不构成 CLOSING CANDIDATE。**
 下一步需窄授权核对并恢复 Pinyin 前台窗口前置条件，再完成缺失 gates；全部通过后交由
 Architecture Guard 独立 Closing Review。
+
+## Blocker Recovery Attempt 4 — Final Local Acceptance — 2026-10-06
+
+### Reality Gate / Foreground Root Cause / Remediation
+
+起始 feature HEAD `579a4e122ce6c67ff982545159ee568c075e2fdb`，tree clean，ancestry 正常。
+command-local proxy fresh fetch 成功；main / origin/main 仍为
+`2323124f76ce34522c78016f2540dccc5e9ed983`。无未知改动或 material Git conflict。
+
+历史 attempt 3 的具体失败仍是首个 `Key()` 之前 foreground HWND 不匹配；不是实际 Pinyin、
+composition、Enter guard 或 production focus bug。确认的 harness 缺口是一次激活请求后未建立
+有界 foreground/focus precondition；历史没有保存 activation 返回值/当时 foreground owner，
+无法断言 Windows 拒绝激活的具体原因。[Win32 activation 约束](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)
+也不保证每次请求都成为前台。
+
+修复提交 `e789b38af0f233f186851ff1e6b41cdd8fc3994f`：仅 acceptance `Program.cs`。
+先确认 HWND 存在且属于当前 acceptance process，在必要时显示/恢复窗口，调用既有
+WPF ReturnFocus / SetForegroundWindow，按条件有界等待。只有普通激活失败才允许复用既有
+Product/MainWorkspace acceptance 的 AttachThreadInput fallback，同步块内使用并在 finally detach；
+没有 Topmost、全局 hook、生产 foreground-stealing 或无限重试。
+验证 top-level foreground、WebView native child focus 和 document.hasFocus/active search input；
+切换 IME 后再次建立目标，每一个 physical key（含 Enter/Space）发送前严格核对 foreground。
+本次正常激活通过，**fallback 未执行**；不声称 AttachThreadInput 分支已经实测。
+
+生产代码、packaging inputs、schema、Backup、auth、权限与生命周期均未修改。
+新增 production/普通 automated tests **0**，无新依赖，无专门 foreground/IME suite。
+
+### 本轮实际 Commands / One Integrated Flow / Privacy
+
+实际执行 `python scripts/knowledge-search-smoke.py` **一次**；内部仅编译改动的 acceptance
+project：`dotnet build desktop/acceptance/PersonalAiWorkspace.KnowledgeSearchAcceptance/PersonalAiWorkspace.KnowledgeSearchAcceptance.csproj -c Release -p:FrontendSkipBuild=true`。
+compile PASS；同一次 production WPF/WebView2/React/Runtime integrated flow **PASS**。
+
+| 本轮 gate / evidence | 实际结果 |
+| --- | --- |
+| Foreground + native/DOM target | PASS；有界准备后逐 key 验证，没有向其他 foreground 发送键 |
+| Real Pinyin / composition Enter | PASS；physical yusuan 产生真实 composition，composition Enter 未提交；再次选词预算，Enter 搜索 |
+| Chinese / Latin search / deterministic ranking | PASS；expected hits、title/heading/body 排名、稳定逻辑顺序 |
+| Exact preview / accessibility / 125% | PASS；命中 exact offset 打开，真实键盘提交，125% 无横向 overflow |
+| ACTIVE archive / restore | PASS；archive 消失，restore 返回 |
+| Current READY / failed revision | PASS；revision 2 替换旧检索内容；invalid UTF-8 FAILED 保留 current READY 2 |
+| Rebuild / missing / corrupt index | PASS；explicit rebuild 返回 READY；两种派生文件故障重启后检索恢复 |
+| Backup export / new-empty restore / rebuild parity | PASS；target 不含 index；truth/revisions/source hashes 相同；重建后完整 hit DTO（含 offsets/lines/snippet）相同 |
+| Browser denial | PASS；Browser credential search/status/rebuild 均 403 |
+| No Ollama search dependency | PASS；集成 Runtime 全程配置不可用 Ollama endpoint，未执行 inference |
+| Query URL/storage privacy | PASS；Latin fresh canary 和实际 Pinyin query 的 URL/localStorage/sessionStorage 检查；IndexedDB/Cache namespaces 为空 |
+| Bridge metadata / literal snippet | PASS；无 digest/fingerprint/token/BM25/path/source bytes；无 HTML execution |
+| Complete fresh-canary privacy | PASS，0 matches；4 Runtime logs、375 UDF files、54 owning source/build/package/evidence files、350 Runtime archive entries |
+| Cleanup | PASS；test-owned Runtime stopped，verified temporary directory removed |
+
+Stale fail-closed/query-mid-mutation 与 wrong-version recovery 的已有 focused evidence 继承，未再造
+一次相同 race 或版本故障；Runtime post-query fingerprint、locator/preview 的生产语义没有变化。
+Backup 的本轮 parity 是完整 hits/locators/snippet 与 authoritative truth/source parity；恢复后未另跑
+一次相同 preview UI 点击。safe evidence：ignored `.verification/k2-knowledge-search-evidence.json`。
+其中 sequential check labels（含重复等待/操作）不是独立 tests、gates 或 executions。
+历史共四次 harness attempts：首次未启动 WPF，随后两次 WPF 失败，本次唯一成功 integrated flow。
+
+### Minimal Actual Launcher / Fixed Package
+
+随后执行 `python .verification/k2-launcher-check.py` **一次**，复用既有 K1 实际启动模式，
+去掉重复 CheckOnly、full hash/package matrix 和广域 privacy scan。
+实际调用现有 candidate 的 `release/start-release.ps1 -StateDirectory <private-temp>/state -DataDirectory <private-temp>/data`
+（不是 CheckOnly），launcher exit 0 / ready marker、真实 Desktop main window、packaged Runtime readiness
+与新空 data directory 的 K2 search status READY 均 **PASS**。
+Runtime lexical/controller classes、frontend search/rebuild/input assets 已确认存在。
+package manifest 仍指向 `3a5efc1d8e1fe2060c7b7a648b4339b21bb1e790`，sourceDirty=false。
+没有 production build/publish，没有请求 Ollama inference；原已运行的 Ollama 保留。
+Parent PID + exact executable/explicit fixture paths 确认 ownership，仅停止本次 launcher 的
+Desktop/Runtime；新 token 未进入 launcher Runtime/Desktop logs，temporary directory removed。
+safe evidence：ignored `.verification/k2-launcher-evidence.json`；辅助脚本/fixtures 未 commit。
+
+### Inherited Regression / Current Docs / Final Git / Authority
+
+Java 134、Desktop 273、Frontend 119、production build/runtime package/self-contained Release publish
+继续继承固定 implementation candidate 的既有 PASS；本轮明确**未重跑**，无 production 变化。
+已通过的 query-race regression 也未重跑；无历史 Browser/IME/stress/M5 package matrix、真实 inference。
+本轮只有一次 acceptance compile、一次 integrated Windows execution（包含 real Pinyin/privacy）
+和一次 minimal actual launcher sanity，不把覆盖点当成执行次数。
+
+README、STATUS、current architecture 同步 LOCAL ACCEPTANCE PASS / CLOSING CANDIDATE — GO；
+V1 Roadmap 仅更新 K2 objective status，未扩展。ADR-001..012 与历史 K1 report 未修改。
+当前仍有既有明确限制：account-private plaintext、词法 AND/CJK bigram 非 semantic/fuzzy search、
+未知 ownership 的 crash orphan staging 保留；无更广的 Windows/IME/environment 兼容性认证。
+
+最终停在 clean `k2-deterministic-lexical-retrieval`，final docs HEAD 见交付 Git 输出；
+implementation/package candidate 与 final docs HEAD 分开。没有 rewrite/merge main/push/tag/release。
+**K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO。**
+K2 尚未 CLOSED；不启动 K3。下一步只交 Architecture Guard 独立代码级 Closing Review。
