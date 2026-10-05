@@ -17,7 +17,7 @@ internal static class Program
 {
     private static AssistantApp app=null!;private static MainWorkspaceWindow shell=null!;private static RuntimeClient runtime=null!;
     private static JsonElement cases;private static string stage="configuration";private static readonly List<string> checks=[];
-    private static int code=1;private static string? failure;private static bool realIme;
+    private static int code=1;private static string? failure,failureMessage;private static string[]? failureStack;private static bool realIme;
     private static string Setting(string name)=>Environment.GetEnvironmentVariable("K2_"+name)!;
     private static string Case(string name)=>cases.GetProperty(name).GetString()!;
     [DllImport("user32.dll")]private static extern bool SetForegroundWindow(IntPtr window);
@@ -31,18 +31,31 @@ internal static class Program
         var credentials=new CredentialStore("PersonalAiWorkspace.K2.Acceptance."+Guid.NewGuid().ToString("N"));credentials.Save(token);
         using var single=new SingleInstance(".K2.Acceptance."+Guid.NewGuid().ToString("N"));runtime=new RuntimeClient(()=>token);app=new AssistantApp(single,credentials);
         app.Startup+=(_,_)=>app.Dispatcher.BeginInvoke(new Action(async()=>{
-            try{await Drive();code=0;}catch(Exception e){failure=e.GetType().Name;}
+            try{await Drive();code=0;}catch(Exception e){failure=e.GetType().Name;
+                failureMessage=e is InvalidOperationException&&e.Message==stage?stage:null;
+                failureStack=new System.Diagnostics.StackTrace(e,true).GetFrames()
+                    .Where(f=>f.GetMethod()?.DeclaringType?.Namespace==typeof(Program).Namespace)
+                    .Select(f=>f.GetMethod()!.DeclaringType!.Name+"."+f.GetMethod()!.Name+":"+f.GetFileLineNumber()).ToArray();}
             finally{if(app.Workspace is not null)await app.Workspace.ShutdownAsync();await app.ExitAsync();}
         }),DispatcherPriority.ApplicationIdle);
         try{app.Run();}finally{app.Cleanup();runtime.Dispose();credentials.Forget();}
-        Console.WriteLine(JsonSerializer.Serialize(new{result=code==0?"PASS":"FAIL",check=stage,failureType=failure,checks,
+        Console.WriteLine(JsonSerializer.Serialize(new{result=code==0?"PASS":"FAIL",check=stage,failureType=failure,failureMessage,failureStack,checks,
             productionWpf=true,realWebView2=true,bundledReact=true,realRuntime=true,realWindowsPinyin=realIme,
             independentExecutions=1}));return code;
     }
     private static void Stage(string value){stage=value;File.WriteAllText(Setting("PROGRESS"),JsonSerializer.Serialize(new{check=value,completedChecks=checks.Count}));}
-    private static void Require(bool value,string name){Stage(name);if(!value)throw new InvalidOperationException();checks.Add(name);}
+    private static void Require(bool value,string name){Stage(name);if(!value)throw new InvalidOperationException(name);checks.Add(name);}
     private static Task<string> Js(string script)=>shell.Browser.CoreWebView2.ExecuteScriptAsync(script).WaitAsync(TimeSpan.FromSeconds(10));
     private static async Task WaitJs(string script,string name,int seconds=30){Stage(name);var until=DateTime.UtcNow.AddSeconds(seconds);while(await Js(script)!="true"){if(DateTime.UtcNow>until)throw new TimeoutException();await Task.Delay(75);}checks.Add(name);}
+    private static async Task<bool> AsyncBoolean(string expression)
+    {
+        try{
+            await Js("(()=>{window.__k2Async={done:false};(async()=>{try{const value=await ("+expression+");window.__k2Async={done:true,ok:typeof value==='boolean',value}}catch{window.__k2Async={done:true,ok:false}}})();})()");
+            await WaitJs("window.__k2Async.done===true","async-result-completed",10);
+            Require(await Js("window.__k2Async.ok===true") =="true","async-result-is-completed-boolean");
+            return await Js("window.__k2Async.value===true") =="true";
+        }finally{await Js("delete window.__k2Async");}
+    }
     private static async Task Ready(){var end=DateTime.UtcNow.AddSeconds(30);while(shell.Browser.CoreWebView2 is null||shell.Host.SessionId.Length==0){if(DateTime.UtcNow>end)throw new TimeoutException();await Task.Delay(75);}await WaitJs("document.querySelector('.operation-status')?.textContent==='工作区已连接'","react-connected");await Js("document.querySelector('a[href=\"#/knowledge\"]').click()");await WaitJs("document.getElementById('knowledge-search-query')!==null","production-keyword-input");}
     private static async Task Capture(){await Js("(()=>{window.__k2=[];chrome.webview.addEventListener('message',e=>{window.__k2.push(e.data);window.__k2=window.__k2.slice(-64)})})()");}
     private static async Task Click(string text){Require(await Js("(()=>{const b=[...document.querySelector('.knowledge-page').querySelectorAll('button')].find(b=>b.textContent.trim()==="+JsonSerializer.Serialize(text)+");if(!b||b.disabled)return false;b.focus();b.click();return true})()") =="true","enabled-action");}
@@ -56,7 +69,10 @@ internal static class Program
     private static async Task Refresh(){await Click("刷新列表");await WaitJs("!document.getElementById('knowledge-search-query').disabled","refreshed-keyword-input");}
     private static async Task Drive()
     {
-        shell=app.Workspace!;await Ready();await Capture();await IndexReady();await Search("budget");var first=await Hits();
+        shell=app.Workspace!;await Ready();await Capture();
+        Require(await Js("(async()=>true)()") =="{}","async-smoke-legacy-promise-object");
+        Require(await AsyncBoolean("(async()=>{await Promise.resolve();return true})()"),"async-smoke-completed-boolean");
+        await IndexReady();await Search("budget");var first=await Hits();
         Require(first.GetArrayLength()==3&&first[0].GetProperty("title").GetString()==Case("TITLE"),"bm25-title-heading-body-ranking");
         Require(first[1].GetProperty("title").GetString()==Case("HEADING"),"markdown-heading-above-body");
         await Click("打开此位置");await WaitJs("document.querySelector('.knowledge-detail pre')!==null","result-opens-exact-preview");
@@ -65,7 +81,8 @@ internal static class Program
         Require(JsonSerializer.Serialize(once)==JsonSerializer.Serialize(twice),"deterministic-logical-order");
         await Search(Case("QUERY"));Require((await Hits()).GetArrayLength()==3,"fresh-latin-query-canary");
         Require(await Js("!location.href.includes("+JsonSerializer.Serialize(Case("QUERY"))+")&&!JSON.stringify({...localStorage,...sessionStorage}).includes("+JsonSerializer.Serialize(Case("QUERY"))+")") =="true","query-absent-url-storage");
-        Require(await Js("(async()=> (await indexedDB.databases()).length===0&&(await caches.keys()).length===0)()") =="true","no-indexeddb-or-cache-query-storage");
+        // Empty database/cache namespaces positively prove no query canary was persisted there.
+        Require(await AsyncBoolean("(async()=> (await indexedDB.databases()).length===0&&(await caches.keys()).length===0)()"),"no-indexeddb-or-cache-query-storage");
         Require(await Js("window.__k2.filter(r=>Array.isArray(r.result?.hits)).every(r=>!/(sourceDigest|representationDigest|corpusFingerprint|tokens|bm25|rowid|absolutePath)/.test(JSON.stringify(r)))") =="true","bridge-no-digest-index-metadata");
         Require(await Js("document.querySelector('.knowledge-search script,.knowledge-search img,.knowledge-search iframe')===null") =="true","snippet-literal-no-html-execution");
         shell.Browser.ZoomFactor=1.25;Require(await Js("document.documentElement.scrollWidth<=document.documentElement.clientWidth") =="true","search-125-percent-no-horizontal-overflow");shell.Browser.ZoomFactor=1;
