@@ -3,6 +3,12 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case KNOWLEDGE_SEARCH_INVALID -> "Knowledge search input is invalid.";
+            case KNOWLEDGE_QUERY_TOO_COMPLEX -> "Knowledge query exceeds its lexical budget.";
+            case KNOWLEDGE_INDEX_NOT_READY -> "Knowledge search index is rebuilding.";
+            case KNOWLEDGE_INDEX_UNAVAILABLE -> "Knowledge search index is unavailable.";
+            case KNOWLEDGE_INDEX_LIMIT_EXCEEDED -> "Knowledge search index exceeds its derived capacity.";
+            case KNOWLEDGE_INDEX_REBUILD_FAILED -> "Knowledge search index rebuild failed.";
             case KNOWLEDGE_INVALID_SOURCE -> "Knowledge source is invalid or contains binary data.";
             case KNOWLEDGE_UNSUPPORTED_TYPE -> "Only UTF-8 TXT and Markdown sources are supported.";
             case KNOWLEDGE_INVALID_UTF8 -> "Knowledge source must be valid UTF-8.";

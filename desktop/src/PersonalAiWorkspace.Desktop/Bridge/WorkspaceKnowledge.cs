@@ -31,6 +31,12 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     internal async Task<KnowledgeList> ListAsync(string session,string status,int page,CancellationToken ct)
     {Authority known;lock(sync)known=Require(session);var result=await runtime.ListKnowledgeAsync(status,page,ct);lock(sync)foreach(var d in result.Items)Authorize(session,known,d.DocumentId,d.RequestId);return result;}
+    internal async Task<KnowledgeSearchResult> SearchAsync(string session,string query,int limit,CancellationToken ct)
+    {Authority known;lock(sync)known=Require(session);var result=await runtime.SearchKnowledgeAsync(query,limit,ct);lock(sync)foreach(var hit in result.Hits)Authorize(session,known,hit.DocumentId);return result;}
+    internal Task<KnowledgeSearchStatus> SearchStatusAsync(string session,CancellationToken ct)
+    {lock(sync)Require(session);return runtime.KnowledgeSearchStatusAsync(ct);}
+    internal Task<KnowledgeSearchStatus> RebuildSearchAsync(string session,CancellationToken ct)
+    {lock(sync)Require(session);return runtime.RebuildKnowledgeSearchAsync(ct);}
     internal async Task<KnowledgeDetailView> GetAsync(string session,string id,CancellationToken ct)
     {
         lock(sync)Require(session,id);var detail=await runtime.GetKnowledgeAsync(id,ct);

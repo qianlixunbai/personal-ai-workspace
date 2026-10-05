@@ -119,6 +119,24 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @Test void knowledgeLexicalSearchNativeContractBrowserDenialAndPrivacy()throws Exception {
+        String endpoint="/api/v1/knowledge/search",query="searchcanary"+java.util.UUID.randomUUID().toString().replace("-","");privateValues.add(query);
+        var client=pairBrowser("chrome-extension://"+"d".repeat(32));
+        for(var route:List.of(new String[]{"POST",endpoint},new String[]{"GET",endpoint+"/status"},new String[]{"POST",endpoint+"/rebuild"})){
+            String body=route[0].equals("GET")?null:"{malformed-private-canary";
+            assertEquals(401,send(route[0],route[1],body,false).statusCode());
+            assertEquals(403,browser(route[0],route[1],body,client.credential(),client.origin()).statusCode());
+            assertTrue(List.of(401,403).contains(browser(route[0],route[1],body,client.credential(),null).statusCode()));
+        }
+        for(String body:List.of("{\"query\":\"q\",\"limit\":\"1\"}","{\"query\":true}","{\"query\":\"q\",\"extra\":1}","{\"query\":\"q\",\"limit\":1.5}","{\"query\":\"q\",\"limit\":11}","{\"query\":\"\"}"))
+            assertEquals(400,send("POST",endpoint,body,true).statusCode());
+        var response=send("POST",endpoint,json.writeValueAsString(Map.of("query",query,"limit",10)),true);
+        assertTrue(List.of(200,503).contains(response.statusCode()));assertFalse(response.body().contains(query));
+        for(String hidden:List.of("representationDigest","sourceDigest","fingerprint","bm25","rowid","tokens"))assertFalse(response.body().contains(hidden));
+        assertEquals("no-store",response.headers().firstValue("Cache-Control").orElseThrow());assertEquals(0,CHAT_CALLS.get());
+        assertEquals(200,send("GET",endpoint+"/status",null,true).statusCode());
+        assertEquals(200,send("POST",endpoint+"/rebuild","{}",true).statusCode());
+    }
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.task.TaskManager taskManager;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.config.RuntimeProperties settings;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();

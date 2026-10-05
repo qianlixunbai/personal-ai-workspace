@@ -1,5 +1,27 @@
 # Personal AI Workspace
 
+## 当前 K2 正式批准状态
+
+长期 V1 主线与平台边界见 [V1 Roadmap](docs/roadmap/V1-ROADMAP.md)。
+
+K2 — CLOSED — GO。
+Architecture Guard K2 CLOSING REVIEW — APPROVED — GO；独立 source-level Closing Review 已完成。
+M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO。
+K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+
+`#/knowledge` 增加显式关键词检索；NFKC / ROOT lowercase、Latin words、CJK unigram/bigram、
+单 chunk AND 与 FTS5 BM25 固定排序。独立 owner-only 明文 `knowledge/index/lexical.db`
+可删除/重建；不迁移权威 schema v1，不修改 Knowledge Backup v1。指纹不一致不返回旧结果。
+查询不进入 URL、持久存储或日志。Browser 仍 Translate-only；K2 无 AI/Ollama/Finance 依赖。
+最终 Java 134 / Desktop 273 / Frontend 119、生产构建与本地 Release publish PASS。
+第四轮一次真实 Windows integrated flow PASS：Pinyin/composition Enter、中文检索、生命周期/revision、
+索引恢复、Backup restore/rebuild parity、Browser denial；fresh-canary privacy 0 matches，
+一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`；本轮未重跑全量回归或 build/publish。
+单条 query-race 已在恢复轮通过；前三次 harness 失败及 STOP 历史保留于
+[K2 Closing Report](docs/milestones/K2-CLOSING-REPORT.md)，含独立正式 Closing Review 结论。
+下一步为 T0 — Aggressive Test Suite Consolidation / Slimming；本轮不启动。
+以下 K1 章节保留已批准的历史基线语境。
+
 ## 当前 K1 正式批准状态
 
 K1 ARCHITECTURE / CLOSING REVIEW — GO；K1 — CLOSED — GO。

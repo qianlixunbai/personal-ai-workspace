@@ -45,3 +45,10 @@ textarea:focus-visible,select:focus-visible{outline:3px solid var(--focus);outli
 .memory-confirmation{max-width:min(460px,85vw);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:24px}
 .memory-confirmation::backdrop{background:#0007}.settings-notices{margin-top:24px}.settings-notices p{font-size:13px;color:var(--muted)}
 @media(max-width:1050px){.memory-layout{grid-template-columns:minmax(0,1fr)}.memory-list ul{max-height:240px}}
+.knowledge-search { margin-block: 1rem; min-width: 0; }
+.knowledge-search form { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.knowledge-search input { flex: 1 1 16rem; min-width: 0; max-width: 100%; }
+.knowledge-search ol { padding-left: 1.5rem; }
+.knowledge-search li { padding-block: .75rem; overflow-wrap: anywhere; }
+.knowledge-snippet { white-space: pre-wrap; overflow-wrap: anywhere; }
+.knowledge-search mark { color: inherit; background: var(--accent-soft, #f7da76); }

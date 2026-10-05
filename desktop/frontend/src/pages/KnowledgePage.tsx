@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeDetail, KnowledgeList, KnowledgePreview } from '../bridge/knowledge'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { KnowledgeSearch } from '../components/KnowledgeSearch'
+import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean }) {
@@ -12,10 +14,11 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
   const [confirmDelete, setConfirmDelete] = useState(false), [stale, setStale] = useState(false), [unknownRequest, setUnknownRequest] = useState<string | null>(null)
   const generation = useRef(0), selection = useRef(0), offsets = useRef<number[]>([]), selected = useRef<string | null>(null)
   const filter = useRef<HTMLSelectElement>(null)
+  const [corpusEpoch, setCorpusEpoch] = useState(0)
   const document = detail?.document
   const processing = document?.processingState === 'PENDING' || document?.processingState === 'PARSING'
   const report = (e: unknown) => { setError(e instanceof Error ? e.message : 'Knowledge 操作暂时不可用。'); if (e instanceof BridgeError && ['KnowledgeRevisionConflict', 'OutcomeUnknown', 'KnowledgeDeleteIncomplete'].includes(e.code)) setStale(true) }
-  const refreshList = async () => { const epoch = generation.current; const result = await bridge.listKnowledge(status, page); if (epoch === generation.current) setList(result) }
+  const refreshList = async () => { const epoch = generation.current; const result = await bridge.listKnowledge(status, page); if (epoch === generation.current) { setList(result); setCorpusEpoch(n => n + 1) } }
   const load = async (id: string, reset = true) => {
     const epoch = generation.current, pick = ++selection.current; selected.current = id
     if (reset) { setPreview(null); offsets.current = [] }
@@ -64,11 +67,20 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     else { await (action === 'archive' ? bridge.archiveKnowledge(id, document.metadataVersion) : bridge.restoreKnowledge(id, document.metadataVersion)); if (epoch !== generation.current) return; await load(id); setNotice(action === 'archive' ? '文档已归档。' : '文档已恢复。') }
     await refreshList()
   })
+  const openHit = (hit: KnowledgeSearchHit) => run(async () => {
+    const epoch = generation.current; await load(hit.documentId)
+    if (epoch !== generation.current) return
+    const pick = selection.current; const result = await bridge.previewKnowledge(hit.documentId, hit.sourceRevision, hit.startOffset)
+    if (epoch !== generation.current || pick !== selection.current) return
+    setRevision(hit.sourceRevision); setPreview(result)
+    setTimeout(() => { if (epoch === generation.current && pick === selection.current) window.document.querySelector<HTMLPreElement>('.knowledge-detail pre')?.focus() }, 0)
+  })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
     <div className="card card-heading memory-toolbar"><div><h2>参考来源</h2><p className="hint">明确导入 · 私有源副本 · 独立版本 · 本机确定性处理</p></div><div className="conversation-actions">
       <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入 TXT / Markdown</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>Knowledge Backup…</button></div></div>
     <p className="hint">Workspace Backup v1 只包含 Memory + Conversation。Knowledge 文档使用独立 Knowledge Backup；源文件、数据库和备份均为受 OS 账户权限保护的明文。</p>
+    <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} />
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>
         <label htmlFor="knowledge-status">生命周期</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">ACTIVE · 使用中</option><option value="ARCHIVED">ARCHIVED · 已归档</option></select>

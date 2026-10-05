@@ -18,6 +18,10 @@ public sealed class KnowledgeTests
     {
         internal string Id=Guid.NewGuid().ToString("D"),Request=Guid.NewGuid().ToString("D"),Version="9007199254740993",Status="ACTIVE";
         internal int Calls,Uploads,Lookups;internal bool Lost,Deleted,Malformed;internal byte[]? Uploaded;internal TaskCompletionSource? Hold;
+        internal bool SearchMalformed,SearchWorstCase;
+        internal object SearchHit(int ordinal=0)=>new {documentId=Id,title=SearchWorstCase?new string('中',160):"fixture.txt",sourceRevision="1",sourceType="TXT",
+            startOffset=ordinal*2048,endOffset=ordinal*2048+1000,startLine=1,endLine=1,heading=SearchWorstCase?new string('中',96):null,
+            snippet=SearchWorstCase?new string('中',384):"<script>x</script>",highlightRanges=SearchWorstCase?Enumerable.Range(0,16).Select(i=>new{start=i*2,end=i*2+1}).ToArray():[]};
         internal object Doc()=>new{documentId=Id,title="fixture.txt",status=Status,metadataVersion=Version,currentReadyRevision="1",createdAt="2026-10-05T00:00:00Z",updatedAt="2026-10-05T00:00:00Z",processingState="READY",requestId=Request};
         internal object Job()=>new{requestId=Request,documentId=Id,state="READY",errorCode=(string?)null,sourceRevision="1"};
         internal object Revision()=>new{documentId=Id,sourceRevision="1",sourceDigest=new string('a',64),originalFilename="fixture.txt",sourceType="TXT",byteLength=11,importedAt="2026-10-05T00:00:00Z",parserVersion="text-1",normalizationVersion="lf-1",representationDigest=new string('b',64),lineCount=1};
@@ -26,6 +30,12 @@ public sealed class KnowledgeTests
             Calls++;if(Hold is not null)await Hold.Task;
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
+            if(path.EndsWith("/search/status")||path.EndsWith("/search/rebuild"))return Reply(new{state="READY",indexedDocuments=1,indexedChunks=1});
+            if(path.EndsWith("/search")){
+                Assert.Equal(HttpMethod.Post,request.Method);Assert.Equal("",request.RequestUri.Query);
+                using var search=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal("budget",search.RootElement.GetProperty("query").GetString());
+                return SearchMalformed?Reply(new{hits=new[]{SearchHit()},corpusFingerprint=new string('a',64)}):Reply(new{hits=Enumerable.Range(0,SearchWorstCase?10:1).Select(i=>SearchHit(i)).ToArray()});
+            }
             if(path.EndsWith("/imports")&&request.Method==HttpMethod.Post){Uploads++;Request=request.Headers.GetValues("X-Knowledge-Request").Single();
                 Assert.Equal("application/octet-stream",request.Content!.Headers.ContentType!.MediaType);Uploaded=await request.Content.ReadAsByteArrayAsync(ct);
                 if(Lost)throw new HttpRequestException();return Reply(Job());}
@@ -61,6 +71,32 @@ public sealed class KnowledgeTests
         await f.Send("knowledge.get",new{documentId=f.Handler.Id});f.Rotate();await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal(2,f.Handler.Calls);
         await f.List();await f.Send("knowledge.delete",new{documentId=f.Handler.Id,expectedMetadataVersion=f.Handler.Version});Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
         await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal(4,f.Handler.Calls);
+    }
+    [Fact]public async Task SearchAuthorizesGetPreviewAndRotationClearsAuthority()
+    {
+        using var f=new Fixture();var response=await f.Send("knowledge.search",new{query="budget",limit=10});Assert.True(response.GetProperty("ok").GetBoolean());
+        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));await f.Send("knowledge.get",new{documentId=f.Handler.Id});
+        await f.Send("knowledge.preview",new{documentId=f.Handler.Id,sourceRevision="1",offset=0});f.Rotate();
+        var denied=await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());
+    }
+    [Fact]public async Task LateSearchCannotAuthorizeReplacementSession()
+    {
+        using var f=new Fixture();f.Handler.Hold=new();var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.search",new{query="budget",limit=10}));
+        f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+    }
+    [Fact]public async Task SearchRejectsExtraIndexFieldsAndWorstCaseEscapingFitsOrdinaryBridge()
+    {
+        using var f=new Fixture();f.Handler.SearchMalformed=true;var rejected=await f.Send("knowledge.search",new{query="budget",limit=10});
+        Assert.Equal("InvalidResponse",rejected.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        f.Handler.SearchMalformed=false;f.Handler.SearchWorstCase=true;var response=await f.Send("knowledge.search",new{query="budget",limit=10});
+        Assert.Equal(10,response.GetProperty("result").GetProperty("hits").GetArrayLength());Assert.True(Encoding.UTF8.GetByteCount(f.Sent.Single())<65536);
+        foreach(string hidden in new[]{"sourceDigest","representationDigest","corpusFingerprint","rowid","score","tokens","path"})Assert.DoesNotContain("\""+hidden+"\"",f.Sent.Single());
+        Assert.DoesNotContain("budget",(await f.Runtime.SearchKnowledgeAsync("budget",10,default)).ToString());
+    }
+    [Fact]public async Task SearchBridgeRejectsUnknownPayloadAndOutOfRangeLimits()
+    {
+        using var f=new Fixture();foreach(var payload in new object[]{new{query="budget",limit=11},new{query="budget",limit="1"},new{query="budget",limit=1,path="private"},new{query="x"+new string('中',128),limit=1}})
+        {await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.search",payload));Assert.Empty(f.Sent);}Assert.Equal(0,f.Handler.Calls);
     }
     [Fact]public async Task NativeUploadStreamsOnceAndUnknownOutcomeUsesReadOnlyLookup()
     {

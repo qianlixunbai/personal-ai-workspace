@@ -15,3 +15,4 @@
 | [ADR-009](ADR-009-webview2-trusted-content-bridge.md) | Accepted | 固定可信内容、最小 typed bridge、凭据隔离、会话与 WebView2 privacy boundary |
 | [ADR-010](ADR-010-frontend-build-desktop-distribution.md) | Accepted | 单一 npm/React/TS/Vite package、bundled build/publish、Debug dev-only、原生 fallback |
 | [ADR-011](ADR-011-knowledge-domain-storage-ingestion-recovery.md) | Accepted | Knowledge 独立 ownership、private sources/schema、deterministic ingestion/revision/locator、publication/reconciliation、独立 backup/restore；既有 Architecture Guard K0 approval |
+| [ADR-012](ADR-012-deterministic-lexical-retrieval.md) | Accepted | K2 deterministic lexical retrieval、独立 derived FTS5/BM25 index、fingerprint freshness、bounded rebuild、native-only/privacy；Architecture Guard K2 approval |

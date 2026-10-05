@@ -1,5 +1,28 @@
 # Personal AI Workspace — Current Status
 
+## Current K2 approved final closing
+
+[V1 Roadmap](roadmap/V1-ROADMAP.md) 是长期主线与平台能力规划入口；未来能力未因此启动。
+
+K2 — CLOSED — GO。
+Architecture Guard K2 CLOSING REVIEW — APPROVED — GO；独立 source-level Closing Review 已完成。
+M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO；K3 / K4 — NOT STARTED。
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+独立 derived FTS5/BM25 index、版本化 lexical analyzer/chunker、corpus fingerprint freshness、
+单 worker / 单 coalesced rerun、native-only POST 搜索、typed session bridge 与页面内关键词检索已实施。
+知识 schema v1 / Knowledge Backup v1 保持；Browser Translate-only，无自动 AI context。
+最终 Java 134 / Desktop 273 / Frontend 119、production build / local Release publish PASS。
+第四轮一次真实 Windows integrated flow PASS，完成 Pinyin/composition Enter、中文检索、
+生命周期/revision、索引恢复、Backup restore/rebuild parity 和 Browser denial；fresh-canary privacy
+0 matches；一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`，无 production 改动。
+不重跑 full suites/query-race/build/publish；单条 query-race 的既有 PASS 继承。
+前三次 harness 失败和 STOP 记录见 [K2 Closing Report](milestones/K2-CLOSING-REPORT.md)。
+正式 Review 覆盖实际远端 K1 baseline → implementation → Closing Candidate history；
+Blocking findings / required production fixes / required new tests / required reruns 均为 0。
+下一步为 T0 — Aggressive Test Suite Consolidation / Slimming，随后 detailed V1 Roadmap expansion → K3；
+T0 是 engineering cleanup gate，不是新的 top-level product milestone；本轮不启动 T0/K3。
+以下 K1 正式批准章节是先前交付快照。
+
 ## Current K1 approved final closing
 
 M0–M5 — CLOSED — GO。K0 — APPROVED — GO（既有 Architecture Guard 输入约束）。

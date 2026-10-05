@@ -117,6 +117,9 @@ public sealed partial class RuntimeClient
     {
         MemoryFields(root,"code","message","phase");string code=String(root,"code");_=String(root,"message");_=String(root,"phase");
         int expected=code switch{
+            "KNOWLEDGE_SEARCH_INVALID" or "KNOWLEDGE_QUERY_TOO_COMPLEX"=>400,
+            "KNOWLEDGE_INDEX_LIMIT_EXCEEDED"=>409,
+            "KNOWLEDGE_INDEX_NOT_READY" or "KNOWLEDGE_INDEX_UNAVAILABLE" or "KNOWLEDGE_INDEX_REBUILD_FAILED"=>503,
             "KNOWLEDGE_INVALID_SOURCE" or "KNOWLEDGE_UNSUPPORTED_TYPE" or "KNOWLEDGE_INVALID_UTF8" or "KNOWLEDGE_BACKUP_INVALID" or "KNOWLEDGE_BACKUP_UNSUPPORTED"=>400,
             "KNOWLEDGE_SOURCE_TOO_LARGE" or "KNOWLEDGE_BACKUP_TOO_LARGE"=>413,"KNOWLEDGE_NOT_FOUND"=>404,"KNOWLEDGE_QUEUE_FULL"=>429,
             "KNOWLEDGE_LIMIT_EXCEEDED" or "KNOWLEDGE_DUPLICATE_SOURCE" or "KNOWLEDGE_REVISION_CONFLICT" or "KNOWLEDGE_DELETE_INCOMPLETE" or "KNOWLEDGE_BACKUP_CONFLICT" or "KNOWLEDGE_RESTORE_TARGET_NOT_EMPTY"=>409,
@@ -126,6 +129,9 @@ public sealed partial class RuntimeClient
         if((int)status!=expected)throw Invalid();return KError(code);
     }
     private static DesktopError KError(string code)=>code switch{
+        "KNOWLEDGE_SEARCH_INVALID"=>DesktopError.KnowledgeSearchInvalid,"KNOWLEDGE_QUERY_TOO_COMPLEX"=>DesktopError.KnowledgeQueryTooComplex,
+        "KNOWLEDGE_INDEX_NOT_READY"=>DesktopError.KnowledgeIndexNotReady,"KNOWLEDGE_INDEX_UNAVAILABLE"=>DesktopError.KnowledgeIndexUnavailable,
+        "KNOWLEDGE_INDEX_LIMIT_EXCEEDED"=>DesktopError.KnowledgeIndexLimitExceeded,"KNOWLEDGE_INDEX_REBUILD_FAILED"=>DesktopError.KnowledgeIndexRebuildFailed,
         "KNOWLEDGE_INVALID_SOURCE"=>DesktopError.KnowledgeInvalidSource,"KNOWLEDGE_UNSUPPORTED_TYPE"=>DesktopError.KnowledgeUnsupportedType,"KNOWLEDGE_INVALID_UTF8"=>DesktopError.KnowledgeInvalidUtf8,
         "KNOWLEDGE_SOURCE_TOO_LARGE"=>DesktopError.KnowledgeSourceTooLarge,"KNOWLEDGE_LIMIT_EXCEEDED"=>DesktopError.KnowledgeLimitExceeded,"KNOWLEDGE_DUPLICATE_SOURCE"=>DesktopError.KnowledgeDuplicateSource,
         "KNOWLEDGE_REVISION_CONFLICT"=>DesktopError.KnowledgeRevisionConflict,"KNOWLEDGE_NOT_FOUND"=>DesktopError.KnowledgeNotFound,"KNOWLEDGE_QUEUE_FULL"=>DesktopError.KnowledgeQueueFull,

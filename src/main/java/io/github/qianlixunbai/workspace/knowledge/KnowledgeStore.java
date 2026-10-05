@@ -17,6 +17,24 @@ public final class KnowledgeStore implements AutoCloseable {
     private Connection db;
     private FileChannel lockChannel;
     private FileLock processLock;
+    private volatile Runnable corpusChanged=()->{};
+    void onCorpusChanged(Runnable listener){corpusChanged=listener;}
+    private void changed(){try{corpusChanged.run();}catch(Exception ignored){/* Derived failure never rolls back truth. */}}
+    record SearchRef(String documentId,String sourceRevision,String digest,String title,String sourceType) {
+        @Override public String toString(){return "SearchRef[documentId="+documentId+"]";}
+    }
+    synchronized List<SearchRef> searchCorpus(){return sql(()->{
+        List<SearchRef> refs=new ArrayList<>();
+        try(var s=statement("SELECT d.id,d.current_revision,r.representation_digest,d.title,r.type FROM documents d JOIN revisions r ON r.doc_id=d.id AND r.revision=d.current_revision WHERE d.status='ACTIVE' ORDER BY d.id COLLATE BINARY");var r=s.executeQuery()){
+            while(r.next())refs.add(new SearchRef(r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5)));}
+        return List.copyOf(refs);
+    });}
+    synchronized KnowledgeParser.Representation searchSource(SearchRef ref){return sql(()->{
+        try(var s=statement("SELECT r.text,r.type,r.representation_digest FROM documents d JOIN revisions r ON r.doc_id=d.id AND r.revision=d.current_revision WHERE d.id=? AND d.status='ACTIVE' AND r.revision=?",ref.documentId(),version(ref.sourceRevision()));var r=s.executeQuery()){
+            if(!r.next()||!r.getString(3).equals(ref.digest()))throw error(ErrorCode.KNOWLEDGE_INDEX_NOT_READY);
+            return KnowledgeParser.represent(r.getString(1),r.getString(2),()->false);
+        }
+    });}
     public record Job(String requestId,String documentId,String state,String errorCode,String sourceRevision) {}
     public record Page(List<KnowledgeDocument> items,long total,int page,int limit) {}
     public record Detail(KnowledgeDocument document,List<KnowledgeDocumentRevision> revisions,Job job) {}
@@ -184,7 +202,7 @@ public final class KnowledgeStore implements AutoCloseable {
                     KnowledgeParser.PARSER_VERSION,KnowledgeParser.NORMALIZATION_VERSION,representation.digest(),representation.text(),representation.locatorJson(),representation.lineCount(),artifacts);
                 exec("UPDATE documents SET current_revision=?,version=version+1,updated=? WHERE id=? AND version=?",version(rev),now,doc,expected);
                 exec("UPDATE jobs SET state='READY' WHERE id=?",request);return null;
-            });return null;
+            });changed();return null;
         }});
     }
     synchronized void failed(String request,ErrorCode code) {
@@ -233,8 +251,9 @@ public final class KnowledgeStore implements AutoCloseable {
     }
     public synchronized KnowledgeDocument lifecycle(String doc,String expected,String status) {
         if(!Set.of("ACTIVE","ARCHIVED").contains(status))throw error(ErrorCode.INVALID_REQUEST);
-        return transaction(()->{var current=get(doc);if(version(current.metadataVersion())!=version(expected)||busy(doc))throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
+        var result=transaction(()->{var current=get(doc);if(version(current.metadataVersion())!=version(expected)||busy(doc))throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
             exec("UPDATE documents SET status=?,version=version+1,updated=? WHERE id=?",status,Instant.now().toString(),doc);return get(doc);});
+        changed();return result;
     }
     private boolean busy(String doc)throws SQLException {return scalar("SELECT count(*) FROM jobs WHERE doc_id=? AND state IN ('PENDING','PARSING')",doc)>0||scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0;}
     public synchronized void delete(String doc,String expected) {
@@ -250,7 +269,7 @@ public final class KnowledgeStore implements AutoCloseable {
         Path original=root.resolve("sources").resolve(doc),tomb=root.resolve("staging").resolve(token+".delete");
         try {
             if(Files.exists(original)){verifyDeleteFiles(original,revisions);Files.move(original,tomb,StandardCopyOption.ATOMIC_MOVE);}
-            transaction(()->{exec("DELETE FROM documents WHERE id=? AND version=?",doc,requested);return null;});
+            transaction(()->{exec("DELETE FROM documents WHERE id=? AND version=?",doc,requested);return null;});changed();
             reconcileDelete(doc);return null;
         } catch(Exception e){try{reconcileDelete(doc);}catch(Exception ignored){}throw error(ErrorCode.KNOWLEDGE_DELETE_INCOMPLETE);}
         });
