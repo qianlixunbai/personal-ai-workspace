@@ -4,7 +4,7 @@ export const knowledgeDocument = (): KnowledgeDocument => ({ documentId: 'aaaaaa
 export class KnowledgeService extends Port {
   document = knowledgeDocument(); deleted = false; unknown = false
   job(): KnowledgeJob { return { requestId: this.document.requestId!, documentId: this.document.documentId, state: 'READY', errorCode: null, sourceRevision: '1' } }
-  detail(): KnowledgeDetail { return { document: { ...this.document }, revisions: [{ documentId: this.document.documentId, sourceRevision: '1', sourceDigest: 'a'.repeat(64), originalFilename: 'fixture.md', sourceType: 'MARKDOWN', byteLength: 20, importedAt: this.document.createdAt, parserVersion: 'text-1', normalizationVersion: 'lf-1', representationDigest: 'b'.repeat(64), lineCount: 2 }], job: this.job() } }
+  detail(): KnowledgeDetail { return { document: { ...this.document }, revisions: [{ sourceRevision: '1', sourceType: 'MARKDOWN', byteLength: 20 }], job: this.job() } }
   preview(): KnowledgePreview { return { documentId: this.document.documentId, sourceRevision: '1', offset: 0, text: '# Heading\n<script>window.pwned=1</script>\n![x](https://invalid/image)', nextOffset: null, locators: [{ type: 'MARKDOWN_SECTION_LINES', startLine: 1, endLine: 2, startOffset: 0, endOffset: 100, section: 'line-1', heading: 'Heading' }], parserVersion: 'text-1', normalizationVersion: 'lf-1' } }
   override postMessage(value: unknown) {
     super.postMessage(value); const r = value as { method: string; payload: Record<string, unknown> }; let result: unknown

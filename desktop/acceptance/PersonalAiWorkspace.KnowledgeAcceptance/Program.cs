@@ -79,16 +79,22 @@ internal static class Program
     private static async Task Settled(){await WaitJs("!document.querySelector('.knowledge-detail [role=progressbar]') && !document.querySelector('.knowledge-page .primary').disabled","durable-terminal-state");}
     private static async Task<JsonElement> Control(string action){Stage("fixture-"+action);using var http=new HttpClient(new HttpClientHandler{UseProxy=false});using var response=await http.PostAsync("http://127.0.0.1:18768/"+action,null);Require(response.IsSuccessStatusCode,"fixture-control-"+action);return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();}
     private static async Task Ready(){await Wait(()=>shell.Host.SessionId.Length>0,"webview-session");await WaitJs("document.querySelector('.operation-status')?.textContent==='工作区已连接'","react-connected");}
+    private static Task<string> CaptureBridgeResponses()=>Js("(()=>{window.__k1=[];chrome.webview.addEventListener('message',e=>{window.__k1.push(e.data)})})()");
+    private static async Task DetailPrivacy()
+    {
+        Require(await Js("(()=>{const details=(window.__k1||[]).filter(r=>r.result?.document&&Array.isArray(r.result.revisions));return details.some(r=>r.result.revisions.length>0)&&details.every(r=>!JSON.stringify(r).includes('sourceDigest')&&!JSON.stringify(r).includes('representationDigest'))})()")=="true","knowledge-get-no-source-or-representation-digest");
+        Require(await Js("(()=>{const revisions=(window.__k1||[]).filter(r=>r.result?.document&&Array.isArray(r.result.revisions)).flatMap(r=>r.result.revisions);return revisions.length>0&&revisions.every(r=>JSON.stringify(Object.keys(r).sort())===JSON.stringify(['byteLength','sourceRevision','sourceType']))})()")=="true","knowledge-get-only-ui-revision-metadata");
+    }
     private static async Task Drive()
     {
         shell=app.Workspace!;await Ready();await Route("knowledge");
         shell.Browser.CoreWebView2.WebMessageReceived+=(_,e)=>{using var m=JsonDocument.Parse(e.WebMessageAsJson);if(m.RootElement.GetProperty("method").GetString()!.StartsWith("knowledge.",StringComparison.Ordinal)){nativeKnowledgeMessages++;matchingSession=m.RootElement.GetProperty("sessionId").GetString()==shell.Host.SessionId;}};
-        await Js("(()=>{window.__k1=[];chrome.webview.addEventListener('message',e=>{window.__k1.push(e.data)})})()");
+        await CaptureBridgeResponses();
         Require(await Js("!document.querySelector('.knowledge-page input,.knowledge-page textarea') && ![...document.querySelectorAll('.knowledge-page button')].some(b=>/Search|Ask Knowledge|Semantic/.test(b.textContent))")=="true","no-text-editor-or-retrieval");
         SetForegroundWindow(new WindowInteropHelper(shell).Handle);shell.Browser.Focus();await Js("document.getElementById('knowledge-status').focus()");Key(9);
         await WaitJs("document.activeElement.textContent==='刷新列表'","actual-windows-tab-keyboard-navigation");
         await PickImport("TXT");await Settled();var txt=(await runtime.ListKnowledgeAsync("ACTIVE",0,default)).Items.Single();
-        Require(txt.CurrentReadyRevision=="1","txt-native-import-ready");await Click("预览源文本");
+        Require(txt.CurrentReadyRevision=="1","txt-native-import-ready");await DetailPrivacy();await Click("预览源文本");
         await WaitJs("document.querySelector('.knowledge-detail pre')?.textContent==="+JsonSerializer.Serialize(Case("TXT_NORMALIZED")),"txt-exact-preview");
         Require(await Js("document.querySelector('.knowledge-location').textContent.includes('TXT_LINES · 行 1–2')")=="true","txt-exact-locator");
         File.Delete(Case("TXT"));await Click("预览源文本");Require((await runtime.PreviewKnowledgeAsync(txt.DocumentId,"1",0,default)).Text==Case("TXT_NORMALIZED"),"external-original-deletion-durability");
@@ -127,8 +133,9 @@ internal static class Program
         await NativeAction(window,"导出 Knowledge…","导出 Knowledge · 明文个人数据",Setting("BACKUP"));await Wait(()=>Text(window).Contains("导出完成"),"native-streaming-backup-export");
         await NativeAction(window,"选择并验证备份…","验证 Knowledge Backup",Setting("BACKUP"));await Wait(()=>Text(window).Contains("验证通过"),"native-streaming-backup-validation");
         await Control("offline");await NativeAction(window,"恢复到新 / 空目录…","选择新的 / 空的 Workspace 数据目录",Setting("TARGET"));await Wait(()=>Text(window).Contains("恢复完成"),"native-isolated-restore-source-unavailable");
-        window.Close();await opening;await Control("restored");string session=shell.Host.SessionId;shell.Browser.CoreWebView2.Reload();await Wait(()=>shell.Host.SessionId.Length>0&&shell.Host.SessionId!=session,"restored-session-rotation");await Ready();await Route("knowledge");await Click("刷新列表");await Select(txt.Title);await Click("预览源文本");
+        window.Close();await opening;await Control("restored");string session=shell.Host.SessionId;shell.Browser.CoreWebView2.Reload();await Wait(()=>shell.Host.SessionId.Length>0&&shell.Host.SessionId!=session,"restored-session-rotation");await Ready();await CaptureBridgeResponses();await Route("knowledge");await Click("刷新列表");await Select(txt.Title);await Click("预览源文本");
         await WaitJs("document.querySelector('.knowledge-detail pre')?.textContent==="+JsonSerializer.Serialize(Case("CHANGED_NORMALIZED")),"restored-exact-preview-through-production-chain");
+        await DetailPrivacy();
         var parity=await Control("parity");Require(parity.GetProperty("exact").GetBoolean(),"restored-exact-metadata-revision-source-text-locator-parity");
         shell.Browser.ZoomFactor=1.25;Require(await Js("document.documentElement.scrollWidth<=innerWidth")=="true","knowledge-125-percent-no-horizontal-overflow");shell.Browser.ZoomFactor=1;
         Require(await Js("JSON.stringify(window.__k1||[]).includes('C:\\\\')===false && JSON.stringify(window.__k1||[]).includes('knowledge\\\\sources')===false")=="true","bridge-no-absolute-source-or-runtime-path");

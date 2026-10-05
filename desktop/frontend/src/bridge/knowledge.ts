@@ -4,7 +4,7 @@ export const knowledgeMethods = ['knowledge.list', 'knowledge.get', 'knowledge.i
 export const knowledgeCodes = ['KnowledgeInvalidSource', 'KnowledgeUnsupportedType', 'KnowledgeInvalidUtf8', 'KnowledgeSourceTooLarge', 'KnowledgeLimitExceeded', 'KnowledgeDuplicateSource', 'KnowledgeRevisionConflict', 'KnowledgeNotFound', 'KnowledgeQueueFull', 'KnowledgeIngestionFailed', 'KnowledgeInterrupted', 'KnowledgeCancelled', 'KnowledgeStorageUnavailable', 'KnowledgeSchemaUnsupported', 'KnowledgeDeleteIncomplete'] as const
 export type KnowledgeState = 'PENDING' | 'PARSING' | 'READY' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'
 export interface KnowledgeDocument { documentId: string; title: string; status: 'ACTIVE' | 'ARCHIVED'; metadataVersion: string; currentReadyRevision: string | null; createdAt: string; updatedAt: string; processingState: KnowledgeState; requestId: string | null }
-export interface KnowledgeRevision { documentId: string; sourceRevision: string; sourceDigest: string; originalFilename: string; sourceType: 'TXT' | 'MARKDOWN'; byteLength: number; importedAt: string; parserVersion: 'text-1'; normalizationVersion: 'lf-1'; representationDigest: string; lineCount: number }
+export interface KnowledgeRevision { sourceRevision: string; sourceType: 'TXT' | 'MARKDOWN'; byteLength: number }
 export interface KnowledgeJob { requestId: string; documentId: string; state: KnowledgeState; errorCode: string | null; sourceRevision: string | null }
 export interface KnowledgeList { items: KnowledgeDocument[]; total: number; page: number; limit: 20 }
 export interface KnowledgeDetail { document: KnowledgeDocument; revisions: KnowledgeRevision[]; job: KnowledgeJob | null }
@@ -18,7 +18,6 @@ const integer = (v: unknown, min: number, max: number): v is number => typeof v 
 const unicode = (s: string) => !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(s)
 const filename = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && [...v].length <= 160 && unicode(v) && !/[\x00-\x1f\x7f-\x9f/\\:]/.test(v) && /\.(txt|md|markdown)$/i.test(v)
 const time = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v))
-const digest = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
 export function isKnowledgeDocument(v: unknown): v is KnowledgeDocument {
   return isObject(v) && exactFields(v, ['documentId', 'title', 'status', 'metadataVersion', 'currentReadyRevision', 'createdAt', 'updatedAt', 'processingState', 'requestId']) && isId(v.documentId) && filename(v.title) && ['ACTIVE', 'ARCHIVED'].includes(String(v.status)) && decimal(v.metadataVersion) && (v.currentReadyRevision === null || revision(v.currentReadyRevision)) && time(v.createdAt) && time(v.updatedAt) && states.includes(String(v.processingState)) && (v.requestId === null || isId(v.requestId))
 }
@@ -28,7 +27,7 @@ export function isKnowledgeJob(v: unknown): v is KnowledgeJob {
   return v.sourceRevision === null && (v.state === 'PENDING' || v.state === 'PARSING' ? v.errorCode === null : typeof v.errorCode === 'string' && ['KNOWLEDGE_INVALID_SOURCE', 'KNOWLEDGE_INVALID_UTF8', 'KNOWLEDGE_LIMIT_EXCEEDED', 'KNOWLEDGE_DUPLICATE_SOURCE', 'KNOWLEDGE_REVISION_CONFLICT', 'KNOWLEDGE_INGESTION_FAILED', 'KNOWLEDGE_STORAGE_UNAVAILABLE', 'KNOWLEDGE_INTERRUPTED', 'KNOWLEDGE_CANCELLED', 'KNOWLEDGE_QUEUE_FULL', 'KNOWLEDGE_SOURCE_TOO_LARGE'].includes(v.errorCode))
 }
 function isKnowledgeRevision(v: unknown): v is KnowledgeRevision {
-  return isObject(v) && exactFields(v, ['documentId', 'sourceRevision', 'sourceDigest', 'originalFilename', 'sourceType', 'byteLength', 'importedAt', 'parserVersion', 'normalizationVersion', 'representationDigest', 'lineCount']) && isId(v.documentId) && revision(v.sourceRevision) && digest(v.sourceDigest) && filename(v.originalFilename) && v.sourceType === (/\.txt$/i.test(v.originalFilename) ? 'TXT' : 'MARKDOWN') && integer(v.byteLength, 1, 8 * 1024 * 1024) && time(v.importedAt) && v.parserVersion === 'text-1' && v.normalizationVersion === 'lf-1' && digest(v.representationDigest) && integer(v.lineCount, 1, 100000)
+  return isObject(v) && exactFields(v, ['sourceRevision', 'sourceType', 'byteLength']) && revision(v.sourceRevision) && (v.sourceType === 'TXT' || v.sourceType === 'MARKDOWN') && integer(v.byteLength, 1, 8 * 1024 * 1024)
 }
 export function isKnowledgeList(v: unknown): v is KnowledgeList {
   return isObject(v) && exactFields(v, ['items', 'total', 'page', 'limit']) && Array.isArray(v.items) && v.items.length <= 20 && v.items.every(isKnowledgeDocument) && new Set(v.items.map(x => x.documentId)).size === v.items.length && integer(v.total, v.items.length, 500) && integer(v.page, 0, 24) && v.limit === 20
@@ -36,7 +35,7 @@ export function isKnowledgeList(v: unknown): v is KnowledgeList {
 export function isKnowledgeDetail(v: unknown): v is KnowledgeDetail {
   if (!isObject(v) || !exactFields(v, ['document', 'revisions', 'job']) || !isKnowledgeDocument(v.document) || !Array.isArray(v.revisions) || v.revisions.length > 10 || !v.revisions.every(isKnowledgeRevision)) return false
   const d = v.document
-  return v.revisions.every(r => r.documentId === d.documentId) && new Set(v.revisions.map(r => r.sourceRevision)).size === v.revisions.length && (d.currentReadyRevision === null || v.revisions.some(r => r.sourceRevision === d.currentReadyRevision)) && (v.job === null || isKnowledgeJob(v.job) && v.job.documentId === d.documentId && v.job.requestId === d.requestId && v.job.state === d.processingState)
+  return new Set(v.revisions.map(r => r.sourceRevision)).size === v.revisions.length && (d.currentReadyRevision === null || v.revisions.some(r => r.sourceRevision === d.currentReadyRevision)) && (v.job === null || isKnowledgeJob(v.job) && v.job.documentId === d.documentId && v.job.requestId === d.requestId && v.job.state === d.processingState)
 }
 export function isKnowledgeImport(v: unknown): v is KnowledgeImport {
   if (!isObject(v) || !exactFields(v, ['outcome', 'requestId', 'job'])) return false

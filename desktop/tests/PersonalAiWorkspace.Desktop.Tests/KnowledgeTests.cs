@@ -69,6 +69,19 @@ public sealed class KnowledgeTests
         Assert.Equal("native text",Encoding.UTF8.GetString(f.Handler.Uploaded!));Assert.False(f.Files.Selected!.CanRead);Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
         Assert.DoesNotContain("native text",Assert.Single(f.Sent));Assert.DoesNotContain("Bearer",f.Sent[0]);Assert.DoesNotContain(@"C:\",f.Sent[0]);
     }
+    [Fact]public async Task KnowledgeGetSerializesOnlyUiRevisionMetadata()
+    {
+        using var f=new Fixture();await f.List();var response=await f.Send("knowledge.get",new{documentId=f.Handler.Id});
+        var revision=Assert.Single(response.GetProperty("result").GetProperty("revisions").EnumerateArray());
+        Assert.Equal(new[]{"byteLength","sourceRevision","sourceType"},revision.EnumerateObject().Select(p=>p.Name).OrderBy(n=>n,StringComparer.Ordinal).ToArray());
+        Assert.Equal("1",revision.GetProperty("sourceRevision").GetString());Assert.Equal("TXT",revision.GetProperty("sourceType").GetString());Assert.Equal(11,revision.GetProperty("byteLength").GetInt64());
+        string serialized=Assert.Single(f.Sent);
+        foreach(string field in new[]{"sourceDigest","representationDigest","parserVersion","normalizationVersion","lineCount","originalFilename","importedAt","path","sourcePath","sourceBytes","backupPath","base64","text"})
+            Assert.DoesNotContain("\""+field+"\"",serialized);
+        foreach(string value in new[]{new string('a',64),new string('b',64),@"C:\","native text"})Assert.DoesNotContain(value,serialized);
+        var native=await f.Runtime.GetKnowledgeAsync(f.Handler.Id,default);
+        Assert.Equal(new string('a',64),native.Revisions[0].SourceDigest);Assert.Equal(new string('b',64),native.Revisions[0].RepresentationDigest);
+    }
     [Fact]public async Task BridgeRejectsPathsBytesUnknownFieldsAndNumericVersionsWithoutCallingRuntime()
     {
         using var f=new Fixture();foreach(var payload in new object[]{new{path=@"C:\private.txt"},new{documentId=(string?)null,expectedMetadataVersion=(string?)null,base64="eA=="},new{documentId=f.Handler.Id,expectedMetadataVersion=1}})

@@ -8,6 +8,8 @@ using PersonalAiWorkspace.Core;
 namespace PersonalAiWorkspace.Desktop.Bridge;
 
 internal sealed record KnowledgeImportResult(string Outcome,string? RequestId,KnowledgeJob? Job);
+internal sealed record KnowledgeRevisionView(string SourceRevision,string SourceType,long ByteLength);
+internal sealed record KnowledgeDetailView(KnowledgeDocument Document,KnowledgeRevisionView[] Revisions,KnowledgeJob? Job);
 internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
 {
     private sealed class Authority {internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);}
@@ -29,8 +31,11 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     internal async Task<KnowledgeList> ListAsync(string session,string status,int page,CancellationToken ct)
     {Authority known;lock(sync)known=Require(session);var result=await runtime.ListKnowledgeAsync(status,page,ct);lock(sync)foreach(var d in result.Items)Authorize(session,known,d.DocumentId,d.RequestId);return result;}
-    internal async Task<KnowledgeDetail> GetAsync(string session,string id,CancellationToken ct)
-    {lock(sync)Require(session,id);return await runtime.GetKnowledgeAsync(id,ct);}
+    internal async Task<KnowledgeDetailView> GetAsync(string session,string id,CancellationToken ct)
+    {
+        lock(sync)Require(session,id);var detail=await runtime.GetKnowledgeAsync(id,ct);
+        return new(detail.Document,detail.Revisions.Select(r=>new KnowledgeRevisionView(r.SourceRevision,r.SourceType,r.ByteLength)).ToArray(),detail.Job);
+    }
     internal async Task<KnowledgePreview> PreviewAsync(string session,string id,string revision,int offset,CancellationToken ct)
     {lock(sync)Require(session,id);return await runtime.PreviewKnowledgeAsync(id,revision,offset,ct);}
     internal async Task<KnowledgeImportResult> ImportAsync(string session,string? id,string? expected,CancellationToken ct)
