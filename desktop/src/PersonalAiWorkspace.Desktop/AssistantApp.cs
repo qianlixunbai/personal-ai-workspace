@@ -19,6 +19,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private readonly WorkspaceOperations workspaceOperations;
     private readonly WorkspaceConversations workspaceConversations;
     private readonly WorkspaceMemory workspaceMemory;
+    private readonly WorkspaceKnowledge workspaceKnowledge;
     private MemorySelectionWindow? workspaceSelector;
     private AssistantWindow window = null!;
     private MainWorkspaceWindow? workspace;
@@ -46,6 +47,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         workspaceOperations = new WorkspaceOperations(runtime, SelectWorkspaceMemoryAsync, text => Clipboard.SetText(text));
         workspaceConversations = new WorkspaceConversations(runtime, SelectWorkspaceMemoryAsync);
         workspaceMemory = new WorkspaceMemory(runtime);
+        workspaceKnowledge = new WorkspaceKnowledge(runtime,new NativeKnowledgeSourceFiles(()=>workspace));
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += (_, error) =>
         {
@@ -115,6 +117,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
     WorkspaceConversations IWorkspaceNativeActions.Conversations => workspaceConversations;
     WorkspaceMemory IWorkspaceNativeActions.Memory => workspaceMemory;
+    WorkspaceKnowledge IWorkspaceNativeActions.Knowledge => workspaceKnowledge;
     private Task<System.Collections.Generic.IReadOnlyList<MemorySelection>?> SelectWorkspaceMemoryAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();

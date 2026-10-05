@@ -21,6 +21,7 @@ internal interface IWorkspaceNativeActions
     WorkspaceOperations? Operations => null;
     WorkspaceConversations? Conversations => null;
     WorkspaceMemory? Memory => null;
+    WorkspaceKnowledge? Knowledge => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
@@ -43,6 +44,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly WorkspaceOperations? operations;
     private readonly WorkspaceConversations? conversations;
     private readonly WorkspaceMemory? memory;
+    private readonly WorkspaceKnowledge? knowledge;
     internal bool EditorDirty { get; private set; }
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
@@ -61,7 +63,7 @@ internal sealed class WorkspaceBridge : IDisposable
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
-    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; this.send = send; }
+    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; this.send = send; }
 
     internal void BeginDocument(string address)
     {
@@ -73,6 +75,7 @@ internal sealed class WorkspaceBridge : IDisposable
         operations?.BeginSession(SessionId);
         conversations?.BeginSession(SessionId);
         memory?.BeginSession(SessionId);
+        knowledge?.BeginSession(SessionId);
     }
 
     internal void Ready(string currentDocument)
@@ -87,6 +90,7 @@ internal sealed class WorkspaceBridge : IDisposable
         operations?.EndSession(SessionId);
         conversations?.EndSession(SessionId);
         memory?.EndSession(SessionId);
+        knowledge?.EndSession(SessionId);
         ready = false; document = null; SessionId = ""; requests.Clear(); pending = 0;
         sessionLifetime.Cancel(); sessionLifetime.Dispose(); sessionLifetime = new();
     }
@@ -120,7 +124,21 @@ internal sealed class WorkspaceBridge : IDisposable
         try
         {
             object result;
-            if (method == "memory.editorState")
+            if(KnowledgeMethods.Contains(method))
+            {
+                if(knowledge is null)throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Knowledge 暂时不可用。");
+                string? id=payload.TryGetProperty("documentId",out var documentId)&&documentId.ValueKind==JsonValueKind.String?documentId.GetString():null;
+                result=method switch {
+                    "knowledge.list"=>await knowledge.ListAsync(session,payload.GetProperty("status").GetString()!,payload.GetProperty("page").GetInt32(),cancellation),
+                    "knowledge.get"=>await knowledge.GetAsync(session,id!,cancellation),
+                    "knowledge.preview"=>await knowledge.PreviewAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
+                    "knowledge.import"=>await knowledge.ImportAsync(session,id,payload.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null?null:payload.GetProperty("expectedMetadataVersion").GetString(),cancellation),
+                    "knowledge.importState"=>await knowledge.ImportStateAsync(session,payload.GetProperty("requestId").GetString()!,cancellation),
+                    "knowledge.cancelImport"=>await knowledge.CancelAsync(session,id!,payload.GetProperty("requestId").GetString()!,cancellation),
+                    _=>await knowledge.LifecycleAsync(session,id!,payload.GetProperty("expectedMetadataVersion").GetString()!,method,cancellation)
+                };
+            }
+            else if (method == "memory.editorState")
             {
                 EditorDirty = payload.GetProperty("dirty").GetBoolean();
                 result = new { acknowledged = true };
@@ -229,6 +247,7 @@ internal sealed class WorkspaceBridge : IDisposable
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method is "shell.bootstrap" or "shell.refreshStatus" || NativeMethods.ContainsKey(method)
@@ -244,6 +263,22 @@ internal sealed class WorkspaceBridge : IDisposable
         return ValidReferences(payload, mode == "Summarize");
     }
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
+    internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview"};
+    private static bool ValidKnowledgePayload(string method,JsonElement p)
+    {
+        bool Id(string name)=>Text(p,name,36,out var id)&&CanonicalId(id);
+        bool Version(string name)=>Text(p,name,19,out var v)&&v[0] is >= '1' and <= '9'&&v.All(x=>x is >= '0' and <= '9')&&long.TryParse(v,NumberStyles.None,CultureInfo.InvariantCulture,out _);
+        if(method=="knowledge.list")return Fields(p,"status","page")&&Text(p,"status",8,out var s)&&s is "ACTIVE" or "ARCHIVED"&&Page(p)&&p.GetProperty("page").GetInt32()<25;
+        if(method=="knowledge.importState")return Fields(p,"requestId")&&Id("requestId");
+        if(method=="knowledge.import")return Fields(p,"documentId","expectedMetadataVersion")&&
+            (p.GetProperty("documentId").ValueKind==JsonValueKind.Null?p.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null:Id("documentId")&&Version("expectedMetadataVersion"));
+        if(method=="knowledge.get")return Fields(p,"documentId")&&Id("documentId");
+        if(method=="knowledge.cancelImport")return Fields(p,"documentId","requestId")&&Id("documentId")&&Id("requestId");
+        if(method=="knowledge.preview")return Fields(p,"documentId","sourceRevision","offset")&&Id("documentId")&&Version("sourceRevision")&&long.Parse(p.GetProperty("sourceRevision").GetString()!,CultureInfo.InvariantCulture)<=10
+            &&p.GetProperty("offset").ValueKind==JsonValueKind.Number&&p.GetProperty("offset").TryGetInt32(out int o)&&o is >=0 and <=1_000_000;
+        return Fields(p,"documentId","expectedMetadataVersion")&&Id("documentId")&&Version("expectedMetadataVersion");
+    }
     private static MemoryQuery ReadMemoryQuery(JsonElement payload) => new(payload.GetProperty("query").GetString()!,
         Enum.Parse<MemoryStatus>(payload.GetProperty("status").GetString()!),
         payload.GetProperty("type").ValueKind == JsonValueKind.Null ? null : ReadMemoryType(payload), payload.GetProperty("page").GetInt32(), WorkspaceMemory.PageSize);

@@ -14,7 +14,13 @@ public enum DesktopError
     WorkspaceRestoreTargetNotEmpty, WorkspaceExportFailed, WorkspaceRestoreFailed, WorkspaceBackupFileUnavailable,
     MemoryBackupInvalid, MemoryBackupUnsupported, MemoryBackupTooLarge, MemoryRestoreTargetNotEmpty,
     MemoryExportFailed, MemoryRestoreFailed, MemoryBackupFileUnavailable,
-    ConversationNotFound, ConversationInvalid, ConversationConflict, ConversationLimitExceeded, ConversationStorageUnavailable
+    ConversationNotFound, ConversationInvalid, ConversationConflict, ConversationLimitExceeded, ConversationStorageUnavailable,
+    KnowledgeInvalidSource, KnowledgeUnsupportedType, KnowledgeInvalidUtf8, KnowledgeSourceTooLarge,
+    KnowledgeLimitExceeded, KnowledgeDuplicateSource, KnowledgeRevisionConflict, KnowledgeNotFound,
+    KnowledgeQueueFull, KnowledgeIngestionFailed, KnowledgeInterrupted, KnowledgeCancelled,
+    KnowledgeStorageUnavailable, KnowledgeSchemaUnsupported, KnowledgeDeleteIncomplete,
+    KnowledgeBackupInvalid, KnowledgeBackupUnsupported, KnowledgeBackupTooLarge, KnowledgeBackupConflict,
+    KnowledgeRestoreTargetNotEmpty, KnowledgeRestoreFailed, KnowledgeExportFailed, KnowledgeFileUnavailable
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -27,6 +33,29 @@ public static class ErrorText
     public static string For(DesktopError error) => error switch
     {
         DesktopError.ConversationNotFound => "Conversation or turn does not exist.",
+        DesktopError.KnowledgeInvalidSource => "源文件须为本机普通文件，包含有效、非空的纯文本；不接受链接或二进制内容。",
+        DesktopError.KnowledgeUnsupportedType => "仅支持严格 UTF-8 的 TXT、MD 或 Markdown 文件。",
+        DesktopError.KnowledgeInvalidUtf8 => "文件不是有效 UTF-8；请先明确转换文件编码。",
+        DesktopError.KnowledgeSourceTooLarge => "源文件超过 8 MiB 导入上限。",
+        DesktopError.KnowledgeLimitExceeded => "Knowledge 容量或文本结构超出限制。",
+        DesktopError.KnowledgeDuplicateSource => "相同源字节已属于另一个 Knowledge 文档。",
+        DesktopError.KnowledgeRevisionConflict => "文档版本已变化或正在处理，请刷新后显式重试。",
+        DesktopError.KnowledgeNotFound => "Knowledge 文档、版本或导入记录不存在。",
+        DesktopError.KnowledgeQueueFull => "导入容量已满，请等待当前导入完成。",
+        DesktopError.KnowledgeIngestionFailed => "导入处理失败，旧 READY 版本仍可使用。",
+        DesktopError.KnowledgeInterrupted => "导入已中断，请先检查记录再显式重试。",
+        DesktopError.KnowledgeCancelled => "导入已取消。",
+        DesktopError.KnowledgeStorageUnavailable => "Knowledge 存储不可用，请检查 Runtime。",
+        DesktopError.KnowledgeSchemaUnsupported => "Knowledge 数据或解析版本不受支持。",
+        DesktopError.KnowledgeDeleteIncomplete => "删除未完成，请解除文件占用后显式重试。",
+        DesktopError.KnowledgeBackupInvalid => "Knowledge 备份无效或已损坏。",
+        DesktopError.KnowledgeBackupUnsupported => "Knowledge 备份版本不受支持。",
+        DesktopError.KnowledgeBackupTooLarge => "Knowledge 备份超过容量限制。",
+        DesktopError.KnowledgeBackupConflict => "请先等待导入或删除操作结束，再导出备份。",
+        DesktopError.KnowledgeRestoreTargetNotEmpty => "恢复目标须为新的或空的 Workspace 数据目录。",
+        DesktopError.KnowledgeRestoreFailed => "无法确认 Knowledge 恢复完成，请检查目标目录。",
+        DesktopError.KnowledgeExportFailed => "Knowledge 导出未完成，请显式重试。",
+        DesktopError.KnowledgeFileUnavailable => "无法安全读取或保存所选文件。",
         DesktopError.ConversationInvalid => "Conversation request is invalid.",
         DesktopError.ConversationConflict => "Conversation or turn state does not allow this operation.",
         DesktopError.ConversationLimitExceeded => "Conversation capacity or size limit exceeded.",
