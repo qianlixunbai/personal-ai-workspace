@@ -1,6 +1,6 @@
-# Current Architecture — M5 Unified Main Workspace UI
+# Current Architecture — K1 Deterministic Knowledge Foundation
 
-## K1 implementation architecture — IN PROGRESS
+## K1 implementation architecture — Closing Candidate
 
 既有 React → typed allowlisted WPF bridge → application-owned RuntimeClient → Runtime
 production chain 保持。Knowledge 独立于 Memory/Conversation/Finance；独立
@@ -38,7 +38,9 @@ Restore 在指定新/空 target 下 private staging reconstruct/verify，再 ato
 发布 inactive Knowledge；不 merge/hot-swap/自动切换。Workspace Backup v1 保持 Memory + Conversation。
 
 Finance integration deferred pending authoritative Finance Reality Sync.
-K0 — APPROVED — GO；K1 — IN PROGRESS；K2/K3/K4 — NOT STARTED。
+K0 — APPROVED — GO；K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。
+Java 123 / Desktop 268 / Frontend 113 PASS；真实 Windows 21 coverage points、独立恢复与隐私 PASS。
+K2/K3/K4 — NOT STARTED。[K1 Closing Report](../milestones/K1-CLOSING-REPORT.md)。
 ADR-011 Accepted 来源为既有 Architecture Guard approval。K1 closing 仍需独立批准。
 
 以下章节为 M5 及更早交付快照；其旧 allowlist/Knowledge 范围不覆盖上述 K1 实施状态。
