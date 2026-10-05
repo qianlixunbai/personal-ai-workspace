@@ -37,7 +37,7 @@ internal static class Program
         try{app.Run();}finally{app.Cleanup();runtime.Dispose();credentials.Forget();}
         Console.WriteLine(JsonSerializer.Serialize(new{result=code==0?"PASS":"FAIL",check=stage,failureType=failure,checks,
             productionWpf=true,realWebView2=true,bundledReact=true,realRuntime=true,realWindowsPinyin=realIme,
-            independentExecutions=1,coveragePoints=22}));return code;
+            independentExecutions=1}));return code;
     }
     private static void Stage(string value){stage=value;File.WriteAllText(Setting("PROGRESS"),JsonSerializer.Serialize(new{check=value,completedChecks=checks.Count}));}
     private static void Require(bool value,string name){Stage(name);if(!value)throw new InvalidOperationException();checks.Add(name);}
@@ -65,6 +65,7 @@ internal static class Program
         Require(JsonSerializer.Serialize(once)==JsonSerializer.Serialize(twice),"deterministic-logical-order");
         await Search(Case("QUERY"));Require((await Hits()).GetArrayLength()==3,"fresh-latin-query-canary");
         Require(await Js("!location.href.includes("+JsonSerializer.Serialize(Case("QUERY"))+")&&!JSON.stringify({...localStorage,...sessionStorage}).includes("+JsonSerializer.Serialize(Case("QUERY"))+")") =="true","query-absent-url-storage");
+        Require(await Js("(async()=> (await indexedDB.databases()).length===0&&(await caches.keys()).length===0)()") =="true","no-indexeddb-or-cache-query-storage");
         Require(await Js("window.__k2.filter(r=>Array.isArray(r.result?.hits)).every(r=>!/(sourceDigest|representationDigest|corpusFingerprint|tokens|bm25|rowid|absolutePath)/.test(JSON.stringify(r)))") =="true","bridge-no-digest-index-metadata");
         Require(await Js("document.querySelector('.knowledge-search script,.knowledge-search img,.knowledge-search iframe')===null") =="true","snippet-literal-no-html-execution");
         shell.Browser.ZoomFactor=1.25;Require(await Js("document.documentElement.scrollWidth<=document.documentElement.clientWidth") =="true","search-125-percent-no-horizontal-overflow");shell.Browser.ZoomFactor=1;
@@ -95,6 +96,11 @@ internal static class Program
         var hwnd=new WindowInteropHelper(shell).Handle;shell.ReturnFocus();SetForegroundWindow(hwnd);var focus=Native.FocusWindow(hwnd);var layout=GetKeyboardLayout(Native.GetWindowThreadProcessId(focus,out _));
         try{
             Forms.InputLanguage.CurrentInputLanguage=chinese!;PostMessage(focus,0x0050,IntPtr.Zero,chinese!.Handle);await Js("document.getElementById('knowledge-search-query').focus()");await Task.Delay(300);
+            foreach(char letter in "yusuan"){Require(Native.GetForegroundWindow()==hwnd,"physical-keyboard-workspace-focus");Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}
+            Require(await Js("window.__ime.composing&&window.__ime.start>0&&window.__ime.update>0") =="true","genuine-pinyin-before-composition-enter");
+            Key(0x0D);await WaitJs("!window.__ime.composing","composition-enter-commits");
+            Require(await Js("window.__ime.submits===0&&window.__ime.premature===0") =="true","composition-enter-does-not-submit");
+            await Input("");
             foreach(char letter in "yusuan"){Require(Native.GetForegroundWindow()==hwnd,"physical-keyboard-workspace-focus");Key((byte)char.ToUpperInvariant(letter));await Task.Delay(90);}Key(0x20);await Task.Delay(300);
             Require(await Js("window.__ime.start>0&&window.__ime.update>0&&window.__ime.end>0&&window.__ime.submits===0&&document.getElementById('knowledge-search-query').value==='预算'") =="true","genuine-pinyin-composition-committed-query");
             Key(0x0D);await WaitJs("document.querySelector('.knowledge-search h3')!==null","physical-enter-search-submit");

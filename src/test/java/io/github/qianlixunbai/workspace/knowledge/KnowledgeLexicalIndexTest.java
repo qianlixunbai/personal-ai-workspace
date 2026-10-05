@@ -9,6 +9,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class KnowledgeLexicalIndexTest {
     @TempDir Path temporary;
@@ -118,6 +119,25 @@ class KnowledgeLexicalIndexTest {
             ready(index);assertEquals(1,index.search("freshness",10).hits().size());
             try(var db=DriverManager.getConnection("jdbc:sqlite:"+store.root().resolve("index/lexical.db"));var s=db.createStatement()){s.execute("UPDATE metadata SET v='"+"0".repeat(64)+"' WHERE k='fingerprint'");}
             code(ErrorCode.KNOWLEDGE_INDEX_NOT_READY,()->index.search("freshness",10));ready(index);
+        }
+    }
+    @Test void queryDiscardsHitsWhenCorpusMutatesBeforeFinalFingerprint()throws Exception {
+        try(var store=spy(store());var ingestion=new KnowledgeIngestion(store);var index=new KnowledgeLexicalIndex(store)) {
+            var job=ingest(store,ingestion,null,"race.txt","budget race");ready(index);
+            String engine=KnowledgeLexicalIndex.engine(),before=KnowledgeLexicalIndex.fingerprint(store.searchCorpus(),engine);
+            var queryThread=Thread.currentThread();var mutated=new java.util.concurrent.atomic.AtomicBoolean();
+            // Existing source-read seam: SQL hits and the old source were read before truth changes.
+            doAnswer(call->{var source=call.callRealMethod();
+                if(Thread.currentThread()==queryThread&&mutated.compareAndSet(false,true)){
+                    var doc=store.get(job.documentId());store.lifecycle(doc.documentId(),doc.metadataVersion(),"ARCHIVED");}
+                return source;
+            }).when(store).searchSource(any());
+            synchronized(store){ // Hold publication back until the query's final truth check has run.
+                code(ErrorCode.KNOWLEDGE_INDEX_NOT_READY,()->index.search("budget",10));
+                assertTrue(mutated.get());assertNotEquals(before,KnowledgeLexicalIndex.fingerprint(store.searchCorpus(),engine));
+                assertNotEquals("READY",index.status().state());
+            }
+            ready(index);assertTrue(index.search("budget",10).hits().isEmpty());assertEquals(0,index.status().indexedDocuments());
         }
     }
 }
