@@ -1,10 +1,10 @@
 # Personal AI Workspace
 
-## 当前 K1 实施状态
+## 当前 K1 正式批准状态
 
-K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。
+K1 ARCHITECTURE / CLOSING REVIEW — GO；K1 — CLOSED — GO。
 K0 — APPROVED — GO；K2/K3/K4 — NOT STARTED。
-M0–M5 保持 CLOSED — GO。Finance integration deferred pending authoritative Finance Reality Sync.
+M0–M5 — CLOSED — GO。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 
 Knowledge 是独立参考来源领域：通过 Windows 原生 picker 导入严格 UTF-8 TXT/MD/Markdown，
 Runtime 在 `workspace.data-directory/knowledge/` 私有保存 `knowledge.db` 和原始源副本。
@@ -13,8 +13,14 @@ React `#/knowledge` 只管理 metadata、processing 状态、revision、纯文�
 旧 READY 在更新失败时保持可用；未知上传结果只查询，不自动重发。
 独立 Knowledge Backup v1 支持流式导出/验证和新/空 Workspace data directory 恢复。
 **Workspace Backup v1 只包含 Memory + Conversation，不包含 Knowledge。**
-Closing Review 最小 remediation 后，真实 Windows 综合验收、隐私扫描及最终一次完整回归已通过：Java 123 / Desktop 269 / Frontend 115。
-详见 [K1 Closing Report](docs/milestones/K1-CLOSING-REPORT.md)。仍等待独立 Architecture Guard / K1 Closing Review；未宣称 K1 CLOSED。
+Architecture Guard 已独立代码级复审并正式批准 K1 closing。批准的 implementation / acceptance candidate 为
+`01657440fc6ab4e83f716251bde8cda6e693b6c9`；继承 Java 123 / Desktop 269 / Frontend 115 PASS、
+真实 Windows 1 条成功 production integrated flow（21 coverage points / 116 sequential assertions）、
+production build / publish / launcher PASS 与 privacy audit PASS（0 unexpected matches）。
+[K1 Closing Report](docs/milestones/K1-CLOSING-REPORT.md) 保留形成时的 IMPLEMENTED / LOCAL ACCEPTANCE PASS、
+CLOSING CANDIDATE — GO 历史状态。最终 repository HEAD 是之后独立的
+`docs: approve K1 deterministic knowledge final closing` docs-only approval commit；candidate / package identity 与其区分，
+实际完整 SHA 见正式交付结果及 Git。正式交付不重跑测试、Windows acceptance、隐私扫描或生产打包。
 不提供检索、RAG、模型 Knowledge context 或 Conversation Knowledge。
 
 下面的 M5 发布说明保留其已批准基线语境；Knowledge 的当前说明以上文和 STATUS 为准。

@@ -1,6 +1,9 @@
 # Current Architecture — K1 Deterministic Knowledge Foundation
 
-## K1 implementation architecture — Closing Candidate
+## K1 approved implementation architecture — CLOSED — GO
+
+K1 ARCHITECTURE / CLOSING REVIEW — GO。Architecture Guard 已完成独立代码级复审并正式批准；
+K1 — CLOSED — GO。M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K2/K3/K4 — NOT STARTED。
 
 既有 React → typed allowlisted WPF bridge → application-owned RuntimeClient → Runtime
 production chain 保持。Knowledge 独立于 Memory/Conversation/Finance；独立
@@ -41,12 +44,18 @@ version/digest/text/locator/pointer mismatch 均拒绝。Decoded hard ceiling 2 
 Restore 在指定新/空 target 下 private staging reconstruct/verify，再 atomic directory rename
 发布 inactive Knowledge；不 merge/hot-swap/自动切换。Workspace Backup v1 保持 Memory + Conversation。
 
-Finance integration deferred pending authoritative Finance Reality Sync.
-K0 — APPROVED — GO；K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。
-Remediation candidate `01657440fc6ab4e83f716251bde8cda6e693b6c9`：Java 123 / Desktop 269 / Frontend 115 PASS；
-真实 Windows 21 coverage points / 116 assertions、独立恢复与隐私 PASS。
-K2/K3/K4 — NOT STARTED。[K1 Closing Report](../milestones/K1-CLOSING-REPORT.md)。
-ADR-011 Accepted 来源为既有 Architecture Guard approval。K1 closing 仍需独立批准。
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+批准的 implementation / acceptance candidate `01657440fc6ab4e83f716251bde8cda6e693b6c9`：
+Java 123 / Desktop 269 / Frontend 115 PASS；真实 Windows 1 条成功 production integrated flow，
+21 coverage points / 116 sequential assertions；独立备份/恢复、path/bridge privacy、Browser Translate-only、
+production build / publish / launcher 与 privacy audit（0 unexpected matches）均 PASS。
+[K1 Closing Report](../milestones/K1-CLOSING-REPORT.md) 保留 IMPLEMENTED / LOCAL ACCEPTANCE PASS、
+CLOSING CANDIDATE — GO 的历史 candidate 状态；正式批准由 current docs 记录。
+最终 repository HEAD 是新的独立 `docs: approve K1 deterministic knowledge final closing` docs-only approval commit，
+与上述 candidate / package identity 区分；实际完整 SHA 见正式交付结果及 Git。
+Formal Delivery 继承批准的 candidate evidence，不重跑测试、Windows acceptance、隐私扫描或生产打包。
+ADR-011 Accepted 来源为既有 Architecture Guard approval，ADR bodies 与历史 closing artifacts 保持。
+Search / RAG / Knowledge Answer / Conversation Knowledge 未实现；K2/K3/K4 等待下一次独立授权。
 
 以下章节为 M5 及更早交付快照；其旧 allowlist/Knowledge 范围不覆盖上述 K1 实施状态。
 

@@ -1,22 +1,34 @@
 # Personal AI Workspace — Current Status
 
-## Current K1 implementation
+## Current K1 approved final closing
 
 M0–M5 — CLOSED — GO。K0 — APPROVED — GO（既有 Architecture Guard 输入约束）。
-K1 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K1 CLOSING CANDIDATE — GO。
+K1 ARCHITECTURE / CLOSING REVIEW — GO；K1 — CLOSED — GO。
 K2 / K3 / K4 — NOT STARTED。
-Finance integration deferred pending authoritative Finance Reality Sync.
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 
 K1 已实现独立 Knowledge schema v1/private sources、TXT/Markdown strict UTF-8
 deterministic ingestion、revision/digest/locator、bounded queue、reconciliation、
-native streaming、session bridge、React management 和独立 Knowledge Backup v1。
-Closing Review 最小 remediation candidate：`01657440fc6ab4e83f716251bde8cda6e693b6c9`。
+native streaming、session bridge、lifecycle / physical delete、bounded preview、React management、
+独立 Knowledge Backup v1 和 isolated restore。Browser 仍 Translate-only；Search / RAG / Knowledge Answer /
+Conversation Knowledge 未实现，Finance 保持冻结。
+Architecture Guard 已完成独立代码级复审并正式批准 K1 closing。
+批准的 implementation / acceptance candidate：`01657440fc6ab4e83f716251bde8cda6e693b6c9`。
 `knowledge.get` WebView revision 仅含 `sourceRevision` / `sourceType` / `byteLength`，
 不暴露 `sourceDigest` / `representationDigest` 或内部解析 metadata。
 Focused tests、真实 Windows 综合验收（1 条成功 flow，21 coverage points / 116 assertions）、
 最终一次 full regression（Java 123 / Desktop 269 / Frontend 115）、production build / minimal
-packaging + actual launcher 和隐私扫描均 PASS。[K1 Closing Report](milestones/K1-CLOSING-REPORT.md)。
-仍等待独立 Architecture Guard / K1 Closing Review，未宣称 K1 CLOSED — GO。
+packaging + actual launcher 和隐私扫描（0 unexpected matches）均 PASS，作为批准的历史 candidate evidence 继承。
+[K1 Closing Report](milestones/K1-CLOSING-REPORT.md) 保留形成时 IMPLEMENTED / LOCAL ACCEPTANCE PASS、
+CLOSING CANDIDATE — GO 的历史快照，不追改为 CLOSED。
+
+Formal Delivery 前 feature HEAD：`9cbcbfbb79cdc5cd61ee40193bfd0fe305a0669f`；
+main baseline：`8e24dbe11fc036f1ef4c7714adc621519a39c8a5`。
+最终 repository HEAD 由新的独立 `docs: approve K1 deterministic knowledge final closing` docs-only approval commit 承载；
+与 implementation / acceptance candidate 及 package identity 区分，实际完整 SHA 与交付结果见正式交付报告及 Git。
+本轮仅更新三份 current docs；不重跑测试、Windows acceptance、隐私扫描或生产打包。
+交付验证限于 docs-only diff、fresh remote baseline、ancestry、fast-forward-only、push main、post-push refs、
+clean working tree 与安全 feature branch cleanup；不创建 PR、tag 或 GitHub Release，不启动 K2/K3/K4。
 [ADR-011](ADR/ADR-011-knowledge-domain-storage-ingestion-recovery.md) 的 Accepted
 来源是既有 Architecture Guard K0 approval，不是实施工程师自行批准。
 
