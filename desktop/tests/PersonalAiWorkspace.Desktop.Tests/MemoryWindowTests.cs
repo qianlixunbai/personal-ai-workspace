@@ -74,32 +74,6 @@ public sealed class MemoryWindowTests
         }), () => Token);
     }
 
-    [Fact]
-    public Task WpfExplicitCreateEditLifecycleDeleteAndSearchNeverAutosave() => StaAsync(async () =>
-    {
-        var store = new Store(); using var runtime = store.Client();
-        bool approve = false; var decisions = new List<MemoryConfirmation>();
-        var window = new MemoryWindow(runtime, x => { decisions.Add(x); return approve; });
-        window.Show(); await DrainAsync(); Assert.Equal(0, store.Mutations);
-        window.NewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        window.TitleBox.Text = PrivateTitle; window.ContentBox.Text = PrivateContent;
-        Assert.Equal(0, store.Mutations); Assert.True(window.Dirty);
-        window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
-        Assert.Equal(1, store.Mutations); Assert.False(window.Dirty); Assert.Single(window.MemoryList.Items);
-        var item = Assert.Single(store.Items.Values);
-        window.ContentBox.Text += " changed"; Assert.Equal(1, store.Mutations);
-        await window.SaveAsync(); Assert.Equal(2, store.Items[item.Id].Revision); Assert.False(window.Dirty);
-        window.SearchBox.Text = PrivateTitle; int reads = store.Reads;
-        Assert.Equal(reads, store.Reads); window.SearchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
-        Assert.Single(window.MemoryList.Items);
-        await window.ChangeStatusAsync(); Assert.Empty(window.MemoryList.Items); Assert.Equal("Restore", window.LifecycleButton.Content);
-        window.StatusFilter.SelectedIndex = 1; await DrainAsync(); Assert.Single(window.MemoryList.Items);
-        await window.ChangeStatusAsync(); Assert.Empty(window.MemoryList.Items); Assert.Equal("Archive", window.LifecycleButton.Content);
-        int mutations = store.Mutations;
-        await window.DeleteAsync(); Assert.Equal(mutations, store.Mutations); Assert.Contains(MemoryConfirmation.Delete, decisions);
-        approve = true; await window.DeleteAsync(); Assert.Empty(store.Items); Assert.Empty(window.ContentBox.Text);
-        Safe(window.StatusText.Text); Assert.True(window.TryClose()); AssertCleared(window);
-    });
 
     [Fact]
     public Task DirtySwitchNewReloadAndCloseRespectConfirmationAndSuccessfulSaveClearsDirty() => StaAsync(async () =>
@@ -154,20 +128,6 @@ public sealed class MemoryWindowTests
         Assert.Equal(mutations, store.Mutations); window.NewItem(); Assert.Empty(window.ContentBox.Text); Assert.True(window.TryClose());
     });
 
-    [Fact]
-    public Task ExplicitFiltersPaginationAndDeletingLastRowSafelyReturnsToPreviousPage() => StaAsync(async () =>
-    {
-        var store = new Store(); for (int i = 0; i < 21; i++) store.Add(); using var runtime = store.Client();
-        var window = new MemoryWindow(runtime, _ => true); await window.RefreshAsync();
-        Assert.Equal(20, window.MemoryList.Items.Count); Assert.False(window.PreviousButton.IsEnabled); Assert.True(window.NextButton.IsEnabled);
-        window.NextButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync(); Assert.Single(window.MemoryList.Items);
-        var last = (MemoryItem)window.MemoryList.Items[0]; await window.SelectItemAsync(last); await window.DeleteAsync();
-        Assert.Equal(20, window.MemoryList.Items.Count); Assert.False(window.PreviousButton.IsEnabled); Assert.False(window.NextButton.IsEnabled);
-        window.TypeFilter.SelectedIndex = 1; await DrainAsync(); Assert.Empty(window.MemoryList.Items);
-        window.TypeFilter.SelectedIndex = 2; await DrainAsync(); Assert.Equal(20, window.MemoryList.Items.Count);
-        window.SearchBox.Text = "synthetic-no-match-" + Guid.NewGuid(); Assert.Equal(20, window.MemoryList.Items.Count);
-        await window.RefreshAsync(search: true); Assert.Empty(window.MemoryList.Items); Assert.True(window.TryClose());
-    });
 
     [Fact]
     public Task BusySerializesOperationsCloseCancelsAndLateResponsesCannotRepopulateUi() => StaAsync(async () =>

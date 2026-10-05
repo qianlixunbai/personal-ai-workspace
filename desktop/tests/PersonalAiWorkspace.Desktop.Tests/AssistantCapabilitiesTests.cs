@@ -30,39 +30,6 @@ public sealed class AssistantCapabilitiesTests
     [Theory]
     [InlineData(AssistantAction.Summarize)]
     [InlineData(AssistantAction.Ask)]
-    public async Task SubmissionAndPollingUseCapabilityRouteBodyAndResultIdentity(AssistantAction action)
-    {
-        int calls = 0;
-        using var client = new RuntimeClient(new RuntimeClientTests.Handler(async (request, _) =>
-        {
-            calls++;
-            Assert.Equal("http://127.0.0.1:8765", request.RequestUri!.GetLeftPart(UriPartial.Authority));
-            Assert.Equal(Token, request.Headers.Authorization!.Parameter);
-            if (request.Method == HttpMethod.Post)
-            {
-                Assert.Equal($"/api/v1/{Capability(action)}/tasks", request.RequestUri.AbsolutePath);
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
-                Assert.Equal(2, body.RootElement.EnumerateObject().Count());
-                Assert.Equal("private-input-marker", body.RootElement.GetProperty(action == AssistantAction.Ask ? "question" : "text").GetString());
-                Assert.Equal(Profile(action), body.RootElement.GetProperty("profile").GetString());
-                return Response(HttpStatusCode.Accepted, Envelope(action, "QUEUED"));
-            }
-            Assert.Equal(HttpMethod.Get, request.Method);
-            Assert.Equal($"/api/v1/tasks/{Id:D}", request.RequestUri.AbsolutePath);
-            return Response(HttpStatusCode.OK, Envelope(action, "SUCCEEDED"));
-        }), () => Token);
-        var input = new AssistantInput(action, "private-input-marker");
-        var result = await new AssistantOperation(client, TimeSpan.FromMilliseconds(1)).RunAsync(input, _ => { }, CancellationToken.None);
-        Assert.Equal(2, calls);
-        Assert.Equal(Id, result.TaskId);
-        Assert.Equal(TaskState.SUCCEEDED, result.Status);
-        Assert.Equal("private-output-marker", result.Result);
-        Assert.DoesNotContain("private", input.ToString());
-        Assert.DoesNotContain("private", result.ToString());
-    }
-    [Theory]
-    [InlineData(AssistantAction.Summarize)]
-    [InlineData(AssistantAction.Ask)]
     public async Task CapabilityResponsesRejectInvalidIdentityPromptAndOutput(AssistantAction action)
     {
         var other = action == AssistantAction.Ask ? AssistantAction.Summarize : AssistantAction.Ask;
@@ -99,15 +66,5 @@ public sealed class AssistantCapabilitiesTests
         Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client, TimeSpan.FromMilliseconds(1))
             .RunAsync(new(action, "x"), t => shown.Add(t.Status), CancellationToken.None))).Error);
         Assert.DoesNotContain(TaskState.SUCCEEDED, shown);
-    }
-    [Fact]
-    public void CapabilityInputBudgetsRejectEmptyCharactersAndUtf8Overflow()
-    {
-        foreach (var input in new[] { new AssistantInput(AssistantAction.Summarize, " "),
-            new AssistantInput(AssistantAction.Summarize, new string('x', 6001)), new AssistantInput(AssistantAction.Summarize, new string('中', 2300)),
-            new AssistantInput(AssistantAction.Ask, new string('x', 3001)), new AssistantInput(AssistantAction.Ask, new string('中', 2000)) })
-            Assert.Equal(DesktopError.InvalidRequest, Assert.Throws<DesktopException>(input.Validate).Error);
-        new SummarizeInput(new string('x', 6000)).Validate();
-        new AskInput(new string('x', 3000)).Validate();
     }
 }

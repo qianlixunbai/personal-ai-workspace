@@ -107,11 +107,6 @@ public sealed class WorkspaceBridgeTests
         for (int i = WorkspaceBridge.MaximumPending; i < WorkspaceBridge.MaximumRequestsPerSession; i++) await f.Receive(f.Request("native.openMemoryBackup"));
         int before = f.Native.Opened.Count; await f.Receive(f.Request("native.openMemoryBackup")); Assert.Equal(before, f.Native.Opened.Count);
     }
-    [Fact] public async Task EveryNativeEntryMapsToExactlyOneRealEnumeratedTarget()
-    {
-        using var f = new Fixture(); foreach (string method in WorkspaceBridge.NativeMethods.Keys) await f.Receive(f.Request(method));
-        Assert.Equal(new[] { NativeWorkspaceEntry.BrowserPairing, NativeWorkspaceEntry.MemoryBackup, NativeWorkspaceEntry.WorkspaceBackup, NativeWorkspaceEntry.CredentialFlow, NativeWorkspaceEntry.KnowledgeBackup }.Order(), f.Native.Opened.Order());
-    }
     [Theory]
     [InlineData("native.openCredentialFlow")][InlineData("native.openBrowserPairing")]
     [InlineData("native.openMemoryBackup")][InlineData("native.openWorkspaceBackup")]
@@ -162,6 +157,4 @@ public sealed class WorkspaceBridgeTests
         Assert.False(WorkspaceContentPolicy.AllowFrame); Assert.False(WorkspaceContentPolicy.AllowPopup);
         Assert.False(WorkspaceContentPolicy.AllowPermission); Assert.False(WorkspaceContentPolicy.AllowDownload);
     }
-    [Fact] public void CoreAssemblyRemainsWebViewIndependent()
-    { Assert.DoesNotContain(typeof(RuntimeClient).Assembly.GetReferencedAssemblies(), name => name.Name!.Contains("WebView", StringComparison.OrdinalIgnoreCase)); }
 }

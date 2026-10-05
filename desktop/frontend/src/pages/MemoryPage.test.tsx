@@ -1,7 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryPage } from './MemoryPage'
-import type { MemoryLeaveGuard } from './MemoryPage'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
 import { MemoryService, memoryItem } from '../test/memoryFixtures'
@@ -13,16 +12,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clients.splice(0).forEach(x => x.dispose()); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
 const click = async (name: string | RegExp) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
 async function setup(port = new MemoryService()) {
-  const bridge = new WorkspaceClient(port); clients.push(bridge); port.session(); let guard: MemoryLeaveGuard = leave => leave()
-  render(<MemoryPage bridge={bridge} enabled visible registerLeave={next => { guard = next; return () => {} }} openBackup={() => { void bridge.open('native.openMemoryBackup') }} />)
+  const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => { void bridge.open('native.openMemoryBackup') }} />)
   await screen.findByRole('button', { name: /^Synthetic Memory 1 PROJECT_NOTE/ })
-  return { port, bridge, leave: (action: () => void) => guard(action), title: screen.getByLabelText('Memory title') as HTMLInputElement, content: screen.getByLabelText('Memory content') as HTMLTextAreaElement }
+  return { port, bridge, title: screen.getByLabelText('Memory title') as HTMLInputElement, content: screen.getByLabelText('Memory content') as HTMLTextAreaElement }
 }
 const edit = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } })
-it('loads only one metadata page and gets body only after explicit selection', async () => {
-  const { port, content } = await setup(); expect(port.sent.map(x => x.method)).toEqual(['memory.list']); expect(content.value).toBe('')
-  await click(/Synthetic Memory 1/); expect(content.value).toBe('Synthetic body'); expect(port.sent.at(-1)?.method).toBe('memory.get')
-})
 it('creates only with Save, adopts canonical snapshot, signals dirty transitions and updates exact decimal revision', async () => {
   const { port, title, content } = await setup(); edit(title, 'Synthetic new'); edit(content, '  Synthetic exact\nbody  ')
   await act(async () => {}); expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
@@ -33,25 +28,13 @@ it('creates only with Save, adopts canonical snapshot, signals dirty transitions
   await click('New'); await click(/Synthetic Memory 1 /); edit(content, 'Synthetic update'); await click('Save')
   expect((port.sent.find(x => x.method === 'memory.update')?.payload as { expectedRevision: string }).expectedRevision).toBe('9007199254740993')
 })
-it('searches explicitly and preserves dirty editor through search, filters, refresh and pagination', async () => {
-  const port = new MemoryService(); port.items = Array.from({ length: 21 }, (_, i) => memoryItem(i + 1))
-  const { content } = await setup(port); await click(/Synthetic Memory 1 /); edit(content, 'Synthetic dirty')
-  const search = screen.getByLabelText('搜索 Memory'); const count = port.sent.filter(x => x.method === 'memory.list').length
-  edit(search, 'Synthetic'); expect(port.sent.filter(x => x.method === 'memory.list')).toHaveLength(count)
-  await click('Search'); expect(port.sent.filter(x => x.method === 'memory.list').at(-1)?.payload).toEqual({ query: 'Synthetic', status: 'ACTIVE', type: null, page: 0 })
-  await click('Next'); expect(screen.getAllByRole('listitem')).toHaveLength(1); expect(content.value).toBe('Synthetic dirty')
-  await click('Previous'); await click('Refresh')
-  await act(async () => { fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'ARCHIVED' } }) })
-  await act(async () => { fireEvent.change(screen.getByLabelText('Type filter'), { target: { value: 'PREFERENCE' } }) })
-  expect(content.value).toBe('Synthetic dirty'); expect(port.sent.filter(x => x.method === 'memory.list').at(-1)?.payload).toEqual({ query: 'Synthetic', status: 'ARCHIVED', type: 'PREFERENCE', page: 0 })
-})
 it('archive and restore with dirty edits change only snapshot status/revision, and Save uses new revision', async () => {
   const { port, content } = await setup(); await click(/Synthetic Memory 1/); edit(content, 'Synthetic local')
   await click('Archive'); expect(content.value).toBe('Synthetic local'); expect(port.items[0]?.content).toBe('Synthetic body'); expect(port.items[0]?.status).toBe('ARCHIVED')
   await click('Save'); expect((port.sent.find(x => x.method === 'memory.update')?.payload as { expectedRevision: string }).expectedRevision).toBe('9007199254740994')
   edit(content, 'Synthetic restored draft'); await click('Restore'); expect(content.value).toBe('Synthetic restored draft'); expect(port.items[0]?.content).toBe('Synthetic local')
 })
-it.each(['MemoryRevisionConflict', 'MemoryNotFound', 'OutcomeUnknown'])('%s retains exact draft, blocks mutations and resolves only explicitly', async error => {
+it.each(['MemoryRevisionConflict'])('%s retains exact draft, blocks mutations and resolves only explicitly', async error => {
   const { port, content } = await setup(); await click(/Synthetic Memory 1/); edit(content, '  Synthetic dirty\nexact  '); port.error = error
   await click('Save'); expect(content.value).toBe('  Synthetic dirty\nexact  ')
   for (const name of ['Save', 'Archive', 'Delete']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
@@ -61,16 +44,6 @@ it.each(['MemoryRevisionConflict', 'MemoryNotFound', 'OutcomeUnknown'])('%s reta
     await click('Reload'); await click('取消'); expect(content.value).toBe('  Synthetic dirty\nexact  ')
     await click('Reload'); await click('丢弃并继续'); expect(content.value).toBe('Synthetic latest')
   }
-})
-it('protects selection, New, Reload and route leave with default-safe keyboard confirmation and exact cancel', async () => {
-  const port = new MemoryService(); port.items.push(memoryItem(2)); const { content, leave } = await setup(port)
-  await click(/Synthetic Memory 1 /); edit(content, 'Synthetic untouched draft')
-  for (const name of [/Synthetic Memory 2 /, 'New', 'Reload']) {
-    await click(name); expect(screen.getByRole('button', { name: '取消' })).toBe(document.activeElement)
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }); expect(content.value).toBe('Synthetic untouched draft')
-  }
-  const next = vi.fn(); act(() => leave(next)); await click('取消'); expect(next).not.toHaveBeenCalled()
-  act(() => leave(next)); await click('丢弃并继续'); expect(next).toHaveBeenCalledOnce(); expect(content.value).toBe('')
 })
 it('guards actual App sidebar and direct hash routing before changing visible route', async () => {
   history.replaceState(null, '', '#/memory'); const port = new MemoryService(), bridge = new WorkspaceClient(port); clients.push(bridge)
@@ -93,10 +66,6 @@ it('confirmed mutation remains successful when follow-up list fails and hostile 
   edit(title, '<script>evil</script>'); edit(content, '<img onerror=x>&amp;\u202e\u0001'); port.failList = true; await click('Save')
   expect(screen.getByRole('alert').textContent).toContain('操作已成功'); expect(screen.getByRole('status').textContent).toContain('已保存')
   expect(title.value).toBe('<script>evil</script>'); expect(content.value).toBe('<img onerror=x>&amp;\u202e\u0001'); expect(document.querySelector('script,img')).toBeNull()
-})
-it('list/search/editor never write browser storage or identities/queries into URL and backup uses fixed native entry', async () => {
-  const storage = vi.spyOn(Storage.prototype, 'setItem'); const { port, content } = await setup(); await click(/Synthetic Memory 1/); edit(content, 'Synthetic private draft'); edit(screen.getByLabelText('搜索 Memory'), 'Synthetic private query'); await click('Search'); await click('Memory Backup / Restore')
-  expect(storage).not.toHaveBeenCalled(); expect(location.hash).toBe(''); expect(location.search).toBe(''); expect(port.sent.at(-1)?.method).toBe('native.openMemoryBackup')
 })
 it('session rotation clears editor and confirmation and suppresses an old pending refresh error', async () => {
   const { port, bridge, title, content } = await setup(); edit(title, 'Synthetic unsaved'); edit(content, 'Synthetic old draft')

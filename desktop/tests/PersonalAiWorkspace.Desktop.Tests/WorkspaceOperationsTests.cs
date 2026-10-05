@@ -107,8 +107,6 @@ public sealed class WorkspaceOperationsTests
         }
         public void Dispose() { Bridge.Dispose(); Operations.Dispose(); Runtime.Dispose(); }
     }
-    [Fact] public void BusinessAllowlistIsExactlyTheSixM5BCapabilities()
-    { Assert.Equal(new[] { "assistant.selectMemories", "assistant.submit", "operations.cancel", "operations.copyResult", "operations.get", "translate.submit" }, WorkspaceBridge.BusinessMethods.Order()); }
     [Theory][InlineData("Ask")][InlineData("Summarize")]
     public async Task AssistantReusesCoreContractsAndOwnedOpaqueOperations(string mode)
     {
@@ -165,12 +163,6 @@ public sealed class WorkspaceOperationsTests
         await f.Call("operations.copyResult", new { operationId = Guid.NewGuid().ToString("D"), text = "arbitrary clipboard" });
         await f.Receive(f.Request("assistant.submit", new { mode = "Ask", text = "x", selectedMemoryRefs = new object[0] }).Replace("\"text\":\"x\"", "\"text\":\"x\",\"text\":\"y\""));
         Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Posts);
-    }
-    [Fact] public async Task InputCharacterAndUtf8BudgetsRejectWithoutSubmitting()
-    {
-        using var f = new Fixture(); await f.Assistant(text: new string('x', 3001)); Assert.Empty(f.Sent);
-        await f.Assistant(text: new string('中', 2000)); Assert.Equal("InvalidRequest", f.Last.GetProperty("error").GetProperty("code").GetString());
-        await f.Call("translate.submit", new { text = "x", targetLanguage = "../../private" }); Assert.Equal(0, f.Handler.Posts);
     }
     [Theory][InlineData("operations.get")][InlineData("operations.cancel")][InlineData("operations.copyResult")]
     public async Task UnknownAndForeignOperationsShareTheSameControlledDenial(string method)

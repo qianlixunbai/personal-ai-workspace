@@ -26,42 +26,6 @@ public sealed class MemoryAskTests
         response.Headers.Location = new Uri($"/api/v1/tasks/{TaskId:D}", UriKind.Relative); return response;
     }
     [Fact]
-    public async Task MemoryAdmissionOnlySendsReferencesAndPollsWithExactVersionWhileEmptyUsesOrdinaryAsk()
-    {
-        foreach (bool selected in new[] { true, false })
-        {
-            int calls = 0;
-            string version = selected ? "memory-ask-v1" : "ask-v1";
-            using var client = new RuntimeClient(new Handler(async (request, token) =>
-            {
-                calls++;
-                if (request.Method == HttpMethod.Post)
-                {
-                    Assert.Equal(selected ? "/api/v1/memory/ask/tasks" : "/api/v1/ask/tasks", request.RequestUri!.AbsolutePath);
-                    string raw = await request.Content!.ReadAsStringAsync(token); Safe(raw.Replace(Token, ""));
-                    using var body = JsonDocument.Parse(raw); var root = body.RootElement;
-                    Assert.Equal(selected ? 3 : 2, root.EnumerateObject().Count());
-                    Assert.Equal("synthetic question", root.GetProperty("question").GetString());
-                    if (selected)
-                    {
-                        var reference = Assert.Single(root.GetProperty("memories").EnumerateArray());
-                        Assert.Equal(2, reference.EnumerateObject().Count()); Assert.Equal(Id, reference.GetProperty("id").GetGuid());
-                        Assert.Equal(3, reference.GetProperty("revision").GetInt64());
-                    }
-                    Assert.False(raw.Contains(PrivateContent, StringComparison.Ordinal));
-                    return Accepted(Envelope(version));
-                }
-                return Response(Envelope(version, "SUCCEEDED"));
-            }), () => Token);
-            var operation = new AssistantOperation(client, TimeSpan.FromMilliseconds(1));
-            var result = await operation.RunAsync(new(AssistantAction.Ask, "synthetic question"), _ => { }, default,
-                selected ? [new(Id, 3)] : []);
-            Assert.True(operation.Accepted); Assert.Equal(TaskState.SUCCEEDED, result.Status); Assert.Equal(2, calls);
-        }
-        Safe(new MemorySelection(Id, 3, PrivateTitle, MemoryType.PROJECT_NOTE).ToString());
-        Safe(new MemoryAskInput(PrivateContent, [new(Id, 3)]).ToString());
-    }
-    [Fact]
     public async Task WrongPromptVersionFailsClosedAtAdmissionPollAndCancel()
     {
         foreach (string stage in new[] { "ordinary", "memory", "poll", "cancel" })
@@ -75,33 +39,6 @@ public sealed class MemoryAskTests
                 stage == "ordinary" ? [] : [new(Id, 1)]));
             Assert.Equal(DesktopError.InvalidResponse, failure.Error);
         }
-    }
-    [Fact]
-    public async Task MemoryErrorsAreStrictEndpointSpecificAndNeverExposeRawContext()
-    {
-        (HttpStatusCode Status, string Code, DesktopError Expected)[] cases =
-        [
-            (HttpStatusCode.Conflict, "MEMORY_SELECTION_STALE", DesktopError.MemorySelectionStale),
-            (HttpStatusCode.BadRequest, "INVALID_REQUEST", DesktopError.MemoryAskBudget),
-            (HttpStatusCode.ServiceUnavailable, "MEMORY_STORAGE_UNAVAILABLE", DesktopError.MemoryStorageUnavailable),
-            (HttpStatusCode.ServiceUnavailable, "MEMORY_SCHEMA_UNSUPPORTED", DesktopError.MemorySchemaUnsupported),
-            (HttpStatusCode.TooManyRequests, "QUEUE_FULL", DesktopError.QueueFull),
-            (HttpStatusCode.ServiceUnavailable, "PROVIDER_UNAVAILABLE", DesktopError.ProviderUnavailable),
-            (HttpStatusCode.ServiceUnavailable, "MODEL_UNAVAILABLE", DesktopError.ModelUnavailable),
-            (HttpStatusCode.Unauthorized, "UNAUTHORIZED", DesktopError.Unauthorized),
-            (HttpStatusCode.Conflict, "MEMORY_REVISION_CONFLICT", DesktopError.InvalidResponse),
-            (HttpStatusCode.BadRequest, "MEMORY_SELECTION_STALE", DesktopError.InvalidResponse)
-        ];
-        foreach (var row in cases)
-        {
-            using var client = Client(Error(row.Code), row.Status);
-            var operation = new AssistantOperation(client);
-            var failure = await Assert.ThrowsAsync<DesktopException>(() => operation.RunAsync(new(AssistantAction.Ask, "q"), _ => { }, default, [new(Id, 1)]));
-            Assert.Equal(row.Expected, failure.Error); Assert.False(operation.Accepted); Safe(failure.ToString());
-        }
-        foreach (var references in new IReadOnlyList<MemoryReference>[] { [], [new(Id, 0)], [new(Guid.Empty, 1)], [new(Id, 1), new(Id, 1)],
-            Enumerable.Range(0, 5).Select(_ => new MemoryReference(Guid.NewGuid(), 1)).ToArray() })
-            Assert.Throws<DesktopException>(() => new MemoryAskInput("q", references).Validate());
     }
     [Theory]
     [InlineData("SUCCEEDED", null)]

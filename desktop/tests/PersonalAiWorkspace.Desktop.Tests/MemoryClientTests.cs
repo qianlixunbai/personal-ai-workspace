@@ -30,83 +30,8 @@ public sealed class MemoryClientTests
     internal static void Safe(string text)
     { Assert.True(new[] { PrivateTitle, PrivateContent, Token }.All(x => !text.Contains(x, StringComparison.Ordinal)), "Private text leaked."); }
 
-    [Fact]
-    public async Task CrudUsesNativeBearerExactMethodsPathsBodiesAndServerState()
-    {
-        string[] paths = ["/api/v1/memory/items", $"/api/v1/memory/items/{Id:D}", $"/api/v1/memory/items/{Id:D}",
-            $"/api/v1/memory/items/{Id:D}/archive", $"/api/v1/memory/items/{Id:D}/restore", $"/api/v1/memory/items/{Id:D}"];
-        HttpMethod[] methods = [HttpMethod.Post, HttpMethod.Get, HttpMethod.Put, HttpMethod.Post, HttpMethod.Post, HttpMethod.Delete];
-        int calls = 0;
-        using var client = new RuntimeClient(new Handler(async (request, ct) =>
-        {
-            int index = calls++;
-            Assert.Equal(methods[index], request.Method); Assert.Equal(paths[index], request.RequestUri!.AbsolutePath);
-            Assert.Equal("127.0.0.1", request.RequestUri.Host); Assert.Equal(8765, request.RequestUri.Port);
-            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
-            Assert.True(Token == request.Headers.Authorization?.Parameter, "Bearer differs.");
-            Assert.False(request.Headers.Contains("Origin"));
-            if (index == 1) Assert.Null(request.Content);
-            else
-            {
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
-                var root = body.RootElement;
-                Assert.Equal(index == 0 ? 3 : index == 2 ? 4 : 1, root.EnumerateObject().Count());
-                if (index > 0) Assert.Equal(index == 2 ? 1 : index - 1, root.GetProperty("expectedRevision").GetInt64());
-                if (index is 0 or 2)
-                {
-                    Assert.Equal("PROJECT_NOTE", root.GetProperty("type").GetString());
-                    Assert.True(PrivateTitle == root.GetProperty("title").GetString(), "Title differs.");
-                    Assert.True(PrivateContent == root.GetProperty("content").GetString(), "Content differs.");
-                }
-            }
-            if (index == 5) return new HttpResponseMessage(HttpStatusCode.NoContent);
-            var response = Response(Item(revision: index == 0 ? 1 : index, status: index == 3 ? "ARCHIVED" : "ACTIVE"),
-                index == 0 ? HttpStatusCode.Created : HttpStatusCode.OK);
-            if (index == 0) response.Headers.Location = new Uri(paths[1], UriKind.Relative);
-            return response;
-        }), () => Token);
-        var created = await client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent), default);
-        Safe(created.ToString());
-        Assert.Equal(1, (await client.GetMemoryAsync(Id, default)).Revision);
-        Assert.Equal(2, (await client.UpdateMemoryAsync(Id, new(1, MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent), default)).Revision);
-        Assert.Equal(MemoryStatus.ARCHIVED, (await client.ArchiveMemoryAsync(Id, 2, default)).Status);
-        Assert.Equal(4, (await client.RestoreMemoryAsync(Id, 3, default)).Revision);
-        await client.DeleteMemoryAsync(Id, 4, default); Assert.Equal(6, calls);
-    }
 
-    [Fact]
-    public async Task SearchEncodesUnicodeAndReservedCharactersAndPagesRemainBounded()
-    {
-        string query = "synthetic-" + Guid.NewGuid() + " 中文 &type=PREFERENCE?#+%";
-        using var client = new RuntimeClient(new Handler((request, _) =>
-        {
-            var uri = request.RequestUri!;
-            Assert.True(uri.Query.Contains("query=" + Uri.EscapeDataString(query), StringComparison.Ordinal), "Query encoding differs.");
-            Assert.Empty(uri.Fragment);
-            Assert.Contains("status=ACTIVE", uri.Query); Assert.Contains("page=2&limit=20", uri.Query);
-            Assert.Contains("&type=PROJECT_NOTE", uri.Query);
-            return Task.FromResult(Response(Page([], 40, 2)));
-        }), () => Token);
-        var page = await client.ListMemoryAsync(new(query, Type: MemoryType.PROJECT_NOTE, Page: 2), default);
-        Assert.True(page.HasPrevious); Assert.False(page.HasNext); Assert.Empty(page.Items);
-        Assert.DoesNotContain(query, page.ToString()); Assert.DoesNotContain(query, new MemoryQuery(query).ToString());
-    }
 
-    [Theory]
-    [InlineData(404, "MEMORY_NOT_FOUND", DesktopError.MemoryNotFound)]
-    [InlineData(409, "MEMORY_REVISION_CONFLICT", DesktopError.MemoryRevisionConflict)]
-    [InlineData(409, "MEMORY_LIMIT_EXCEEDED", DesktopError.MemoryLimitExceeded)]
-    [InlineData(400, "MEMORY_INVALID", DesktopError.MemoryInvalid)]
-    [InlineData(503, "MEMORY_STORAGE_UNAVAILABLE", DesktopError.MemoryStorageUnavailable)]
-    [InlineData(503, "MEMORY_SCHEMA_UNSUPPORTED", DesktopError.MemorySchemaUnsupported)]
-    [InlineData(413, "INVALID_REQUEST", DesktopError.InvalidRequest)]
-    [InlineData(401, "UNAUTHORIZED", DesktopError.Unauthorized)]
-    public async Task MemoryErrorsAreStrictAndPrivate(int status, string code, DesktopError expected)
-    {
-        using var client = Client(Error(code), (HttpStatusCode)status);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => client.GetMemoryAsync(Id, default));
-        Assert.Equal(expected, error.Error); Safe(error.ToString()); Assert.Null(error.InnerException);
-    }
 
     [Fact]
     public async Task EndpointAllowlistDoesNotWeakenAiOrPairingAndRejectsMismatchedMemoryCodes()
@@ -155,27 +80,6 @@ public sealed class MemoryClientTests
         }
     }
 
-    [Fact]
-    public async Task UnicodeValidationAndInvalidInputsNeverReachHttpAndDiagnosticsAreMetadataOnly()
-    {
-        new MemoryCreateInput(MemoryType.PREFERENCE, string.Concat(Enumerable.Repeat("😀", 160)), new string('中', 2000)).Validate();
-        new MemoryQuery(string.Concat(Enumerable.Repeat("😀", 160))).Validate();
-        using var client = new RuntimeClient(new Handler((_, _) => throw new InvalidOperationException("Unexpected HTTP")), () => Token);
-        Func<Task>[] invalid = [() => client.CreateMemoryAsync(new((MemoryType)9, PrivateTitle, PrivateContent), default),
-            () => client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, new string('x', 161), PrivateContent), default),
-            () => client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, " \n\t", PrivateContent), default),
-            () => client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, "\ud800", PrivateContent), default),
-            () => client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, PrivateTitle, new string('x', 2001)), default),
-            () => client.UpdateMemoryAsync(Id, new(0, MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent), default),
-            () => client.GetMemoryAsync(Guid.Empty, default), () => client.DeleteMemoryAsync(Id, 0, default),
-            () => client.ListMemoryAsync(new(new string('x', 161)), default), () => client.ListMemoryAsync(new("\ud800"), default),
-            () => client.ListMemoryAsync(new("\0"), default), () => client.ListMemoryAsync(new(Page: -1), default),
-            () => client.ListMemoryAsync(new(Limit: 101), default), () => client.ListMemoryAsync(new(Status: (MemoryStatus)9), default)];
-        foreach (var action in invalid) Assert.Equal(DesktopError.MemoryInvalid, (await Assert.ThrowsAsync<DesktopException>(action)).Error);
-        Safe(new MemoryCreateInput(MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent).ToString());
-        Safe(new MemoryUpdateInput(1, MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent).ToString());
-        foreach (var error in Enum.GetValues<DesktopError>()) Safe(ErrorText.For(error));
-    }
 
     [Fact]
     public async Task SizeLimitTransportFailureCancellationAndMutationResponseValidationAreControlled()

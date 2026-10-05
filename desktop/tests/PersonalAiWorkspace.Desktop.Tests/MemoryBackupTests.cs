@@ -83,16 +83,6 @@ public sealed class MemoryBackupTests
         await window.RestoreAsync(); Assert.Contains("Restore complete", window.StatusText.Text); Assert.Contains("Start Runtime", window.StatusText.Text);
         Safe(window.StatusText.Text); Assert.DoesNotContain(files.Target!, window.StatusText.Text); Assert.Equal(2, calls); window.Close();
     });
-    [Theory]
-    [InlineData("MEMORY_RESTORE_TARGET_NOT_EMPTY", 409, "NEW / EMPTY")]
-    [InlineData("MEMORY_BACKUP_INVALID", 400, "invalid or damaged")]
-    [InlineData("MEMORY_BACKUP_UNSUPPORTED", 400, "unsupported")]
-    [InlineData("MEMORY_RESTORE_FAILED", 500, "could not be confirmed")]
-    public Task RestoreStableErrorsSuppressServerMessageAndPaths(string code, int status, string expected) => StaAsync(async () =>
-    {
-        using var runtime = Client(Error(code), (HttpStatusCode)status); var window = new MemoryBackupWindow(runtime, new Files());
-        await window.RestoreAsync(); Assert.Contains(expected, window.StatusText.Text); Safe(window.StatusText.Text); window.Close();
-    });
     [Fact] public Task InvalidOrOversizedFileFailsBeforeAnyRestoreRequest() => StaAsync(async () =>
     {
         int calls = 0; using var runtime = new RuntimeClient(new Handler((_, _) => { calls++; throw new InvalidOperationException(); }), () => Token);

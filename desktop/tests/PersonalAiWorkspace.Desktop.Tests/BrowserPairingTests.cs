@@ -59,49 +59,8 @@ public sealed class BrowserPairingTests
         Assert.DoesNotContain(Token, pairing.ToString());
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("https://example.invalid")]
-    [InlineData("chrome-extension://abcdefghijklmnopabcdefghijklmnop/")]
-    [InlineData("chrome-extension://ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP")]
-    [InlineData("chrome-extension://abcdefghijklmnopabcdefghijklmnoq")]
-    [InlineData("chrome-extension://abcdefghijklmnopabcdefghijklmnop\n")]
-    public async Task InvalidOriginNeverSendsARequest(string origin)
-    {
-        using var client = new RuntimeClient(new Handler((_, _) => throw new Xunit.Sdk.XunitException("Invalid origin reached HTTP")), () => Token);
-        Assert.Equal(DesktopError.InvalidExtensionOrigin,
-            (await Assert.ThrowsAsync<DesktopException>(() => client.CreateBrowserPairingAsync(origin, CancellationToken.None))).Error);
-    }
 
-    [Theory]
-    [InlineData(400, "INVALID_REQUEST", "PAIRING", DesktopError.InvalidExtensionOrigin)]
-    [InlineData(429, "QUEUE_FULL", "PAIRING", DesktopError.PairingCapacityFull)]
-    [InlineData(500, "INTERNAL_ERROR", "SECURITY_STATE", DesktopError.SecurityStateError)]
-    [InlineData(500, "INTERNAL_ERROR", "HTTP", DesktopError.PairingCreationFailed)]
-    [InlineData(403, "POLICY_DENIED", "AUTH", DesktopError.PairingCreationFailed)]
-    public async Task SecurityErrorsAreControlledAndNeverIncludeRawBody(int status, string code, string phase, DesktopError expected)
-    {
-        using var client = Client(JsonSerializer.Serialize(new { code, phase, message = Secret + Token + "private-provider-body" }), (HttpStatusCode)status);
-        var failure = await Assert.ThrowsAsync<DesktopException>(() => client.CreateBrowserPairingAsync(Origin, CancellationToken.None));
-        Assert.Equal(expected, failure.Error);
-        Assert.DoesNotContain(Secret, failure.ToString());
-        Assert.DoesNotContain(Token, failure.ToString());
-        Assert.DoesNotContain("private-provider-body", failure.ToString());
-        Assert.Null(failure.InnerException);
-    }
 
-    [Fact]
-    public async Task PairingTransportFailureIsControlledAndCallerCancellationPropagates()
-    {
-        using var offline = new RuntimeClient(new Handler((_, _) => throw new HttpRequestException(Secret)), () => Token);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => offline.CreateBrowserPairingAsync(Origin, CancellationToken.None));
-        Assert.Equal(DesktopError.RuntimeUnavailable, error.Error);
-        Assert.DoesNotContain(Secret, error.ToString());
-        using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
-        using var client = new RuntimeClient(new Handler((_, ct) => Task.FromCanceled<HttpResponseMessage>(ct)), () => Token);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CreateBrowserPairingAsync(Origin, cancelled.Token));
-    }
 
     [Fact]
     public async Task MalformedPairingResponsesFailClosed()

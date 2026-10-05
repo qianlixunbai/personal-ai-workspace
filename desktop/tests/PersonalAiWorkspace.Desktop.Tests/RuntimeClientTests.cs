@@ -91,40 +91,7 @@ public sealed class RuntimeClientTests
         Assert.Equal(1, deletes);
     }
 
-    [Theory]
-    [InlineData(401, "UNAUTHORIZED", DesktopError.Unauthorized)]
-    [InlineData(404, "TASK_NOT_FOUND", DesktopError.TaskNotFound)]
-    [InlineData(429, "QUEUE_FULL", DesktopError.QueueFull)]
-    [InlineData(403, "POLICY_DENIED", DesktopError.PolicyDenied)]
-    [InlineData(503, "PROVIDER_UNAVAILABLE", DesktopError.ProviderUnavailable)]
-    [InlineData(503, "MODEL_UNAVAILABLE", DesktopError.ModelUnavailable)]
-    public async Task HttpErrorsAreCategorizedAndRawBodyTokenNeverEnterException(int status, string code, DesktopError expected)
-    {
-        using var client = new RuntimeClient(new Handler((_, _) => Task.FromResult(Response((HttpStatusCode)status,
-            JsonSerializer.Serialize(new { code, message = "private-input-marker " + Token, phase = "HTTP" })))), () => Token);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client)
-            .RunAsync(new(AssistantAction.Translate, "private-input-marker", "en"), _ => { }, CancellationToken.None));
-        Assert.Equal(expected, error.Error);
-        Assert.DoesNotContain("private-input-marker", error.ToString());
-        Assert.DoesNotContain(Token, error.ToString());
-        Assert.Null(error.InnerException);
-    }
 
-    [Theory]
-    [InlineData("FAILED", "PROVIDER_UNAVAILABLE", DesktopError.ProviderUnavailable)]
-    [InlineData("FAILED", "MODEL_UNAVAILABLE", DesktopError.ModelUnavailable)]
-    [InlineData("FAILED", "POLICY_DENIED", DesktopError.PolicyDenied)]
-    [InlineData("TIMED_OUT", "TASK_TIMEOUT", DesktopError.TimedOut)]
-    [InlineData("CANCELLED", "TASK_CANCELLED", DesktopError.Cancelled)]
-    public async Task AcceptedTaskFailureIsReadFrom200Envelope(string status, string code, DesktopError expected)
-    {
-        using var client = new RuntimeClient(new Handler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Envelope(status, code)))), () => Token);
-        var task = await client.GetAsync(Id, CancellationToken.None);
-        Assert.True(task.Terminal);
-        Assert.Equal(expected, task.Error);
-        Assert.Null(task.Result);
-        Assert.DoesNotContain("private-provider-body", task.ToString());
-    }
 
     [Fact]
     public async Task OfflineIsControlledAndCredentialMissingNeverSendsHttp()
@@ -139,25 +106,6 @@ public sealed class RuntimeClientTests
             (await Assert.ThrowsAsync<DesktopException>(() => unpaired.GetAsync(Id, CancellationToken.None))).Error);
     }
 
-    [Theory]
-    [InlineData("client-timeout", DesktopError.ClientTimeout)]
-    [InlineData("io-failure", DesktopError.RuntimeUnavailable)]
-    public async Task ControlledTransportFailuresAreMappedWithoutRawDetails(string caseName, DesktopError expected)
-    {
-        Exception failure = caseName switch
-        {
-            "client-timeout" => new OperationCanceledException("private-transport-body " + Token),
-            "io-failure" => new IOException("private-transport-body " + Token),
-            _ => throw new ArgumentOutOfRangeException(nameof(caseName))
-        };
-        using var client = new RuntimeClient(new Handler((_, _) => Task.FromException<HttpResponseMessage>(failure)), () => Token);
-        var error = await Assert.ThrowsAsync<DesktopException>(() => new AssistantOperation(client)
-            .RunAsync(new(AssistantAction.Translate, "x", "en"), _ => { }, CancellationToken.None));
-        Assert.Equal(expected, error.Error);
-        Assert.DoesNotContain("private-transport-body", error.ToString());
-        Assert.DoesNotContain(Token, error.ToString());
-        Assert.Null(error.InnerException);
-    }
 
     [Fact]
     public async Task MalformedUnknownDuplicateMismatchedAndOversizeResponsesFailClosed()

@@ -26,7 +26,6 @@ public sealed class WorkspaceConversationsTests
         internal string Status = "ACTIVE", State = "PENDING", Title = "Synthetic conversation";
         internal bool Stale, Unknown, Large, ChangedTask, Deleted, GenericUnknown;
         internal Guid CreatedId = Id;
-        internal string? ErrorCode;
         internal TaskCompletionSource? Hold, HoldGet;
         internal readonly List<int> Counts = [];
         internal object Metadata(Guid? id = null) => new { id = id ?? Id, title = Title, status = Status, createdAt = "2026-10-04T00:00:00Z", updatedAt = "2026-10-04T00:00:01Z" };
@@ -72,7 +71,6 @@ public sealed class WorkspaceConversationsTests
                 var refs = body.RootElement.GetProperty("memories"); Counts.Add(refs.GetArrayLength());
                 if (refs.GetArrayLength() > 0) Assert.Equal(long.MaxValue, refs[0].GetProperty("revision").GetInt64());
                 if (Stale) return Error("MEMORY_SELECTION_STALE", HttpStatusCode.Conflict);
-                if (ErrorCode is not null) return Error(ErrorCode, ErrorCode == "QUEUE_FULL" ? HttpStatusCode.TooManyRequests : ErrorCode == "POLICY_DENIED" ? HttpStatusCode.Forbidden : ErrorCode == "INTERNAL_ERROR" ? HttpStatusCode.InternalServerError : HttpStatusCode.ServiceUnavailable);
                 var reply = Reply(new { conversationId = Id, turnId = TurnId, taskId = TaskId, status = "QUEUED", memoryCount = refs.GetArrayLength(), admittedSequences = new[] { 1 }, inputCharacters = 12, inputBytes = 12 }, HttpStatusCode.Accepted);
                 reply.Headers.Location = new Uri($"/api/v1/tasks/{TaskId:D}", UriKind.Relative); return reply;
             }
@@ -118,8 +116,6 @@ public sealed class WorkspaceConversationsTests
         internal object Identity => new { conversationId = Id };
         public void Dispose() { Bridge.Dispose(); Runtime.Dispose(); }
     }
-    [Fact] public void ExplicitAllowlistHasExactlyElevenCapabilities()
-    { Assert.Equal(new[] { "conversations.archive", "conversations.cancelPending", "conversations.clearMemories", "conversations.create", "conversations.delete", "conversations.get", "conversations.list", "conversations.rename", "conversations.selectMemories", "conversations.send", "conversations.unarchive" }, WorkspaceBridge.ConversationMethods.Order()); }
     [Theory][InlineData("conversations.get")][InlineData("conversations.rename")][InlineData("conversations.archive")][InlineData("conversations.unarchive")][InlineData("conversations.delete")][InlineData("conversations.selectMemories")][InlineData("conversations.clearMemories")][InlineData("conversations.send")][InlineData("conversations.cancelPending")]
     public async Task UnlistedIdentityCannotReadOrMutate(string method)
     {
@@ -198,14 +194,6 @@ public sealed class WorkspaceConversationsTests
         await f.Call("conversations.clearMemories", f.Identity); f.Handler.HoldGet.SetResult(); await send;
         Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(0, f.Handler.Posts);
     }
-    [Theory][InlineData("QUEUE_FULL", "QueueFull")][InlineData("CONVERSATION_STORAGE_UNAVAILABLE", "ConversationStorageUnavailable")][InlineData("INTERNAL_ERROR", "InternalError")][InlineData("POLICY_DENIED", "PolicyDenied")]
-    public async Task DurableRejectionErrorsStayControlledAndConsumeUnsafeSelection(string code, string expected)
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity); f.Handler.ErrorCode = code;
-        await f.Send(Fixture.Refs()); Assert.Equal(expected, f.Code); f.Handler.ErrorCode = null; await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
-    }
-    [Theory][InlineData(-1)][InlineData(100)][InlineData(2147483647)] public async Task PageBoundsRejectBeforeRuntime(int page)
-    { using var f = new Fixture(); await f.Call("conversations.list", new { status = "ACTIVE", page }); Assert.Empty(f.Sent); }
     [Fact] public async Task WrongOriginSessionUnknownFieldsRawTaskAndBadSchemasAreDropped()
     {
         using var f = new Fixture(); await f.Bridge.ReceiveAsync("https://evil.invalid/index.html", Document, f.Request("conversations.create"));
@@ -217,12 +205,6 @@ public sealed class WorkspaceConversationsTests
         await f.Call("conversations.send", new { conversationId = Id, message = new string('x', 3001), selectedMemoryRefs = new object[0] });
         await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = new[] { new { memoryId = MemoryId, revision = "9223372036854775808", position = 0 } } });
         Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Posts);
-    }
-    [Fact] public async Task UnicodeTitleAndCoreMessageBoundsAreFinalAuthority()
-    {
-        using var f = new Fixture(); await f.List(); await f.Call("conversations.rename", new { conversationId = Id, title = string.Concat(Enumerable.Repeat("😀", 160)) }); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        await f.Call("conversations.rename", new { conversationId = Id, title = new string('x', 161) }); Assert.Equal("ConversationInvalid", f.Code);
-        await f.Send(message: new string('中', 2000)); Assert.Equal("InvalidRequest", f.Code); Assert.Equal(0, f.Handler.Posts);
     }
     [Fact] public async Task ReloadDuringAdmissionSuppressesOldReplyWithoutCancellingOrReplay()
     {

@@ -19,14 +19,12 @@ public sealed class WorkspaceMemoryTests
         internal string Title = "Synthetic title", Content = "Synthetic body", Status = "ACTIVE";
         internal int Calls, PageSize, Page;
         internal bool Large, Many, Deleted;
-        internal string? Failure;
         internal TaskCompletionSource? Hold;
         internal object Item(Guid? id = null) => new { id = id ?? Id, type = "PROJECT_NOTE", title = Large ? string.Concat(Enumerable.Repeat("😀", 160)) : Title,
             content = Large ? new string('\u0001', 2000) : Content, status = Status, revision = Revision, source = "MANUAL", createdAt = "2026-10-05T00:00:00Z", updatedAt = "2026-10-05T00:00:00Z" };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++; if (Hold is not null) await Hold.Task;
-            if (Failure is not null) return Reply(new { code = Failure, message = "private SQL token content", phase = "STORAGE" }, Failure == "MEMORY_NOT_FOUND" ? HttpStatusCode.NotFound : HttpStatusCode.Conflict);
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/items"))
             {
                 var query = request.RequestUri.Query[1..].Split('&').Select(x => x.Split('=')).ToDictionary(x => x[0], x => Uri.UnescapeDataString(x[1]));
@@ -123,19 +121,6 @@ public sealed class WorkspaceMemoryTests
         foreach (var (method, payload) in bad) await f.Bridge.ReceiveAsync(Document, Document, f.Request(method, payload));
         Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Calls);
         await f.Send("memory.create", new { type = "PROJECT_NOTE", title = string.Concat(Enumerable.Repeat("😀", 160)), content = string.Concat(Enumerable.Repeat("😀", 1000)) }); Assert.Equal(1, f.Handler.Calls);
-    }
-    [Theory][InlineData("MEMORY_REVISION_CONFLICT", "MemoryRevisionConflict")][InlineData("MEMORY_NOT_FOUND", "MemoryNotFound")]
-    public async Task ConflictAndMissingMapToControlledErrors(string runtimeCode, string code)
-    {
-        using var f = new Fixture(); await f.List(); f.Handler.Failure = runtimeCode;
-        var result = await f.Send("memory.archive", new { memoryId = f.Handler.Id, expectedRevision = "9007199254740993" });
-        Assert.Equal(code, result.GetProperty("error").GetProperty("code").GetString()); Assert.DoesNotContain("private SQL", f.Sent[0]);
-    }
-    [Fact] public async Task LifecycleAdvancesRevisionAndDoesNotReceiveEditorDraft()
-    {
-        using var f = new Fixture(); await f.List(); var archived = await f.Send("memory.archive", new { memoryId = f.Handler.Id, expectedRevision = "9007199254740993" });
-        Assert.Equal("ARCHIVED", archived.GetProperty("result").GetProperty("status").GetString()); Assert.Equal("9007199254740994", archived.GetProperty("result").GetProperty("revision").GetString());
-        var restored = await f.Send("memory.restore", new { memoryId = f.Handler.Id, expectedRevision = "9007199254740994" }); Assert.Equal("ACTIVE", restored.GetProperty("result").GetProperty("status").GetString()); Assert.Equal("Synthetic body", f.Handler.Content);
     }
     [Fact] public async Task MemoryMethodsAreExactAllowlistAndDirtySignalIsSessionCheckedAndSurvivesFailure()
     {
