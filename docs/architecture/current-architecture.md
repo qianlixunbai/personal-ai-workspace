@@ -1,6 +1,6 @@
 # Current Architecture — K1 Deterministic Knowledge Foundation
 
-## K2 deterministic lexical retrieval — IN PROGRESS
+## K2 deterministic lexical retrieval — PARTIAL / BLOCKED
 
 Architecture Guard K2 Architecture Review — APPROVED — GO；ADR-012 Accepted 来源为该独立授权。
 Knowledge truth 保持 schema v1 / Backup v1；`knowledge/index/lexical.db` 独立派生、owner-only 明文、
@@ -11,7 +11,9 @@ POST search / GET status / POST rebuild 仅 native；Browser 在 body 处理前�
 搜索 hits 仅含 UI metadata、exact UTF-16 offset/line、plain snippet 与安全高亮；无 digest/index metadata。
 搜索授权当前 Knowledge session，rotation 清除，late response 不授权新 session。查询仅 React state，
 不进入 URL/storage/logs；结果不会进入 AI prompt/Memory。K3/K4 未开始，Finance 保持冻结。
-K2 — IN PROGRESS；最终回归、真实 Windows/Pinyin、隐私和最小发布门禁待完成。
+K2 PARTIAL / BLOCKED；最终 Java 134 / Desktop 273 / Frontend 119 与 production build / publish PASS。
+Windows harness 在 driver 启动前遇到 upload JSON/bytes TypeError，按 STOP RULE 停止；Pinyin、
+Windows flow、fresh-canary privacy、launcher 未完成。见 [K2 阻塞报告](../milestones/K2-CLOSING-REPORT.md)。
 以下章节保留 K1 及更早正式交付的历史语境。
 
 ## K1 approved implementation architecture — CLOSED — GO

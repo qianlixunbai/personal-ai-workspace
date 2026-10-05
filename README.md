@@ -2,7 +2,7 @@
 
 ## 当前 K2 实施状态
 
-K2 — IN PROGRESS。Architecture Guard K2 Architecture Review — APPROVED — GO。
+K2 PARTIAL / BLOCKED。Architecture Guard K2 Architecture Review — APPROVED — GO。
 M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO。
 K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 
@@ -10,7 +10,9 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 单 chunk AND 与 FTS5 BM25 固定排序。独立 owner-only 明文 `knowledge/index/lexical.db`
 可删除/重建；不迁移权威 schema v1，不修改 Knowledge Backup v1。指纹不一致不返回旧结果。
 查询不进入 URL、持久存储或日志。Browser 仍 Translate-only；K2 无 AI/Ollama/Finance 依赖。
-ADR-012 已按 Architecture Guard 授权记录；真实 Windows/Pinyin、隐私、发布和最终回归门禁待完成。
+最终 Java 134 / Desktop 273 / Frontend 119、生产构建与本地 Release publish PASS。
+Windows harness 在 driver 启动前出现 upload JSON/bytes TypeError，依 FINAL STOP RULE 停止。
+Pinyin、Windows integrated flow、fresh-canary 隐私和 launcher 未完成；详见 [K2 阻塞报告](docs/milestones/K2-CLOSING-REPORT.md)。
 以下 K1 章节保留已批准的历史基线语境。
 
 ## 当前 K1 正式批准状态
