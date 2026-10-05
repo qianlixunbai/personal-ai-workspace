@@ -91,7 +91,8 @@ Typed `knowledge.search`, `knowledge.searchStatus`, `knowledge.rebuildSearchInde
 retain the 32 KiB request/64 KiB ordinary response budgets. Hits expose only
 documentId, bounded title, decimal sourceRevision, sourceType, exact offset/line
 locator, nullable bounded heading, plain-text snippet (at most 384 UTF-16 units)
-and snippet-relative Unicode-safe highlight ranges. At most 32 ranges per hit;
+and snippet-relative Unicode-safe highlight ranges. Search title is bounded to
+160 UTF-16 units, heading to 96 units, and at most 16 ranges per hit;
 worst-case JSON escaping stays below 64 KiB. Digests, fingerprints, index tokens,
 BM25, rowids, SQL, absolute paths and source/backup bytes are never exposed.
 Returned document IDs authorize get/preview in the captured current session;
@@ -107,3 +108,6 @@ Knowledge Search is explicit deterministic lexical retrieval only. It does not
 call Ollama/providers/TaskManager or feed Ask, Conversation, Memory, Translate or
 Summarize. Embeddings, vectors, semantic/hybrid retrieval, RAG, prompt assembly,
 model citations, PDF/DOCX/OCR, collections/watchers/sync and K3/K4 are deferred.
+Crash-interrupted candidates without a live task ownership reference are preserved;
+startup does not infer deletion authority from a filename. This can leave private
+orphan staging files for explicit maintenance; no unknown object is recursively removed.
