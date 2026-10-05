@@ -1,6 +1,6 @@
 # Current Architecture — K1 Deterministic Knowledge Foundation
 
-## K2 deterministic lexical retrieval — LOCAL ACCEPTANCE PASS
+## K2 deterministic lexical retrieval — CLOSED — GO
 
 长期主线及跨阶段平台边界见 [V1 Roadmap](../roadmap/V1-ROADMAP.md)；未来实施仍需各阶段独立授权。
 
@@ -13,12 +13,13 @@ POST search / GET status / POST rebuild 仅 native；Browser 在 body 处理前�
 搜索 hits 仅含 UI metadata、exact UTF-16 offset/line、plain snippet 与安全高亮；无 digest/index metadata。
 搜索授权当前 Knowledge session，rotation 清除，late response 不授权新 session。查询仅 React state，
 不进入 URL/storage/logs；结果不会进入 AI prompt/Memory。K3/K4 未开始，Finance 保持冻结。
-K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO，待独立 Closing Review。
+K2 — CLOSED — GO；Architecture Guard K2 CLOSING REVIEW — APPROVED — GO。
+独立 source-level Closing Review 已完成，正式结论见 K2 Closing Report；无 required production fixes。
 最终 Java 134 / Desktop 273 / Frontend 119 与 production build/publish 的既有 PASS 继承，生产实现未变。
 第四轮一次真实 Windows flow 完成 Pinyin/composition Enter、中文检索、生命周期/revision、索引恢复、
 Backup restore/rebuild parity 和 Browser denial；fresh-canary privacy 0 matches；一次 actual launcher PASS。
 单条 query-race 已通过，本轮未重跑。前三次 harness 失败和 STOP 历史见
-[K2 Closing Report](../milestones/K2-CLOSING-REPORT.md)。K2 尚未 CLOSED，K3 未启动。
+[K2 Closing Report](../milestones/K2-CLOSING-REPORT.md)。K3 — NOT STARTED。
 以下章节保留 K1 及更早正式交付的历史语境。
 
 ## K1 approved implementation architecture — CLOSED — GO

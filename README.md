@@ -1,11 +1,11 @@
 # Personal AI Workspace
 
-## 当前 K2 实施状态
+## 当前 K2 正式批准状态
 
 长期 V1 主线与平台边界见 [V1 Roadmap](docs/roadmap/V1-ROADMAP.md)。
 
-K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO。
-Architecture Guard K2 Architecture Review — APPROVED — GO；独立 Closing Review 尚待进行。
+K2 — CLOSED — GO。
+Architecture Guard K2 CLOSING REVIEW — APPROVED — GO；独立 source-level Closing Review 已完成。
 M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO。
 K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 
@@ -18,7 +18,8 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 索引恢复、Backup restore/rebuild parity、Browser denial；fresh-canary privacy 0 matches，
 一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`；本轮未重跑全量回归或 build/publish。
 单条 query-race 已在恢复轮通过；前三次 harness 失败及 STOP 历史保留于
-[K2 Closing Report](docs/milestones/K2-CLOSING-REPORT.md)。K2 尚未 CLOSED。
+[K2 Closing Report](docs/milestones/K2-CLOSING-REPORT.md)，含独立正式 Closing Review 结论。
+下一步为 T0 — Aggressive Test Suite Consolidation / Slimming；本轮不启动。
 以下 K1 章节保留已批准的历史基线语境。
 
 ## 当前 K1 正式批准状态

@@ -17,7 +17,7 @@ K2 implementation spec 或未来功能已实现的声明。当前证据见 [Curr
 | 07 | M5 | CLOSED — GO |
 | 08 | K0 | APPROVED — GO |
 | 09 | K1 | CLOSED — GO |
-| 10 | K2 | Deterministic Lexical Retrieval；当前阶段，IMPLEMENTED / LOCAL ACCEPTANCE PASS；CLOSING CANDIDATE — GO，待独立 Closing Review |
+| 10 | K2 | Deterministic Lexical Retrieval；CLOSED — GO，Architecture Guard 独立 Closing Review 已批准 |
 | 11 | K3 | Grounded Knowledge Answer + Citations；NOT STARTED |
 | 12 | W1 | Controlled Web Access；NOT STARTED |
 | 13 | V1 | Multimodal / Vision Foundation；NOT STARTED |
@@ -142,6 +142,5 @@ accessibility、privacy audit、packaging、clean install、migration compatibil
 final Windows acceptance、V1 architecture review 和 V1 closing review。
 P1 不再引入新的大业务域。
 
-本轮只加入 roadmap；K3、W1、Vision、Model Management、Resource Monitor 和 Finance
-均未因此启动。K2 全部 hard gates 完成后最多形成 IMPLEMENTED / LOCAL ACCEPTANCE PASS、
-K2 CLOSING CANDIDATE — GO；K2 CLOSED — GO 仍须 Architecture Guard 独立 Closing Review。
+本次仅同步 K2 当前状态为 CLOSED — GO，Architecture Guard 独立 Closing Review 已批准；
+K3、W1、Vision、Model Management、Resource Monitor 和 Finance 均未因此启动。

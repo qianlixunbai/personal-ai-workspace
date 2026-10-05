@@ -1,11 +1,11 @@
 # Personal AI Workspace — Current Status
 
-## Current K2 implementation
+## Current K2 approved final closing
 
 [V1 Roadmap](roadmap/V1-ROADMAP.md) 是长期主线与平台能力规划入口；未来能力未因此启动。
 
-K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO。
-Architecture Guard K2 Architecture Review — APPROVED — GO；等待独立 Closing Review。
+K2 — CLOSED — GO。
+Architecture Guard K2 CLOSING REVIEW — APPROVED — GO；独立 source-level Closing Review 已完成。
 M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO；K3 / K4 — NOT STARTED。
 Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 独立 derived FTS5/BM25 index、版本化 lexical analyzer/chunker、corpus fingerprint freshness、
@@ -17,7 +17,10 @@ Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 0 matches；一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`，无 production 改动。
 不重跑 full suites/query-race/build/publish；单条 query-race 的既有 PASS 继承。
 前三次 harness 失败和 STOP 记录见 [K2 Closing Report](milestones/K2-CLOSING-REPORT.md)。
-未 merge/push/tag/release，未启动 K3；K2 尚未 CLOSED。
+正式 Review 覆盖实际远端 K1 baseline → implementation → Closing Candidate history；
+Blocking findings / required production fixes / required new tests / required reruns 均为 0。
+下一步为 T0 — Aggressive Test Suite Consolidation / Slimming，随后 detailed V1 Roadmap expansion → K3；
+T0 是 engineering cleanup gate，不是新的 top-level product milestone；本轮不启动 T0/K3。
 以下 K1 正式批准章节是先前交付快照。
 
 ## Current K1 approved final closing

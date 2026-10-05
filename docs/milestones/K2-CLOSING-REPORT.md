@@ -1,8 +1,13 @@
-# K2 — Deterministic Lexical Retrieval — Closing Candidate
+# K2 — Deterministic Lexical Retrieval — Closing Report
+
+当前最终状态：**K2 — CLOSED — GO**。Architecture Guard 独立 source-level Closing Review 已完成，
+决策为 **K2 CLOSING REVIEW — APPROVED — GO**；正式结论见文末。
+
+## Historical Local Closing Candidate
 
 日期：2026-10-06（Asia/Shanghai）。
 
-当前为 **K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO**。
+当时为 **K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO**。
 第四轮一次真实 Windows integrated flow、Pinyin、fresh-canary privacy 和最小 actual launcher PASS。
 见文末「Blocker Recovery Attempt 4」。以下前三次历史失败和正确执行 STOP 的事实保留。
 **不是 K2 CLOSED — GO；正式 closing authority 仍属于 Architecture Guard。**
@@ -378,3 +383,35 @@ V1 Roadmap 仅更新 K2 objective status，未扩展。ADR-001..012 与历史 K1
 implementation/package candidate 与 final docs HEAD 分开。没有 rewrite/merge main/push/tag/release。
 **K2 — IMPLEMENTED / LOCAL ACCEPTANCE PASS；K2 CLOSING CANDIDATE — GO。**
 K2 尚未 CLOSED；不启动 K3。下一步只交 Architecture Guard 独立代码级 Closing Review。
+
+## Architecture Guard Independent Closing Review
+
+日期：2026-10-06（Asia/Shanghai）。本节记录用户提供的 Architecture Guard 独立 source-level
+Closing Review 正式决策，不代表本轮重新执行测试或验收。
+
+**K2 CLOSING REVIEW — APPROVED — GO**。
+**K2 — CLOSED — GO**。
+
+Review 覆盖实际远端 K1 baseline `2323124f76ce34522c78016f2540dccc5e9ed983`
+→ implementation candidate `3a5efc1d8e1fe2060c7b7a648b4339b21bb1e790`
+→ 已发布 Closing Candidate `7d17a1bbb6b484ec8007bc411c989f651eec407e` 的完整历史。
+implementation candidate 保持不变；历史失败 Attempts 1–3 和成功 Attempt 4 本地验收证据保留。
+正式 Review 是独立于本地验收的最终 closing decision。
+
+Independent source-level review verified:
+
+- K1 `knowledge.db` schema v1 remained authoritative and unchanged；`lexical.db` is separate derived/disposable/rebuildable state。
+- ADR-012 analyzer/chunker/FTS5/BM25 semantics match implementation；raw user query never becomes FTS MATCH syntax。
+- Authoritative fingerprint freshness is fail-closed before/after retrieval；rebuild scheduling is bounded/coalesced；staging publication is validated and atomic。
+- ACTIVE/current READY corpus semantics are preserved；failed revisions do not replace current READY。
+- Browser remains Translate-only；Knowledge routes are denied before controller body handling。
+- Bridge/session authority and response metadata remain bounded；query stays ephemeral in React state。
+- No K3/RAG/model orchestration was introduced；Finance Freeze remains intact。
+
+Blocking findings: **0**。Required production fixes: **0**。
+Required new tests: **0**。Required reruns: **0**。
+Tests/builds executed in this closing publication: **NONE**。
+
+K3 — NOT STARTED。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+下一步：T0 — Aggressive Test Suite Consolidation / Slimming → detailed V1 Roadmap expansion → K3。
+T0 是 engineering cleanup gate，不是新的 top-level product milestone；本轮不启动 T0。
