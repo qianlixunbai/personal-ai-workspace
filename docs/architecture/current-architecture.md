@@ -2,6 +2,8 @@
 
 ## K2 deterministic lexical retrieval — PARTIAL / BLOCKED
 
+长期主线及跨阶段平台边界见 [V1 Roadmap](../roadmap/V1-ROADMAP.md)；未来实施仍需各阶段独立授权。
+
 Architecture Guard K2 Architecture Review — APPROVED — GO；ADR-012 Accepted 来源为该独立授权。
 Knowledge truth 保持 schema v1 / Backup v1；`knowledge/index/lexical.db` 独立派生、owner-only 明文、
 index schema v1。应用拥有 `lexical-chunk-1` / `lexical-1`，FTS5 仅拥有 postings/BM25。
@@ -12,8 +14,9 @@ POST search / GET status / POST rebuild 仅 native；Browser 在 body 处理前�
 搜索授权当前 Knowledge session，rotation 清除，late response 不授权新 session。查询仅 React state，
 不进入 URL/storage/logs；结果不会进入 AI prompt/Memory。K3/K4 未开始，Finance 保持冻结。
 K2 PARTIAL / BLOCKED；最终 Java 134 / Desktop 273 / Frontend 119 与 production build / publish PASS。
-Windows harness 在 driver 启动前遇到 upload JSON/bytes TypeError，按 STOP RULE 停止；Pinyin、
-Windows flow、fresh-canary privacy、launcher 未完成。见 [K2 阻塞报告](../milestones/K2-CLOSING-REPORT.md)。
+首次 Windows attempt 的 upload JSON/bytes TypeError 已修复，生产实现未变；单条 query-race regression PASS。
+本轮一次真实 WPF flow 在 IndexedDB/Cache async assertion 失败并 STOP；Pinyin、完整 Windows flow、
+fresh-canary privacy、launcher 未完成。见 [K2 阻塞报告](../milestones/K2-CLOSING-REPORT.md)。
 以下章节保留 K1 及更早正式交付的历史语境。
 
 ## K1 approved implementation architecture — CLOSED — GO

@@ -2,7 +2,11 @@
 
 日期：2026-10-06（Asia/Shanghai）。
 
-## Result / Exact Blocker
+当前仍为 **K2 PARTIAL / BLOCKED**。本轮恢复了原始 helper bug，但后续真实 WPF flow 在
+新的 async storage assertion 失败，严格 STOP。见文末「Blocker Recovery Attempt 2」。
+以下首次 attempt 的事实和原始 STOP 记录保留，不代表原始 bug 尚未修复。
+
+## Historical Attempt 1 — Result / Exact Blocker
 
 **K2 PARTIAL / BLOCKED。不得认定为 LOCAL ACCEPTANCE PASS、CLOSING CANDIDATE — GO 或 CLOSED — GO。**
 
@@ -151,3 +155,77 @@ working tree clean；相对 baseline 已修改 36 个文件（1265 insertions / 
 推荐下一步：明确授权恢复 K2，先修复 harness 的 request/response type 分离，再完成真实 Windows/
 Pinyin/恢复/隐私/launcher gates；按实际 owning-code 变化决定必要重测，避免无理由重复全部回归。
 全部 hard gates PASS 后才可形成 CLOSING CANDIDATE，随后提交 Architecture Guard 独立代码级 Closing Review。
+
+## Blocker Recovery Attempt 2 — 2026-10-06
+
+### Reality Gate / Remediation
+
+起始 feature HEAD `82439a8c71d49eaaa309c19713c0c7abc65da3e6`，working tree clean。
+command-local proxy fresh fetch 成功；main / origin/main 仍为
+`2323124f76ce34522c78016f2540dccc5e9ed983`，baseline → candidate → docs ancestry 正常。
+无 material conflict、main rewrite 或不明改动。
+
+恢复提交：`800a8dc094091188c1aa112e24d6e4d423b0a71f`
+（`fix: separate acceptance request and response modes`）。
+`scripts/knowledge-search-smoke.py` 分开 request_mode（json/bytes/none）与
+response_mode（json/bytes/empty）。Source import / restore 为 bytes request + JSON response；
+普通 API 为 JSON + JSON；backup download 为 bytes response；client DELETE 204 显式 empty。
+无 `job['state']` special case。真实 source imports 本轮成功，WPF driver 实际启动。
+
+生产 Java/Desktop/Frontend code、schema、Backup、安全/生命周期语义均未修改，无新增依赖。
+只新增 **1 条长期 regression**：复用已有 Mockito/source-read seam，SQL 命中及旧 source 已读后
+执行真实 archive，在 final authoritative fingerprint check 前改变 corpus；旧结果受控
+INDEX_NOT_READY 拒绝，重建 READY 后无旧命中。无需生产 test hook。
+
+Acceptance driver 增加真实 composition Enter guard 的验证步骤（本轮未执行到），以及
+IndexedDB/Cache 检查。Fresh-canary scanner 收窄到 K2 owning sources、相关 build/assemblies、
+Runtime application archive entries、当前 candidate package 和 K2 evidence（本轮未执行到）。
+
+### 实际执行 / 新阻塞 / STOP
+
+| 本轮验证 | 实际结果 |
+| --- | --- |
+| Python syntax | PASS（最终 harness 修改后也作静态 parse） |
+| 最小 deterministic helper smoke | 1 次 PASS；bytes→JSON、JSON→JSON、bytes download、204 empty |
+| queryDiscardsHitsWhenCorpusMutatesBeforeFinalFingerprint | 1 条 / 1 次 PASS，0 failure/error/skipped |
+| acceptance executable Release build | 1 次 PASS；FrontendSkipBuild=true，未重建 frontend/runtime package |
+| 真实 Windows integrated attempt | 1 次，FAIL；production WPF/WebView2/React/Runtime 已启动 |
+| Real Windows Pinyin / composition Enter | NOT EXECUTED |
+| Windows lifecycle / recovery / backup 后续阶段 | NOT EXECUTED |
+| 完整 fresh-canary logs/UDF/source/build/package privacy | NOT EXECUTED |
+| Minimal actual launcher sanity | NOT EXECUTED，遵守新 gate failure 后 STOP |
+
+精确失败：driver stage `no-indexeddb-or-cache-query-storage`，`InvalidOperationException`；
+Python wrapper stage `real-acceptance-no-indexeddb-or-cache-query-storage`，`RuntimeError`。
+失败位于本轮新增 harness assertion：async JS 返回 Promise，而 `Js()` 直接使用
+`CoreWebView2.ExecuteScriptAsync` 的 JSON 返回字符串并与 `"true"` 比较，没有在页面中捕获
+resolved Boolean。记录未包含 resolved storage Boolean；这是 harness 结果读取问题，
+**不能据此认定生产 IndexedDB/Cache 泄漏，也不能宣称这项 privacy gate PASS**。
+没有继续修复、重跑或执行剩余 gates，没有发现足以授权 production 修复的证据。
+
+失败前实际通过：production keyword input、Latin fresh-canary search、title/heading/body 排名、
+exact preview offset、deterministic logical ordering、query absent URL/localStorage/sessionStorage。
+安全 evidence `.verification/k2-attempt.json` 记录 19 个 sequential check labels；其中含等待和
+重复操作，**不是 19 次测试、19 个独立 gates 或成功 integrated flow**。
+累计两个 harness attempts：首次 0 WPF executions；本轮 1 WPF execution，无成功 integrated flow。
+清理后未发现此 fixture 的 Runtime/acceptance 进程，8765/18768 无监听。
+
+### 未重跑 / Package / Docs / Final State
+
+Java full 134、Desktop full 273、Frontend full 119、production build 和 self-contained publish
+继承 implementation candidate `3a5efc1d8e1fe2060c7b7a648b4339b21bb1e790` 的既有 PASS，
+本轮明确未重跑：只改 harness/test/docs，生产 bytes 未变。
+未重跑历史 browser/IME/stress/package matrix，无真实 Ollama inference。
+现有 ignored package manifest commitSha 仍为该 candidate，sourceDirty=false；没有重复 publish。
+实际 launcher 和 package 运行级 inclusion gate 尚未完成，不能用 manifest/publish 替代。
+
+已加入 `docs/roadmap/V1-ROADMAP.md`，同步 README、STATUS、current architecture 入口及当前阻塞。
+保留首次失败、未启动 WPF/Pinyin 和正确执行 STOP 的历史事实；未追改 K1/ADR-001..011。
+V1 roadmap 是未来规划，未启动 K3/W1/Vision/Finance；K2 不是 CLOSED — GO。
+
+最终停在 `k2-deterministic-lexical-retrieval`，仅新增 remediation 与 docs commits；
+final docs HEAD 由交付 `git rev-parse HEAD` 输出确定，交付树应 clean。
+无 push、merge main、tag、release 或历史 rewrite。**K2 PARTIAL / BLOCKED；不形成 CLOSING CANDIDATE。**
+下一步需窄授权修复 async JS Boolean 读取，再完成尚缺 Windows/Pinyin/privacy/launcher gates；
+继续继承固定 production candidate 的全量回归，不机械重跑。全部 gates PASS 后交 Architecture Guard
+独立 Closing Review。

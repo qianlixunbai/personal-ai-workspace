@@ -2,6 +2,8 @@
 
 ## 当前 K2 实施状态
 
+长期 V1 主线与平台边界见 [V1 Roadmap](docs/roadmap/V1-ROADMAP.md)。
+
 K2 PARTIAL / BLOCKED。Architecture Guard K2 Architecture Review — APPROVED — GO。
 M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO。
 K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
@@ -11,8 +13,10 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 可删除/重建；不迁移权威 schema v1，不修改 Knowledge Backup v1。指纹不一致不返回旧结果。
 查询不进入 URL、持久存储或日志。Browser 仍 Translate-only；K2 无 AI/Ollama/Finance 依赖。
 最终 Java 134 / Desktop 273 / Frontend 119、生产构建与本地 Release publish PASS。
-Windows harness 在 driver 启动前出现 upload JSON/bytes TypeError，依 FINAL STOP RULE 停止。
-Pinyin、Windows integrated flow、fresh-canary 隐私和 launcher 未完成；详见 [K2 阻塞报告](docs/milestones/K2-CLOSING-REPORT.md)。
+首次 Windows attempt 在 driver 启动前出现 upload JSON/bytes TypeError，已按新授权分离请求/响应模式。
+恢复后单条 query-race regression PASS；本轮一次真实 WPF flow 在 IndexedDB/Cache async assertion
+失败并 STOP。Pinyin、完整 Windows flow、fresh-canary 隐私和 launcher 未完成；
+详见 [K2 阻塞报告](docs/milestones/K2-CLOSING-REPORT.md)。
 以下 K1 章节保留已批准的历史基线语境。
 
 ## 当前 K1 正式批准状态
