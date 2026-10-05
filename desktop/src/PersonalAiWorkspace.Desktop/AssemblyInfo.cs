@@ -11,3 +11,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.MemorySettingsAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.ProductAcceptance")]
 [assembly: InternalsVisibleTo("PersonalAiWorkspace.KnowledgeAcceptance")]
+[assembly: InternalsVisibleTo("PersonalAiWorkspace.KnowledgeSearchAcceptance")]

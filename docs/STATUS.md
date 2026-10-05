@@ -1,5 +1,16 @@
 # Personal AI Workspace — Current Status
 
+## Current K2 implementation
+
+K2 — IN PROGRESS；Architecture Guard K2 Architecture Review — APPROVED — GO。
+M0–M5 — CLOSED — GO；K0 — APPROVED — GO；K1 — CLOSED — GO；K3 / K4 — NOT STARTED。
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+独立 derived FTS5/BM25 index、版本化 lexical analyzer/chunker、corpus fingerprint freshness、
+单 worker / 单 coalesced rerun、native-only POST 搜索、typed session bridge 与页面内关键词检索已实施。
+知识 schema v1 / Knowledge Backup v1 保持；Browser Translate-only，无自动 AI context。
+真实 Windows/Pinyin、隐私、最小发布和最终 full regression 门禁尚未完成；不得写 CLOSED — GO。
+以下 K1 正式批准章节是先前交付快照。
+
 ## Current K1 approved final closing
 
 M0–M5 — CLOSED — GO。K0 — APPROVED — GO（既有 Architecture Guard 输入约束）。
