@@ -1,5 +1,48 @@
 # Current Architecture — M5 Unified Main Workspace UI
 
+## K1 implementation architecture — IN PROGRESS
+
+既有 React → typed allowlisted WPF bridge → application-owned RuntimeClient → Runtime
+production chain 保持。Knowledge 独立于 Memory/Conversation/Finance；独立
+`knowledge/knowledge.db` schema v1、`sources/<document UUID>/<revision>.source`、
+task-owned `staging/` 与 owner-only `knowledge.lock`。每个 data root 只允许一个
+Knowledge writer Runtime，防止跨进程 ingestion/reconciliation 竞争；Memory 实现未变。
+Known schema DDL、FK/quick_check、READY source/representation digests 启动时 fail closed 验证。
+
+Versioned TXT/Markdown parser 去除起始 BOM 并统一 CRLF/CR 为 LF，保留其余文本；
+Markdown ATX headings/fenced blocks 只构成文本 section，不执行 HTML/链接/图片。
+Normalized text 与 typed locators 是 DB authoritative immutable state，不建立检索索引。
+4096 UTF-16 units 的 preview range 限于单个 locator，普通 bridge 64 KiB 上限保持。
+Source revision 与 parser/normalization version 分离；optimistic metadataVersion 和
+sourceRevision 在 native/JS DTO 中为 canonical decimal strings。
+
+Admission 使用一个 worker、四个排队名额，上传共用五个 bounded slots；最多 40 MiB
+upload staging。新 source publication 再次检查 retained/corpus/artifact quotas；在 quota
+已满时仍允许同 Document 同 digest 的 controlled no-op。Durable request state 用于
+read-only unknown-outcome reconciliation；终态历史有界，仅保留每个 Document 的最新 job。
+Crash 后不自动 replay；PENDING/PARSING 转 INTERRUPTED；只清理 journal 明确拥有的对象。
+Filesystem rename + SQLite commit 不声明为单一事务；READY DB publication 完整、旧 pointer 保留。
+Physical delete 使用 durable journal + same-volume rename；锁定源产生可重试 controlled incomplete。
+
+新增 explicit `knowledge.list/get/import/importState/cancelImport/archive/restore/delete/preview`
+和 `native.openKnowledgeBackup`；最多 500 Document / 505 import identities 的 session authority，
+rotation 清空、delete 撤销、late response 不发送。React 不接收 path/upload/backup bytes。
+Browser route/capability/CORS 未扩权，仍 Translate-only。Knowledge 无 AI/Ollama 依赖。
+
+Knowledge Backup v1 为无压缩的严格 framed binary container，包含小型 typed metadata、
+原始源字节、normalized UTF-8、locator artifacts、version/pointer/digests；不含文件路径。
+不接收 archive entry/extraction path。Unknown fields、duplicate identities、invalid lengths、
+version/digest/text/locator/pointer mismatch 均拒绝。Decoded hard ceiling 2 GiB + 256 MiB +
+32 MiB = 2449473536 bytes；source/text/locator buffers 分别有界，不把 corpus 读入 RAM。
+Restore 在指定新/空 target 下 private staging reconstruct/verify，再 atomic directory rename
+发布 inactive Knowledge；不 merge/hot-swap/自动切换。Workspace Backup v1 保持 Memory + Conversation。
+
+Finance integration deferred pending authoritative Finance Reality Sync.
+K0 — APPROVED — GO；K1 — IN PROGRESS；K2/K3/K4 — NOT STARTED。
+ADR-011 Accepted 来源为既有 Architecture Guard approval。K1 closing 仍需独立批准。
+
+以下章节为 M5 及更早交付快照；其旧 allowlist/Knowledge 范围不覆盖上述 K1 实施状态。
+
 ## Current M5 approved product architecture and portable packaging
 
 **M5 — Unified Main Workspace UI：CLOSED — GO。M5A / M5B / M5C / M5D / M5E — CLOSED — GO。M5 FINAL CLOSING — APPROVED — GO。** Architecture / Final Closing Review has formally approved the final architecture. ADR-001..010 — Accepted; no new ADR or durable architecture.

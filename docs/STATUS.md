@@ -1,5 +1,21 @@
 # Personal AI Workspace — Current Status
 
+## Current K1 implementation
+
+M0–M5 — CLOSED — GO。K0 — APPROVED — GO（既有 Architecture Guard 输入约束）。
+K1 — IN PROGRESS。K2 / K3 / K4 — NOT STARTED。
+Finance integration deferred pending authoritative Finance Reality Sync.
+
+K1 已实现独立 Knowledge schema v1/private sources、TXT/Markdown strict UTF-8
+deterministic ingestion、revision/digest/locator、bounded queue、reconciliation、
+native streaming、session bridge、React management 和独立 Knowledge Backup v1。
+Focused tests 与真实 Windows 综合验收已通过（1 条综合 flow，21 coverage points）；
+最终一次 full regression 和 Closing Review 尚未完成，当前不声明 K1 candidate GO 或 CLOSED。
+[ADR-011](ADR/ADR-011-knowledge-domain-storage-ingestion-recovery.md) 的 Accepted
+来源是既有 Architecture Guard K0 approval，不是实施工程师自行批准。
+
+以下 M5 内容保留已批准交付快照；其 Knowledge 未实现及四个原生入口描述属于该基线。
+
 ## Current M5 approved final closing
 
 **M5 — Unified Main Workspace UI：CLOSED — GO。**

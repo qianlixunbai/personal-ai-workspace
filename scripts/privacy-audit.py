@@ -33,6 +33,10 @@ memory_markers = payload.get('memoryMarkers', [])
 if not isinstance(memory_markers, list) or any(not isinstance(value, str) or not value for value in memory_markers):
     raise ValueError('Memory marker input must be a nonempty-string list')
 secrets.update(memory_markers)
+knowledge_markers = payload.get('knowledgeMarkers', [])
+if not isinstance(knowledge_markers, list) or any(not isinstance(value, str) or not value for value in knowledge_markers):
+    raise ValueError('Knowledge marker input must be a nonempty-string list')
+secrets.update(knowledge_markers)
 native = set()
 token_paths = set()
 for folder in ['.runtime', '.verification', 'target']:
@@ -85,6 +89,8 @@ def scan(data, label, patterns_on, privacy_on, depth=0, frontend=False):
     checks += 1
     if any(n in data for n in needles):
         matches.append(label + ':actual-secret')
+    if re.search(rb'K1-(?:txt-body|md-body|revision-body|delete-body)-[0-9a-f]{32}|(?:txt|md|changed|delete|invalid|oversize)-[0-9a-f]{32}\.(?:txt|md)', data):
+        matches.append(label + ':fresh-knowledge-fixture-leak')
     if patterns_on and any(p.search(data) for p in patterns):
         matches.append(label + ':secret-pattern')
     if privacy_on and any(n in data for n in (frontend_privacy_needles if frontend else privacy_needles)):
@@ -116,12 +122,13 @@ for path in sorted(files):
                 if node.tag in ['system-out', 'system-err', 'failure', 'error']:
                     scan(ET.tostring(node, encoding='utf-8'), label + ':' + node.tag, False, True)
 artifacts = [name for name in tracked if re.search(r'(^|/)(target|bin|obj|node_modules|dist|\.runtime|\.verification|\.vs|TestResults)(/|$)|\.(log|jar|dll|exe|zip|trx|db|sqlite|sqlite3)(-(wal|shm|journal))?$', name)]
-backup_artifacts = [name for name in tracked if re.search(r'(^|/)(workspace-backup|memory-backup)\.json$|\.(workspace-backup|memory-backup)\.json$', name)]
+backup_artifacts = [name for name in tracked if re.search(r'(^|/)(workspace-backup|memory-backup)\.json$|\.(workspace-backup|memory-backup)\.json$|\.knowledge-backup$|\.source$|\.upload$|(^|/)knowledge\.lock$', name)]
 ignore_ok = all(subprocess.run(['git', '-C', str(root), 'check-ignore', '-q', name]).returncode == 0 for name in [
     'workspace-backup.json', 'check.workspace-backup.json', '.workspace-export-check', '.workspace-restore-check', '.workspace-validation-check',
     '.runtime/client-token', '.verification/browser-batch-smoke-evidence.json', 'target/personal-ai-workspace-0.1.0.jar',
     'desktop/frontend/node_modules/check.js', 'desktop/frontend/dist/check.js', 'desktop/frontend/coverage/check.json',
     'memory.db', 'memory.db-wal', 'memory.db-shm', 'memory.db-journal',
+    'knowledge.db', 'knowledge.db-journal', 'knowledge.lock', 'check.knowledge-backup', 'check.source', 'check.upload', '.knowledge-export-check',
     'desktop/src/PersonalAiWorkspace.Desktop/bin/check.dll', 'desktop/src/PersonalAiWorkspace.Desktop/obj/check.json',
     'desktop/tests/PersonalAiWorkspace.Desktop.Tests/TestResults/check.trx'])
 frontend_production = [p for p in (root / 'desktop/frontend/src').rglob('*') if p.suffix in ['.ts', '.tsx'] and '.test.' not in p.name and 'test' not in p.parts]
@@ -132,7 +139,7 @@ bridge_sources = list((root / 'desktop/src/PersonalAiWorkspace.Desktop/Bridge').
 bridge_no_content_diagnostics = all(not re.search(r'Console\.|Debug\.Write|Trace\.Write|ILogger|LogInformation|LogError|LogWarning', p.read_text('utf-8')) for p in bridge_sources)
 report = dict(result='PASS' if not matches and not artifacts and not backup_artifacts and ignore_ok and frontend_isolated and bridge_no_content_diagnostics else 'FAIL', sourceFiles=len(sources),
               files=len(files), byteAndArchiveChecks=checks, archives=archives, actualNativeCredentials=len(native),
-              ephemeralSecrets=len(payload.get('secrets', [])), conversationMarkers=len(conversation_markers), memoryMarkers=len(memory_markers), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok,
+              ephemeralSecrets=len(payload.get('secrets', [])), conversationMarkers=len(conversation_markers), memoryMarkers=len(memory_markers), knowledgeMarkers=len(knowledge_markers), matches=len(matches), trackedBuildArtifacts=len(artifacts), trackedBackupArtifacts=len(backup_artifacts), ignorePassed=ignore_ok,
               frontendNoDirectNetworkOrDomainStorage=frontend_isolated, bridgeNoContentDiagnostics=bridge_no_content_diagnostics)
 print(json.dumps(report, indent=2))
 if report['result'] != 'PASS':
