@@ -14,7 +14,7 @@
 
 **列入路线图只定义预期范围与顺序，不授权实施。** 每个未来阶段或主要跨阶段平台任务，
 均须独立完成适用的 architecture review、范围确认和实施授权。本文件本身不批准 K3。
-当前事实锚定 T0 正式关闭后的 main：`b59da429711ca23e77e7772c5005b29c8dab12b2`。
+本文件已完成阶段的事实基线锚定 T0 formal closing 时的 main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`。
 后续更新应保持事实、规划和批准来源可区分，不把计划追写成早期成果。
 
 ## 2. V1 最终产品目标
@@ -461,7 +461,8 @@ Finance Freeze 和 Browser Translate-only 保持，未启动 K3，不新增领�
 **明确不做：** 不重跑所有历史认证，不以 test count 或 coverage points 代表产品功能或独立执行次数。
 
 **历史执行证据：** T0 工程记录记载 Java 132 / Desktop 194 / Frontend 38 PASS、一次真实 WorkspaceSanity PASS，
-tests/acceptance/scripts 合计净减少约 7,136 source LOC。它们是此前实际执行的证据；路线图编辑不重跑任何测试/构建。
+tests/acceptance/scripts 合计净减少约 7,136 source LOC。
+上述数字仅引用 T0 已批准的历史执行证据，不构成本路线图自身新增的执行证据。
 **阶段结果 / 后续依赖：** CLOSED — GO；工程清理门禁已关闭，未来 K3 仍须独立 Architecture / Planning。
 
 证据：[T0 Test Suite Slimming](../engineering/T0-TEST-SUITE-SLIMMING.md)，含独立正式 Closing Review。
@@ -866,12 +867,10 @@ accessibility、统一 identity、经过 clean-install/migration/privacy/final W
 
 已完成：**M0 / M1 / M1.5 / M2 / M3 / M4 / M5 / K1 / K2 / T0 — CLOSED — GO**；
 **K0 — APPROVED — GO**。M5A–M5E 均为已关闭的内部阶段。
-本路线图事实基线为 T0 正式关闭后的 authoritative main：
-`b59da429711ca23e77e7772c5005b29c8dab12b2`；文档候选分支的 commit 不代表 main 已更新。
 
 **K3 — NOT STARTED。Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync。**
-W1、Vision 与跨阶段平台目标没有因路线图记录而启动；Finance contracts 尚未核验。
+W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
-此扩展文档先交 **Architecture Guard documentation review**。
-文档任务正式审核后，下一项独立架构活动可从 **K3 Architecture / Planning** 开始；
-实施仍需阶段范围确认、架构审核与明确授权。路线图扩展本身既不启动 K3，也不批准任何未来 milestone。
+当前下一项独立架构活动为 **K3 — Architecture / Planning**；K3 仍未启动。
+路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
+范围确认与明确的实施授权。
