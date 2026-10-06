@@ -1,17 +1,27 @@
 # Personal AI Workspace — Current Status
 
-## Current K3 approved architecture
+## Current K3 final closing — CLOSED — GO
 
-**K3 Architecture — APPROVED — GO。K3 implementation — NOT STARTED。**
-Architecture Guard K3 Reality Audit review：ARCHITECTURE REVIEW — APPROVED — GO；architecture blockers: 0。
-[ADR-013](ADR/ADR-013-grounded-knowledge-answer-citations.md) 已记录 explicit native-only `knowledge-answer`、
-question + lexical query、单一 Knowledge consistency boundary 内 authoritative immutable evidence admission、
-完整 K2 chunk 的 deterministic ranked prefix、strict JSON 与 Runtime-owned answer-level citations。
-这不是已交付功能：无新 route/Ask mode/automatic Knowledge injection，无 K3 persistence/schema/backup changes。
+**K3 — CLOSED — GO。FORMAL PUBLICATION — PENDING。**
+Architecture Guard：**IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；
+blocking findings / required production fixes / required new tests / required reruns: 0。
+独立 source review baseline：`e9737393916b7b256a31e7727e78be375ed490b1`；
+approved implementation candidate：`c938e21539cc001576a243f8cfb2ba6163223d56`。
+[ADR-013](ADR/ADR-013-grounded-knowledge-answer-citations.md) 保持 Accepted；
+正式边界与证据见 [K3 Closing Report](milestones/K3-CLOSING-REPORT.md)。
+
+现有 Knowledge 页已交付 explicit Knowledge Answer：question + lexical query → K2 deterministic AND retrieval
+→ immutable admission snapshot → LOCAL_ONLY grounded synthesis → strict JSON validation → Runtime-owned
+answer-level citations → plain source opening（admitted revision/range）。完整 chunks 按预算装入 ranked prefix。
+普通 Ask / Conversation 无自动 Knowledge retrieval；无 K3 persistence/schema/backup changes。
+继承的 accepted local execution evidence：Java 137 PASS（0 failures/errors/skips）、Desktop 196/196 PASS、
+Frontend 40/40 PASS（6 files）、qwen3.5:4b / chat.balanced real-model 3/3 PASS、final clean WorkspaceSanity PASS。
+Architecture Guard 独立审查实际远端源码；test/model/Windows execution evidence 为继承的本地证据，非 Guard 重跑。
+本轮 formal closing docs 执行 tests/builds：**NONE**。
 Browser 仍 Translate-only；Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。
-Next: K3 implementation planning / explicit implementation authorization。
-在取得独立明确实施授权前，K3 implementation 保持 NOT STARTED。
-以下 T0/K2 及更早章节保留形成时的状态与下一步历史快照；当前 K3 状态以上文为准。
+当前下一步：Architecture Guard final closing-documentation/publication review；不 merge main。
+下一 milestone：W1 — Controlled Web Access；下一独立活动：**W1 Architecture / Planning**，不授权 implementation。
+以下 T0/K2 及更早章节保留形成时的状态与下一步历史快照；当前权威状态以上文为准。
 
 ## T0 engineering cleanup
 

@@ -1,6 +1,14 @@
 # ADR-013 — Grounded Knowledge Answer and Runtime-Owned Citations
 
-Status: Accepted (architecture only; implementation NOT STARTED)
+Status: Accepted
+
+Implementation status: **K3 — CLOSED — GO**.
+Implementation candidate: `c938e21539cc001576a243f8cfb2ba6163223d56`.
+Architecture Guard: **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**;
+blocking findings / required production fixes / required new tests / required reruns: 0.
+Formal publication remains pending final closing-documentation/publication review.
+Implementation boundaries and inherited execution evidence are recorded in the
+[K3 Closing Report](../milestones/K3-CLOSING-REPORT.md).
 
 Date: 2026-10-06 (Asia/Shanghai)
 
@@ -41,13 +49,13 @@ W1 remains **NOT STARTED**. Neither domain is authorized by this decision.
 
 ## Owning code and one authoritative admission boundary
 
-At the baseline, `KnowledgeStore` owns synchronized `snapshot`, `searchCorpus`
+`KnowledgeStore` owns synchronized `snapshot`, `searchCorpus`
 and `searchSource` semantics; `KnowledgeLexicalIndex.search` owns bounded K2
 retrieval, and `LexicalChunker` owns deterministic chunk boundaries. K2's returned
 snippets are presentation data, not sufficient evidence authority for K3.
 
-Prefer a new narrow knowledge-package owner such as `KnowledgeEvidenceAdmission`
-around those existing owners. Search and evidence capture must occur in **one
+`KnowledgeEvidenceAdmission` is the narrow knowledge-package owner
+around those existing owners. Search and evidence capture occur in **one
 authoritative Knowledge consistency boundary**, not as independently locked calls:
 
 ```text
@@ -76,7 +84,7 @@ Do not redesign ingestion, schema v1, Knowledge Backup v1, analyzer/chunker beha
 ranking/index semantics or Memory/Conversation stores. If exposing authoritative
 snapshot data safely requires a tiny internal helper/refactor, implementation must
 document it explicitly and preserve observable K1/K2 behavior. No schema migration
-is required. The proposed admission owner does not yet exist at this baseline.
+is required. The implemented admission owner preserves those boundaries.
 
 ## Immutable evidence ownership and later mutations
 
@@ -128,8 +136,8 @@ Provider → Ollama`. Initial profile is existing `chat.balanced`; capability is
 `knowledge-answer`, prompt version is `knowledge-answer-v1`. Do not add another
 task framework or a new model profile merely for symmetry.
 
-Extend the existing sealed `TaskResult` with one narrow immutable subtype,
-conceptually `KnowledgeAnswer(answer, validated Runtime-generated citations)`.
+The existing sealed `TaskResult` includes one narrow immutable subtype,
+`KnowledgeAnswer(answer, validated Runtime-generated citations)`.
 Model labels are intermediate validation input, not final citation authority.
 Ordinary string task contracts remain unchanged; TaskManager needs no architectural
 redesign. Existing bounded queue, owner, cancellation, timeout and in-memory
@@ -193,9 +201,8 @@ not restore K3 answer state.
 
 ## Typed bridge, current-session authority and React lifecycle
 
-Use fixed typed methods only, conceptually `knowledge.answerSubmit`,
-`knowledge.answerGet` and `knowledge.answerCancel`; final names may follow
-repository conventions. Trusted Workspace/current session only; maintain bounded
+Use fixed typed methods only: `knowledge.answerSubmit`,
+`knowledge.answerGet` and `knowledge.answerCancel`. Trusted Workspace/current session only; maintain bounded
 task authority. Authorize task IDs only after accepted submission. Get/cancel
 require an authorized current-session task. Validated citations may authorize
 their real document IDs for preview in that captured session. Late responses cannot
@@ -230,26 +237,28 @@ No test-count target or historical acceptance matrix is introduced. Prefer the
 smallest high-value owning evidence and reuse existing tests; do not duplicate
 K2 ranking/index tests or the same contract across layers.
 
-| Owner | New K3 invariants to protect during separately authorized implementation |
+| Owner | Retained K3 invariants |
 | --- | --- |
 | Java | Immutable atomic evidence admission; deterministic prefix packing; strict parser and invalid/zero/unknown citation fail-closed; native-only API/Browser denial; mutation after admission |
 | Desktop | Typed result projection; bounded task/current-session authority; late-response/session replacement safety |
 | Frontend | Explicit question/query submission; plain answer/citation rendering and source open; session/page clearing; IME guard if a new handler owns it |
 
 WorkspaceSanity must not automatically gain real model inference. A focused real
-local K3 inference/acceptance gate may be required during implementation to establish
-that the configured model can satisfy strict JSON output. This is a future gate,
-not executed evidence. If compliance is unacceptable, **STOP**; do not weaken
+local K3 inference/acceptance gate establishes whether the configured model can
+satisfy strict JSON output. Accepted candidate evidence is linked in the closing
+report; this ADR is not an execution log. If compliance is unacceptable, **STOP**; do not weaken
 validation to pass. Separately review a K3-specific profile or structured-output
 support before continuing.
 
-## Explicit exclusions and implementation authorization
+## Explicit exclusions and closing boundary
 
-No K3 implementation is authorized here. No automatic Knowledge for Ask/Conversation,
+K3 is implemented within this accepted decision. No automatic Knowledge for Ask/Conversation,
 Ask mode, semantic/vector search, embeddings, query rewrite, Web, Finance, Vision,
 Browser expansion, persistent answer history or Conversation integration is included.
 K1/K2 truth and backup formats stay unchanged. Finance Freeze and W1 NOT STARTED
 remain untouched.
 
-**K3 Architecture — APPROVED — GO. K3 implementation — NOT STARTED.**
-Implementation requires separate explicit authorization.
+**K3 — CLOSED — GO. Architecture Guard IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO.**
+Formal publication is pending final closing-documentation/publication review.
+Next milestone: **W1 — NOT STARTED**; next independent activity is **W1 Architecture / Planning**.
+This decision does not authorize W1 implementation.
