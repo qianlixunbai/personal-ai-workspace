@@ -130,6 +130,9 @@ internal sealed class WorkspaceBridge : IDisposable
                 if(knowledge is null)throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Knowledge 暂时不可用。");
                 string? id=payload.TryGetProperty("documentId",out var documentId)&&documentId.ValueKind==JsonValueKind.String?documentId.GetString():null;
                 result=method switch {
+                    "knowledge.answerSubmit"=>await knowledge.AnswerSubmitAsync(session,payload.GetProperty("question").GetString()!,payload.GetProperty("query").GetString()!,cancellation),
+                    "knowledge.answerGet"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,false,cancellation),
+                    "knowledge.answerCancel"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,true,cancellation),
                     "knowledge.search"=>await knowledge.SearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("limit").GetInt32(),cancellation),
                     "knowledge.searchStatus"=>await knowledge.SearchStatusAsync(session,cancellation),
                     "knowledge.rebuildSearchIndex"=>await knowledge.RebuildSearchAsync(session,cancellation),
@@ -268,9 +271,11 @@ internal sealed class WorkspaceBridge : IDisposable
     }
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
+        if(method=="knowledge.answerSubmit")return Fields(p,"question","query")&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
+        if(method is "knowledge.answerGet" or "knowledge.answerCancel")return Fields(p,"taskId")&&Text(p,"taskId",36,out var taskId)&&CanonicalId(taskId);
         if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex")return Fields(p);
         if(method=="knowledge.search")return Fields(p,"query","limit")&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128
             &&!query.Any(char.IsControl)&&p.GetProperty("limit").ValueKind==JsonValueKind.Number&&p.GetProperty("limit").TryGetInt32(out int limit)&&limit is >=1 and <=10;

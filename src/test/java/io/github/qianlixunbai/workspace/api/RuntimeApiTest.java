@@ -119,6 +119,34 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeStore knowledgeStore;
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeIngestion knowledgeIngestion;
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeLexicalIndex knowledgeIndex;
+    @Test void knowledgeAnswerNativeAdmissionBrowserPreBodyDenialAndOrdinaryAskIsolation() throws Exception {
+        String endpoint="/api/v1/knowledge/answer/tasks",canary="k3canary"+java.util.UUID.randomUUID().toString().replace("-","");
+        privateValues.add(canary);var browserClient=pairBrowser("chrome-extension://"+"e".repeat(32));
+        assertEquals(403,browser("POST",endpoint,"{malformed-private-canary",browserClient.credential(),browserClient.origin()).statusCode());
+        assertEquals(0,CHAT_CALLS.get());
+        assertEquals(400,send("POST",endpoint,"{\"question\":\"q\",\"query\":\"q\",\"model\":\"other\"}",true).statusCode());
+        byte[] bytes=(canary+" synthetic reference").getBytes(StandardCharsets.UTF_8);
+        var job=knowledgeIngestion.upload(java.util.UUID.randomUUID().toString(),null,null,"k3-fixture.txt",bytes.length,new java.io.ByteArrayInputStream(bytes));
+        try {
+            long end=System.nanoTime()+10_000_000_000L;
+            while((!knowledgeStore.job(job.requestId()).state().equals("READY")||!knowledgeIndex.status().state().equals("READY"))&&System.nanoTime()<end)Thread.sleep(10);
+            BATCH_OUTPUT.set("{\"answer\":\"synthetic grounded answer\",\"citations\":[\"S1\"]}");startMock();
+            var accepted=send("POST",endpoint,json.writeValueAsString(Map.of("question",canary+"?","query",canary)),true);
+            assertEquals(202,accepted.statusCode());String id=tree(accepted).path("taskId").asString();assertEquals("/api/v1/tasks/"+id,accepted.headers().firstValue("Location").orElseThrow());
+            var done=pollNative(id);assertEquals("SUCCEEDED",done.path("status").asString());assertEquals("knowledge-answer",done.path("capability").asString());
+            assertEquals(job.documentId(),done.path("result").path("citations").get(0).path("documentId").asString());
+            assertEquals(404,browser("GET","/api/v1/tasks/"+id,null,browserClient.credential(),browserClient.origin()).statusCode());
+            assertFalse(LAST_CHAT.get().toString().contains(job.documentId()));
+            BATCH_OUTPUT.set("{\"answer\":\"bad\",\"citations\":[\"S99\"]}");
+            var failed=pollNative(tree(send("POST",endpoint,json.writeValueAsString(Map.of("question","q","query",canary)),true)).path("taskId").asString());
+            assertEquals("FAILED",failed.path("status").asString());assertTrue(failed.path("result").isNull());assertEquals("PROVIDER_RESPONSE_INVALID",failed.path("error").path("code").asString());
+            BATCH_OUTPUT.set("ordinary answer");assertEquals("SUCCEEDED",submitAndPoll("/api/v1/ask/tasks","{\"question\":\"ordinary\"}").path("status").asString());
+            assertFalse(LAST_CHAT.get().toString().contains(canary));
+        } finally { knowledgeStore.delete(job.documentId(),knowledgeStore.get(job.documentId()).metadataVersion()); }
+    }
     @Test void knowledgeLexicalSearchNativeContractBrowserDenialAndPrivacy()throws Exception {
         String endpoint="/api/v1/knowledge/search",query="searchcanary"+java.util.UUID.randomUUID().toString().replace("-","");privateValues.add(query);
         var client=pairBrowser("chrome-extension://"+"d".repeat(32));

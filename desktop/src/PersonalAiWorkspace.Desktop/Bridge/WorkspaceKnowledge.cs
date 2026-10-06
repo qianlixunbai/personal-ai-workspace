@@ -10,14 +10,38 @@ namespace PersonalAiWorkspace.Desktop.Bridge;
 internal sealed record KnowledgeImportResult(string Outcome,string? RequestId,KnowledgeJob? Job);
 internal sealed record KnowledgeRevisionView(string SourceRevision,string SourceType,long ByteLength);
 internal sealed record KnowledgeDetailView(KnowledgeDocument Document,KnowledgeRevisionView[] Revisions,KnowledgeJob? Job);
+internal sealed record KnowledgeAnswerView(string TaskId,string Status,KnowledgeAnswerResult? Result,WorkspaceSafeError? Error)
+{ public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
 internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
 {
-    private sealed class Authority {internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);}
+    private sealed class Authority {internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);internal readonly HashSet<Guid> AnswerTasks=[];internal int AnswerSubmissions;}
     private readonly Dictionary<string,Authority> sessions=new(StringComparer.Ordinal);
     private readonly object sync=new();
     internal void BeginSession(string session){lock(sync)sessions[session]=new();}
     internal void EndSession(string session){lock(sync)sessions.Remove(session);}
     internal int AuthorizationCount(string session){lock(sync)return Require(session).Documents.Count;}
+    internal int AnswerAuthorizationCount(string session){lock(sync)return Require(session).AnswerTasks.Count;}
+    private void Current(string session,Authority known)
+    {if(!sessions.TryGetValue(session,out var current)||!ReferenceEquals(current,known))throw new OperationCanceledException();}
+    private KnowledgeAnswerView AnswerView(string session,Authority known,KnowledgeAnswerTask task)
+    {
+        Current(session,known);
+        if(task.Result is not null)foreach(var citation in task.Result.Citations)Authorize(session,known,citation.DocumentId);
+        return new(task.TaskId.ToString("D"),task.Status.ToString(),task.Result,task.Error is { } error?new(error.ToString(),ErrorText.For(error)):null);
+    }
+    internal async Task<KnowledgeAnswerView> AnswerSubmitAsync(string session,string question,string query,CancellationToken ct)
+    {
+        Authority known;lock(sync){known=Require(session);if(known.AnswerTasks.Count+known.AnswerSubmissions>=64)throw new DesktopException(DesktopError.QueueFull);known.AnswerSubmissions++;}
+        try{var task=await runtime.SubmitKnowledgeAnswerAsync(question,query,ct);lock(sync){Current(session,known);known.AnswerTasks.Add(task.TaskId);return AnswerView(session,known,task);}}
+        finally{lock(sync)known.AnswerSubmissions--;}
+    }
+    internal async Task<KnowledgeAnswerView> AnswerTaskAsync(string session,string taskId,bool cancel,CancellationToken ct)
+    {
+        if(!WorkspaceBridge.CanonicalId(taskId))throw new DesktopException(DesktopError.InvalidRequest);Guid id=Guid.ParseExact(taskId,"D");Authority known;
+        lock(sync){known=Require(session);if(!known.AnswerTasks.Contains(id))throw new DesktopException(DesktopError.TaskNotFound);}
+        var task=await (cancel?runtime.CancelKnowledgeAnswerAsync(id,ct):runtime.GetKnowledgeAnswerAsync(id,ct));
+        lock(sync)return AnswerView(session,known,task);
+    }
     private Authority Require(string session,string? document=null,string? request=null)
     {
         if(!sessions.TryGetValue(session,out var known)||document is not null&&!known.Documents.Contains(document)||request is not null&&!known.Imports.Contains(request))

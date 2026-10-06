@@ -19,6 +19,14 @@ public sealed class KnowledgeTests
         internal string Id=Guid.NewGuid().ToString("D"),Request=Guid.NewGuid().ToString("D"),Version="9007199254740993",Status="ACTIVE";
         internal int Calls,Uploads,Lookups;internal bool Lost,Deleted,Malformed;internal byte[]? Uploaded;internal TaskCompletionSource? Hold;
         internal bool SearchMalformed,SearchWorstCase;
+        internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
+        internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
+            startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
+            locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
+        internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion="knowledge-answer-v1",
+            createdAt="2026-10-06T00:00:00Z",finishedAt=AnswerState is "QUEUED" or "RUNNING"?null:"2026-10-06T00:00:01Z",
+            result=AnswerState=="SUCCEEDED"?new{answer=AnswerWorstCase?new string('中',2048):"<script>private answer</script>",citations=Enumerable.Range(0,AnswerWorstCase?10:1).Select(AnswerCitation).ToArray()}:null,
+            error=AnswerState is "SUCCEEDED" or "QUEUED" or "RUNNING"?null:new{code=AnswerState=="CANCELLED"?"TASK_CANCELLED":AnswerState=="TIMED_OUT"?"TASK_TIMEOUT":"PROVIDER_RESPONSE_INVALID",message="safe",phase="RESPONSE"}};
         internal object SearchHit(int ordinal=0)=>new {documentId=Id,title=SearchWorstCase?new string('中',160):"fixture.txt",sourceRevision="1",sourceType="TXT",
             startOffset=ordinal*2048,endOffset=ordinal*2048+1000,startLine=1,endLine=1,heading=SearchWorstCase?new string('中',96):null,
             snippet=SearchWorstCase?new string('中',384):"<script>x</script>",highlightRanges=SearchWorstCase?Enumerable.Range(0,16).Select(i=>new{start=i*2,end=i*2+1}).ToArray():[]};
@@ -30,6 +38,14 @@ public sealed class KnowledgeTests
             Calls++;if(Hold is not null)await Hold.Task;
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
+            if(path=="/api/v1/knowledge/answer/tasks"||path=="/api/v1/tasks/"+AnswerTaskId){
+                if(path.EndsWith("/answer/tasks")){
+                    using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal(2,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());if(AnswerLost)throw new HttpRequestException();
+                }
+                string json=JsonSerializer.Serialize(AnswerTask());if(AnswerInvalid is not null)json=AnswerInvalid;
+                var response=RuntimeClientTests.Response(path.EndsWith("/answer/tasks")?HttpStatusCode.Accepted:HttpStatusCode.OK,json);
+                if(path.EndsWith("/answer/tasks"))response.Headers.Location=new Uri("/api/v1/tasks/"+AnswerTaskId,UriKind.Relative);return response;
+            }
             if(path.EndsWith("/search/status")||path.EndsWith("/search/rebuild"))return Reply(new{state="READY",indexedDocuments=1,indexedChunks=1});
             if(path.EndsWith("/search")){
                 Assert.Equal(HttpMethod.Post,request.Method);Assert.Equal("",request.RequestUri.Query);
@@ -49,6 +65,34 @@ public sealed class KnowledgeTests
             return Malformed?Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job(),path=@"C:\private"}):Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job()});
         }
         static HttpResponseMessage Reply(object value)=>RuntimeClientTests.Response(HttpStatusCode.OK,JsonSerializer.Serialize(value));
+    }
+    [Fact]public async Task AnswerStrictProjectionBoundsAndUnknownPostNeverReplays()
+    {
+        using var f=new Fixture();f.Handler.AnswerWorstCase=true;
+        var response=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.True(response.GetProperty("ok").GetBoolean());
+        Assert.Equal(10,response.GetProperty("result").GetProperty("result").GetProperty("citations").GetArrayLength());Assert.True(Encoding.UTF8.GetByteCount(f.Sent.Single())<65536);
+        foreach(string hidden in new[]{"sourceDigest","representationDigest","fingerprint","rowid","score","path","label","text"})Assert.DoesNotContain("\""+hidden+"\"",f.Sent.Single());
+        f.Handler.AnswerWorstCase=false;string valid=JsonSerializer.Serialize(f.Handler.AnswerTask());
+        foreach(string invalid in new[]{valid.Replace("\"answer\":","\"extra\":1,\"answer\":"),valid.Replace("\"citations\":[","\"citations\":[],\"other\":["),valid.Replace("knowledge-answer-v1","ask-v1"),valid.Replace("chat.balanced","translate.fast"),valid.Replace("MARKDOWN_SECTION_LINES","TXT_LINES"),valid.Replace("\"endOffset\":4096","\"endOffset\":0"),valid+" {}"}) {
+            f.Handler.AnswerInvalid=invalid;var ex=await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default));Assert.Equal(DesktopError.InvalidResponse,ex.Error);
+        }
+        f.Handler.AnswerInvalid=null;foreach(string state in new[]{"QUEUED","RUNNING","FAILED","CANCELLED","TIMED_OUT"}){f.Handler.AnswerState=state;Assert.Equal(state,(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default)).Status.ToString());}
+        f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerLost=true;int calls=f.Handler.Calls;
+        var lost=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal("OutcomeUnknown",lost.GetProperty("error").GetProperty("code").GetString());Assert.Equal(calls+1,f.Handler.Calls);
+    }
+    [Fact]public async Task AnswerTaskAuthorityIsSessionBoundAndLateSubmitOrGetCannotAuthorizeNewSession()
+    {
+        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
+        foreach(string method in new[]{"knowledge.answerGet","knowledge.answerCancel"}){var denied=await f.Send(method,new{taskId=id});Assert.Equal("TaskNotFound",denied.GetProperty("error").GetProperty("code").GetString());}Assert.Equal(0,f.Handler.Calls);
+        f.Handler.AnswerState="QUEUED";await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal(1,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        f.Handler.AnswerState="SUCCEEDED";await f.Send("knowledge.answerGet",new{taskId=id});Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        Assert.DoesNotContain("private answer",(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(id),default)).ToString());
+        f.Rotate();Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
+        foreach(string method in new[]{"knowledge.answerSubmit","knowledge.answerGet"}){
+            f.Handler.Hold=null;f.Handler.AnswerState="QUEUED";if(method=="knowledge.answerGet")await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});
+            f.Handler.AnswerState="SUCCEEDED";f.Handler.Hold=new();var payload=method=="knowledge.answerSubmit"?(object)new{question="question",query="budget"}:new{taskId=id};
+            var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request(method,payload));f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
+        }
     }
     private sealed class Files:IKnowledgeSourceFiles
     {internal MemoryStream? Selected;public Task<KnowledgeSourceFile?> PickAsync(CancellationToken ct){Selected=new(Encoding.UTF8.GetBytes("native text"));return Task.FromResult<KnowledgeSourceFile?>(new(Selected,"fixture.txt"));}}
