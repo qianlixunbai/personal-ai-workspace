@@ -2,7 +2,8 @@
 
 ## Implemented K3 current architecture — CLOSED — GO
 
-**K3 — CLOSED — GO；FORMAL PUBLICATION — PENDING。**
+**K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。**
+Source publication main merge：`5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`。
 Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；blocking findings: 0。
 实际源码审查 baseline `e9737393916b7b256a31e7727e78be375ed490b1` → approved implementation candidate
 `c938e21539cc001576a243f8cfb2ba6163223d56`。

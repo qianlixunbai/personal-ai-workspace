@@ -19,7 +19,7 @@
 本文件不授权未来阶段实施；W1 — NOT STARTED。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
-`c938e21539cc001576a243f8cfb2ba6163223d56`；formal publication pending。
+`c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
 后续更新应保持事实、规划和批准来源可区分，不把计划追写成早期成果。
 
 ## 2. V1 最终产品目标
@@ -31,9 +31,9 @@ Assistant、Conversation、Memory、Knowledge，并在未来获得受控 Web、V
 
 演进路线先建立共用 Runtime，再接入 Windows 与浏览器，随后建立显式 Memory、
 持久 Conversation 和统一 Workspace，最后引入独立 Knowledge 与确定性词法检索。
-后续才计划把检索证据用于带引用的回答，并增加联网、多模态和财务领域编排。
+K3 已把显式检索证据用于带引用的回答；后续计划增加联网、多模态和财务领域编排。
 
-**当前已交付到 K2 + T0。** 本地三种文本操作、持久对话、显式 Memory、Knowledge 管理与词法搜索已存在。
+**当前已交付到 K3 + T0，K3 fully published to main。** 本地三种文本操作、持久对话、显式 Memory、Knowledge 管理、词法搜索与带引用的回答已存在。
 受控 Web、Vision、Finance integration、通用 Active Model 管理、完整 Resource Monitor 和 P1 最终整合仍是未来目标。
 最终 V1 不应把所有个人数据混成一个通用记忆库，也不应因一个子系统不可用而让整个工作区失效。
 
@@ -537,7 +537,7 @@ Runtime/Ollama 当前不由 Desktop exit-time supervisor 管理；固定模型�
 
 ### K3 — Grounded Knowledge Answer + Citations
 
-**阶段定位 / 状态：** K3 — CLOSED — GO；FORMAL PUBLICATION — PENDING。
+**阶段定位 / 状态：** K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。
 Architecture Guard IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO，blocking findings: 0；权威契约见
 [ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md)，实现和继承执行证据见
 [K3 Closing Report](../milestones/K3-CLOSING-REPORT.md)。K2 search 保持独立检索/预览，K3 显式入口负责回答。
@@ -570,7 +570,7 @@ semantic/vector/embeddings/Web/Vision/Browser expansion/persistent history；Bro
 **验证与下一步：** Architecture Guard 独立审查实际远端源码；继承 accepted local evidence：Java 137、Desktop 196、
 Frontend 40（6 files）PASS；qwen3.5:4b / chat.balanced real-model 3/3 PASS；final clean WorkspaceSanity PASS。
 本轮 formal closing docs tests/builds NONE；不把 contract gate 解释为逐句语义证明。
-当前待 Architecture Guard final closing-documentation/publication review；下一 milestone **W1 — NOT STARTED**，
+Architecture Guard final closing-documentation review / formal publication — APPROVED — GO；下一 milestone **W1 — NOT STARTED**，
 下一独立活动 **W1 Architecture / Planning**，未授权 implementation。
 
 ### W1 — Controlled Web Access
@@ -893,13 +893,14 @@ accessibility、统一 identity、经过 clean-install/migration/privacy/final W
 已完成至 **K3 + T0**：**M0 / M1 / M1.5 / M2 / M3 / M4 / M5 / K1 / K2 / K3 / T0 — CLOSED — GO**；
 **K0 — APPROVED — GO**。M5A–M5E 均为已关闭的内部阶段。
 
-**K3 — CLOSED — GO；FORMAL PUBLICATION — PENDING。**
+**K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。**
+K3 fully published to main；source publication merge：`5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`。
 Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；blocking findings: 0。
 **Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。**
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
-当前下一步为 **Architecture Guard final closing-documentation/publication review**。
+Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
 下一 milestone 为 **W1 — Controlled Web Access（NOT STARTED）**；下一项独立活动为 **W1 Architecture / Planning**。
-列出 W1 不授权 implementation；本轮不 merge main、不启动 W1。
+列出 W1 不授权 implementation；W1 保持 NOT STARTED，不启动 W1。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。

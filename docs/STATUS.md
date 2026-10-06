@@ -2,11 +2,13 @@
 
 ## Current K3 final closing — CLOSED — GO
 
-**K3 — CLOSED — GO。FORMAL PUBLICATION — PENDING。**
+**K3 — CLOSED — GO。FORMAL PUBLICATION — COMPLETE。**
 Architecture Guard：**IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；
 blocking findings / required production fixes / required new tests / required reruns: 0。
 独立 source review baseline：`e9737393916b7b256a31e7727e78be375ed490b1`；
 approved implementation candidate：`c938e21539cc001576a243f8cfb2ba6163223d56`。
+Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
+Published main merge：`5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`（仅源码发布到 main）。
 [ADR-013](ADR/ADR-013-grounded-knowledge-answer-citations.md) 保持 Accepted；
 正式边界与证据见 [K3 Closing Report](milestones/K3-CLOSING-REPORT.md)。
 
@@ -17,10 +19,10 @@ answer-level citations → plain source opening（admitted revision/range）。�
 继承的 accepted local execution evidence：Java 137 PASS（0 failures/errors/skips）、Desktop 196/196 PASS、
 Frontend 40/40 PASS（6 files）、qwen3.5:4b / chat.balanced real-model 3/3 PASS、final clean WorkspaceSanity PASS。
 Architecture Guard 独立审查实际远端源码；test/model/Windows execution evidence 为继承的本地证据，非 Guard 重跑。
-本轮 formal closing docs 执行 tests/builds：**NONE**。
+本轮 formal publication 执行 tests/builds：**NONE**；不增加产品行为。
 Browser 仍 Translate-only；Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。
-当前下一步：Architecture Guard final closing-documentation/publication review；不 merge main。
-下一 milestone：W1 — Controlled Web Access；下一独立活动：**W1 Architecture / Planning**，不授权 implementation。
+当前下一独立活动：**W1 Architecture / Planning**。
+下一 milestone：W1 — Controlled Web Access；**W1 — NOT STARTED**，列出 W1 不授权 implementation。
 以下 T0/K2 及更早章节保留形成时的状态与下一步历史快照；当前权威状态以上文为准。
 
 ## T0 engineering cleanup

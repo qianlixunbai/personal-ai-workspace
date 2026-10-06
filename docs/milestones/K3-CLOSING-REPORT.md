@@ -5,8 +5,8 @@
 当前最终状态：**K3 — CLOSED — GO**。
 Architecture Guard：**IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**。
 **K3 IMPLEMENTATION CANDIDATE — APPROVED — GO；K3 CLOSING DOCUMENTATION — AUTHORIZED。**
-**FORMAL PUBLICATION — PENDING**；下一步是 Architecture Guard final closing-documentation/publication review。
-本轮仅 formal closing docs，不 merge main、不启动 W1。
+**FORMAL PUBLICATION — COMPLETE**；正式发布记录见下方 Publication Boundary。
+下一独立活动为 **W1 Architecture / Planning**；**W1 — NOT STARTED**，不授权 implementation。
 
 ## Baseline / Candidate / Architecture Authority
 
@@ -118,7 +118,13 @@ reviewed remote diff：**17 production files、4 test files、0 docs（本轮 cl
 Blocking findings: **0**；required production fixes: **0**；required new tests: **0**；required reruns: **0**。
 执行证据按上节继承，不声称 Guard 重跑了这些 gates。
 
-**K3 — CLOSED — GO；FORMAL PUBLICATION — PENDING。**
-本轮只在原 feature 上追加并 push 一笔 closing-docs commit；implementation candidate 不 amend/squash/rebase，
-main 不 merge/push，无 force/tag/release。closing docs commit/final feature SHA 以实际 Git 和最终交付回复为准。
-下一步：**Architecture Guard final closing-documentation/publication review**。
+**K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。**
+Architecture Guard **FINAL CLOSING-DOCUMENTATION REVIEW — APPROVED — GO**；
+**FORMAL PUBLICATION — APPROVED — GO**。Documentation blockers / required documentation remediation: **0**。
+Implementation candidate：`c938e21539cc001576a243f8cfb2ba6163223d56`。
+Closing docs candidate：`dbbfbd93f87569c6116abe811a9d7422fc2d81ba`。
+Published through merge commit：`5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`。
+正式发布仅指源码发布到 main；显式 merge 后追加一笔 docs-only publication-finalization commit。
+本轮 publication tests/builds executed：**NONE**；上方技术内容与 inherited execution evidence 保留。
+Publication adds no new product behavior；无额外 production/test/harness/script/config 改动，无 tag/release/package publication。
+下一独立活动：**W1 Architecture / Planning**；**W1 — NOT STARTED**。列出 W1 不授权 implementation，不启动 W1。

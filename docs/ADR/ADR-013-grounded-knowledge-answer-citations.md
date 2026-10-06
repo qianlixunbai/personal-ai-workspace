@@ -6,7 +6,9 @@ Implementation status: **K3 — CLOSED — GO**.
 Implementation candidate: `c938e21539cc001576a243f8cfb2ba6163223d56`.
 Architecture Guard: **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**;
 blocking findings / required production fixes / required new tests / required reruns: 0.
-Formal publication remains pending final closing-documentation/publication review.
+Formal publication: **PUBLISHED / COMPLETE** — source publication to main only,
+through merge commit `5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`.
+Architecture Guard final closing-documentation review and formal publication: **APPROVED — GO**.
 Implementation boundaries and inherited execution evidence are recorded in the
 [K3 Closing Report](../milestones/K3-CLOSING-REPORT.md).
 
@@ -259,6 +261,6 @@ K1/K2 truth and backup formats stay unchanged. Finance Freeze and W1 NOT STARTED
 remain untouched.
 
 **K3 — CLOSED — GO. Architecture Guard IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO.**
-Formal publication is pending final closing-documentation/publication review.
+**FORMAL PUBLICATION — COMPLETE**; source publication to main is recorded above.
 Next milestone: **W1 — NOT STARTED**; next independent activity is **W1 Architecture / Planning**.
 This decision does not authorize W1 implementation.
