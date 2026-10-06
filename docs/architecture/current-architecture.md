@@ -1,5 +1,48 @@
 # Personal AI Workspace — Current Architecture
 
+## Approved W1 architecture — implementation NOT STARTED
+
+**W1 Architecture — APPROVED — GO。W1 implementation — NOT STARTED。**
+Architecture Guard W1 ARCHITECTURE GUARD REVIEW — APPROVED — GO；architecture blockers: 0。
+Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 发布 read-only Reality Audit 后批准的 Option D，
+baseline `af3c842906174801b6c434a255e826300e37a72b`。以下为已批准、待实施架构，当前产品尚无 Web 能力；
+本 publication candidate 的 Architecture Guard closing review 仍 REQUIRED。
+
+```text
+Web / explicit Search Web or Fetch URL
+→ typed WPF bridge validation → native confirmation → user approval
+→ exact approved Runtime operation → bounded frozen WebEvidenceSnapshot
+→ existing TaskManager / ProviderPolicy / LOCAL_ONLY Ollama synthesis
+→ strict Web Answer / Runtime-owned citations → current-session presentation
+```
+
+React 无 Internet egress approval authority；取消/无确认 = zero Runtime Web operation / zero public egress。
+Search question 与 explicit public query 分开，仅 query 可外传；Fetch explicit URL，搜索结果不授权 Fetch。
+WPF 显示 exact query 或 canonical URL + hostname；session/document replacement 作废 pending approval，
+late approval/response 不能授权 replacement session；approval 在 Runtime admission 前，不加 WAITING_APPROVAL。
+Policy 仅 DISABLED / ASK_EVERY_TIME（默认）；ALLOW_AUTOMATICALLY 与 model tool calling 均 deferred。
+Provider contract / Ollama tool-call rejection 保持，不引入 generic Agent/Tool Registry/Connector/planner。
+
+Runtime 独占 PublicWebTransport，与 OllamaProvider / Desktop RuntimeClient / WebView2 / Browser transport 分离。
+HTTPS/443、GET-only Fetch、禁 IP literal/userinfo/fragment/localhost；DNS 检查所有地址并 pin actual connection，
+mixed public/private fail closed，保持 TLS/SNI 验证；automatic redirects OFF，manual ≤2 hops，仅 same exact canonical hostname。
+无 proxy/cookies/browser session/ambient credentials/Authorization/Referer forwarding，fixed app User-Agent；
+deadlines/bytes/text/concurrency/queue 有界，cancel 停止后续 egress，unknown outcome 不 replay。
+仅 HTML/plain text/XHTML，无 scripts/subresources/crawling/browser automation，identity encoding；
+Search backend 未选定，W1B 先 review；numeric budgets / HTTP/extractor dependency 留 W1A review。
+
+WebEvidenceSnapshot 为独立 ephemeral/public/bounded/frozen Runtime evidence，不是 Knowledge evidence 或 personal truth；
+W1C 可增加 narrow TaskResult.WebAnswer，strict answer + admitted unique labels，invalid whole-result rejection，plain text。
+Runtime 拥有真实 provenance mapping；引用不是 entailment proof；inference 不持 network/security locks。
+无 query/URL/body/evidence/answer/citation/history/cache 自动持久化，不改变任何领域 DB/backup。
+Private context 不隐式进入 public requests/logs；untrusted evidence 无 instruction/tool/write/approval/policy authority。
+Ask 仍 stateless/single-turn/LOCAL_ONLY/no Web/no tools；Conversation 无 automatic Web；Knowledge Answer 显式 local grounding；
+Browser Translate-only，拒绝全部 Web authority；Finance BLOCKED pending F0；无跨域自治。
+
+下一独立实施活动：**W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**，需另行授权。
+W1B Search / W1C Answer + Evidence + Citations + UI / W1D integrated Windows/Public-Network acceptance + closing
+仅为 W1 内部 phases。本轮 docs-only，tests/builds NONE；下文 K3 为已实施现实，更早章节保留历史快照。
+
 ## Implemented K3 current architecture — CLOSED — GO
 
 **K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。**

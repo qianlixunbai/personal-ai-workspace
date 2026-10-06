@@ -1,5 +1,28 @@
 # Personal AI Workspace — Current Status
 
+## Current W1 approved architecture — implementation NOT STARTED
+
+**W1 Architecture — APPROVED — GO。W1 implementation — NOT STARTED。**
+Architecture Guard：**W1 — Controlled Web Access: ARCHITECTURE GUARD REVIEW — APPROVED — GO**；
+architecture blockers: 0；read-only W1 Reality Audit 已完成。Architecture publication 已授权，implementation 未授权。
+Decision baseline：`main / origin/main`，`af3c842906174801b6c434a255e826300e37a72b`。
+[ADR-014](ADR/ADR-014-controlled-web-access.md) 为 Accepted；本次 architecture publication candidate 仍需
+**ARCHITECTURE GUARD CLOSING REVIEW**，不表示已完成 publication closing 或已交付 Web 功能。
+
+W1 v1 锁定 Option D：独立 native-only Web / Search Web + Fetch URL，用户显式 query/URL，
+question 与 public search query 分开；React intent → typed WPF validation → native exact-intent confirmation
+→ user approval → exact operation → Runtime。Policy 仅 DISABLED / ASK_EVERY_TIME（默认），无 automatic Web/model tool calling。
+Runtime-owned PublicWebTransport：HTTPS/443、GET Fetch、DNS address classification + connection pinning、
+same exact hostname/manual ≤2 redirects、有界 text-only extraction；Search backend 与依赖均未选定。
+WebEvidenceSnapshot 独立于 Knowledge evidence，ephemeral/frozen/bounded；LOCAL_ONLY synthesis 与 Runtime-owned strict citations。
+无 Web persistence、DB/schema/backup changes；Ask stateless/local/no tools/no Web、Conversation no automatic Web、
+explicit Knowledge Answer、Browser Translate-only 和 Finance BLOCKED pending F0 均保持。
+
+下一独立实施活动：**W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**，需另行实施授权。
+W1A/B/C/D 是 W1 内部 phases，不新增 roadmap milestones。本轮仅五份 docs，production/test changes = 0；
+tests/builds executed = **NONE**；无 WorkspaceSanity/public Web smoke/model inference。
+当前 W1 状态以上文为准；以下 K3 及更早章节保留形成时的状态与下一步历史快照。
+
 ## Current K3 final closing — CLOSED — GO
 
 **K3 — CLOSED — GO。FORMAL PUBLICATION — COMPLETE。**
