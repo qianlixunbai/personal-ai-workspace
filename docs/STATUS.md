@@ -2,15 +2,21 @@
 
 ## T0 engineering cleanup
 
-T0 — IMPLEMENTED / LOCAL VERIFICATION PASS; T0 CLOSING CANDIDATE — GO.
+T0 CLOSING REVIEW — APPROVED — GO; T0 — CLOSED — GO.
+Architecture Guard independently reviewed the actual remote diff:
+`07fee3f456e6e6e809afe3798f28813b01a97625` → `ab350c614d4bcf8c28344586e659c1199de04bef`.
+Blocking findings / required production fixes / required new tests / required reruns: 0.
 Engineering test-suite consolidation only; production behavior unchanged.
 K2 — CLOSED — GO; K3 — NOT STARTED.
 Finance Integration — BLOCKED, pending authoritative Finance Reality Sync.
-Java 132 / Desktop 194 / Frontend 38 PASS; one real Windows WorkspaceSanity execution PASS.
+Inherited local verification: Java 132 / Desktop 194 / Frontend 38 PASS;
+one real Windows WorkspaceSanity execution PASS. Formal closing adds source-review approval only;
+tests/builds executed during formal closing: NONE.
 Current verification commands, inherited WIP recovery and retained invariants are recorded in
 [T0 Test Suite Slimming](engineering/T0-TEST-SUITE-SLIMMING.md).
 Historical commands/results below describe their original gates; T0 does not rerun them.
-Architecture Guard independent T0 Closing Review is next; T0 is not self-declared CLOSED.
+Next: Detailed V1 Roadmap Expansion, then K3 — Grounded Knowledge Answer + Citations
+Architecture / Planning; implementation requires separate authorization.
 
 ## Current K2 approved final closing
 
@@ -31,7 +37,7 @@ Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 前三次 harness 失败和 STOP 记录见 [K2 Closing Report](milestones/K2-CLOSING-REPORT.md)。
 正式 Review 覆盖实际远端 K1 baseline → implementation → Closing Candidate history；
 Blocking findings / required production fixes / required new tests / required reruns 均为 0。
-下一步为 T0 — Aggressive Test Suite Consolidation / Slimming，随后 detailed V1 Roadmap expansion → K3；
+T0 — Aggressive Test Suite Consolidation / Slimming — CLOSED — GO；下一步为 Detailed V1 Roadmap Expansion，随后 K3 Architecture / Planning；
 T0 是 engineering cleanup gate，不是新的 top-level product milestone；K3 未启动。
 以下 K1 正式批准章节是先前交付快照。
 

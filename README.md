@@ -2,8 +2,12 @@
 
 ## 当前工程验证入口
 
-T0 — IMPLEMENTED / LOCAL VERIFICATION PASS；T0 CLOSING CANDIDATE — GO。
-K2 — CLOSED — GO；K3 — NOT STARTED。下一步为 Architecture Guard 独立 T0 Closing Review。
+T0 CLOSING REVIEW — APPROVED — GO；T0 — CLOSED — GO。
+Architecture Guard 已独立审查实际远端 K2 baseline → T0 candidate diff；
+Blocking findings / required production fixes / required new tests / required reruns 均为 0。
+K2 — CLOSED — GO；K3 — NOT STARTED。下一项独立任务为 Detailed V1 Roadmap Expansion，
+之后为 K3 — Grounded Knowledge Answer + Citations 的 Architecture / Planning；实施仍需授权。
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
 当前测试命令、保留不变量和唯一 Windows WorkspaceSanity flow 见
 [T0 Test Suite Slimming](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 下列里程碑章节保留历史交付语境；旧 smoke/acceptance 入口已退役，源码可从 Git 历史查看。
@@ -28,7 +32,7 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`；本轮未重跑全量回归或 build/publish。
 单条 query-race 已在恢复轮通过；前三次 harness 失败及 STOP 历史保留于
 [K2 Closing Report](docs/milestones/K2-CLOSING-REPORT.md)，含独立正式 Closing Review 结论。
-T0 — Aggressive Test Suite Consolidation / Slimming 已开始；K3 未启动。
+T0 — Aggressive Test Suite Consolidation / Slimming — CLOSED — GO；K3 未启动。
 以下 K1 章节保留已批准的历史基线语境。
 
 ## 当前 K1 正式批准状态

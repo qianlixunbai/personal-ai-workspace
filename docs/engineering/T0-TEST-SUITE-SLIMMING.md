@@ -1,6 +1,8 @@
 # T0 — Test Suite Slimming
 
-Status: **IMPLEMENTED / LOCAL VERIFICATION PASS**; **T0 CLOSING CANDIDATE — GO**.
+Current status: **T0 — CLOSED — GO**; **T0 CLOSING REVIEW — APPROVED — GO**.
+Former implementation/local-verification status: **IMPLEMENTED / LOCAL VERIFICATION PASS**;
+**T0 CLOSING CANDIDATE — GO**, published at `ab350c614d4bcf8c28344586e659c1199de04bef`.
 K2 remains **CLOSED — GO**; K3 remains **NOT STARTED**.
 Finance Integration remains BLOCKED pending authoritative Finance Reality Sync.
 T0 is an engineering cleanup gate, with no product capability or roadmap expansion.
@@ -147,4 +149,28 @@ sanity/test workflows, and Java compilation/classpath resolution part of the sin
 No old acceptance matrix, real inference, stress suite, release publish or package test was rerun.
 Limits: this flow is representative integration, not full release certification, and requires a usable
 interactive desktop/Pinyin. Deferred historical certification is not claimed as T0 execution evidence.
-T0 closing belongs to Architecture Guard's independent review; the implementer must not declare CLOSED.
+At the implementation handoff, formal closing remained reserved for Architecture Guard's
+independent review; the implementer did not self-declare CLOSED.
+
+## Architecture Guard Independent Closing Review
+
+Decision: **T0 CLOSING REVIEW — APPROVED — GO**; **T0 — CLOSED — GO**.
+Architecture Guard independently reviewed the actual remote diff:
+`07fee3f456e6e6e809afe3798f28813b01a97625` → `ab350c614d4bcf8c28344586e659c1199de04bef`,
+including implementation `f1fe77304ddc4f3a10f07a1629e68f0a0e8ae2a5` and the local candidate record.
+
+Independent source review confirmed:
+
+- No executable production behavior changed; the sole production-source-path change is required friend-assembly metadata.
+- Surviving invariant ownership matches the implementation; Java/Desktop/Frontend duplication was materially reduced without removing critical domain protection.
+- Twelve historical Windows acceptance projects were intentionally consolidated into one long-lived WorkspaceSanity flow for real WPF/WebView2/React/Runtime, Memory, Knowledge and physical Pinyin integration.
+- The sanity runner uses isolated test-owned state and does not require real Ollama inference.
+- Stale milestone smoke/acceptance infrastructure and friend-assembly entries were removed.
+- Full package/launcher certification remains a release/P1 gate rather than routine engineering regression.
+- Finance Freeze remains intact; Finance Integration stays BLOCKED pending authoritative Finance Reality Sync, and K3 stays NOT STARTED.
+
+Blocking findings: 0. Required production fixes: 0. Required new tests: 0. Required reruns: 0.
+These are source-review conclusions, not new execution evidence. Formal closing preserves the
+implementation/local-verification history above. **Tests/builds executed during formal closing: NONE.**
+Next separate task: Detailed V1 Roadmap Expansion, then K3 Architecture / Planning;
+K3 implementation requires separate authorization. Neither begins in this publication task.

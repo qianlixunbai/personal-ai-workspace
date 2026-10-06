@@ -142,5 +142,6 @@ accessibility、privacy audit、packaging、clean install、migration compatibil
 final Windows acceptance、V1 architecture review 和 V1 closing review。
 P1 不再引入新的大业务域。
 
-本次仅同步 K2 当前状态为 CLOSED — GO，Architecture Guard 独立 Closing Review 已批准；
+当前 K2 / T0 均为 CLOSED — GO，Architecture Guard 独立 Closing Review 已批准。
+下一项独立任务为 Detailed V1 Roadmap Expansion，之后为 K3 Architecture / Planning；本次未展开 roadmap。
 K3、W1、Vision、Model Management、Resource Monitor 和 Finance 均未因此启动。
