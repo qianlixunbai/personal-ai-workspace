@@ -3,6 +3,8 @@ import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeLi
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
+import { isKnowledgeAnswerTask } from './knowledgeAnswer'
+import type { KnowledgeAnswerTask } from './knowledgeAnswer'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -11,13 +13,13 @@ import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
 
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
-const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send'
+const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method)
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -55,6 +57,9 @@ export class WorkspaceClient {
   deleteMemory(memoryId: string, expectedRevision: string) { return this.request('memory.delete', { memoryId, expectedRevision }) as Promise<{ deleted: true }> }
   memoryEditorState(dirty: boolean) { return this.request('memory.editorState', { dirty }) as Promise<{ acknowledged: true }> }
   listKnowledge(status: 'ACTIVE' | 'ARCHIVED', page: number) { return this.request('knowledge.list', { status, page }) as Promise<KnowledgeList> }
+  submitKnowledgeAnswer(question: string, query: string) { return this.request('knowledge.answerSubmit', { question, query }) as Promise<KnowledgeAnswerTask> }
+  getKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerGet', { taskId }) as Promise<KnowledgeAnswerTask> }
+  cancelKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerCancel', { taskId }) as Promise<KnowledgeAnswerTask> }
   searchKnowledge(query: string) { return this.request('knowledge.search', { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
   knowledgeSearchStatus() { return this.request('knowledge.searchStatus') as Promise<KnowledgeSearchStatus> }
   rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
@@ -78,6 +83,7 @@ export class WorkspaceClient {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
         : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
+        ...(typeof payload.taskId === 'string' ? { taskId: payload.taskId } : {}),
         ...(typeof payload.documentId === 'string' ? { documentId: payload.documentId } : {}),
         ...(typeof payload.requestId === 'string' ? { requestId: payload.requestId } : {}),
         ...(typeof payload.sourceRevision === 'string' ? { sourceRevision: payload.sourceRevision } : {}),
@@ -114,6 +120,7 @@ export class WorkspaceClient {
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
+        : ['knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel'].includes(pending.method) ? isKnowledgeAnswerTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
         : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)
         : pending.method === 'knowledge.list' ? isKnowledgeList(data.result) && data.result.page === pending.page && data.result.items.every(d => d.status === pending.status)
@@ -148,7 +155,7 @@ export class WorkspaceClient {
       }
     } else if (data.ok === false && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'error'])
       && isSafeError(data.error)) {
-      pending.reject((memoryMutation(pending.method) || knowledgeMutation(pending.method)) && ['RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(data.error.code) ? unknownOutcome() : new BridgeError(data.error.code, data.error.message)); return
+      pending.reject((pending.method === 'knowledge.answerSubmit' || memoryMutation(pending.method) || knowledgeMutation(pending.method)) && ['RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(data.error.code) ? unknownOutcome() : new BridgeError(data.error.code, data.error.message)); return
     }
     pending.reject(uncertain(pending.method) ? unknownOutcome() : new BridgeError('InvalidResponse', '工作区返回了无效响应，请重新打开。'))
   }

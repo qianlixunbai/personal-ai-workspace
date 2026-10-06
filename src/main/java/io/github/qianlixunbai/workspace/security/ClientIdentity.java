@@ -11,7 +11,7 @@ public record ClientIdentity(String clientId, String clientType, String displayN
     @Override public String toString() { return "ClientIdentity[" + clientType + "]"; }
     public static final String NATIVE_OWNER = "native-local";
     public static final ClientIdentity NATIVE = new ClientIdentity(NATIVE_OWNER, "native", "Local native clients",
-            null, Instant.EPOCH, Set.of("translate", "summarize", "ask", "conversation"));
+            null, Instant.EPOCH, Set.of("translate", "summarize", "ask", "conversation", "knowledge-answer"));
 
     public static ClientIdentity current() {
         var auth = SecurityContextHolder.getContext().getAuthentication();

@@ -36,8 +36,7 @@ public class TextTaskSubmission {
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = profiles.resolve(profileId);
         // Worst-case UTF-8 input bytes conservatively stand in for tokens; reserve template and output.
-        if (input == null || input.isBlank() || textCharacters > profile.maxTextCharacters()
-                || input.getBytes(StandardCharsets.UTF_8).length > profile.contextBudget() - profile.outputBudget() - 512)
+        if (!fitsInput(profile, input, textCharacters))
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "INPUT_BUDGET");
         if (system.getBytes(StandardCharsets.UTF_8).length > 512)
             throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "PROMPT_BUDGET");
@@ -54,6 +53,14 @@ public class TextTaskSubmission {
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "OUTPUT_BUDGET");
             return mapping.apply(output);
         });
+    }
+    /** Uses the submission budget against the actual serialized candidate; submission revalidates. */
+    public boolean fitsInput(String profileId, String input) {
+        return fitsInput(profiles.resolve(profileId), input, input == null ? 0 : input.length());
+    }
+    private static boolean fitsInput(ModelProfile profile, String input, int textCharacters) {
+        return input != null && !input.isBlank() && textCharacters <= profile.maxTextCharacters()
+                && input.getBytes(StandardCharsets.UTF_8).length <= profile.contextBudget() - profile.outputBudget() - 512;
     }
     public Provider.ProviderReadiness readiness(String capability, String profileId) {
         if (!ClientIdentity.current().allowedCapabilities().contains(capability))

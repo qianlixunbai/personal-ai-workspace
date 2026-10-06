@@ -1,10 +1,19 @@
 # Personal AI Workspace — Current Architecture
 
-## K3 approved architecture — implementation NOT STARTED
+## Implemented K3 current architecture — CLOSED — GO
 
-**K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED。**
-Architecture Guard 已审核 K3 Reality Audit，architecture blockers: 0。
-[ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md) 记录批准契约；以下是待实施架构，非现有功能。
+**K3 — CLOSED — GO；FORMAL PUBLICATION — PENDING。**
+Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；blocking findings: 0。
+实际源码审查 baseline `e9737393916b7b256a31e7727e78be375ed490b1` → approved implementation candidate
+`c938e21539cc001576a243f8cfb2ba6163223d56`。
+[ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md) 为 Accepted 架构权威；
+[K3 Closing Report](../milestones/K3-CLOSING-REPORT.md) 记录实现与继承的执行证据。
+
+```text
+React Knowledge page → typed WPF bridge → RuntimeClient → KnowledgeAnswer API
+→ KnowledgeEvidenceAdmission → K2 deterministic retrieval → immutable evidence snapshot
+→ TaskManager / LOCAL_ONLY provider → strict parser → Runtime-owned citations → typed bridge result
+```
 
 新增独立 native-only `knowledge-answer`，仅在现有 Knowledge 页的 Ask Knowledge / 基于知识回答 card
 显式输入 question + lexical query（检索关键词）；沿用 K2 AND 检索，无 Ask mode、新 route、query rewrite 或自动注入。
@@ -16,7 +25,7 @@ lock order 保持 KnowledgeStore → lexical index publication，inference 不�
 依 K2 ranking、最多既有 10 candidates，按 actual profile limits 序列化完整输入并装入完整 chunk 的 ranked prefix；
 不跳过、不截断、不摘要。首项放不下、zero hits 或 index unavailable/disagreement 时无 model task。
 复用 `TextTaskSubmission.submitMapped → TaskManager → ProviderPolicy → LOCAL_ONLY → Ollama`，
-初始 `chat.balanced` / `knowledge-answer-v1`；新增 narrow immutable TaskResult subtype，ordinary string contracts 保持。
+使用 `chat.balanced` / `knowledge-answer-v1`；`TaskResult.KnowledgeAnswer` 为 immutable typed result，ordinary string contracts 保持。
 严格 JSON 仅 answer + non-empty unique admitted citation labels；duplicate keys/trailing/unknown/malformed 均整项拒绝。
 Runtime 映射真实 bounded safe citation metadata；plain answer 后列 Sources，v1 无 inline grammar。
 引用只证明模型引用了哪些 admitted evidence，不证明每句回答语义蕴含。
@@ -27,8 +36,10 @@ React question/query/answer/citations 仅内存，离页/session replacement 清
 无新 DB/schema migration/answer history/Conversation dependency/backup change；Runtime restart 不恢复 task/result。
 Imported evidence 不可信，system/evidence 分离；真正边界是 LOCAL_ONLY/no tools、Runtime citation authority、bounded input 与 typed bridge。
 Browser 在 body 前拒绝，Translate-only；Memory ≠ Knowledge ≠ Finance；Finance Integration BLOCKED pending F0，W1 NOT STARTED。
-T0 owning-layer 最小验证策略保持，WorkspaceSanity 不自动加入 inference；未来 real-model strict JSON gate 不合格须 STOP/独立复审，不放宽 parser。
-K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED，实施须另行显式授权。
+继承的 configured-local-model evidence 为 qwen3.5:4b / chat.balanced 三次代表性 contract gate PASS，
+不是永久固定模型要求，也不证明每句生成回答都由证据语义蕴含。T0 最小验证策略保持；本轮 tests/builds NONE。
+下一 milestone W1 — Controlled Web Access：NOT STARTED；下一独立活动 W1 Architecture / Planning，不授权实施。
+当前权威架构以上文为准；以下 K2/K1/M5 章节保留其原始历史快照。
 
 ## K2 deterministic lexical retrieval — CLOSED — GO
 
