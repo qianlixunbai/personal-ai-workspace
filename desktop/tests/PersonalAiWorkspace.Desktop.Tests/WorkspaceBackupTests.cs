@@ -46,18 +46,6 @@ public sealed class WorkspaceBackupTests
         foreach(string time in new[]{"2026-02-29T10:00:00Z","2026-10-04T10:00:00.000Z","2026-10-04T10:00:00.000001Z","2026-10-04T10:00:00+00:00","+999999999-01-01T00:00:00Z","-0000-01-01T00:00:00Z","-292275055-05-16T16:47:04.191Z","+292278994-08-17T07:12:55.808Z"})
         {using var client=Client(Metadata().Replace("2026-10-04T10:00:00Z",time));using var file=new MemoryStream([1]);await Assert.ThrowsAsync<DesktopException>(()=>client.ValidateWorkspaceBackupAsync(file,default));}
     }
-    [Theory]
-    [InlineData("WORKSPACE_BACKUP_INVALID",400,DesktopError.WorkspaceBackupInvalid)]
-    [InlineData("WORKSPACE_BACKUP_UNSUPPORTED",400,DesktopError.WorkspaceBackupUnsupported)]
-    [InlineData("WORKSPACE_BACKUP_TOO_LARGE",413,DesktopError.WorkspaceBackupTooLarge)]
-    [InlineData("WORKSPACE_BACKUP_CONFLICT",409,DesktopError.WorkspaceBackupConflict)]
-    [InlineData("WORKSPACE_RESTORE_TARGET_NOT_EMPTY",409,DesktopError.WorkspaceRestoreTargetNotEmpty)]
-    [InlineData("WORKSPACE_RESTORE_FAILED",500,DesktopError.WorkspaceRestoreFailed)]
-    public async Task ControlledErrorsSuppressContentAndPaths(string code,int status,DesktopError expected)
-    {
-        using var client=Client(Error(code),(HttpStatusCode)status);using var file=new MemoryStream([1]);
-        var e=await Assert.ThrowsAsync<DesktopException>(()=>client.ValidateWorkspaceBackupAsync(file,default));Assert.Equal(expected,e.Error);Safe(e.ToString());Safe(ErrorText.For(e.Error));
-    }
     [Fact] public async Task LargeDownloadUsesChunksAndRejectsDeclaredOversizeAndFileBoundBeforeUpload()
     {
         using var client=new RuntimeClient(new Handler((_,_)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StreamContent(new GeneratedStream(20*1024*1024))

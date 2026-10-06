@@ -1,5 +1,18 @@
 # Personal AI Workspace
 
+## 当前工程验证入口
+
+T0 CLOSING REVIEW — APPROVED — GO；T0 — CLOSED — GO。
+Architecture Guard 已独立审查实际远端 K2 baseline → T0 candidate diff；
+Blocking findings / required production fixes / required new tests / required reruns 均为 0。
+K2 — CLOSED — GO；K3 — NOT STARTED。下一项独立任务为 Detailed V1 Roadmap Expansion，
+之后为 K3 — Grounded Knowledge Answer + Citations 的 Architecture / Planning；实施仍需授权。
+Finance Integration — BLOCKED，pending authoritative Finance Reality Sync。
+当前测试命令、保留不变量和唯一 Windows WorkspaceSanity flow 见
+[T0 Test Suite Slimming](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
+下列里程碑章节保留历史交付语境；旧 smoke/acceptance 入口已退役，源码可从 Git 历史查看。
+实际 packaged launcher 验证属于 release/P1 gate，不是 T0 的日常回归入口。
+
 ## 当前 K2 正式批准状态
 
 长期 V1 主线与平台边界见 [V1 Roadmap](docs/roadmap/V1-ROADMAP.md)。
@@ -19,7 +32,7 @@ K3 / K4 — NOT STARTED。Finance Integration — BLOCKED，pending authoritativ
 一次最小 actual packaged launcher PASS。生产候选保持 `3a5efc1`；本轮未重跑全量回归或 build/publish。
 单条 query-race 已在恢复轮通过；前三次 harness 失败及 STOP 历史保留于
 [K2 Closing Report](docs/milestones/K2-CLOSING-REPORT.md)，含独立正式 Closing Review 结论。
-下一步为 T0 — Aggressive Test Suite Consolidation / Slimming；本轮不启动。
+T0 — Aggressive Test Suite Consolidation / Slimming — CLOSED — GO；K3 未启动。
 以下 K1 章节保留已批准的历史基线语境。
 
 ## 当前 K1 正式批准状态
@@ -147,16 +160,12 @@ Browser companion 继续 Translate-only；ADR-001..010 **Accepted**，Java produ
 
 M5C Release acceptance 复现：先构建 Runtime 与 frontend，确保 8765/18766/11435 空闲和本机 Ollama 模型可用：
 
-```powershell
-.\mvnw.cmd clean verify
-npm --prefix desktop/frontend run build
-python -X utf8 scripts/conversations-workspace-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 脚本使用任务专用临时 Runtime/data、临时 WinCred target、内存中的计数 relay；不停止既有 listener，不修改用户凭据。
 新 Conversation editor 必须通过真实 Windows 拼音。`--manual-ime` 提供同一 production 页面中的真实输入步骤，未成立时只报告 PARTIAL。
 只保留检查/计数/性能，正文与凭据不进入 Git/evidence；InPrivate cleanup 与 marker scan 不承诺 forensic erase。
-M5B 回归：`python -X utf8 scripts/assistant-translate-smoke.py`。
+M5B 回归：历史脚本 `assistant-translate-smoke.py`（T0 已退役）。
 
 已批准历史：[M5A Closing Report](docs/milestones/M5A-CLOSING-REPORT.md)、[M5B Closing Report](docs/milestones/M5B-CLOSING-REPORT.md) 保留原快照。
 M5A shell 的真实 IME 当时 deferred，M5B 的生产 Assistant 编辑器已正式通过；M5C implementation acceptance 对新 Conversation 编辑器单独完成真实验收。
@@ -217,11 +226,7 @@ Desktop64KiB缓冲、Runtime逐条解析；文件/body上限 **101,393,896,192 b
 Memory-only `/api/v1/memory/backup` contract 与fresh-v1 restore独立保留，不能用于恢复Conversation。
 详细字段/canonical规则/路径策略见 [ADR-007](docs/ADR/ADR-007-logical-workspace-backup-restore.md)。
 
-```powershell
-.\mvnw.cmd clean verify
-dotnet test desktop/PersonalAiWorkspace.Desktop.slnx
-python -X utf8 scripts/workspace-backup-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 真实恢复脚本只使用隔离合成数据，删除original Workspace后，以真实WPF/HTTP/SQLite/Ollama验证恢复与续聊。
 Final closing baseline：Java105/Desktop136 PASS；Browser继续Translate-only，普通Ask继续stateless。
@@ -264,10 +269,7 @@ Workspace SQLite additive v2 → v3 migration 保留 M4A/M3 source；Memory logi
 **Memory export 不包含 Conversation，不能用于 Conversation recovery。** Dedicated Retry = **NOT IMPLEMENTED BY DESIGN**；用户再次尝试须明确发送新 Turn。
 Browser 仍 Translate-only；无 edit/regenerate/branching、自动 Memory/retrieval、streaming、Knowledge/RAG、Finance、Agent、React/WebView2 Main Workspace。
 
-```powershell
-.\mvnw.cmd clean verify
-python -X utf8 scripts/conversation-execution-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 真实 smoke 使用隔离临时数据和凭据，驱动生产 WPF entry/controls、HTTP、SQLite、Ollama，验证多轮、逐轮 Memory、cancel、reopen/continue、失败与启动无重放。
 真实 timeout 未稳定制造；自动 queue/execution timeout 测试是主证据。完整结果见 [M4B Closing Report](docs/milestones/M4B-CLOSING-REPORT.md)。
@@ -316,10 +318,7 @@ Browser仍Translate-only，Conversation所有route/method/preflight/originless�
 没有multi-turn AI execution、context assembly、automatic Memory/retrieval、RAG、Knowledge、Agent、Finance、
 React/WebView2 Main Workspace、Browser Conversation access、edit/regenerate/branching、Conversation logical backup/restore/portable recovery。
 
-```powershell
-.\mvnw.cmd clean verify
-python scripts/conversation-storage-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 该smoke使用isolated synthetic data、test-only internal fixture和四个独立Runtime进程；
 不调用模型，不接触用户Memory/WinCred；证据只含IDs/status/counts/PASS-FAIL。
@@ -362,10 +361,7 @@ title/content 去空白检查非空，但保存原始正文/换行。搜索 quer
 
 真实 packaged restart smoke 不需要 Ollama，自动使用隔离临时 Memory/auth 目录和合成文本：
 
-```powershell
-.\mvnw.cmd clean test package
-python scripts/memory-storage-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 M3历史 closing Java **63** / Desktop **106** PASS（保留原 Java54 / Desktop94）；M3 最终真实 WPF/HTTP/SQLite/Ollama / logical recovery 综合验收 PASS。
 
@@ -384,10 +380,7 @@ revision conflict 保留本地文本并禁止继续修改服务器；须显式 R
 真实验收使用临时数据与测试凭据，不访问 Windows Credential Manager 或用户 Memory；不需要 Ollama。
 运行前 `127.0.0.1:8765` 必须空闲，脚本不会停止现有 Runtime。
 
-```powershell
-.\mvnw.cmd package -DskipTests
-python scripts/desktop-memory-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 验收 harness 位于 `desktop/acceptance/`，不属于产品入口或默认 solution tests；脚本自动 build，再驱动真实 WPF controls。
 
@@ -426,10 +419,7 @@ Browser仍Translate-only，不能调用Memory Ask。没有自动Memory检索/选
 报告：[M3C-1 Report](docs/milestones/M3C-1-EXPLICIT-MEMORY-ASK-REPORT.md)；决策：[ADR-005](docs/ADR/ADR-005-explicit-memory-context.md)。
 真实验收要求既有本机Ollama与配置模型可用、8765空闲；使用隔离synthetic Memory与临时凭据，不访问用户Memory/WinCred：
 
-```powershell
-.\mvnw.cmd package -DskipTests
-python scripts/desktop-memory-ask-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 ## M3C-2 — Logical Memory Export / Restore
 
@@ -476,10 +466,7 @@ server 已接收的 restore 不能被撤回，通信结果不明确时检查所�
 
 真实 Windows synthetic-only integrated acceptance（要求8765空闲、本机Ollama/configured model可用）：
 
-```powershell
-.\mvnw.cmd package -DskipTests
-python scripts/desktop-memory-backup-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 自动验收注入 native picker choices，并使用真实 WPF controls、file IO、HTTP、SQLite 和 Ollama。
 不访问用户 Memory/WinCred，不停止用户 Runtime；test-owned source/auth/backup/targets 全部清理。
@@ -518,16 +505,7 @@ M2 — Browser Convergence：**CLOSED — GO**；历史报告保留各阶段当�
 开发机需要 Node20.19+/22.12+、npm 与现有 .NET/Java。用户运行发布目录无需 Node/npm/Vite。
 React 使用本地 bundled assets，不直接访问 Runtime；凭据、文件与备份操作在原生窗口完成。
 
-```powershell
-cd desktop/frontend
-npm ci
-npm test
-npm run build
-cd ../..
-dotnet build desktop/PersonalAiWorkspace.Desktop.slnx -c Release
-dotnet publish desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj -c Release
-python -X utf8 scripts/main-workspace-smoke.py
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 普通 build/publish 会自动执行 npm ci/build，并验证 production assets。已构建的流水线可使用
 `-p:FrontendSkipBuild=true`，但仍须有 Node 和有效 manifest；不允许缺失 assets 静默发布。
@@ -801,20 +779,14 @@ MV3 为 **38.231 秒**：35 秒 verification relay delay 后真实 inference，p
 复杂页面验收使用等价 guide + sidebar/nested scroll，未使用真实 MDN 网站；不据此扩大版本/平台或翻译质量保证。
 详细历史来源见 [M2 Closing Report](docs/milestones/M2-CLOSING-REPORT.md)。
 
-```powershell
-.\mvnw.cmd clean verify
-.\scripts\real-local-smoke.ps1
-.\scripts\browser-security-smoke.ps1
-.\scripts\browser-security-smoke.ps1 -Batch
-git diff --check
-```
+该阶段的历史验证入口已由 T0 退役；当前命令见 [T0 工程记录](docs/engineering/T0-TEST-SUITE-SLIMMING.md)。
 
 自动测试使用 fake work 和 loopback HTTP mock server，不依赖本机 Ollama。
 M2B-2A：Java 29 / Desktop 67 PASS，native 三能力与 synthetic browser Single/Batch 安全 smoke REAL PASS。
 Batch smoke 使用 Python 3 标准库的仅验证 loopback relay 计数实际 Ollama `/api/chat`，证明 3 records / 1 POST / 1 task / 1 inference / 3 valid mappings。
 Relay 只在验证中转发到现有本机 Ollama，不是产品 Provider；不记录正文，不修改 Ollama。
 M2B-2B-R1：Java 30 / Desktop 67 PASS；native、synthetic Single/Batch 与真实 Chrome 154 限定安全链路 PASS。
-真实 Chrome 验证脚本 `scripts/chrome-get-security-smoke.js` 使用 Node 24、现有 Java/Chrome、未修改的 sibling Extension candidate。
+历史 Chrome 验证脚本 `chrome-get-security-smoke.js`（T0 已退役）使用 Node 24、现有 Java/Chrome、未修改的 sibling Extension candidate。
 参数为实际 `java.exe`、`chrome.exe`、可选 Extension repo 路径；拒绝占用端口，使用隔离 dev authority/profile，验证后 revoke/停止自有进程并清理含 credential 的临时 profile。
 该脚本只验收 exchange/readiness/Batch/polling/result/security，不执行完整 Extension Closing 或 WPF GUI 验收。
 `scripts/privacy-audit.py` 从 stdin 接收内存中的临时凭据，扫描 source/build/archive/log/evidence，不保存或输出秘密。

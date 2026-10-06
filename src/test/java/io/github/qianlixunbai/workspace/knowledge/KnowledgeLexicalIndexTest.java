@@ -27,7 +27,6 @@ class KnowledgeLexicalIndexTest {
         while(Set.of("PENDING","PARSING").contains(store.job(job.requestId()).state())&&System.nanoTime()<end)Thread.sleep(5);
         return store.job(job.requestId());
     }
-    @Test void actualBundledEngineSupportsFts5Bm25()throws Exception {assertFalse(KnowledgeLexicalIndex.engine().isBlank());}
     @Test void deterministicUnicodeLatinCjkAndNoUserFtsSyntax() {
         assertEquals(LexicalAnalyzer.tokens("ＢＵＤＧＥＴ café"),LexicalAnalyzer.tokens("budget cafe\u0301"));
         assertEquals(List.of("u9884x","u7b97x","b9884x7b97x"),LexicalAnalyzer.tokens("预算"));

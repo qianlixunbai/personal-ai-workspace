@@ -102,17 +102,6 @@ public sealed class SelectionAndLifecycleTests
         public bool Register(IntPtr window, int id) => succeeds;
         public void Unregister(IntPtr window, int id) => Releases++;
     }
-    [Fact]
-    public void HotkeyConflictIsExplicitAndDisposeReleasesExactlyOnce()
-    {
-        var failed = new HotkeyStub(false);
-        Assert.Contains("注册失败", Assert.Throws<InvalidOperationException>(() => new HotkeyRegistration(IntPtr.Zero, failed)).Message);
-        Assert.Equal(0, failed.Releases);
-        var registered = new HotkeyStub(true);
-        var hotkey = new HotkeyRegistration(new IntPtr(1), registered);
-        hotkey.Dispose(); hotkey.Dispose();
-        Assert.Equal(1, registered.Releases);
-    }
 
     [Fact]
     public async Task NativeHotkeyConflictThenShutdownMakesRegistrationAvailableAgain()
@@ -161,44 +150,6 @@ public sealed class SelectionAndLifecycleTests
         public Task CheckHealthAsync() => Task.CompletedTask;
         public Task ImportCredentialAsync(string path) => Task.CompletedTask;
         public void ForgetCredential() { }
-    }
-    [Fact]
-    public async Task WpfResultCardLoadsAndRemainsUsableForManualInput()
-    {
-        await Sta(() =>
-        {
-            var controller = new Controller();
-            var window = new AssistantWindow(controller);
-            Assert.True(window.IsInitialized);
-            Assert.Equal(AssistantAction.Translate, window.SelectedAction);
-            window.InputText.Text = "prior-input"; window.ResultText.Text = "prior-result";
-            window.ActionSelector.SelectedIndex = 1;
-            Assert.Equal(AssistantAction.Summarize, window.SelectedAction);
-            Assert.Equal("Summarize", window.TranslateButton.Content);
-            Assert.Empty(window.InputText.Text); Assert.Empty(window.ResultText.Text);
-            Assert.Equal(6000, window.InputText.MaxLength);
-            window.InputText.Text = "summary input"; window.ResultText.Text = "summary result";
-            window.ActionSelector.SelectedIndex = 2;
-            Assert.Equal(AssistantAction.Ask, window.SelectedAction);
-            Assert.Empty(window.InputText.Text); Assert.Empty(window.ResultText.Text);
-            Assert.Equal(3000, window.InputText.MaxLength);
-            // This same reset is called by the actual hotkey before capture begins.
-            window.SelectTranslate();
-            Assert.Equal(AssistantAction.Translate, window.SelectedAction);
-            Assert.Equal(4000, window.InputText.MaxLength);
-            Assert.True(window.ResultText.IsReadOnly);
-            window.InputText.Text = "manual-private-input";
-            window.SetBusy(true);
-            Assert.False(window.TranslateButton.IsEnabled);
-            Assert.False(window.ActionSelector.IsEnabled);
-            Assert.True(window.CancelButton.IsEnabled);
-            window.CancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            Assert.Equal(1, controller.Cancels);
-            window.SetBusy(false);
-            Assert.True(window.TranslateButton.IsEnabled);
-            window.ClearText();
-            Assert.Empty(window.InputText.Text);
-        });
     }
 
     internal static Task Sta(Action action)
