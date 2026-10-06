@@ -6,10 +6,10 @@ Date: 2026-10-06 (Asia/Shanghai)
 
 Approval provenance: Architecture Guard reviewed the K3 Reality Audit and issued
 **K3 — Grounded Knowledge Answer + Citations: ARCHITECTURE REVIEW — APPROVED — GO**,
-with zero architecture blockers. The user-supplied approved decisions are authoritative.
-This record does not authorize implementation or independently approve documentation/source review.
-Documentation baseline: clean `main`, HEAD = freshly fetched `origin/main` =
-`2b6274c9413ffa732ae9d5fbca24d1ad3a29c931`; docs-only branch `docs/k3-architecture`.
+with zero architecture blockers. The Architecture Guard-approved decisions recorded
+here are authoritative for K3 architecture.
+Decision baseline: authoritative main
+`2b6274c9413ffa732ae9d5fbca24d1ad3a29c931`.
 
 ## Purpose, explicit inputs and permanent boundaries
 
@@ -241,13 +241,15 @@ local K3 inference/acceptance gate may be required during implementation to esta
 that the configured model can satisfy strict JSON output. This is a future gate,
 not executed evidence. If compliance is unacceptable, **STOP**; do not weaken
 validation to pass. Separately review a K3-specific profile or structured-output
-support before continuing. This architecture record runs **no tests/builds**.
+support before continuing.
 
-## Explicit exclusions and review handoff
+## Explicit exclusions and implementation authorization
 
 No K3 implementation is authorized here. No automatic Knowledge for Ask/Conversation,
 Ask mode, semantic/vector search, embeddings, query rewrite, Web, Finance, Vision,
 Browser expansion, persistent answer history or Conversation integration is included.
 K1/K2 truth and backup formats stay unchanged. Finance Freeze and W1 NOT STARTED
-remain untouched. Next: Architecture Guard documentation/source review; implementation
-requires separate explicit authorization.
+remain untouched.
+
+**K3 Architecture — APPROVED — GO. K3 implementation — NOT STARTED.**
+Implementation requires separate explicit authorization.

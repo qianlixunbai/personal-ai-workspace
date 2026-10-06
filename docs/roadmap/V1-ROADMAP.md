@@ -563,7 +563,7 @@ zero hits/index unavailable/首项超预算无 model task；invalid model result
 semantic/vector/embeddings/Web/Vision/Browser expansion/persistent history；Browser Translate-only，Finance Freeze，W1 NOT STARTED。
 **验证与下一步：** T0 最小 owning-layer 策略保持，不复制 K2 ranking/index 测试；WorkspaceSanity 不自动加入 inference。
 未来 focused real-model strict JSON gate 若不合格须 STOP，独立复审 profile/structured-output，不能放宽 parser。
-当前仅架构文档，tests/builds executed: NONE；下一步 Architecture Guard documentation/source review，实施须另行显式授权。
+下一步为 K3 implementation planning / explicit implementation authorization；实施须另行显式授权，当前保持 NOT STARTED。
 
 ### W1 — Controlled Web Access
 
@@ -889,6 +889,7 @@ accessibility、统一 identity、经过 clean-install/migration/privacy/final W
 **Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。**
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
-当前下一项独立架构活动为 **Architecture Guard K3 documentation/source review**；K3 实施仍未启动。
+下一项独立活动为 **K3 implementation planning / explicit implementation authorization**；
+在取得明确实施授权前，K3 implementation 保持 NOT STARTED。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。

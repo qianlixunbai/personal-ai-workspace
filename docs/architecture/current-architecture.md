@@ -1,4 +1,4 @@
-# Current Architecture — K1 Deterministic Knowledge Foundation
+# Personal AI Workspace — Current Architecture
 
 ## K3 approved architecture — implementation NOT STARTED
 
@@ -28,7 +28,7 @@ React question/query/answer/citations 仅内存，离页/session replacement 清
 Imported evidence 不可信，system/evidence 分离；真正边界是 LOCAL_ONLY/no tools、Runtime citation authority、bounded input 与 typed bridge。
 Browser 在 body 前拒绝，Translate-only；Memory ≠ Knowledge ≠ Finance；Finance Integration BLOCKED pending F0，W1 NOT STARTED。
 T0 owning-layer 最小验证策略保持，WorkspaceSanity 不自动加入 inference；未来 real-model strict JSON gate 不合格须 STOP/独立复审，不放宽 parser。
-本次仅文档记录，tests/builds executed: NONE；下一步 Architecture Guard documentation/source review。
+K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED，实施须另行显式授权。
 
 ## K2 deterministic lexical retrieval — CLOSED — GO
 
