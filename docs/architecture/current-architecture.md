@@ -1,5 +1,35 @@
 # Current Architecture — K1 Deterministic Knowledge Foundation
 
+## K3 approved architecture — implementation NOT STARTED
+
+**K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED。**
+Architecture Guard 已审核 K3 Reality Audit，architecture blockers: 0。
+[ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md) 记录批准契约；以下是待实施架构，非现有功能。
+
+新增独立 native-only `knowledge-answer`，仅在现有 Knowledge 页的 Ask Knowledge / 基于知识回答 card
+显式输入 question + lexical query（检索关键词）；沿用 K2 AND 检索，无 Ask mode、新 route、query rewrite 或自动注入。
+KnowledgeStore snapshot/monitor 内完成 K2 search、authoritative corpus/revision/range verification、exact
+normalized evidence reconstruction 与 immutable EvidenceSnapshot；释放边界后才提交模型任务。
+lock order 保持 KnowledgeStore → lexical index publication，inference 不持有 Knowledge lock；UI snippet 不是真相。
+
+证据由 Runtime 标记 S1/S2，保留真实 document/revision/range/typed locator 与 provenance；模型只见必要 label/title/heading/text。
+依 K2 ranking、最多既有 10 candidates，按 actual profile limits 序列化完整输入并装入完整 chunk 的 ranked prefix；
+不跳过、不截断、不摘要。首项放不下、zero hits 或 index unavailable/disagreement 时无 model task。
+复用 `TextTaskSubmission.submitMapped → TaskManager → ProviderPolicy → LOCAL_ONLY → Ollama`，
+初始 `chat.balanced` / `knowledge-answer-v1`；新增 narrow immutable TaskResult subtype，ordinary string contracts 保持。
+严格 JSON 仅 answer + non-empty unique admitted citation labels；duplicate keys/trailing/unknown/malformed 均整项拒绝。
+Runtime 映射真实 bounded safe citation metadata；plain answer 后列 Sources，v1 无 inline grammar。
+引用只证明模型引用了哪些 admitted evidence，不证明每句回答语义蕴含。
+
+accepted task 使用 frozen snapshot；update/archive/delete 不改输入，preview 使用 admitted revision，删除后可不可用。
+固定 typed submit/get/cancel bridge、bounded current-session task authority；late response 不授权新 session/不恢复已清 UI。
+React question/query/answer/citations 仅内存，离页/session replacement 清除，IME composition Enter 不提交，无 autosubmit/replay。
+无新 DB/schema migration/answer history/Conversation dependency/backup change；Runtime restart 不恢复 task/result。
+Imported evidence 不可信，system/evidence 分离；真正边界是 LOCAL_ONLY/no tools、Runtime citation authority、bounded input 与 typed bridge。
+Browser 在 body 前拒绝，Translate-only；Memory ≠ Knowledge ≠ Finance；Finance Integration BLOCKED pending F0，W1 NOT STARTED。
+T0 owning-layer 最小验证策略保持，WorkspaceSanity 不自动加入 inference；未来 real-model strict JSON gate 不合格须 STOP/独立复审，不放宽 parser。
+本次仅文档记录，tests/builds executed: NONE；下一步 Architecture Guard documentation/source review。
+
 ## K2 deterministic lexical retrieval — CLOSED — GO
 
 长期主线及跨阶段平台边界见 [V1 Roadmap](../roadmap/V1-ROADMAP.md)；未来实施仍需各阶段独立授权。
