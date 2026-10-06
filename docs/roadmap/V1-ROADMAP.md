@@ -13,7 +13,9 @@
 正式 closing authority 属于 Architecture Guard。
 
 **列入路线图只定义预期范围与顺序，不授权实施。** 每个未来阶段或主要跨阶段平台任务，
-均须独立完成适用的 architecture review、范围确认和实施授权。本文件本身不批准 K3。
+均须独立完成适用的 architecture review、范围确认和实施授权。K3 Architecture — APPROVED — GO
+来自 Architecture Guard 的独立审核，见 [ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md)；
+本文件不授权实施，K3 implementation — NOT STARTED。
 本文件已完成阶段的事实基线锚定 T0 formal closing 时的 main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`。
 后续更新应保持事实、规划和批准来源可区分，不把计划追写成早期成果。
 
@@ -90,7 +92,7 @@ Portable logical backup 是产品原则；当前各备份格式的范围独立�
 | 09 | K1 | Deterministic Knowledge Foundation & Recovery | CLOSED — GO | K0 |
 | 10 | K2 | Deterministic Lexical Retrieval | CLOSED — GO | K1 truth / locators |
 | — | T0 工程门禁 | Test Suite Consolidation / Slimming | CLOSED — GO | K2 closing；位于 K3 前 |
-| 11 | K3 | Grounded Knowledge Answer + Citations | NOT STARTED | K2 / 独立架构审核 |
+| 11 | K3 | Grounded Knowledge Answer + Citations | Architecture APPROVED — GO；implementation NOT STARTED | K2 / ADR-013；实施须独立授权 |
 | 12 | W1 | Controlled Web Access | NOT STARTED | K3 后的工具/策略审核 |
 | 13 | V1 | Multimodal / Vision Foundation | NOT STARTED | Model Management Foundation |
 | 14 | F0 | Finance Reality Sync | NOT STARTED | authoritative Finance worktree |
@@ -525,28 +527,43 @@ Runtime/Ollama 当前不由 Desktop exit-time supervisor 管理；固定模型�
 
 ## 8. 未来领域阶段（规划，不构成实施授权）
 
-本节全部为 planned / target / future architecture，须阶段独立审核。
+本节全部为 planned / target / future capability；K3 架构已独立批准，其余须阶段独立审核。
 明确的长期边界是设计约束，不代表相关 API/schema/UI 已落地。
 
 ### K3 — Grounded Knowledge Answer + Citations
 
-**阶段定位 / 进入前状态：** NOT STARTED。K2 可以找到并预览证据，但不会生成回答或模型引用。
-K3 计划把 deterministic retrieval 转为可核对来源的本地模型辅助回答。
+**阶段定位 / 状态：** K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED。
+Architecture Guard 已批准 K3 Reality Audit，architecture blockers: 0；权威契约见
+[ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md)。K2 当前仍只检索/预览，不生成回答。
 
-**计划核心工作：** 用户问题 → bounded Knowledge retrieval → selected evidence → local model
-→ grounded answer → citations back to actual source / revision / locator。
-检索继续作为确定性 evidence source；回答应区分 source evidence 与 model synthesis，引用须可回到实际来源。
-不足的证据不能被表述成已验证事实。最终 evidence selection、prompt、citation DTO/renderer/API 由 K3 review 决定。
+**批准核心工作：** explicit question + explicit lexical query → deterministic K2 AND retrieval
+→ 同一 KnowledgeStore snapshot/monitor 内 corpus verification + exact normalized evidence reconstruction
+→ immutable EvidenceSnapshot → 释放 Knowledge boundary → local model → strict validation → grounded answer + Runtime citations。
+lock order 保持 KnowledgeStore → lexical index publication，inference 不持锁；React/WPF snippet 不是真相。
+依 K2 ranking、至多既有 10 candidates，按 active profile actual input limits 装入完整 chunk 的 ranked prefix；
+首项不适配即受控失败/无 model task，不跳过、不截断、不摘要，无 v1 excerpt policy。
 
-**目标用户能力：** 未来能够基于已导入材料提问，看到有来源支撑的回答并核对原文。
-**核心技术与组件：** 计划复用 K2 retrieval、K1 locators、Runtime orchestration、local model、typed WPF bridge 与 Workspace UI。
-**数据与持久化：** Knowledge truth 继续属于 `knowledge.db`，index 仍 derived；是否保存回答/引用及如何与 Conversation 关联待 review。
-不据此预定新 schema 或让模型回答回写 source truth。
+**目标用户能力：** 现有 Knowledge 页内 Ask Knowledge / 基于知识回答 card，显式输入 question 和检索关键词；
+plain answer 后列 引用来源 / Sources，打开 admitted exact revision/range。仅 answer-level citations，无 inline grammar。
+引用说明模型引用的 admitted evidence，不构成每句回答的语义或密码学证明。
+**核心技术与组件：** 独立 native-only `knowledge-answer`；优先 narrow knowledge-package evidence admission owner；
+复用 `TextTaskSubmission.submitMapped` / TaskManager / ProviderPolicy / LOCAL_ONLY Ollama，初始 `chat.balanced`、
+prompt `knowledge-answer-v1`。新增 narrow immutable TaskResult subtype；不改 ordinary string contracts。
+严格 JSON 仅 non-empty answer + non-empty unique admitted labels；malformed/duplicate/trailing/unknown 整项拒绝，无过滤/partial/ungrounded fallback。
+Runtime 从 frozen snapshot 映射真实 citations；update/archive/delete 不改 accepted input，不替换成 latest revision，删除后 preview 可不可用。
 
-**安全与权限边界：** 计划只在批准的本地 evidence budget 下使用材料；无 hidden automatic Memory mutation、Finance truth creation 或 unrestricted Web。
-**与其他领域的关系：** 基于 Knowledge 回答与普通 Ask/Conversation 语义须明确区分；不能自动把每次 Ask 变成 Knowledge 查询。
-**明确不做：** 不预定模型名、embedding model、vector DB、最终 prompt/API/schema/citation DTO；无 semantic/vector prerequisite，除非另行审核。
-**阶段结果 / 依赖：** NOT STARTED；依赖 K2，下一步只可进入独立 K3 Architecture / Planning，随后才可能授权实施。
+**数据与持久化：** `knowledge.db` truth / derived disposable index 保持；question/query/answer/citations 仅内存。
+无新 DB/schema migration/answer or citation history/Conversation dependency/backup change，reload/session replacement/restart 不恢复。
+**安全与权限边界：** 固定 typed submit/get/cancel、bounded current-session task authority；accepted submission 后才授权 task，
+validated citations 可授权真实 document preview，late response 不授权 replacement session/不恢复清空 UI。
+离 Knowledge 页/session replacement 清除，无 autosubmit/自动 replay；IME composition Enter 不提交。
+Imported evidence 不可信、system/evidence 结构分离；真正边界为 LOCAL_ONLY/no tools/no Web/no Finance、Runtime citation mapping 与 typed bridge。
+zero hits/index unavailable/首项超预算无 model task；invalid model result FAILED；cancel/timeout late result 不胜出。
+**与其他领域的关系 / 明确不做：** 无 Ask mode/new route/automatic Ask or Conversation Knowledge/query rewrite/
+semantic/vector/embeddings/Web/Vision/Browser expansion/persistent history；Browser Translate-only，Finance Freeze，W1 NOT STARTED。
+**验证与下一步：** T0 最小 owning-layer 策略保持，不复制 K2 ranking/index 测试；WorkspaceSanity 不自动加入 inference。
+未来 focused real-model strict JSON gate 若不合格须 STOP，独立复审 profile/structured-output，不能放宽 parser。
+下一步为 K3 implementation planning / explicit implementation authorization；实施须另行显式授权，当前保持 NOT STARTED。
 
 ### W1 — Controlled Web Access
 
@@ -868,9 +885,11 @@ accessibility、统一 identity、经过 clean-install/migration/privacy/final W
 已完成：**M0 / M1 / M1.5 / M2 / M3 / M4 / M5 / K1 / K2 / T0 — CLOSED — GO**；
 **K0 — APPROVED — GO**。M5A–M5E 均为已关闭的内部阶段。
 
-**K3 — NOT STARTED。Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync。**
+**K3 Architecture — APPROVED — GO；K3 implementation — NOT STARTED。**
+**Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。**
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
-当前下一项独立架构活动为 **K3 — Architecture / Planning**；K3 仍未启动。
+下一项独立活动为 **K3 implementation planning / explicit implementation authorization**；
+在取得明确实施授权前，K3 implementation 保持 NOT STARTED。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。

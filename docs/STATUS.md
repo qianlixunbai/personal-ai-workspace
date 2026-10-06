@@ -1,5 +1,18 @@
 # Personal AI Workspace — Current Status
 
+## Current K3 approved architecture
+
+**K3 Architecture — APPROVED — GO。K3 implementation — NOT STARTED。**
+Architecture Guard K3 Reality Audit review：ARCHITECTURE REVIEW — APPROVED — GO；architecture blockers: 0。
+[ADR-013](ADR/ADR-013-grounded-knowledge-answer-citations.md) 已记录 explicit native-only `knowledge-answer`、
+question + lexical query、单一 Knowledge consistency boundary 内 authoritative immutable evidence admission、
+完整 K2 chunk 的 deterministic ranked prefix、strict JSON 与 Runtime-owned answer-level citations。
+这不是已交付功能：无新 route/Ask mode/automatic Knowledge injection，无 K3 persistence/schema/backup changes。
+Browser 仍 Translate-only；Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync；W1 — NOT STARTED。
+Next: K3 implementation planning / explicit implementation authorization。
+在取得独立明确实施授权前，K3 implementation 保持 NOT STARTED。
+以下 T0/K2 及更早章节保留形成时的状态与下一步历史快照；当前 K3 状态以上文为准。
+
 ## T0 engineering cleanup
 
 T0 CLOSING REVIEW — APPROVED — GO; T0 — CLOSED — GO.

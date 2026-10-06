@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-记录已经采用且影响真实实现的架构决策，不作为执行 roadmap。
+记录已经采用的架构决策，不作为执行 roadmap；Accepted 不等于已实施，实施状态见 STATUS。
 
 | ADR | 状态 | 决策 |
 | --- | --- | --- |
@@ -16,3 +16,4 @@
 | [ADR-010](ADR-010-frontend-build-desktop-distribution.md) | Accepted | 单一 npm/React/TS/Vite package、bundled build/publish、Debug dev-only、原生 fallback |
 | [ADR-011](ADR-011-knowledge-domain-storage-ingestion-recovery.md) | Accepted | Knowledge 独立 ownership、private sources/schema、deterministic ingestion/revision/locator、publication/reconciliation、独立 backup/restore；既有 Architecture Guard K0 approval |
 | [ADR-012](ADR-012-deterministic-lexical-retrieval.md) | Accepted | K2 deterministic lexical retrieval、独立 derived FTS5/BM25 index、fingerprint freshness、bounded rebuild、native-only/privacy；Architecture Guard K2 approval |
+| [ADR-013](ADR-013-grounded-knowledge-answer-citations.md) | Accepted（仅架构；implementation NOT STARTED） | K3 explicit native-only knowledge-answer、question + lexical query、atomic immutable evidence admission、ranked full-chunk prefix、strict JSON / Runtime-owned answer-level citations；Architecture Guard K3 APPROVED — GO |
