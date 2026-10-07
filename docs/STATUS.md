@@ -6,8 +6,10 @@
 Architecture Guard：**W1 — Controlled Web Access: ARCHITECTURE GUARD REVIEW — APPROVED — GO**；
 architecture blockers: 0；read-only W1 Reality Audit 已完成。Architecture publication 已授权，implementation 未授权。
 Decision baseline：`main / origin/main`，`af3c842906174801b6c434a255e826300e37a72b`。
-[ADR-014](ADR/ADR-014-controlled-web-access.md) 为 Accepted；本次 architecture publication candidate 仍需
-**ARCHITECTURE GUARD CLOSING REVIEW**，不表示已完成 publication closing 或已交付 Web 功能。
+[ADR-014](ADR/ADR-014-controlled-web-access.md) 为 Accepted；**W1 Architecture Publication Closing Review — APPROVED — GO**。
+Reviewed architecture candidate：`1ac8cfb9eac61a203c7426afcd9424dd0338888b`；blocking findings / required architecture fixes /
+required production fixes / required tests/builds: 0。
+**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；Web implementation 仍 NOT STARTED。
 
 W1 v1 锁定 Option D：独立 native-only Web / Search Web + Fetch URL，用户显式 query/URL，
 question 与 public search query 分开；React intent → typed WPF validation → native exact-intent confirmation

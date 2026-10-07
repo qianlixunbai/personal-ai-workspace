@@ -11,8 +11,11 @@ Decision baseline: authoritative `main / origin/main`
 `af3c842906174801b6c434a255e826300e37a72b`.
 
 **W1 implementation — NOT STARTED.** This task authorizes architecture publication only;
-production implementation requires separate authorization. Architecture Guard closing review
-of this publication candidate remains required.
+production implementation requires separate authorization.
+**W1 Architecture Publication Closing Review — APPROVED — GO.**
+Reviewed architecture candidate: `1ac8cfb9eac61a203c7426afcd9424dd0338888b`.
+Blocking findings / required architecture fixes / required production fixes / required tests/builds: 0.
+**Formal architecture publication — COMPLETE** upon publication of this closing commit to main.
 Next independent implementation activity:
 **W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**.
 
@@ -209,4 +212,4 @@ content types, durable Web cache/history and explicit save-to-Knowledge. Each re
 separate applicable review; no generic tools, evidence or connector framework is approved.
 
 **W1 Architecture — APPROVED — GO. W1 implementation — NOT STARTED.**
-**ARCHITECTURE GUARD CLOSING REVIEW — REQUIRED.**
+**ARCHITECTURE PUBLICATION CLOSING REVIEW — APPROVED — GO.**

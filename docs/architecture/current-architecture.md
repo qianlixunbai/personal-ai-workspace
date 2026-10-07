@@ -6,7 +6,8 @@
 Architecture Guard W1 ARCHITECTURE GUARD REVIEW — APPROVED — GO；architecture blockers: 0。
 Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 发布 read-only Reality Audit 后批准的 Option D，
 baseline `af3c842906174801b6c434a255e826300e37a72b`。以下为已批准、待实施架构，当前产品尚无 Web 能力；
-本 publication candidate 的 Architecture Guard closing review 仍 REQUIRED。
+**W1 Architecture Publication Closing Review — APPROVED — GO**；blocking findings: 0。
+**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；implementation 仍 NOT STARTED。
 
 ```text
 Web / explicit Search Web or Fetch URL

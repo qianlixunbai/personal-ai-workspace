@@ -18,7 +18,8 @@
 见 [ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md) 与 [K3 Closing Report](../milestones/K3-CLOSING-REPORT.md)。
 本文件不授权未来阶段实施；**W1 Architecture — APPROVED — GO；W1 implementation — NOT STARTED**。
 W1 Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 来源为 Architecture Guard W1 review，
-architecture blockers: 0；publication candidate closing review 仍 required，不表示 Web 已实施。
+architecture blockers: 0；**W1 Architecture Publication Closing Review — APPROVED — GO**；
+**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效），不表示 Web 已实施。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
 `c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
@@ -581,7 +582,8 @@ Architecture Guard final closing-documentation review / formal publication — A
 Read-only W1 Reality Audit 已完成；Architecture Guard W1 ARCHITECTURE GUARD REVIEW — APPROVED — GO，
 architecture blockers: 0。Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 为权威决定，
 baseline `main / origin/main`：`af3c842906174801b6c434a255e826300e37a72b`。
-仅 architecture publication 已授权，publication candidate closing review 仍 REQUIRED；当前产品尚无 Web 能力。
+**W1 Architecture Publication Closing Review — APPROVED — GO**；blocking findings: 0。
+**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；当前产品尚无 Web 能力，implementation 未授权。
 
 **已批准 v1 产品与架构：** Reality Audit Option D，独立 native-only **Web** surface，
 两种用户操作 **Search Web** / **Fetch URL**；显式 Search/Fetch 后本地 synthesis，模型不选择工具。
@@ -940,6 +942,7 @@ W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不
 K3 Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
 下一 milestone 为 **W1 — Controlled Web Access（implementation NOT STARTED）**；下一独立实施活动为
 **W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**。
-W1 architecture publication candidate 仍需 **ARCHITECTURE GUARD CLOSING REVIEW**；本次未授权或启动 implementation。
+**W1 Architecture Publication Closing Review — APPROVED — GO**；architecture blockers: 0。
+**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；本次未授权或启动 implementation。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。
