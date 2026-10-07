@@ -3,6 +3,18 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case WEB_DISABLED -> "Web access is disabled.";
+            case WEB_TARGET_INVALID -> "Web target is invalid.";
+            case WEB_TARGET_NOT_PUBLIC -> "Web target is not public.";
+            case WEB_DNS_FAILED -> "Web resolution failed.";
+            case WEB_TLS_FAILED -> "Web TLS validation failed.";
+            case WEB_TIMEOUT -> "Web operation exceeded its time budget.";
+            case WEB_REDIRECT_DENIED -> "Web redirect was denied.";
+            case WEB_RESPONSE_TOO_LARGE -> "Web response exceeded its size budget.";
+            case WEB_CONTENT_TYPE_UNSUPPORTED -> "Web content type is unsupported.";
+            case WEB_CONTENT_INVALID -> "Web content is invalid.";
+            case WEB_FETCH_FAILED -> "Web fetch failed.";
+            case WEB_FETCH_NOT_FOUND -> "Web fetch does not exist or has expired.";
             case KNOWLEDGE_SEARCH_INVALID -> "Knowledge search input is invalid.";
             case KNOWLEDGE_QUERY_TOO_COMPLEX -> "Knowledge query exceeds its lexical budget.";
             case KNOWLEDGE_INDEX_NOT_READY -> "Knowledge search index is rebuilding.";

@@ -35,6 +35,8 @@ management:
         liveness:
           include: livenessState
 workspace:
+  web:
+    policy: ASK_EVERY_TIME
   data-directory: ${user.home}/.personal-ai-workspace/data
   security:
     token-file: .runtime/client-token
@@ -81,3 +83,9 @@ workspace:
     output-budget: 2048
     temperature: 0.4
     max-text-characters: 3000
+
+# Apache diagnostics can contain public intent and response material. Web owns no content logs.
+logging:
+  level:
+    org.apache.hc.client5: 'OFF'
+    org.apache.hc.core5: 'OFF'

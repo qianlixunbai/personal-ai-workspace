@@ -32,6 +32,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(classes = PersonalAiWorkspaceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@org.springframework.context.annotation.Import(io.github.qianlixunbai.workspace.web.WebApiFixture.class)
 @ExtendWith(OutputCaptureExtension.class)
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class RuntimeApiTest {
@@ -119,6 +120,41 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @Test void webNativeStrictAdmissionReconciliationAndBrowserPreBodyDenial() throws Exception {
+        String endpoint = "/api/v1/web/fetches", id = java.util.UUID.randomUUID().toString();
+        String canary = "webcanary" + id.replace("-", "");
+        String publicUrl = "https://example.com/?public=" + canary;
+        privateValues.add(publicUrl); privateValues.add(canary); privateValues.add("malformed-web-private-canary");
+        var client = pairBrowser("chrome-extension://" + "f".repeat(32));
+        for (var route : List.of(new String[]{"POST", endpoint}, new String[]{"GET", endpoint + "/" + id}, new String[]{"DELETE", endpoint + "/" + id})) {
+            String body = route[0].equals("GET") ? null : "{malformed-web-private-canary";
+            assertEquals(401, send(route[0], route[1], body, false).statusCode());
+            assertEquals(403, browser(route[0], route[1], body, client.credential(), client.origin()).statusCode());
+        }
+        assertEquals(403, browser("POST", endpoint, "x".repeat(40000), client.credential(), client.origin()).statusCode());
+        assertEquals(403, browser("GET", endpoint + "/" + id, null, client.credential(), null).statusCode());
+        for (String body : List.of("{\"operationId\":\"" + id + "\",\"url\":\"https://example.com\",\"headers\":{}}",
+                "{\"operationId\":\"" + id + "\",\"url\":\"https://example.com\",\"url\":\"https://evil.com\"}",
+                "{\"operationId\":\"" + id + "\",\"url\":\"https://example.com\"} {}"))
+            assertEquals(400, send("POST", endpoint, body, true).statusCode());
+        // Invalid syntax is rejected synchronously; no DNS or public fixture is used by the API owner.
+        assertEquals(400, send("POST", endpoint, json.writeValueAsString(Map.of("operationId", id, "url", "https://localhost")), true).statusCode());
+        assertEquals(404, send("GET", endpoint + "/" + id, null, true).statusCode());
+        assertEquals(404, send("DELETE", endpoint + "/" + id, null, true).statusCode());
+        var accepted = send("POST", endpoint, json.writeValueAsString(Map.of("operationId", id, "url", "https://Example.com:443/?public=" + canary)), true);
+        assertEquals(202, accepted.statusCode());
+        assertEquals(endpoint + "/" + id, accepted.headers().firstValue("Location").orElseThrow());
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        JsonNode reconciled;
+        do { reconciled = tree(send("GET", endpoint + "/" + id, null, true)); }
+        while ((reconciled.path("state").asString().equals("QUEUED") || reconciled.path("state").asString().equals("RUNNING")) && System.nanoTime() < end);
+        assertEquals("SUCCEEDED", reconciled.path("state").asString());
+        assertEquals(publicUrl, reconciled.path("result").path("requestedUrl").asString());
+        assertEquals("SUCCEEDED", tree(send("POST", endpoint, json.writeValueAsString(Map.of("operationId", id, "url", publicUrl)), true)).path("state").asString());
+        assertEquals(400, send("POST", endpoint, json.writeValueAsString(Map.of("operationId", id, "url", "https://example.com/changed")), true).statusCode());
+        assertEquals("SUCCEEDED", tree(send("DELETE", endpoint + "/" + id, null, true)).path("state").asString());
+        assertEquals(0, CHAT_CALLS.get());
+    }
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeStore knowledgeStore;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeIngestion knowledgeIngestion;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeLexicalIndex knowledgeIndex;

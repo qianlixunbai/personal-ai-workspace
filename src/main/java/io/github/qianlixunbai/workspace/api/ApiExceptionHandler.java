@@ -15,6 +15,13 @@ public class ApiExceptionHandler {
     @ExceptionHandler(WorkspaceException.class)
     ResponseEntity<ApiError> controlled(WorkspaceException failure) {
         HttpStatus status = switch (failure.error().code()) {
+            case WEB_TARGET_INVALID -> HttpStatus.BAD_REQUEST;
+            case WEB_DISABLED, WEB_TARGET_NOT_PUBLIC, WEB_REDIRECT_DENIED -> HttpStatus.FORBIDDEN;
+            case WEB_FETCH_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case WEB_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            case WEB_RESPONSE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
+            case WEB_CONTENT_TYPE_UNSUPPORTED -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+            case WEB_DNS_FAILED, WEB_TLS_FAILED, WEB_CONTENT_INVALID, WEB_FETCH_FAILED -> HttpStatus.BAD_GATEWAY;
             case KNOWLEDGE_SEARCH_INVALID, KNOWLEDGE_QUERY_TOO_COMPLEX, KNOWLEDGE_INVALID_SOURCE, KNOWLEDGE_UNSUPPORTED_TYPE, KNOWLEDGE_INVALID_UTF8,
                     KNOWLEDGE_BACKUP_INVALID, KNOWLEDGE_BACKUP_UNSUPPORTED -> HttpStatus.BAD_REQUEST;
             case KNOWLEDGE_SOURCE_TOO_LARGE, KNOWLEDGE_BACKUP_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
