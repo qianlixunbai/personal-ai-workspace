@@ -16,10 +16,12 @@
 均须独立完成适用的 architecture review、范围确认和实施授权。K3 — CLOSED — GO
 来自 Architecture Guard IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO，
 见 [ADR-013](../ADR/ADR-013-grounded-knowledge-answer-citations.md) 与 [K3 Closing Report](../milestones/K3-CLOSING-REPORT.md)。
-本文件不授权未来阶段实施；**W1 Architecture — APPROVED — GO；W1 implementation — NOT STARTED**。
+本文件不授权未来阶段实施；**W1A source APPROVED — GO；implementation COMPLETE；W1 OVERALL — NOT CLOSED**。
 W1 Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 来源为 Architecture Guard W1 review，
 architecture blockers: 0；**W1 Architecture Publication Closing Review — APPROVED — GO**；
-**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效），不表示 Web 已实施。
+Architecture publication 已完成；后续 W1A-1 / W1A-2 source review 均 APPROVED — GO，complete source blockers: 0。
+**W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效），
+见 [W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md)。下一独立活动为 **W1B Search Backend Review**；W1C / W1D pending。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
 `c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
@@ -36,8 +38,8 @@ Assistant、Conversation、Memory、Knowledge，并在未来获得受控 Web、V
 持久 Conversation 和统一 Workspace，最后引入独立 Knowledge 与确定性词法检索。
 K3 已把显式检索证据用于带引用的回答；后续计划增加联网、多模态和财务领域编排。
 
-**当前已交付到 K3 + T0，K3 fully published to main。** 本地三种文本操作、持久对话、显式 Memory、Knowledge 管理、词法搜索与带引用的回答已存在。
-受控 Web、Vision、Finance integration、通用 Active Model 管理、完整 Resource Monitor 和 P1 最终整合仍是未来目标。
+**当前已交付到 K3 + T0 + W1A foundation。** 本地三种文本操作、持久对话、显式 Memory、Knowledge 管理、词法搜索与带引用的回答已存在。
+Secure Fetch / native approval / typed bridge 已实现；Search、WebAnswer、final Web UI、Vision、Finance integration、通用 Active Model 管理、完整 Resource Monitor 和 P1 最终整合仍是未来目标。
 最终 V1 不应把所有个人数据混成一个通用记忆库，也不应因一个子系统不可用而让整个工作区失效。
 
 ## 3. 永久架构原则
@@ -99,7 +101,7 @@ Portable logical backup 是产品原则；当前各备份格式的范围独立�
 | 10 | K2 | Deterministic Lexical Retrieval | CLOSED — GO | K1 truth / locators |
 | — | T0 工程门禁 | Test Suite Consolidation / Slimming | CLOSED — GO | K2 closing；位于 K3 前 |
 | 11 | K3 | Grounded Knowledge Answer + Citations | CLOSED — GO | K2 / ADR-013；implementation/source closing approved |
-| 12 | W1 | Controlled Web Access | Architecture APPROVED — GO；implementation NOT STARTED | ADR-014；下一独立实施活动 W1A，需另行授权 |
+| 12 | W1 | Controlled Web Access | W1A source approved / implementation complete；overall NOT CLOSED | ADR-014；W1A closing 随 main publication 生效；下一活动 W1B Search Backend Review；W1C/W1D pending |
 | 13 | V1 | Multimodal / Vision Foundation | NOT STARTED | Model Management Foundation |
 | 14 | F0 | Finance Reality Sync | NOT STARTED | authoritative Finance worktree |
 | 15 | F1 | Finance Integration Foundation | BLOCKED pending F0 | F0 事实 / 独立集成审核 |
@@ -475,7 +477,7 @@ tests/acceptance/scripts 合计净减少约 7,136 source LOC。
 
 证据：[T0 Test Suite Slimming](../engineering/T0-TEST-SUITE-SLIMMING.md)，含独立正式 Closing Review。
 
-## 7. 当前产品能力快照（已完成至 K3 + T0）
+## 7. 当前产品能力快照（已完成至 K3 + T0 + W1A foundation）
 
 ### Desktop Product
 
@@ -504,6 +506,12 @@ K2 search 不依赖模型；K3 在现有 Knowledge 页提供 explicit question +
 本地 grounded answer、Runtime-owned answer-level citations 和 admitted revision/range 的 plain preview。
 无 automatic Ask/Conversation retrieval、query rewrite 或 semantic/vector search；answer/citations 仅内存。
 
+### Controlled Web foundation
+
+W1A 已实现 secure Runtime Fetch、native exact-intent approval 与 typed session bridge，无 final Web page。
+Source approved；closing 随完整 main publication 生效。Search backend review 为下一步；WebAnswer/synthesis/citations 尚未实现。
+Public Internet smoke / integrated Windows product acceptance NOT PERFORMED；W1 整体 NOT CLOSED。
+
 ### Browser Companion
 
 用户明确配对后，Extension 使用 Shared Runtime 的 Translate/Batch Translate；保留 Browser DOM/Dynamic/Selection/Restore UX。
@@ -529,13 +537,13 @@ Runtime/Ollama 当前不由 Desktop exit-time supervisor 管理；固定模型�
 ### 尚未实现
 
 - semantic/vector retrieval、automatic Knowledge injection、Conversation Knowledge integration、inline citation grammar。
-- W1 controlled Web、Vision、Finance integration、F4 unified cross-domain orchestration。
+- W1 Search、WebAnswer/citations/final Web UI、W1D product acceptance；Vision、Finance integration、F4 unified cross-domain orchestration。
 - 通用 Model Management Foundation、完整 Resource Monitor / System Status、最终 startup/process ownership/degraded UX。
 - P1 final V1 product consolidation、最终 clean-install/migration/Windows closing gates。
 
 ## 8. K3 交付与后续领域阶段（未来规划不构成实施授权）
 
-本节 K3 描述已交付行为；W1 架构已批准但 implementation NOT STARTED；其后阶段仍为 planned / target / future capability，须独立审核与实施授权。
+本节 K3 与 W1A 描述已交付行为；W1 整体尚未关闭，W1B/W1C/W1D 及其后阶段须独立完成适用 review 与授权。
 未来阶段的长期设计约束不代表相关 API/schema/UI 已落地。
 
 ### K3 — Grounded Knowledge Answer + Citations
@@ -574,16 +582,18 @@ semantic/vector/embeddings/Web/Vision/Browser expansion/persistent history；Bro
 Frontend 40（6 files）PASS；qwen3.5:4b / chat.balanced real-model 3/3 PASS；final clean WorkspaceSanity PASS。
 本轮 formal closing docs tests/builds NONE；不把 contract gate 解释为逐句语义证明。
 Architecture Guard final closing-documentation review / formal publication — APPROVED — GO；下一 milestone **W1 — NOT STARTED**，
-该 K3 publication 当时的下一独立活动为 W1 Architecture / Planning；当前 W1 architecture approval 与下一步见下节，未授权 implementation。
+该 K3 publication 当时的下一独立活动为 W1 Architecture / Planning；当前 W1A approval 与下一步见下节。
 
 ### W1 — Controlled Web Access
 
-**阶段定位 / 状态：W1 Architecture — APPROVED — GO；W1 implementation — NOT STARTED。**
+**阶段定位 / 状态：W1A source APPROVED — GO；implementation COMPLETE；W1 OVERALL — NOT CLOSED。**
 Read-only W1 Reality Audit 已完成；Architecture Guard W1 ARCHITECTURE GUARD REVIEW — APPROVED — GO，
 architecture blockers: 0。Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 为权威决定，
 baseline `main / origin/main`：`af3c842906174801b6c434a255e826300e37a72b`。
 **W1 Architecture Publication Closing Review — APPROVED — GO**；blocking findings: 0。
-**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；当前产品尚无 Web 能力，implementation 未授权。
+Architecture publication 已完成；后续 W1A-1 / W1A-2 SOURCE REVIEW 均 APPROVED — GO；complete source blockers: 0。
+**W1A PUBLICATION — AUTHORIZED；W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
+Secure Fetch/native approval/typed bridge 已实现；下方 Search/synthesis/citations 产品架构仍为未来目标，无 final Web page。
 
 **已批准 v1 产品与架构：** Reality Audit Option D，独立 native-only **Web** surface，
 两种用户操作 **Search Web** / **Fetch URL**；显式 Search/Fetch 后本地 synthesis，模型不选择工具。
@@ -613,7 +623,7 @@ Automatic redirects OFF，manual 至多 2 hops，每 hop 完整验证，仅 same
 无 system proxy/cookies/browser session/ambient credentials/token/Authorization/Referer forwarding，fixed app User-Agent；
 deadlines/wire bytes/decoded text/concurrency/queue 有界，cancel 防止后续 egress，unknown outcome 无 automatic replay。
 仅 text/html、text/plain、application/xhtml+xml；无 PDF/DOCX/binary、script/CSS execution、subresources、iframe、crawl/automation/download execution。
-Prefer identity encoding，不依赖 compressed public bodies；numeric budgets / HTTP or HTML extractor dependency 由 W1A review，不用 WebView2 extraction。
+Prefer identity encoding，不依赖 compressed public bodies；W1A numeric budgets / Apache HttpClient + jsoup 已获 source approval，不用 WebView2 extraction。
 Private Memory/Knowledge/Conversation/Finance 不隐式进入 query/URL/headers/body/Referer/credentials/logs；model 不从 private context 派生 public intent。
 Untrusted Web evidence 不能授权请求、tools、domain mutation、approval bypass 或 policy change；system/evidence 分离，无 raw provider body/error echo。
 
@@ -632,13 +642,14 @@ Memory/Knowledge/Conversation 独立，不批准跨域自治、automatic Web 或
 
 | Phase | 范围 |
 | --- | --- |
-| W1A | Public Web Policy + Secure Fetch Foundation + Native Approval |
-| W1B | Explicit Search Backend + bounded Search Evidence；先完成 Search Backend Review |
-| W1C | Web Answer + Frozen Web Evidence + Runtime-owned Citations + Web UI |
-| W1D | Integrated Windows/Public-Network Acceptance + Closing |
+| W1A | Public Web Policy + Secure Fetch Foundation + Native Approval；source approved / implementation complete；closing 随 main publication 生效 |
+| W1B | NEXT：Search Backend Review；backend 未选定，无 Search implementation |
+| W1C | PENDING：Web Answer + Frozen Web Evidence + Runtime-owned Citations + Web UI |
+| W1D | PENDING：Integrated Windows/Public-Network Acceptance + Closing；未执行 |
 
-**下一独立实施活动：W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**；需另行授权。
-本次 publication docs-only，tests/builds NONE；W1D 是 future gate，无已执行 acceptance claim。
+**下一独立活动：W1B — Search Backend Review**；review 不授权 implementation。
+本次 publication docs-only，tests/builds/inference/public Web requests NONE；public Internet smoke / Windows product acceptance NOT PERFORMED。
+无 Search/WebAnswer/automatic Web/model tool calling/Finance；[W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md) 保留 source approval 与继承证据。
 W1 后仍为 Model Management Foundation，再进入 Vision。
 
 ### V1 — Multimodal / Vision Foundation
@@ -929,20 +940,19 @@ accessibility、统一 identity、经过 clean-install/migration/privacy/final W
 
 ## 15. 当前所在位置与下一步
 
-已完成至 **K3 + T0**：**M0 / M1 / M1.5 / M2 / M3 / M4 / M5 / K1 / K2 / K3 / T0 — CLOSED — GO**；
+已完成至 **K3 + T0 + W1A foundation**：**M0 / M1 / M1.5 / M2 / M3 / M4 / M5 / K1 / K2 / K3 / T0 — CLOSED — GO**；
 **K0 — APPROVED — GO**。M5A–M5E 均为已关闭的内部阶段。
 
 **K3 — CLOSED — GO；FORMAL PUBLICATION — COMPLETE。**
 K3 fully published to main；source publication merge：`5f0f94c13d8f2d2695e177c8ce70e94d6cd0e36e`。
 Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**；blocking findings: 0。
 **Finance Integration — BLOCKED pending F0 authoritative Finance Reality Sync。**
-**W1 Architecture — APPROVED — GO；W1 implementation — NOT STARTED。** ADR-014 Accepted，architecture blockers: 0。
+**W1A source APPROVED — GO；implementation COMPLETE；W1 OVERALL — NOT CLOSED。** ADR-014 Accepted，complete W1A source blockers: 0。
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
 K3 Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
-下一 milestone 为 **W1 — Controlled Web Access（implementation NOT STARTED）**；下一独立实施活动为
-**W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**。
-**W1 Architecture Publication Closing Review — APPROVED — GO**；architecture blockers: 0。
-**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；本次未授权或启动 implementation。
+当前 milestone 为 **W1 — Controlled Web Access（overall NOT CLOSED）**；下一独立活动为 **W1B — Search Backend Review**。
+**W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
+W1C / W1D pending；public Internet smoke / Windows product acceptance NOT PERFORMED；本次仅 documentation closing/publication。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。

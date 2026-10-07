@@ -1,20 +1,20 @@
 # Personal AI Workspace — Current Architecture
 
-## Approved W1 architecture — implementation NOT STARTED
+## Implemented W1A architecture — source APPROVED — GO
 
-**W1 Architecture — APPROVED — GO。W1 implementation — NOT STARTED。**
-Architecture Guard W1 ARCHITECTURE GUARD REVIEW — APPROVED — GO；architecture blockers: 0。
-Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 发布 read-only Reality Audit 后批准的 Option D，
-baseline `af3c842906174801b6c434a255e826300e37a72b`。以下为已批准、待实施架构，当前产品尚无 Web 能力；
-**W1 Architecture Publication Closing Review — APPROVED — GO**；blocking findings: 0。
-**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；implementation 仍 NOT STARTED。
+**W1A implementation — COMPLETE；W1A-1 / W1A-2 SOURCE REVIEW — APPROVED — GO。**
+Architecture Guard：**COMPLETE W1A SOURCE BLOCKERS — 0；W1A PUBLICATION — AUTHORIZED**。
+**W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 feature 链及本 closing commit 成功发布到 main 后生效）。
+**W1 OVERALL — NOT CLOSED**；权威 [ADR-014](../ADR/ADR-014-controlled-web-access.md) 保持 Accepted。
+实际交付、approved SHAs 与继承证据见 [W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md)。
+下方调用链为已实现 Fetch foundation；Search、WebAnswer/citations/synthesis 与 final Web page 尚未实现。
 
 ```text
-Web / explicit Search Web or Fetch URL
-→ typed WPF bridge validation → native confirmation → user approval
-→ exact approved Runtime operation → bounded frozen WebEvidenceSnapshot
-→ existing TaskManager / ProviderPolicy / LOCAL_ONLY Ollama synthesis
-→ strict Web Answer / Runtime-owned citations → current-session presentation
+React explicit URL → typed session-bound WorkspaceBridge
+→ native canonical URL + hostname → owned WPF Allow once confirmation
+→ current-session recheck / one-time consumption → RuntimeClient exact URL + native UUID POST
+→ Runtime independent validation / secure Fetch → bounded WebFetchResult
+→ session-owned typed GET/CANCEL → current-session response
 ```
 
 React 无 Internet egress approval authority；取消/无确认 = zero Runtime Web operation / zero public egress。
@@ -30,7 +30,8 @@ mixed public/private fail closed，保持 TLS/SNI 验证；automatic redirects O
 无 proxy/cookies/browser session/ambient credentials/Authorization/Referer forwarding，fixed app User-Agent；
 deadlines/bytes/text/concurrency/queue 有界，cancel 停止后续 egress，unknown outcome 不 replay。
 仅 HTML/plain text/XHTML，无 scripts/subresources/crawling/browser automation，identity encoding；
-Search backend 未选定，W1B 先 review；numeric budgets / HTTP/extractor dependency 留 W1A review。
+W1A numeric budgets 与 Apache HttpClient/jsoup 依赖已获 source approval，详见原 implementation report；
+Search backend 未选定，W1B 先完成 Search Backend Review。
 
 WebEvidenceSnapshot 为独立 ephemeral/public/bounded/frozen Runtime evidence，不是 Knowledge evidence 或 personal truth；
 W1C 可增加 narrow TaskResult.WebAnswer，strict answer + admitted unique labels，invalid whole-result rejection，plain text。
@@ -40,9 +41,12 @@ Private context 不隐式进入 public requests/logs；untrusted evidence 无 in
 Ask 仍 stateless/single-turn/LOCAL_ONLY/no Web/no tools；Conversation 无 automatic Web；Knowledge Answer 显式 local grounding；
 Browser Translate-only，拒绝全部 Web authority；Finance BLOCKED pending F0；无跨域自治。
 
-下一独立实施活动：**W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**，需另行授权。
-W1B Search / W1C Answer + Evidence + Citations + UI / W1D integrated Windows/Public-Network acceptance + closing
-仅为 W1 内部 phases。本轮 docs-only，tests/builds NONE；下文 K3 为已实施现实，更早章节保留历史快照。
+Native owner 独立于 WorkspaceOperations：单 pending confirmation、60 秒失效；session invalidation 与
+approval consumption/direct POST initiation 同锁串行化；捕获 URL 不重读 React。unknown POST 仅同 UUID GET 核对，
+不 replay；session replacement 清除 GET/CANCEL authority 并抑制 late response，不转移已 admitted operation。
+下一独立活动：**W1B Search Backend Review**；W1C / W1D pending。无 automatic Web/model tool calling/Finance integration。
+Public Internet smoke / integrated Windows product acceptance NOT PERFORMED；本次 docs-only，tests/builds/inference NONE。
+W1A/B/C/D 仅为 W1 内部 phases；下文 K3 及更早章节保留历史快照。
 
 ## Implemented K3 current architecture — CLOSED — GO
 

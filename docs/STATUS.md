@@ -1,28 +1,28 @@
 # Personal AI Workspace — Current Status
 
-## Current W1 approved architecture — implementation NOT STARTED
+## Current W1A source approved — implementation COMPLETE
 
-**W1 Architecture — APPROVED — GO。W1 implementation — NOT STARTED。**
-Architecture Guard：**W1 — Controlled Web Access: ARCHITECTURE GUARD REVIEW — APPROVED — GO**；
-architecture blockers: 0；read-only W1 Reality Audit 已完成。Architecture publication 已授权，implementation 未授权。
-Decision baseline：`main / origin/main`，`af3c842906174801b6c434a255e826300e37a72b`。
-[ADR-014](ADR/ADR-014-controlled-web-access.md) 为 Accepted；**W1 Architecture Publication Closing Review — APPROVED — GO**。
-Reviewed architecture candidate：`1ac8cfb9eac61a203c7426afcd9424dd0338888b`；blocking findings / required architecture fixes /
-required production fixes / required tests/builds: 0。
-**Formal architecture publication — COMPLETE**（本 closing commit 发布到 main 时生效）；Web implementation 仍 NOT STARTED。
+Architecture Guard：**W1A-1 SOURCE REVIEW — APPROVED — GO；W1A-2 SOURCE REVIEW — APPROVED — GO**。
+**COMPLETE W1A SOURCE BLOCKERS — 0；W1A PUBLICATION — AUTHORIZED。**
+Publication baseline：`2a0c4c322ea18c8c2dac478c80f929137c45942b`；approved W1A-1：
+`c90b9639ba31421b0f601a40c1ca3659368704b0`；approved W1A-2：`8782e7365cbc4e28df849bab3ddc03359ac96a0a`。
+**W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（仅在完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
+**W1 OVERALL — NOT CLOSED。** [W1A Closing Report](milestones/W1A-CLOSING-REPORT.md) 记录批准、交付及剩余 gates；
+[ADR-014](ADR/ADR-014-controlled-web-access.md) 保持 Accepted，既有 implementation reports 保留历史语境。
 
-W1 v1 锁定 Option D：独立 native-only Web / Search Web + Fetch URL，用户显式 query/URL，
-question 与 public search query 分开；React intent → typed WPF validation → native exact-intent confirmation
-→ user approval → exact operation → Runtime。Policy 仅 DISABLED / ASK_EVERY_TIME（默认），无 automatic Web/model tool calling。
-Runtime-owned PublicWebTransport：HTTPS/443、GET Fetch、DNS address classification + connection pinning、
-same exact hostname/manual ≤2 redirects、有界 text-only extraction；Search backend 与依赖均未选定。
-WebEvidenceSnapshot 独立于 Knowledge evidence，ephemeral/frozen/bounded；LOCAL_ONLY synthesis 与 Runtime-owned strict citations。
-无 Web persistence、DB/schema/backup changes；Ask stateless/local/no tools/no Web、Conversation no automatic Web、
-explicit Knowledge Answer、Browser Translate-only 和 Finance BLOCKED pending F0 均保持。
+已实现 secure Fetch foundation 与 native approval/typed bridge：React explicit URL → exact-field bridge
+→ independent native canonicalization → WPF exact-intent confirmation → current-session recheck → exact Runtime POST。
+Runtime-owned PublicWebTransport 保持 HTTPS/443、GET、DNS public-address classification + connection pinning、
+same exact hostname/manual ≤2 redirects 和 bounded HTML/plain/XHTML extraction。
+Policy 仅 DISABLED / ASK_EVERY_TIME（默认）；单 pending approval、60 秒失效、一次消费、session invalidation、
+session-owned GET/CANCEL、unknown-outcome 同 ID 只读核对及 late-response suppression 已实现。
 
-下一独立实施活动：**W1A — Public Web Policy + Secure Fetch Foundation + Native Approval**，需另行实施授权。
-W1A/B/C/D 是 W1 内部 phases，不新增 roadmap milestones。本轮仅五份 docs，production/test changes = 0；
-tests/builds executed = **NONE**；无 WorkspaceSanity/public Web smoke/model inference。
+无 final Web page、Search implementation、WebAnswer/model synthesis、citations、automatic Web 或 model tool calling。
+无 Web persistence、DB/schema/backup changes；Ask/Conversation/Knowledge 边界、Browser Translate-only 和 Finance BLOCKED pending F0 保持。
+下一独立活动：**W1B — Search Backend Review**；backend 尚未选定，review 不等于 implementation authorization。
+**W1C / W1D — PENDING**；public Internet smoke / integrated Windows product acceptance **NOT PERFORMED**。
+继承 implementation reports 的 focused evidence；本次仅四份 closing docs，production/test changes = 0；
+tests/builds/inference/public Web requests executed = **NONE**。
 当前 W1 状态以上文为准；以下 K3 及更早章节保留形成时的状态与下一步历史快照。
 
 ## Current K3 final closing — CLOSED — GO
