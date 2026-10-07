@@ -5,6 +5,8 @@ import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSea
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
 import { isKnowledgeAnswerTask } from './knowledgeAnswer'
 import type { KnowledgeAnswerTask } from './knowledgeAnswer'
+import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
+import type { WebFetchOperation, WebFetchSubmission } from './webFetch'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -16,7 +18,7 @@ export class BridgeError extends Error { constructor(public code: string, messag
 const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
-const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method)
+const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
 interface Pending { method: Method; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -35,6 +37,12 @@ export class WorkspaceClient {
   submitAssistant(payload: AssistantSubmit) { return this.request('assistant.submit', payload) as Promise<OperationView> }
   submitTranslate(text: string, targetLanguage: string) { return this.request('translate.submit', { text, targetLanguage }) as Promise<OperationView> }
   getOperation(operationId: string) { return this.request('operations.get', { operationId }) as Promise<OperationView> }
+  submitWebFetch(url: string) {
+    if (typeof url !== 'string' || !url.length || url.length > 2048) return Promise.reject(new BridgeError('InvalidRequest', 'URL 超出 bridge 输入预算。'))
+    return this.request('web.fetchSubmit', { url }) as Promise<WebFetchSubmission>
+  }
+  getWebFetch(operationId: string) { return this.request('web.fetchGet', { operationId }) as Promise<WebFetchOperation> }
+  cancelWebFetch(operationId: string) { return this.request('web.fetchCancel', { operationId }) as Promise<WebFetchOperation> }
   cancelOperation(operationId: string) { return this.request('operations.cancel', { operationId }) as Promise<{ requested: true }> }
   copyResult(operationId: string) { return this.request('operations.copyResult', { operationId }) as Promise<{ copied: true }> }
   listConversations(status: ConversationStatus, page: number) { return this.request('conversations.list', { status, page }) as Promise<ConversationList> }
@@ -73,7 +81,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -81,7 +89,7 @@ export class WorkspaceClient {
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(typeof payload.taskId === 'string' ? { taskId: payload.taskId } : {}),
         ...(typeof payload.documentId === 'string' ? { documentId: payload.documentId } : {}),
@@ -120,6 +128,8 @@ export class WorkspaceClient {
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
+        : pending.method === 'web.fetchSubmit' ? isWebFetchSubmission(data.result)
+        : pending.method === 'web.fetchGet' || pending.method === 'web.fetchCancel' ? isWebFetchOperation(data.result) && data.result.operationId === pending.operationId
         : ['knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel'].includes(pending.method) ? isKnowledgeAnswerTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
         : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)

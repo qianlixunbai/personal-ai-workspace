@@ -22,7 +22,9 @@ public enum DesktopError
     KnowledgeBackupInvalid, KnowledgeBackupUnsupported, KnowledgeBackupTooLarge, KnowledgeBackupConflict,
     KnowledgeRestoreTargetNotEmpty, KnowledgeRestoreFailed, KnowledgeExportFailed, KnowledgeFileUnavailable,
     KnowledgeSearchInvalid, KnowledgeQueryTooComplex, KnowledgeIndexNotReady, KnowledgeIndexUnavailable,
-    KnowledgeIndexLimitExceeded, KnowledgeIndexRebuildFailed
+    KnowledgeIndexLimitExceeded, KnowledgeIndexRebuildFailed,
+    WebDisabled, WebTargetInvalid, WebTargetNotPublic, WebDnsFailed, WebTlsFailed, WebTimeout,
+    WebRedirectDenied, WebResponseTooLarge, WebContentTypeUnsupported, WebContentInvalid, WebFetchFailed, WebFetchNotFound
 }
 
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
@@ -34,6 +36,18 @@ public static class ErrorText
 {
     public static string For(DesktopError error) => error switch
     {
+        DesktopError.WebDisabled => "公共网络访问已禁用。",
+        DesktopError.WebTargetInvalid => "公共网络目标无效；须使用受支持的 HTTPS URL。",
+        DesktopError.WebTargetNotPublic => "目标不属于允许访问的公共网络。",
+        DesktopError.WebDnsFailed => "无法解析公共网络目标。",
+        DesktopError.WebTlsFailed => "无法验证公共网络安全连接。",
+        DesktopError.WebTimeout => "公共网络访问超时。",
+        DesktopError.WebRedirectDenied => "公共网络重定向被拒绝。",
+        DesktopError.WebResponseTooLarge => "公共网络响应超过容量限制。",
+        DesktopError.WebContentTypeUnsupported => "公共网络内容类型不受支持。",
+        DesktopError.WebContentInvalid => "公共网络内容无效。",
+        DesktopError.WebFetchFailed => "公共网络访问失败。",
+        DesktopError.WebFetchNotFound => "公共网络操作不存在或已过期。",
         DesktopError.KnowledgeSearchInvalid => "请输入有效、非空的关键词。",
         DesktopError.KnowledgeQueryTooComplex => "检索最多 128 个 Unicode 字符和 32 个不同词法 token，请缩短关键词。",
         DesktopError.KnowledgeIndexNotReady => "关键词索引正在重建，请等待后显式重试。",

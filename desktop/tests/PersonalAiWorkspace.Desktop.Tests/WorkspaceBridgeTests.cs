@@ -10,6 +10,27 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class WorkspaceBridgeTests
 {
+    [Fact] public async Task WebFetchExactPayloadAndSessionOwnedIdsDenyForgedApprovalAndCrossSessionReadCancel()
+    {
+        using var f = new WorkspaceWebFetchTests.Fixture();
+        foreach (object payload in new object[] { new { url = RuntimeClientWebFetchTests.Url, approved = true },
+            new { url = RuntimeClientWebFetchTests.Url, operationId = Guid.NewGuid().ToString("D") },
+            new { url = RuntimeClientWebFetchTests.Url, headers = new { } }, new { url = new string('a', 2049) } })
+            await f.Receive(f.Request("web.fetchSubmit", payload));
+        Assert.Empty(f.Sent); Assert.Equal(0, f.Dialog.Shown);
+        await f.Receive(f.Request("web.request", new { url = RuntimeClientWebFetchTests.Url })); Assert.Empty(f.Sent);
+        await f.Receive(f.Request("web.fetchSubmit", new { url = "https://127.0.0.1" }));
+        Assert.Contains("WebTargetInvalid", Assert.Single(f.Sent)); Assert.Equal(0, f.Dialog.Shown); f.Sent.Clear();
+        Task submitted = f.Receive(f.Request("web.fetchSubmit", new { url = RuntimeClientWebFetchTests.Url }));
+        f.Dialog.Choice.SetResult(true); await submitted; string old = f.Bridge.SessionId; f.Rotate();
+        foreach (string method in new[] { "web.fetchGet", "web.fetchCancel" })
+        {
+            await f.Receive(f.Request(method, new { operationId = f.Id.ToString("D") }, old)); Assert.Empty(f.Sent);
+            await f.Receive(f.Request(method, new { operationId = f.Id.ToString("D") }));
+            Assert.Contains("WebFetchNotFound", Assert.Single(f.Sent)); f.Sent.Clear();
+        }
+        Assert.Equal(0, f.Gets); Assert.Equal(0, f.Deletes); Assert.Equal(1, f.Posts);
+    }
     private const string Document = WorkspaceContentPolicy.ProductionOrigin + "/index.html";
     private sealed class Actions : IWorkspaceNativeActions
     {
