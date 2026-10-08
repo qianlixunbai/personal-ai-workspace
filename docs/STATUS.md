@@ -1,6 +1,15 @@
 # Personal AI Workspace — Current Status
 
-## Current MMF-1 — SOURCE REVIEW APPROVED — GO
+## Current MMF-2A — SOURCE REVIEW APPROVED — GO
+
+**Architecture Guard MMF-2A SOURCE REVIEW — APPROVED — GO；Source blockers: 0。**
+Browser 已先正式发布到 main：`267db794691d1a9ab1712b30b07cbeb57241808b`。
+Workspace Runtime 随后正式发布到 main：`e97e9a5ab1a218a0909a74f3b273bb51d84cafe5`。
+Runtime cache identity v1 已实现；Browser freshness 已实现。
+**MMF-2B NOT STARTED；MMF Overall NOT CLOSED。**
+Real Windows + Chrome integrated acceptance: **NOT PERFORMED**。
+
+## Historical MMF-1 — SOURCE REVIEW APPROVED — GO
 
 用户已单独授权 ADR-015 的 **MMF-1 Runtime Foundation**；实现候选在 `codex/mmf-1-runtime-foundation`，
 基线 `7e97a95dbdd85d4c055fb5aa8128132d1d340a21`。正式发布前 fresh origin/main、local main 与候选 HEAD 一致；完整实际候选与已审查补丁完全一致。

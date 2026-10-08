@@ -1,6 +1,15 @@
 # Personal AI Workspace — Current Architecture
 
-## MMF-1 Runtime foundation — SOURCE REVIEW APPROVED — GO
+## MMF-2A — SOURCE REVIEW APPROVED — GO
+
+**Architecture Guard MMF-2A SOURCE REVIEW — APPROVED — GO；Source blockers: 0。**
+Browser 已先正式发布到 main：`267db794691d1a9ab1712b30b07cbeb57241808b`。
+Workspace Runtime 随后正式发布到 main：`e97e9a5ab1a218a0909a74f3b273bb51d84cafe5`。
+Runtime cache identity v1 已实现；Browser freshness 已实现。
+**MMF-2B NOT STARTED；MMF Overall NOT CLOSED。**
+Real Windows + Chrome integrated acceptance: **NOT PERFORMED**。
+
+## Historical MMF-1 Runtime foundation — SOURCE REVIEW APPROVED — GO
 
 [MMF-1 source approval / evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 记录已批准实现；ADR-015 仍 Accepted，未改写批准正文。
 **Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；Finding A/B: CLOSED。**
