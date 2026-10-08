@@ -1,7 +1,10 @@
 # MMF-1 Runtime Foundation — Implementation Candidate
 
 Date: 2026-10-08 (Asia/Shanghai). Authority: user's separate **MMF-1 ONLY** implementation authorization.
-**Architecture Guard prior source decision: STOP / CHANGES REQUIRED. Findings A/B remediated below; candidate GO for re-review only, source approval PENDING. MMF Overall NOT CLOSED.**
+**Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO. Source blockers: 0. Finding A/B: CLOSED. MMF Overall NOT CLOSED.**
+Focused tests: Codex previously reported PASS (inherited, not rerun for publication).
+Independent Windows GUI / Chrome acceptance: NOT PERFORMED. Shared Ollama real inference acceptance: NOT PERFORMED.
+MMF-2/MMF-3 NOT STARTED; implementation requires separate authorization. Current approval/publication evidence: §16; §§1–15 retain historical candidate evidence.
 
 ## 1. Git Reality Gate
 
@@ -322,3 +325,81 @@ Patch generation/checking uses temporary alternate Git indices and leaves the re
 **GO for Architecture Guard re-review of the MMF-1 source candidate.** Findings A/B are resolved with focused and actual read-only evidence.
 This is not Architecture Guard source approval, publication, MMF closing or authorization to begin MMF-2/MMF-3/Vision/W1.
 Stop here and wait for independent re-review.
+
+## 16. Formal Source Approval and Git Publication Authorization — 2026-10-08
+
+Architecture Guard completed final independent MMF-1 source review: **SOURCE REVIEW — APPROVED — GO**.
+**Source blockers: 0. Finding A/B: CLOSED.** This user-provided approval authorizes only the approved MMF-1 source publication.
+ADR-015 remains Accepted and unchanged. MMF Overall NOT CLOSED; MMF-2/MMF-3 NOT STARTED.
+
+### 16.1 Git Reality Gate and Approved Patch Identity
+
+Feature branch: `codex/mmf-1-runtime-foundation`. Before committing, HEAD/local main/fresh origin/main all matched
+`7e97a95dbdd85d4c055fb5aa8128132d1d340a21`. The required command-scoped proxy fetch succeeded.
+No additional repository/ancestor AGENTS.md was found. Incoming tree held only the reviewed 30-file candidate; real index was empty.
+The complete current candidate matched the applied approved patch Git tree, not merely its filename or diff summary.
+
+Approved patch: `.verification/mmf-1-remediation/mmf-1-runtime-foundation-review.patch`.
+SHA-256: `2803317afbb61c4aa48803b2dd16aa8fbe3bc3624bf16f234666cc83d4029a6d`.
+Reviewed / implementation Git tree: `035ccf53e0d373fc6f67911cd9f00e88b336d3d6`.
+Implementation commit: `91aa6c243e6d4de0fb53e879abd1f5ec64462849`. Its parent is the approved baseline and its tree exactly matches the reviewed patch.
+Approval changes are a separate docs-only commit restricted to the four explicitly allowed documents.
+
+### 16.2 Inherited Evidence and Unperformed Acceptance
+
+Focused tests: **Codex previously reported PASS**, with retained 2026-10-08 logs checked during publication preparation.
+This inherits ModelFoundationTest, OllamaProviderTest, TaskManagerTest, ConversationExecutionTest and the four selected RuntimeApiTest checks
+executed after final production revision (§15.5). No production/test changes or test/build/package executions were made in this publication round.
+Independent Windows GUI / Chrome acceptance: **NOT PERFORMED**. Shared Ollama real inference acceptance: **NOT PERFORMED**.
+Actual read-only default-model metadata admission PASS is retained as distinct metadata evidence, not inference acceptance.
+
+### 16.3 Exact Authorized Source Publication Manifest
+
+The implementation commit contains exactly these reviewed files; the approval commit touches only the four documentation paths in this list:
+
+```text
+docs/STATUS.md
+docs/architecture/current-architecture.md
+docs/engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md
+docs/roadmap/V1-ROADMAP.md
+src/main/java/io/github/qianlixunbai/workspace/api/ApiExceptionHandler.java
+src/main/java/io/github/qianlixunbai/workspace/capability/TextTaskSubmission.java
+src/main/java/io/github/qianlixunbai/workspace/capability/ask/MemoryAskService.java
+src/main/java/io/github/qianlixunbai/workspace/capability/knowledge/KnowledgeAnswerService.java
+src/main/java/io/github/qianlixunbai/workspace/common/ApiError.java
+src/main/java/io/github/qianlixunbai/workspace/common/ErrorCode.java
+src/main/java/io/github/qianlixunbai/workspace/conversation/ConversationExecution.java
+src/main/java/io/github/qianlixunbai/workspace/health/ProviderHealthController.java
+src/main/java/io/github/qianlixunbai/workspace/model/ActiveModelManager.java
+src/main/java/io/github/qianlixunbai/workspace/model/ModelConfiguration.java
+src/main/java/io/github/qianlixunbai/workspace/model/ModelStateStore.java
+src/main/java/io/github/qianlixunbai/workspace/provider/Provider.java
+src/main/java/io/github/qianlixunbai/workspace/provider/ollama/OllamaModelAdmission.java
+src/main/java/io/github/qianlixunbai/workspace/provider/ollama/OllamaProvider.java
+src/main/java/io/github/qianlixunbai/workspace/task/TaskManager.java
+src/main/resources/application.yml
+src/test/java/io/github/qianlixunbai/workspace/TestSettings.java
+src/test/java/io/github/qianlixunbai/workspace/api/RuntimeApiTest.java
+src/test/java/io/github/qianlixunbai/workspace/capability/MemoryAskTest.java
+src/test/java/io/github/qianlixunbai/workspace/capability/TextCapabilitiesTest.java
+src/test/java/io/github/qianlixunbai/workspace/conversation/ConversationExecutionTest.java
+src/test/java/io/github/qianlixunbai/workspace/knowledge/KnowledgeAnswerTest.java
+src/test/java/io/github/qianlixunbai/workspace/model/ModelFoundationTest.java
+src/test/java/io/github/qianlixunbai/workspace/provider/ollama/OllamaFixtures.java
+src/test/java/io/github/qianlixunbai/workspace/provider/ollama/OllamaProviderTest.java
+src/test/resources/ollama/qwen35-local-v0.40.0.json
+```
+
+No `.verification` patch/log/temp artifact, unrelated file, ADR正文, sibling/Finance change, release/tag/package is included.
+
+### 16.4 Publication and Remaining Boundaries
+
+Check exact staging plus `git diff --cached --check`, commit ancestry and latest origin/main before publication.
+Publication is authorized only by fast-forward-only local main advancement and a normal push; remote divergence requires STOP.
+After push, independently read remote main, fetch and compare local main/origin/main/remote; an unknown push result permits read-only reconciliation only.
+Actual final commit/remote/working-tree results are reported after those checks, rather than claimed in advance by this approval record.
+
+Remaining dependencies: native frozen exact-intent confirmation, shared automatic-eviction/Release/recovery consent,
+current-generation uncertainty recovery, typed native Settings and ADR §7 Browser freshness/cache compatibility rollout before public switch exposure.
+No user-callable switch/Release/recovery API, Browser cache protocol change, real model switch/inference, domain schema change, Vision or W1 Search.
+**Source approval GO; formal publication authorized.** Stop after publication and wait for separate MMF-2 implementation authorization.

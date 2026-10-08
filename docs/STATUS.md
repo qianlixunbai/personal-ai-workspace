@@ -1,17 +1,20 @@
 # Personal AI Workspace — Current Status
 
-## Current MMF-1 — Implementation Candidate / Source Review PENDING
+## Current MMF-1 — SOURCE REVIEW APPROVED — GO
 
 用户已单独授权 ADR-015 的 **MMF-1 Runtime Foundation**；实现候选在 `codex/mmf-1-runtime-foundation`，
-基线 `7e97a95dbdd85d4c055fb5aa8128132d1d340a21`。本轮 fresh fetch 后 main / HEAD / origin/main 一致、初始工作树 clean。
+基线 `7e97a95dbdd85d4c055fb5aa8128132d1d340a21`。正式发布前 fresh origin/main、local main 与候选 HEAD 一致；完整实际候选与已审查补丁完全一致。
 当前 Runtime 已有 ONE Active Model owner、私有 selection/guard、统一 AI reservation 和内部 fixture-only switch 合同。
 模型出站完成未知时 AI admission/switch 保持 STOP；领域健康 API 保持独立。Ollama admission 仅接受固定 v0.40.0 的审核 GGUF 子集。
 Browser Translate-only、旧 readiness/profile version 保持；readiness 只查 metadata，不创建 task/reservation 或推理。
 无公开 switch/Release/recovery mutation、无 Desktop/Frontend/sibling 修改；MMF-2 native confirmation/cache contract 尚未接入。
-**MMF-1 implementation candidate — GO for Architecture Guard source review；source approval PENDING。**
-**MMF Overall NOT CLOSED；MMF-2/MMF-3 NOT STARTED；Windows/real Chrome/shared Ollama acceptance NOT PERFORMED。**
-完整变更、实际 focused tests、失败修复和 PENDING 证据见 [MMF-1 Implementation Candidate](engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md)。
-当前候选未 commit/push/merge；正式顺序保持 Model Management → Vision → Finance 独立收尾 → F0；W1 PAUSED，Finance Integration BLOCKED。
+**Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；Finding A/B: CLOSED。**
+**MMF Overall NOT CLOSED；MMF-2/MMF-3 NOT STARTED。**
+Focused tests: Codex previously reported PASS；本轮继承，未重跑。
+Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED。
+完整变更、历史 focused tests、失败修复及正式源码批准记录见 [MMF-1 Implementation Candidate](engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md)。
+已批准 implementation commit: `91aa6c243e6d4de0fb53e879abd1f5ec64462849`；正式发布仅 fast-forward-only 到 main，结果以 push 后远端核对为准。
+正式顺序保持 Model Management → Vision → Finance 独立收尾 → F0；W1 PAUSED，Finance Integration BLOCKED。
 
 ## Historical ADR-015 architecture approval snapshot
 

@@ -1,15 +1,19 @@
 # Personal AI Workspace — Current Architecture
 
-## MMF-1 Runtime foundation — Implementation Candidate / Source Review PENDING
+## MMF-1 Runtime foundation — SOURCE REVIEW APPROVED — GO
 
-[MMF-1 candidate evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 是本次实现事实；ADR-015 仍 Accepted，未改写批准记录。
+[MMF-1 source approval / evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 记录已批准实现；ADR-015 仍 Accepted，未改写批准正文。
+**Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；Finding A/B: CLOSED。**
+Focused tests: Codex previously reported PASS；本轮继承，不重跑。Independent Windows GUI / Chrome acceptance: NOT PERFORMED；
+Shared Ollama real inference acceptance: NOT PERFORMED。MMF Overall NOT CLOSED；MMF-2/MMF-3 NOT STARTED。
 Runtime 的 `ActiveModelManager` 是唯一 selection/lifecycle/switch owner。`ModelStateStore` 独占私有 `workspace.model-state-directory`，
 与 credentials/data/领域备份分开；JSON 严格、有界、私有、revision CAS 和 atomic replacement，execution guard 在 send 前 force。
 `TextTaskSubmission` 获取 immutable model/profile/prompt reservation；Conversation 在 durable USER Turn 前获取，Knowledge packing 用同一 profile。
 TaskManager 保留原 scheduler/queue/deadlines/retention/completion，lease callbacks 在 monitor 外，terminal 不释放 running drain。
 OllamaProvider 复用原 loopback/no proxy/no redirects/policy/parser，增加固定 v0.40.0 的 version/tags/show/tags source/digest/capability/context 验证。
 模型 transport 使用明确 `:local` source；未知 runner/manifest/cloud/metadata fail closed，仍拒绝 tool calls。
-内部 switch 在独占 owner 下 validate/probe → durable commit → publish；候选操作 lease/guard 保持到 publication，失败不自动 reload 旧模型。
+内部 switch 在独占 owner 下 validate/probe → durable commit → publish；纯 metadata/digest 拒绝保留旧 Ready，已发 candidate probe 后失败不自动 reload 旧模型。
+实际默认模型只读 metadata admission 已验证；`requires` 仅按固定版本的最低版本合同校验，不开放 Workspace Vision。
 出站未知独立于 task terminal/retention，关闭所有 AI admission 和 load/switch；restart guard 不自动清除，未新增恢复 mutation。
 首次合法统一 YAML revision 0、零 selection write；只有成功内部显式选择才创建 durable revision 1。
 bootstrap text validation 在首个 AI admission 有界执行；metadata readiness 本身不 load/infer 或创建 reservation，内部 ready 与 legacy metadata availability 分开。
