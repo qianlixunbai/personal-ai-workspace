@@ -1,6 +1,26 @@
 # Personal AI Workspace — Current Architecture
 
-## MMF-2A — SOURCE REVIEW APPROVED — GO
+## Current MMF-2B — SOURCE REVIEW APPROVED — GO
+
+2026-10-08（Asia/Shanghai）。Architecture Guard 独立源码审查：**APPROVED — GO；Source blockers: 0**。
+P0 Recovery/Restart、P1 Release Guard Lifecycle、P1 Desktop Error Compatibility 均 CLOSED。
+Runtime 唯一 model owner、native-only API、WPF exact-intent、Desktop error contracts 与 Settings 源码已批准；
+implementation commit：`3e4b5d15872ba00cd96b3c1e98a6a5d38302cd63`，后接独立 docs-only approval commit。
+批准补丁的 29 文件及 SHA-256、既有 focused evidence 和失败修复记录见
+[MMF-2B source approval](../engineering/MMF-2B-IMPLEMENTATION-CANDIDATE.md#17-formal-source-approval-and-git-publication)。
+正式源码发布仅 fast-forward 到 main，结果以发布后独立 remote HEAD 核对为准。
+
+`validation-required.json` 获窄 **implementation supplement approval**，准确合同见报告 §16.3/§17。
+它独立绑定 selected model/digest/revision：RECOVER 清 guard 前可靠发布；重启后阻止普通自动 probe/load；
+成功 native-confirmed validation 安全解除后才开放 admission。可信完成的 selected Release 清 execution guard、
+保留 selection/revision 和 validation requirement；未知完成继续保留 execution uncertainty。
+marker 与 selection/guard 均保持 strict private/bounded/versioned/NOFOLLOW/fail-closed；已有 selection/guard v1 schema 不变。
+ADR-015 Accepted 正文未修改；领域 DB/backup、Browser/Finance、默认模型/prompt/budgets/权限边界不变。
+**Focused tests previously reported PASS；本轮不重跑。Real Windows/Chrome/Ollama integrated acceptance NOT PERFORMED。**
+**MMF-3 NOT STARTED；Model Management Overall NOT CLOSED。** Source approval 不等于实际集成验收或后续实施授权。
+以下章节保留历史快照，当前 MMF 状态以上文为准。
+
+## Historical MMF-2A — SOURCE REVIEW APPROVED — GO
 
 **Architecture Guard MMF-2A SOURCE REVIEW — APPROVED — GO；Source blockers: 0。**
 Browser 已先正式发布到 main：`267db794691d1a9ab1712b30b07cbeb57241808b`。

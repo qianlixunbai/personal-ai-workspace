@@ -1,6 +1,22 @@
 # Personal AI Workspace — Current Status
 
-## Current MMF-2A — SOURCE REVIEW APPROVED — GO
+## Current MMF-2B — SOURCE REVIEW APPROVED — GO
+
+2026-10-08（Asia/Shanghai）。Architecture Guard 已独立批准完整 MMF-2B Runtime/native/Desktop/Settings 源码，
+**Source blockers: 0；P0 Recovery/Restart: CLOSED；P1 Release Guard Lifecycle: CLOSED；P1 Desktop Error Compatibility: CLOSED。**
+私有 `validation-required.json` 的严格 schema、model/digest/revision 绑定、崩溃顺序与 fail-closed 行为
+获 **implementation supplement approval**；它独立于 selection/execution guard，既有 v1 schema 与 ADR-015 Accepted 正文不变。
+Approved baseline：`16ee6eb50d982b474f020b33acfd252268d13144`；approved patch SHA-256：
+`758ae6f2fa358bd1a57e0b5befe7b696890772ecadb14ff7e558bb35c3b7cc2c`，准确 29 个文件。
+Implementation commit：`3e4b5d15872ba00cd96b3c1e98a6a5d38302cd63`；后接独立 docs-only approval commit，
+仅按 fast-forward 发布到 main，实际发布结果以 push 后独立 remote HEAD 核对为准。
+Focused tests: **previously reported PASS**；本轮不重跑测试。历史失败和修复见
+[MMF-2B source approval / evidence](engineering/MMF-2B-IMPLEMENTATION-CANDIDATE.md#17-formal-source-approval-and-git-publication)。
+**Source approved；real Windows/Chrome/Ollama integrated acceptance NOT PERFORMED。**
+**MMF-3 NOT STARTED；Model Management Overall NOT CLOSED。** 不授权共享 Ollama 操作、Vision/W1/Finance 后续工作。
+以下 MMF-2A 与更早章节保留形成时历史快照，当前 MMF 状态以上文为准。
+
+## Historical MMF-2A — SOURCE REVIEW APPROVED — GO
 
 **Architecture Guard MMF-2A SOURCE REVIEW — APPROVED — GO；Source blockers: 0。**
 Browser 已先正式发布到 main：`267db794691d1a9ab1712b30b07cbeb57241808b`。

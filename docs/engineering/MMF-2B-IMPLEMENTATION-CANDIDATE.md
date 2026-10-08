@@ -1,8 +1,8 @@
-# MMF-2B Native Model Management — remediated review candidate
+# MMF-2B Native Model Management — SOURCE REVIEW APPROVED — GO
 
-2026-10-08 (Asia/Shanghai). Implementation scope: ADR-015 Accepted; candidate source only. **Targeted remediation Candidate GO for Architecture Guard re-review; approval/publication remains STOP pending independent review.** MMF overall remains NOT CLOSED. The new validation marker contract is a candidate supplement, not an Accepted ADR amendment.
+2026-10-08 (Asia/Shanghai). **Architecture Guard Final Decision: SOURCE REVIEW — APPROVED — GO; Source blockers: 0.** Runtime/native/Desktop/Settings source and the narrow validation-required implementation supplement are approved. ADR-015 Accepted text is unchanged. Source publication is authorized; real integrated acceptance is NOT PERFORMED; MMF-3 NOT STARTED; Model Management Overall NOT CLOSED. Section 17 records formal approval/publication; earlier review-stage decisions are historical.
 
-The initial source review reproduced a recovery/restart confirmation bypass in `ModelFoundationTest.confirmedGuardRecoveryFollowedByRestartStillRequiresNativeValidation`. The authorized targeted remediation now preserves that assertion and passes it using a separate durable validation requirement. Trusted Release/candidate completion and execution uncertainty are distinct; capability-specific Desktop error mappings are repaired. Section 16 records the current changes and actual focused evidence; prior implementation evidence below is explicitly historical. Do not publish before Architecture Guard re-review.
+The initial source review reproduced a recovery/restart confirmation bypass in `ModelFoundationTest.confirmedGuardRecoveryFollowedByRestartStillRequiresNativeValidation`. The authorized targeted remediation preserved that assertion and passed it using a separate durable validation requirement. Trusted Release/candidate completion and execution uncertainty are distinct; capability-specific Desktop error mappings are repaired. Architecture Guard independently closed the P0 and both P1 findings. Section 16 retains the remediation evidence and historical decisions; section 17 supersedes their pending-approval status without erasing previous failures.
 
 ## 1. Historical initial implementation Git Reality Gate
 
@@ -164,15 +164,15 @@ The current focused Java run has replaced the generated Surefire reports; they n
 
 No full Java/Desktop/Frontend/Browser suite, full browser acceptance, IME/stress/historical regression or installation/package matrix. No shared Ollama switch, warm/load, Release, inference or external kill/restart. No real two-model Windows/Chrome product acceptance, GPU/resource measurement or external-client coordination/recovery proof. Fixtures used private temporary credentials/model-state/domain roots and provider endpoints; no production token/selection was read or copied.
 
-## 12. Remaining MMF-3 Dependencies
+## 12. Historical pre-approval MMF-3 Dependency Handoff
 
 First close MMF-2B source blockers; MMF-3 is not authorized or started. Then separately authorize isolated Runtime endpoint/token/private state/data plus actual two-model/shared-client impact, Windows native interaction, Browser A-cache→B-switch including Single/Batch/mixed/revoke/legacy guard, GPU residency effects, unknown outcome and operator recovery acceptance. Source fixtures do not replace these checks.
 
-## 13. Full Review Patch
+## 13. Historical Full Review Patch Handoff
 
 Full tracked + untracked source/documentation patch: `.verification/mmf-2b-full-review.patch`, relative to HEAD `16ee6eb50d982b474f020b33acfd252268d13144`. No staging or commits are needed to include new files. The updated patch includes all prior candidate files plus this remediation; it is a review artifact, not an approved/deployable implementation. SHA-256 and application checks are recorded alongside the patch at handoff; section 16 also identifies the actual incremental patch.
 
-## 14. Final MMF-2B Candidate GO / STOP
+## 14. Historical pre-approval MMF-2B Candidate GO / STOP
 
 **Targeted remediation Candidate GO for independent Architecture Guard re-review. Approval/publication STOP pending that review.** The original regression is retained and green; normal legacy bootstrap is preserved, and guard/selection v1 schemas are unchanged.
 
@@ -186,7 +186,7 @@ Workspace: `codex/mmf-2b-native-model-management`; HEAD and fetched origin/main 
 
 Browser: main, HEAD/origin/main `267db794691d1a9ab1712b30b07cbeb57241808b`, clean at final read-only check. No commit, push, merge, tag, release, package publication, reset, rebase or amendment performed.
 
-## 16. Architecture Guard Targeted Remediation Handoff
+## 16. Historical Architecture Guard Targeted Remediation Handoff
 
 ### 16.1 Current Git Reality Gate
 
@@ -272,3 +272,65 @@ The exact marker schema and lifecycle above are a narrow new candidate architect
 ### 16.11 Final decision
 
 **Targeted remediation Candidate GO for Architecture Guard re-review; NOT APPROVED, publication STOP.** All requested deterministic source blockers are remediated on the retained feature WIP with final focused PASS. Stop here awaiting Architecture Guard; no commit/push/merge, model process management, shared model operation or MMF-3 activity follows automatically.
+
+## 17. Formal Source Approval and Git Publication
+
+2026-10-08 (Asia/Shanghai). Architecture Guard independently reviewed the complete candidate and targeted remediation.
+**Final Decision: SOURCE REVIEW — APPROVED — GO; Source blockers: 0.**
+**P0 Recovery/Restart: CLOSED; P1 Release Guard Lifecycle: CLOSED; P1 Desktop Error Compatibility: CLOSED.**
+Approval covers the existing Runtime/native/Desktop/Settings source, not real Windows/Chrome/Ollama acceptance or MMF-3.
+
+### Approved patch and implementation commit
+
+Approved baseline: `16ee6eb50d982b474f020b33acfd252268d13144`.
+Approved complete review patch: `.verification/mmf-2b-full-review.patch`.
+Approved SHA-256: `758ae6f2fa358bd1a57e0b5befe7b696890772ecadb14ff7e558bb35c3b7cc2c`.
+Exactly 29 approved files, as listed in section 9; implementation commit:
+`3e4b5d15872ba00cd96b3c1e98a6a5d38302cd63` (`feat(models): implement approved MMF-2B native model management`).
+Its tree is `1ab06525fc3347ad9b5e6dd5b34281c1500288a7`, equal to the approved patch applied to the baseline.
+
+Publication reality gate verified expected feature branch/HEAD, empty initial index, consistent author/committer,
+fresh origin/main and local main at the baseline, exactly 29 tracked/untracked candidate changes and byte-identical complete source patch.
+No unknown unignored changes or additional AGENTS.md were found. Exact staging was checked by tree identity and
+`git diff --cached --check`; ignored review patches, Surefire/TRX, build outputs and private/temporary data were excluded.
+Approved production/test content was not modified during publication. ADR-015, Browser and Finance are untouched.
+
+The first publication attempt stopped before staging/committing because proxy fetch failed with TLS handshake error
+and direct fetch failed with connection reset. This resumed attempt successfully refreshed origin and repeated all identity gates;
+the network stop does not erase or alter the historical source/test failures in sections 10 and 16.7.
+
+### Validation-required implementation supplement approval
+
+Architecture Guard approved Runtime-private `validation-required.json` as a narrow implementation supplement.
+Section 16.3's exact six-field v1 schema, 4096-byte strict UTF-8/field/type/version bounds, owner-only/NOFOLLOW rules,
+model/digest/revision binding, private atomic publication/readback, crash ordering and fail-closed handling remain the approved contract.
+The marker stays independent of selection and execution guard: requiring future native validation does not imply remote execution is unknown.
+RECOVER reliably establishes it before clearing a guard; ordinary admission after restart cannot automatically load/probe.
+Successful confirmed validation safely removes it before opening admission. Trusted selected Release retains it and selection/revision,
+while safely completed guard cleanup remains distinct from unknown outbound completion.
+Existing `active-model.json`/`execution-guard.json` v1 schemas and ADR-015 Accepted body remain unchanged.
+Filesystem limits and unperformed power-loss/real external-service acceptance described in section 16.3 remain explicit.
+
+### Separate docs-only approval commit and publication boundary
+
+After the implementation commit, a separate docs-only commit updates exactly:
+`docs/STATUS.md`, `docs/architecture/current-architecture.md`, `docs/roadmap/V1-ROADMAP.md`,
+and this `docs/engineering/MMF-2B-IMPLEMENTATION-CANDIDATE.md`.
+It records source approval, approved marker supplement, prior test evidence and unperformed integrated acceptance.
+No production/test changes, tags, releases or installation packages are authorized in this step.
+
+The implementation → docs-only approval chain is authorized for fast-forward-only publication to main after another fresh remote/ancestry check.
+Actual publication completion and the docs-only commit/remote SHA must be reported from independent post-push remote verification;
+this document does not infer remote completion from a local commit or push initiation. The approved review patch remains unchanged.
+
+### Evidence and remaining acceptance gates
+
+Focused tests were **previously reported PASS** in the implementation/remediation; their actual commands, earlier failures and corrections
+remain in sections 10 and 16.7. No tests/builds/packaging/inference are rerun in this publication task.
+Real Windows/Chrome/Ollama integrated acceptance: **NOT PERFORMED**.
+**MMF-3 NOT STARTED; Model Management Overall NOT CLOSED.**
+Remaining separately authorized acceptance includes isolated Runtime/token/private roots, native Windows interaction,
+two-model/shared-client eviction/Release impact, Browser cache A→B Single/Batch/mixed/revoke/legacy paths,
+GPU/residency effects, cancellation/draining/unknown outcomes, operator recovery and restart/failure behavior.
+No shared Ollama load/unload/inference or process management, automatic replay, Vision/OCR, W1 Search or Finance activity follows source publication.
+After verified publication, stop and await Architecture Guard's independent MMF-3 authorization.
