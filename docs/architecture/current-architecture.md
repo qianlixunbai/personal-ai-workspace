@@ -1,5 +1,42 @@
 # Personal AI Workspace — Current Architecture
 
+## Model Management Foundation — Accepted architecture / implementation NOT STARTED
+
+[ADR-015](../ADR/ADR-015-active-model-management.md) 为 **Accepted**；Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**。
+**Architecture approval does not authorize implementation；Production implementation: NOT STARTED；Windows/Browser acceptance: NOT PERFORMED。**
+本轮仅正式文档批准与 Git publication，production/test changes = 0；全部已批准架构合同保持。
+入口 `main / HEAD / fresh origin/main = 172343e02511fed2bdee110e56509e0894f8951b`；只有四份待提交文档，无其他用户修改。
+现有 `ModelProfile/ProfileResolver` 含 YAML model，`TextTaskSubmission` 捕获执行 profile，
+`OllamaProvider.ensureModel` 仅做 tags 名称 presence；当前无 Active selection、统一 switch gate 或 local-source/digest admission。
+Conversation 现有顺序是 mandatory validation → durable USER Turn → prepare/submit；未来 reservation 必须前移且共用 immutable snapshot。
+
+未来 Runtime 单独拥有 catalog/lifecycle/selection revision/private versioned JSON 与 ONE Active Model；
+profiles 继续拥有 capability/prompt/budgets/temperature/validators/LOCAL_ONLY，不重构 Provider。
+switch 与所有 AI reservation 同一短 gate 线性化；queued/running/cancelled draining/uncertainty 阻止 switch，切换中新请求 409，
+Conversation 不保存 USER Turn；网络/加载/推理不持 TaskManager/DB 锁。成功 atomic commit 后才 publish Active。
+legacy YAML 首次 effective selection 不写配置；坏 selection/unknown version/source/digest fail closed，无隐式 fallback。
+ONE Active 不保证外部 Ollama 仅驻留一个模型；candidate load/warm 可触发 automatic eviction，即使 Workspace 未发送 explicit unload。
+所有跨模型加载前须 WPF exact-intent，提示候选/旧 Active/共享客户端影响；复用既有 WebFetch session/60s/default-Cancel/late-response 模式。
+拒绝/过期/session replacement 不开始新 load；explicit Release 仅单模型单次授权，不以 ps 判断外部空闲。
+失败保留旧 durable selection、不保证旧 residency；恢复 reload 须重新确认。
+pre-send 零 inference egress / 可信完成响应且 worker exit / outbound uncertainty 分开；最后一种使当前 Active 新 AI 与 switch/Release STOP。
+私有 execution guard 防止 Runtime restart 遗忘；用户协调共享客户端、自行核对原服务/runner 结束并手动启动后，
+经单次 native 恢复确认与 Runtime 本地/metadata 重验解除。外部完成陈述仍为用户接受的信任假设，不自动 kill/restart/replay。
+生产根由 Runtime 配置固定，验收显式独立私有临时根与 token；selection/lock/pending/guard 生命周期见 ADR，不触碰真实选择或修改领域 backup。
+外部服务可信性/按名调用 digest race 边界保持；无通用 Approval/Settings/supervisor/GPU framework。
+
+React 仍只通过 typed trusted WPF/session/RuntimeClient；模型失败不阻塞在线 Runtime 的健康领域 API，
+Runtime 离线不声称领域服务正常。Vision declaration ≠ Workspace Vision validation，无图片执行/model tools。
+此前只读审计的 Browser 基线为 clean `5c5b239468175b679c06a48966f21255ac87279e`（本轮未重新核对）：cache key 使用 profileVersion，
+但 cache readiness 只查 availability；未来需 readiness identity → cache lookup 及旧客户端 guard，Browser 仍 Translate-only。
+本轮不修改 sibling；ADR-015 §7 原文保留，epoch/identity v1/兼容分支与 Single/Batch/mixed freshness 不变。
+
+正式顺序：**W1 后续联网开发暂停 → Model Management Foundation → V1 Vision Foundation
+→ Personal Finance OS 独立收尾 → F0**；Finance Integration **BLOCKED pending F0**。
+W1A CLOSED — GO；W1B 候选研究完成但 Search implementation NOT STARTED；W1C/W1D 未开始；W1 Overall PAUSED / NOT CLOSED。
+Model Management implementation NOT STARTED；Vision NOT STARTED；成功发布后可独立规划，实施须单独授权。
+以下 W1A 与更早章节保留已实现基线/历史下一步快照；架构批准不扩展当前产品能力。
+
 ## Implemented W1A architecture — source APPROVED — GO
 
 **W1A implementation — COMPLETE；W1A-1 / W1A-2 SOURCE REVIEW — APPROVED — GO。**

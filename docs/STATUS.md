@@ -1,5 +1,32 @@
 # Personal AI Workspace — Current Status
 
+## Current Model Management Foundation — Architecture APPROVED — GO
+
+**Architecture Guard Final Review: APPROVED — GO；Architecture blockers: 0。**
+[ADR-015](ADR/ADR-015-active-model-management.md) 正式 **Accepted**；本轮仅授权文档批准与 Git publication。
+**Architecture approval does not authorize implementation；Production implementation: NOT STARTED。**
+**Windows/Browser acceptance: NOT PERFORMED。**
+本轮入口 `main / HEAD / fresh origin/main = 172343e02511fed2bdee110e56509e0894f8951b`；仅四份待提交文档，无其他用户修改。
+Browser sibling 历史证据见 ADR §1，本轮不重新审计或修改。
+
+正式顺序：**暂停 W1 后续联网开发 → Model Management Foundation → V1 Multimodal / Vision Foundation
+→ Personal Finance OS 独立收尾 → F0 Finance Reality Sync**。
+**W1A — CLOSED — GO；W1 Overall PAUSED / NOT CLOSED**；W1B 候选研究已完成（用户阶段输入），Search implementation NOT STARTED，
+W1C/W1D 未开始；研究不等于 backend/implementation approval。Finance Integration **BLOCKED pending F0**。
+
+已批准合同为 Runtime-owned ONE Active Model / strict durable selection / shared AI admission gate；
+capability profiles 保留 budgets/prompt/validation/LOCAL_ONLY。Browser Translate-only cache freshness 是后续跨仓库交付依赖。
+Ollama automatic eviction 与 Workspace explicit unload 分开；所有跨模型 load 前须 WPF native exact-intent，
+拒绝/过期/session replacement 不开始新候选加载；Release 仅单模型单次授权，旧 durable selection 回退不保证 residency。
+出站完成未知时当前 Active 新 AI 与 switch/Release STOP；可信完成 + worker exit 或明确人工外部恢复后才解除，
+跨 Runtime restart 私有 guard 保留风险，不以 HTTP cancel/空 ps/Runtime restart 推断远端已停，不自动停止服务或 replay。
+生产 model-state 根由 Runtime 配置固定；验收必须显式私有临时根/独立 token，不读取或覆盖真实 Active selection，领域 backup 不变。
+ADR §7 identity v1/effective epoch/旧 Browser guard/旧 Runtime bypass/Single-Batch-mixed freshness 原文保留。
+Model Management implementation **NOT STARTED**；Vision **NOT STARTED**。
+本轮仅五份授权文档，production/test/sibling/Finance changes = 0；tests/builds/packaging/inference/acceptance executed = **NONE**。
+文档批准提交仅按 fast-forward-only 发布到 main；正式 publication 以发布后远端 HEAD 核对为准。
+成功发布后可进入独立实施任务规划，实施仍需单独授权。以下 W1A 与更早章节保留交付基线快照；当前阶段以上文为准。
+
 ## Current W1A source approved — implementation COMPLETE
 
 Architecture Guard：**W1A-1 SOURCE REVIEW — APPROVED — GO；W1A-2 SOURCE REVIEW — APPROVED — GO**。

@@ -21,7 +21,11 @@ W1 Accepted [ADR-014](../ADR/ADR-014-controlled-web-access.md) 来源为 Archite
 architecture blockers: 0；**W1 Architecture Publication Closing Review — APPROVED — GO**；
 Architecture publication 已完成；后续 W1A-1 / W1A-2 source review 均 APPROVED — GO，complete source blockers: 0。
 **W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效），
-见 [W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md)。下一独立活动为 **W1B Search Backend Review**；W1C / W1D pending。
+见 [W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md)。**W1 后续联网开发暂停**；W1B 候选研究已完成（用户阶段输入），
+Search implementation NOT STARTED，W1C/W1D 未开始；**W1 Overall PAUSED / NOT CLOSED**。
+[ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**；Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**。
+**Architecture approval does not authorize implementation；Production implementation: NOT STARTED；Windows/Browser acceptance: NOT PERFORMED。**
+本轮仅文档批准与 Git publication；成功发布后下一独立活动为 Model Management Foundation 实施任务规划，实施须单独授权。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
 `c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
@@ -101,9 +105,11 @@ Portable logical backup 是产品原则；当前各备份格式的范围独立�
 | 10 | K2 | Deterministic Lexical Retrieval | CLOSED — GO | K1 truth / locators |
 | — | T0 工程门禁 | Test Suite Consolidation / Slimming | CLOSED — GO | K2 closing；位于 K3 前 |
 | 11 | K3 | Grounded Knowledge Answer + Citations | CLOSED — GO | K2 / ADR-013；implementation/source closing approved |
-| 12 | W1 | Controlled Web Access | W1A source approved / implementation complete；overall NOT CLOSED | ADR-014；W1A closing 随 main publication 生效；下一活动 W1B Search Backend Review；W1C/W1D pending |
+| 12 | W1 | Controlled Web Access | W1A CLOSED — GO；W1 Overall PAUSED / NOT CLOSED | ADR-014；W1B 候选研究完成，Search implementation NOT STARTED；W1C/W1D 未开始 |
+| — | Model Management Foundation | ONE Active Model / safe switch / durable selection | Architecture APPROVED — GO；ADR-015 Accepted；implementation NOT STARTED | W1 暂停后优先；可独立规划，实施须单独授权 |
 | 13 | V1 | Multimodal / Vision Foundation | NOT STARTED | Model Management Foundation |
-| 14 | F0 | Finance Reality Sync | NOT STARTED | authoritative Finance worktree |
+| — | Personal Finance OS 独立收尾 | 独立 Finance 工作，不授权 Workspace 集成 | 用户决定的后续顺序；本仓库不实施 | V1 Vision 后、F0 前；独立仓库审核 |
+| 14 | F0 | Finance Reality Sync | NOT STARTED | Personal Finance OS 独立收尾后，authoritative Finance worktree |
 | 15 | F1 | Finance Integration Foundation | BLOCKED pending F0 | F0 事实 / 独立集成审核 |
 | 16 | F2 | Bill / Transaction Import | 未来；受 Finance Freeze 约束 | F1 / Finance 写入权限；Vision 可提供候选 |
 | 17 | F3 | Unified Finance Assistant | 未来；受 Finance Freeze 约束 | F1/F2 / authoritative Finance |
@@ -114,6 +120,10 @@ T0 位于 K2 关闭之后、路线图扩展与 K3 之前，是工程清理门禁
 M5A–M5E 是 M5 内部阶段；M3/M4 的子阶段同样不提升为正式主线。
 K4 当前不是必需的 V1 prerequisite。
 Model Management Foundation、Resource Monitor / System Status 是跨阶段平台任务，不新增顶层 milestone。
+
+本次正式工作顺序覆盖先前的 W1-first 计划：**暂停 W1 后续联网开发 → Model Management Foundation
+→ V1 Multimodal / Vision Foundation → Personal Finance OS 独立收尾 → F0 Finance Reality Sync**。
+恢复 W1 须另行授权；W1A 不重开，W1 overall 不因暂停而关闭。Finance Integration 继续 F0 前冻结。
 
 正式 Vision milestone 名称仍为 **V1 — Multimodal / Vision Foundation**。
 它与产品版本 V1 的名称有歧义；尚无 Architecture Guard 的重命名批准，因此本文保留原名。
@@ -643,14 +653,14 @@ Memory/Knowledge/Conversation 独立，不批准跨域自治、automatic Web 或
 | Phase | 范围 |
 | --- | --- |
 | W1A | Public Web Policy + Secure Fetch Foundation + Native Approval；source approved / implementation complete；closing 随 main publication 生效 |
-| W1B | NEXT：Search Backend Review；backend 未选定，无 Search implementation |
-| W1C | PENDING：Web Answer + Frozen Web Evidence + Runtime-owned Citations + Web UI |
-| W1D | PENDING：Integrated Windows/Public-Network Acceptance + Closing；未执行 |
+| W1B | 候选研究完成（用户阶段输入）；Search implementation 未开始；后续联网开发暂停，不推定 backend 已批准 |
+| W1C | 未开始 / 暂缓：Web Answer + Frozen Web Evidence + Runtime-owned Citations + Web UI |
+| W1D | 未开始 / 暂缓：Integrated Windows/Public-Network Acceptance + Closing；未执行 |
 
-**下一独立活动：W1B — Search Backend Review**；review 不授权 implementation。
-本次 publication docs-only，tests/builds/inference/public Web requests NONE；public Internet smoke / Windows product acceptance NOT PERFORMED。
+**W1 后续联网开发暂停 / W1 Overall PAUSED / NOT CLOSED**；ADR-015 Accepted，下一独立活动为 Model Management Foundation 实施任务规划，架构批准不授权 implementation。
+W1A publication 当时为 docs-only，tests/builds/inference/public Web requests NONE；public Internet smoke / Windows product acceptance NOT PERFORMED。
 无 Search/WebAnswer/automatic Web/model tool calling/Finance；[W1A Closing Report](../milestones/W1A-CLOSING-REPORT.md) 保留 source approval 与继承证据。
-W1 后仍为 Model Management Foundation，再进入 Vision。
+当前顺序为 Model Management Foundation → Vision → Personal Finance OS 独立收尾 → F0；W1 后续恢复须另行授权。
 
 ### V1 — Multimodal / Vision Foundation
 
@@ -767,30 +777,47 @@ F4 计划让一个用户请求有意组合多个已授权领域，同时保留�
 
 ## 9. Model Management Foundation（跨阶段平台任务）
 
-**阶段定位 / 进入前状态：** 未来、NOT STARTED。当前 Runtime 已有固定 Model Profiles 与 provider readiness，
-尚无通用用户 Active Model 选择、安全切换与统一 loading lifecycle。这不是新增编号的产品 milestone。
+**阶段定位 / 进入前状态：** Architecture APPROVED — GO / implementation NOT STARTED。
+当前 Runtime 已有 Model Profiles 与 provider readiness，尚无用户 Active Model 选择、安全切换与统一 lifecycle。
+这是跨阶段平台任务，不新增编号的产品 milestone；[ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**。
+Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**；已批准合同保持，implementation 须单独授权。
 
-计划顺序：**K3 → W1 → Model Management Foundation → Vision**。
-目标是 **ONE Active Model**；默认不同时加载多个模型，Settings 未来允许选择当前 Active Model。
-profile 计划描述 provider、model id、capabilities、text support、vision support、context limit、
-installed state、loading state、startup behavior；不把具体模型或厂商名称写成永久要求。
+当前优先顺序：**暂停 W1 后续联网开发 → Model Management Foundation → V1 Vision → Personal Finance OS 独立收尾 → F0**。
+目标为 Runtime 唯一权威的 **ONE Active Model**；capability profiles 保留 prompt/capability、budgets、temperature、validators、LOCAL_ONLY。
+catalog/installed/loading/vision declaration 属 Runtime lifecycle metadata，不成为 profile 的新领域职责；不重构 Provider。
 
 **计划核心工作 / 用户结果：** 显示 Loading、Ready、Busy、Unloaded、Failed；
 明确模型是否支持请求能力，并安全切换。未来切换流程为：
 
 ```text
-select model → verify installed → verify capability → load/warm → health check → activate
+native exact-intent (candidate / old Active / automatic eviction impact) + expected revision
+→ idle / no uncertainty gate → local source/digest/capability/context admission
+→ optional explicitly approved old-model release → bounded load/text validation → atomic selection commit → publish Active
 ```
 
-只有新模型验证成功才更新 Active Model；失败保留旧 active configuration/model，不先破坏旧模型再尝试新模型。
-startup 只 warm 用户选中的 Active Model。模型 presence/readiness 与加载状态/推理质量须区分。
+成功持久化后才公布新 Active；precommit 失败保持旧 durable selection，不承诺旧模型驻留或立即恢复。
+ONE Active 不约束整个外部 Ollama 的驻留；不自动释放共享模型或终止外部进程。
+所有跨模型 load/warm 前均须 native 确认；未发 explicit unload 不保证旧模型驻留，automatic eviction 可影响共享客户端。
+复用既有 WPF session/60s/default-Cancel/late-response 模式；拒绝/过期/session replacement 不开始新 candidate load。
+explicit Release 只授权单模型单次操作，不批量清空、不用 `/api/ps` 证明外部空闲；失败后的旧模型 reload 须另行确认。
+startup 仅验证/按有界策略 warm 合法 effective selection；首次无 selection 用一致合法 YAML，不选 tags 第一项、不改配置。
+坏 selection/未知 version/source/digest fail closed。configured/installed/loaded/active/ready/executing 分开，服务不可达不叫 Unloaded。
 
-**核心组件 / 数据与持久化：** 计划由 Runtime profile/provider/lifecycle policy 和 Settings 协作；
-Active Model 配置与持久格式待 review，不放入 Memory/Knowledge truth，也不暗改现有 backup contract。
-**安全与权限边界：** React 仍不直连 Ollama、不获得进程或任意 provider URL authority；资源与取消语义须保留。
-**与其他领域的关系：** 支持 text / future Vision capability checks；模型不可用不能阻止纯数据管理与 lexical search。
-**明确不做 / 阶段结果与依赖：** 未来、NOT STARTED；不默认 multi-model startup、不预定 download/model catalog/自动安装行为；
-独立审核后实施，P1 负责最终模型设置与切换体验产品化。
+**核心组件 / 持久化：** Runtime 单 switch owner、strict owner-only versioned selection JSON、atomic publication/revision/digest；
+reservation/queued/running/cancelled draining/uncertainty 阻止切换，任务共用 admission-time snapshot；无领域 DB/backup changes。
+生产 model-state 根由 Runtime 配置固定；测试/验收必须显式独立私有临时根与 token，不读写真实 Active selection。
+selection 跨 restart 保留，OS lock 仅 writer 生命周期持有；pending 不自动晋升，execution guard 不随 task terminal/restart 清除。
+**安全与权限：** React 只走 trusted typed WPF/session/RuntimeClient；网络/加载/推理不持 TaskManager/DB 锁。
+Local-only admission 基于正面 source metadata，明确外部服务信任边界；不修改用户 Ollama 配置。
+pre-send 可证零 inference egress；可信完成响应 + worker exit 才正常释放出站 lease；outbound unknown 阻止当前 Active 新 AI 与 switch/Release。
+用户可按 ADR §8.1 协调客户端、自行核对原服务/runner 结束并手动启动，再经 native 单次恢复确认/本地 metadata 重验解除；
+外部完成仍属用户接受的信任假设，Runtime restart/空 ps/HTTP cancel 均不足以证明，不自动 kill/restart/replay。
+**跨仓库依赖：** Browser Translate-only readiness/cache identity 修复先于开放 switch；ADR-015 §7 原文保留，
+effective epoch/identity v1/旧 Browser fail-closed/新 Browser + 旧 Runtime bypass/Single-Batch-mixed freshness 不变；本轮不改 sibling。
+**其他领域：** 模型故障不阻塞在线 Runtime 的健康纯数据 API/lexical search；Runtime 离线不声称领域功能正常。
+Provider Vision 声明 ≠ Workspace Vision 验收；图片上传/多模态执行/model tools 均不实施。
+**明确不做：** 模型市场、多 Provider Registry、Agent、自动下载、通用进程或资源监控。
+生产实施仍需独立审核及授权；本轮仅正式架构文档批准与 publication，Windows/Browser acceptance NOT PERFORMED；P1 负责最终体验整合。
 
 ## 10. Resource Monitor / System Status（跨阶段平台任务）
 
@@ -920,7 +947,7 @@ Knowledge 继续是 reference material，derived indexes 可重建；不把 sema
 ### Model Management
 
 目标 ONE Active Model、Settings selection、Loading/Ready/Busy/Unloaded/Failed、能力检查与安全切换。
-失败保留旧 active model，startup 只 warm 选中的模型。
+失败保留旧 durable selection，不保证旧模型驻留或立即恢复；startup 只验证/按有界策略 warm effective selection。
 
 ### System / Resource Status
 
@@ -951,8 +978,11 @@ Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO*
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
 K3 Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
-当前 milestone 为 **W1 — Controlled Web Access（overall NOT CLOSED）**；下一独立活动为 **W1B — Search Backend Review**。
+当前状态为 **Model Management Foundation — Architecture APPROVED — GO / ADR-015 Accepted**；implementation NOT STARTED。
+W1 Overall PAUSED / NOT CLOSED；W1B 候选研究完成但 Search implementation NOT STARTED。
 **W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
-W1C / W1D pending；public Internet smoke / Windows product acceptance NOT PERFORMED；本次仅 documentation closing/publication。
+W1C / W1D 未开始；public Internet smoke / Windows product acceptance NOT PERFORMED。
+既有 W1A closing/publication 证据保持；本轮仅 docs-only approval / publication，发布结果以 push 后远端 HEAD 核对为准。
+后续顺序为 Model Management Foundation → V1 Vision → Personal Finance OS 独立收尾 → F0；Finance Integration 保持冻结。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。
