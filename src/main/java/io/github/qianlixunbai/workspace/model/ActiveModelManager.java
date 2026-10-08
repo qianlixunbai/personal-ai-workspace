@@ -9,7 +9,7 @@ import io.github.qianlixunbai.workspace.task.*;
 import java.io.IOException;
 import java.util.*;
 
-/** The sole runtime selection, switch and AI reservation owner. No HTTP/bridge mutation in MMF-1. */
+/** The sole runtime selection, switch, recovery and AI reservation owner. */
 public final class ActiveModelManager implements AutoCloseable {
     public enum Fact { TRUE, FALSE, UNKNOWN }
     public enum Phase { RESERVED, QUEUED, RUNNING, DRAINING }
@@ -27,6 +27,20 @@ public final class ActiveModelManager implements AutoCloseable {
     private final ModelStateStore store;
     private final int capacity, contextBudget;
     private final Set<Reservation> leases = new HashSet<>();
+    public enum Action { SWITCH, RELEASE_OLD_THEN_SWITCH, RELEASE, VALIDATE, RECOVER }
+    public record CatalogEntry(String handle, String model, String digest, long contextLimit,
+                               boolean completion, boolean localSourceVerified, boolean providerDeclaredVision) {}
+    public record Catalog(long selectionRevision, List<CatalogEntry> models) {}
+    public record Intent(Action action, String catalogHandle, String candidateModel, String candidateDigest,
+                         long expectedSelectionRevision, String expectedActiveModel, String expectedActiveDigest,
+                         String recoveryGeneration, boolean externalConfirmed) {}
+    public record ManagementStatus(String configuredModel, String configuredDigest, String activeModel, String activeDigest,
+                                   long selectionRevision, Fact installed, Fact loaded, boolean ready,
+                                   int reserved, int queued, int executing, int draining, boolean switching, boolean uncertain,
+                                   String recoveryGeneration, boolean validationRequired, ErrorCode error) {}
+    private Map<String, CatalogEntry> catalogHandles = Map.of();
+    private long catalogRevision = -1;
+    private final java.time.Duration managementBudget;
     private String configuredModel, configuredDigest;
     private long revision;
     private ExecutionModel active;
@@ -45,6 +59,8 @@ public final class ActiveModelManager implements AutoCloseable {
     public ActiveModelManager(ProfileResolver profiles, OllamaProvider provider, RuntimeProperties properties, ModelStateStore store) {
         this.profiles = profiles; this.provider = provider; this.store = store;
         capacity = properties.tasks().concurrency() + properties.tasks().queueCapacity();
+        managementBudget = properties.tasks().executionTimeout().compareTo(java.time.Duration.ofSeconds(150)) < 0
+                ? properties.tasks().executionTimeout() : java.time.Duration.ofSeconds(150);
         var all = List.of(properties.translate(), properties.summarize(), properties.ask());
         contextBudget = all.stream().mapToInt(ModelProfile::contextBudget).max().orElseThrow();
         try {
@@ -61,6 +77,12 @@ public final class ActiveModelManager implements AutoCloseable {
                         || !"ollama".equals(p.provider()) || p.locality() != ModelProfile.Locality.LOCAL))
                     throw new IllegalArgumentException("Ambiguous legacy model selection");
                 configuredModel = canonical;
+            }
+            var validation = store.validationRequired();
+            if (validation != null) {
+                checkValidationBinding(validation);
+                configuredDigest = validation.digest(); // Also pins revision-zero legacy selection after recovery.
+                recoveryLoadRequiresConfirmation = true;
             }
             if (uncertain) error = ErrorCode.MODEL_EXECUTION_UNCERTAIN;
         } catch (IOException invalid) { storeFailed = true; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
@@ -129,27 +151,31 @@ public final class ActiveModelManager implements AutoCloseable {
         synchronized (gate) { leases.add(operation); }
         return operation;
     }
-    private void probe(Reservation operation) {
+    private void probe(Reservation operation) { probe(operation, new Cancellation()); }
+    private void probe(Reservation operation, Cancellation cancellation) {
         operation.running();
         ModelProfile profile = operation.profile();
         ExecutionModel snapshot = operation.model();
         String output = provider.execute(new Provider.ProviderExecution(profile, PrivacyMode.LOCAL_ONLY,
-                "Reply with OK only.", "OK", List.of(new Provider.ChatMessage("user", "OK")), operation), new Cancellation());
+                "Reply with OK only.", "OK", List.of(new Provider.ChatMessage("user", "OK")), operation), cancellation);
         if (output.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > profile.outputBudget() * 4)
             throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_PROBE");
-        var checked = provider.admitLocal(snapshot.model(), contextBudget, new Cancellation());
+        var checked = provider.admitLocal(snapshot.model(), contextBudget, cancellation);
         if (!snapshot.digest().equals(checked.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
     }
 
     /** Package-private: deterministic fixture contract only until MMF-2 native/cache gates exist. */
     void switchInternal(long expectedRevision, String candidateModel, String candidateDigest) {
+        selectionOperation(expectedRevision, candidateModel, candidateDigest, null);
+    }
+    private void selectionOperation(long expectedRevision, String candidateModel, String candidateDigest, Intent intent) {
         if (!ModelStateStore.validModel(candidateModel) || !ModelStateStore.validDigest(candidateDigest))
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "MODEL_CANDIDATE");
         boolean previousReady;
         Fact previousInstalled, previousLoaded;
         ErrorCode previousError;
         synchronized (gate) {
-            checkGate();
+            if (intent == null) checkGate(); else validateIntent(intent, false);
             if (revision != expectedRevision) throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
             if (revision == ModelStateStore.MAX_REVISION) throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
             if (!leases.isEmpty()) throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL");
@@ -157,17 +183,35 @@ public final class ActiveModelManager implements AutoCloseable {
             previousReady = ready; previousInstalled = installed; previousLoaded = loaded; previousError = error;
             switching = true;
         }
-        try {
+        try (var budget = new Budget(managementBudget)) {
             verifyStore();
-            var checked = provider.admitLocal(candidateModel, contextBudget, new Cancellation());
+            var checked = provider.admitLocal(candidateModel, contextBudget, budget.cancellation);
             if (!candidateDigest.equals(checked.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
-            try (var operation = operation(new ExecutionModel(candidateModel, candidateDigest, expectedRevision + 1), true)) {
-                probe(operation);
+            if (intent != null && intent.action() == Action.RELEASE_OLD_THEN_SWITCH) {
+                try (var release = operation(new ExecutionModel(intent.expectedActiveModel(), intent.expectedActiveDigest(), expectedRevision), true)) {
+                    release.running(); provider.release(release, contextBudget, budget.cancellation);
+                }
                 synchronized (gate) { if (uncertain || closed) throw unavailable(); }
-                var committed = store.commit(expectedRevision, candidateModel, candidateDigest);
+            }
+            try (var operation = operation(new ExecutionModel(candidateModel, candidateDigest, expectedRevision + 1), true)) {
+                probe(operation, budget.cancellation);
+                budget.cancellation.check();
+                synchronized (gate) { if (uncertain || closed) throw unavailable(); }
+                ModelStateStore.Selection committed;
+                try {
+                    committed = intent != null && intent.action() == Action.VALIDATE ? null : store.commit(expectedRevision, candidateModel, candidateDigest);
+                    store.clearValidation();
+                } catch (IOException failure) {
+                    // Record persistence failure before lease close decides whether its guard is safely removable.
+                    synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
+                    throw failure;
+                }
                 synchronized (gate) {
-                    configuredModel = committed.model(); configuredDigest = committed.digest(); revision = committed.selectionRevision();
+                    if (committed != null) {
+                        configuredModel = committed.model(); configuredDigest = committed.digest(); revision = committed.selectionRevision();
+                    }
                     active = new ExecutionModel(configuredModel, configuredDigest, revision);
+                    if (committed == null) active = new ExecutionModel(candidateModel, candidateDigest, revision);
                     cacheEpoch = newCacheEpoch();
                     ready = true; installed = Fact.TRUE; loaded = Fact.UNKNOWN; error = null;
                     recoveryLoadRequiresConfirmation = false;
@@ -178,6 +222,7 @@ public final class ActiveModelManager implements AutoCloseable {
             synchronized (gate) { storeFailed = true; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
             throw new WorkspaceException(ErrorCode.MODEL_STATE_UNAVAILABLE, "MODEL_COMMIT");
         } catch (RuntimeException failure) {
+            if (code(failure) == ErrorCode.TASK_CANCELLED) failure = new WorkspaceException(ErrorCode.TASK_TIMEOUT, "MODEL");
             synchronized (gate) {
                 if (!recoveryLoadRequiresConfirmation && !uncertain && !storeFailed && !closed) {
                     // Read-only rejection cannot evict the old Active or invalidate its text validation.
@@ -190,6 +235,142 @@ public final class ActiveModelManager implements AutoCloseable {
             }
             throw failure;
         } finally { synchronized (gate) { switching = false; } }
+    }
+
+    public Catalog catalog() {
+        long expected;
+        synchronized (gate) { expected = revision; }
+        verifyStore();
+        try (var budget = new Budget(managementBudget)) {
+            var entries = provider.catalog(contextBudget, budget.cancellation).stream().map(e ->
+                    new CatalogEntry(UUID.randomUUID().toString(), e.model(), e.digest(), e.contextLimit(), true, true, e.providerDeclaredVision())).toList();
+            synchronized (gate) {
+                if (switching || revision != expected) throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL_CATALOG");
+                var handles = new HashMap<String, CatalogEntry>();
+                for (var entry : entries) handles.put(entry.handle(), entry);
+                catalogHandles = Map.copyOf(handles); catalogRevision = expected;
+                return new Catalog(expected, entries);
+            }
+        }
+    }
+
+    /** Inspection is metadata-only, even while the uncertainty guard is closed. */
+    public ManagementStatus managementStatus() {
+        String model, digest; long expected; ExecutionModel observed;
+        synchronized (gate) { model = configuredModel; digest = configuredDigest == null && active != null ? active.digest() : configuredDigest; expected = revision; observed = active; }
+        if (model != null) {
+            Fact resident = Fact.UNKNOWN, present = Fact.UNKNOWN; ErrorCode failed = null;
+            try (var budget = new Budget(managementBudget)) {
+                verifyStore();
+                var evidence = provider.admitLocal(model, contextBudget, budget.cancellation);
+                if (digest != null && !digest.equals(evidence.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
+                digest = evidence.digest(); present = Fact.TRUE;
+                resident = provider.residency(model, digest, budget.cancellation);
+            } catch (WorkspaceException failure) {
+                failed = failure.error().code(); present = failed == ErrorCode.MODEL_UNAVAILABLE ? Fact.FALSE : present;
+            }
+            synchronized (gate) {
+                if (revision == expected && active == observed && !switching) {
+                    installed = present; loaded = resident;
+                    if (failed != null) { ready = false; if (!uncertain && !storeFailed) error = failed; }
+                }
+            }
+        }
+        synchronized (gate) {
+            return new ManagementStatus(configuredModel, revision == expected && Objects.equals(configuredModel, model) ? digest : configuredDigest,
+                    active == null ? null : active.model(), active == null ? null : active.digest(), revision, installed, loaded,
+                    ready && !switching && !uncertain && !storeFailed && !closed, count(Phase.RESERVED), count(Phase.QUEUED),
+                    count(Phase.RUNNING), count(Phase.DRAINING), switching, uncertain, recoveryGeneration,
+                    recoveryLoadRequiresConfirmation || active == null || !ready, error);
+        }
+    }
+
+    /** All mutations enter the same gate as reservations. Native confirmation is owned by Desktop. */
+    public ManagementStatus manage(Intent intent) {
+        if (intent.action() == Action.SWITCH || intent.action() == Action.RELEASE_OLD_THEN_SWITCH || intent.action() == Action.VALIDATE) {
+            selectionOperation(intent.expectedSelectionRevision(), intent.candidateModel(), intent.candidateDigest(), intent);
+        } else {
+            synchronized (gate) { validateIntent(intent, intent.action() == Action.RECOVER); switching = true; }
+            try (var budget = new Budget(managementBudget)) {
+                verifyStore();
+                var checked = provider.admitLocal(intent.candidateModel(), contextBudget, budget.cancellation);
+                if (!intent.candidateDigest().equals(checked.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
+                if (intent.action() == Action.RELEASE) {
+                    boolean selected;
+                    synchronized (gate) { selected = Objects.equals(configuredModel, intent.candidateModel()); }
+                    try (var release = operation(new ExecutionModel(intent.candidateModel(), intent.candidateDigest(), revision), selected)) {
+                        release.running(); provider.release(release, contextBudget, budget.cancellation);
+                        synchronized (gate) {
+                            if (selected) { ready = false; recoveryLoadRequiresConfirmation = true; loaded = Fact.UNKNOWN; }
+                        }
+                    }
+                } else {
+                    synchronized (operations) {
+                        // Keep the logical switch gate closed across metadata validation and private guard IO.
+                        synchronized (gate) { validateRecovery(intent); }
+                        budget.cancellation.check();
+                        store.requireValidation(revision, intent.candidateModel(), intent.candidateDigest());
+                        store.recoverGuard();
+                        synchronized (gate) {
+                            uncertain = false; ready = false; recoveryLoadRequiresConfirmation = true;
+                            cacheEpoch = newCacheEpoch(); recoveryGeneration = UUID.randomUUID().toString(); error = null;
+                        }
+                    }
+                }
+            } catch (IOException failure) {
+                synchronized (gate) { uncertain = true; ready = false; error = ErrorCode.MODEL_EXECUTION_UNCERTAIN; }
+                throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL_RECOVERY");
+            } finally { synchronized (gate) { switching = false; } }
+        }
+        synchronized (gate) {
+            // Mutation response is a snapshot, not another provider operation after the bounded mutation.
+            return managementSnapshot(configuredDigest == null && active != null ? active.digest() : configuredDigest);
+        }
+    }
+
+    private void validateIntent(Intent intent, boolean recovery) {
+        if (closed || storeFailed) throw unavailable();
+        if (switching || !leases.isEmpty()) throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL");
+        if (!recovery && uncertain) throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL");
+        if (revision != intent.expectedSelectionRevision()) throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
+        var entry = catalogHandles.get(intent.catalogHandle());
+        if (catalogRevision != revision || entry == null || !entry.model().equals(intent.candidateModel()) || !entry.digest().equals(intent.candidateDigest()))
+            throw new WorkspaceException(ErrorCode.MODEL_CATALOG_STALE, "MODEL");
+        if (!Objects.equals(intent.expectedActiveModel(), active == null ? null : active.model())
+                || !Objects.equals(intent.expectedActiveDigest(), active == null ? null : active.digest()))
+            throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
+        boolean external = intent.action() == Action.RELEASE || intent.action() == Action.RELEASE_OLD_THEN_SWITCH || recovery;
+        if (intent.externalConfirmed() != external || !recovery && intent.recoveryGeneration() != null)
+            throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "MODEL");
+        if (intent.action() == Action.RELEASE_OLD_THEN_SWITCH && (active == null || active.model().equals(intent.candidateModel())))
+            throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "MODEL");
+        if (intent.action() == Action.VALIDATE || recovery) {
+            String bound = configuredDigest == null && active != null ? active.digest() : configuredDigest;
+            if (!Objects.equals(configuredModel, intent.candidateModel()) || bound != null && !bound.equals(intent.candidateDigest()))
+                throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
+        }
+        if (recovery) validateRecovery(intent);
+    }
+    private void validateRecovery(Intent intent) {
+        if (!uncertain || !leases.isEmpty() || !recoveryGeneration.equals(intent.recoveryGeneration()) || revision != intent.expectedSelectionRevision())
+            throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL_RECOVERY");
+    }
+    private ManagementStatus managementSnapshot(String digest) {
+        return new ManagementStatus(configuredModel, digest, active == null ? null : active.model(), active == null ? null : active.digest(),
+                revision, installed, loaded, ready && !switching && !uncertain && !storeFailed && !closed,
+                count(Phase.RESERVED), count(Phase.QUEUED), count(Phase.RUNNING), count(Phase.DRAINING), switching, uncertain,
+                recoveryGeneration, recoveryLoadRequiresConfirmation || active == null || !ready, error);
+    }
+    private static final class Budget implements AutoCloseable {
+        final Cancellation cancellation = new Cancellation();
+        private final Thread timer;
+        Budget(java.time.Duration duration) {
+            timer = Thread.ofVirtual().start(() -> {
+                try { Thread.sleep(duration); cancellation.cancel(); }
+                catch (InterruptedException finished) { Thread.currentThread().interrupt(); }
+            });
+        }
+        public void close() { timer.interrupt(); }
     }
 
     public Provider.ProviderReadiness readiness(String profileId) {
@@ -251,11 +432,21 @@ public final class ActiveModelManager implements AutoCloseable {
         return new WorkspaceException(error == null ? ErrorCode.MODEL_UNAVAILABLE : error, "MODEL");
     }
     private void verifyStore() {
-        try { store.selection(); }
+        try {
+            store.selection();
+            // Startup/publication bind the marker; immutable bytes/key detect subsequent external changes.
+            // Do not compare an IO snapshot with a later in-memory selection publication during inspection.
+            store.validationRequired();
+        }
         catch (IOException failure) {
             synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
             throw new WorkspaceException(ErrorCode.MODEL_STATE_UNAVAILABLE, "MODEL_STATE");
         }
+    }
+    private void checkValidationBinding(ModelStateStore.ValidationRequired validation) throws IOException {
+        if (validation.selectionRevision() != revision || !Objects.equals(validation.model(), configuredModel)
+                || configuredDigest != null && !configuredDigest.equals(validation.digest()))
+            throw new IOException("Validation requirement does not match selection");
     }
     private static ModelProfile bind(ModelProfile p, String model, String epoch) {
         // Effective public version is frozen at admission; configured versions stay private.
@@ -290,7 +481,19 @@ public final class ActiveModelManager implements AutoCloseable {
                     if (released || closed || storeFailed || uncertain) throw unavailable();
                     if (sent && !complete) throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL");
                 }
-                try { store.armGuard(); }
+                try {
+                    if (candidateSwitch) {
+                        String selectedModel, selectedDigest; long selectedRevision;
+                        synchronized (gate) {
+                            selectedModel = configuredModel; selectedRevision = revision;
+                            selectedDigest = configuredDigest == null && active != null ? active.digest() : configuredDigest;
+                        }
+                        if (selectedDigest == null) selectedDigest = selectedModel.equals(model.model()) ? model.digest()
+                                : provider.admitLocal(selectedModel, contextBudget, new Cancellation()).digest();
+                        store.requireValidation(selectedRevision, selectedModel, selectedDigest);
+                    }
+                    store.armGuard();
+                }
                 catch (IOException failure) {
                     synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
                     throw new WorkspaceException(ErrorCode.MODEL_STATE_UNAVAILABLE, "EXECUTION_GUARD");
@@ -329,7 +532,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 if (sent) outbound--;
                 reportUncertainty();
                 boolean safe;
-                synchronized (gate) { safe = !uncertain && !closed && !storeFailed && !recoveryLoadRequiresConfirmation; }
+                synchronized (gate) { safe = !uncertain && !closed && !storeFailed; }
                 if (sent && outbound == 0 && safe) {
                     try { store.clearGuard(); }
                     catch (IOException failure) {

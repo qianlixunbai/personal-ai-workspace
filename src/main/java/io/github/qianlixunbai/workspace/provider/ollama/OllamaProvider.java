@@ -3,6 +3,7 @@ package io.github.qianlixunbai.workspace.provider.ollama;
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.config.RuntimeProperties;
 import io.github.qianlixunbai.workspace.model.ModelProfile;
+import io.github.qianlixunbai.workspace.model.ModelStateStore;
 import io.github.qianlixunbai.workspace.policy.ProviderPolicy;
 import io.github.qianlixunbai.workspace.task.Cancellation;
 import io.github.qianlixunbai.workspace.provider.Provider;
@@ -132,7 +133,7 @@ public final class OllamaProvider implements Provider {
         }
     }
 
-    public record LocalModelEvidence(String model, String digest, long contextLimit) {
+    public record LocalModelEvidence(String model, String digest, long contextLimit, boolean providerDeclaredVision) {
         @Override public String toString() { return "LocalModelEvidence[private]"; }
     }
     public LocalModelEvidence admitLocal(String model, int contextBudget, Cancellation cancellation) {
@@ -144,7 +145,83 @@ public final class OllamaProvider implements Provider {
         JsonNode show = metadata("/api/show", json.writeValueAsBytes(Map.of("model", model + ":local", "verbose", false)), cancellation);
         JsonNode after = OllamaModelAdmission.installed(metadata("/api/tags", null, cancellation), model);
         var evidence = OllamaModelAdmission.verify(model, before, show, after, contextBudget);
-        return new LocalModelEvidence(evidence.model(), evidence.digest(), evidence.contextLimit());
+        boolean vision = false;
+        for (JsonNode capability : show.path("capabilities")) vision |= "vision".equals(capability.asString());
+        return new LocalModelEvidence(evidence.model(), evidence.digest(), evidence.contextLimit(), vision);
+    }
+
+    /** Read-only, bounded, strict catalog. Never use /api/ps as evidence of external idleness. */
+    public List<LocalModelEvidence> catalog(int contextBudget, Cancellation cancellation) {
+        JsonNode tags = metadata("/api/tags", null, cancellation);
+        if (tags.size() != 1 || !tags.path("models").isArray() || tags.path("models").size() > 256)
+            throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_CATALOG");
+        Set<String> names = new HashSet<>();
+        List<LocalModelEvidence> result = new ArrayList<>();
+        for (JsonNode item : tags.path("models")) {
+            if (!item.isObject() || !item.path("name").isString() || !item.path("model").isString()
+                    || !item.path("name").asString().equals(item.path("model").asString())
+                    || !names.add(item.path("name").asString()))
+                throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_CATALOG");
+            String model = item.path("name").asString();
+            if (!ModelStateStore.validModel(model)) continue;
+            try {
+                var evidence = admitLocal(model, contextBudget, cancellation);
+                if (!evidence.digest().equals(OllamaModelAdmission.digest(item.path("digest"))))
+                    throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL_CATALOG");
+                result.add(evidence);
+            } catch (WorkspaceException denied) {
+                if (denied.error().code() != ErrorCode.POLICY_DENIED) throw denied;
+                // Existing supported-version/source policy excludes unsafe candidates, without loading them.
+            }
+            if (result.size() > 64) throw new WorkspaceException(ErrorCode.MODEL_CATALOG_LIMIT_EXCEEDED, "MODEL_CATALOG");
+        }
+        return List.copyOf(result);
+    }
+
+    public io.github.qianlixunbai.workspace.model.ActiveModelManager.Fact residency(String model, String digest, Cancellation cancellation) {
+        JsonNode ps = metadata("/api/ps", null, cancellation);
+        if (ps.size() != 1 || !ps.path("models").isArray() || ps.path("models").size() > 256)
+            throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RESIDENCY");
+        Set<String> names = new HashSet<>(); boolean found = false;
+        for (JsonNode item : ps.path("models")) {
+            if (!item.isObject() || !item.path("name").isString() || !item.path("model").isString()
+                    || !item.path("name").asString().equals(item.path("model").asString())
+                    || !names.add(item.path("name").asString()))
+                throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RESIDENCY");
+            for (String field : item.propertyNames())
+                if (!Set.of("name", "model", "size", "digest", "details", "expires_at", "size_vram", "context_length", "runner").contains(field))
+                    throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RESIDENCY");
+            OllamaModelAdmission.noRemote(item);
+            String observed = OllamaModelAdmission.digest(item.path("digest"));
+            if (model.equals(item.path("name").asString())) {
+                if (!digest.equals(observed)) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL_RESIDENCY");
+                found = true;
+            }
+        }
+        return found ? io.github.qianlixunbai.workspace.model.ActiveModelManager.Fact.TRUE
+                : io.github.qianlixunbai.workspace.model.ActiveModelManager.Fact.FALSE;
+    }
+
+    /** Fixed v0.40.0 single-model unload protocol; guarded exactly like inference. */
+    public void release(io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease, int contextBudget, Cancellation cancellation) {
+        var evidence = admitLocal(lease.model().model(), contextBudget, cancellation);
+        if (!lease.model().digest().equals(evidence.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL_RELEASE");
+        policy.verify(lease.profile(), this, io.github.qianlixunbai.workspace.policy.PrivacyMode.LOCAL_ONLY);
+        String requestModel = lease.model().model() + ":local";
+        var request = HttpRequest.newBuilder(base.resolve("/api/generate")).timeout(settings.requestTimeout())
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(
+                        json.writeValueAsBytes(Map.of("model", requestModel, "stream", false, "keep_alive", 0)))).build();
+        try {
+            var response = exchange(request, settings.requestTimeout(), cancellation, lease::beforeSend);
+            checkStatus(response); JsonNode body = parse(response.body()); OllamaModelAdmission.noRemote(body);
+            if (body.size() != 5 || !body.path("model").isString() || !requestModel.equals(body.path("model").asString())
+                    || !body.path("created_at").isString() || !body.path("response").isString() || !body.path("response").asString().isEmpty()
+                    || !body.path("done").isBoolean() || !body.path("done").asBoolean() || !"unload".equals(body.path("done_reason").asString("")))
+                throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RELEASE");
+            try { java.time.OffsetDateTime.parse(body.path("created_at").asString()); }
+            catch (java.time.format.DateTimeParseException invalid) { throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RELEASE"); }
+            lease.trustedCompletion();
+        } finally { lease.providerExited(); }
     }
     private JsonNode metadata(String path, byte[] payload, Cancellation cancellation) {
         var builder = HttpRequest.newBuilder(base.resolve(path)).timeout(settings.healthTimeout());

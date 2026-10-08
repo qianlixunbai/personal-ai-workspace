@@ -41,7 +41,9 @@ public sealed partial class RuntimeClient
         MemoryFields(root,"code","message","phase");string code=String(root,"code");_=String(root,"message");_=String(root,"phase");
         if(code.StartsWith("KNOWLEDGE_",StringComparison.Ordinal))return KnowledgeError(status,root);
         int expected=code switch {"INVALID_REQUEST"=>400,"POLICY_DENIED"=>403,"QUEUE_FULL"=>429,
-            "PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE"=>503,"INTERNAL_ERROR" or "PROVIDER_RESPONSE_INVALID"=>500,_=>throw Invalid()};
+            "MODEL_SWITCH_CONFLICT" or "MODEL_SELECTION_REVISION_CONFLICT" or "MODEL_EXECUTION_UNCERTAIN"=>409,
+            "PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "MODEL_STATE_UNAVAILABLE" or "MODEL_CONFIGURATION_INVALID" or "MODEL_IDENTITY_CHANGED"=>503,
+            "TASK_TIMEOUT"=>504,"INTERNAL_ERROR" or "PROVIDER_RESPONSE_INVALID"=>500,_=>throw Invalid()};
         if((int)status!=expected)throw Invalid();return MapError(code);
     }
     private static KnowledgeAnswerTask ParseKnowledgeAnswerTask(JsonElement r,Guid? expected)
@@ -60,7 +62,8 @@ public sealed partial class RuntimeClient
         if(!terminal){if(error.ValueKind!=JsonValueKind.Null)throw Invalid();return new(id,status,null,null);}
         MemoryFields(error,"code","message","phase");_=String(error,"message");_=String(error,"phase");string code=String(error,"code");
         if(status==TaskState.CANCELLED?code!="TASK_CANCELLED":status==TaskState.TIMED_OUT?code!="TASK_TIMEOUT":
-            code is not ("PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "PROVIDER_RESPONSE_INVALID" or "POLICY_DENIED" or "INVALID_REQUEST" or "INTERNAL_ERROR"))throw Invalid();
+            code is not ("PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "MODEL_STATE_UNAVAILABLE" or "MODEL_IDENTITY_CHANGED" or "MODEL_EXECUTION_UNCERTAIN"
+                or "PROVIDER_RESPONSE_INVALID" or "POLICY_DENIED" or "INVALID_REQUEST" or "INTERNAL_ERROR"))throw Invalid();
         return new(id,status,null,MapError(code));
     }
     private static KnowledgeAnswerResult KAnswerResult(JsonElement r)

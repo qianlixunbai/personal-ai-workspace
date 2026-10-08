@@ -23,6 +23,7 @@ internal interface IWorkspaceNativeActions
     WorkspaceMemory? Memory => null;
     WorkspaceKnowledge? Knowledge => null;
     WorkspaceWebFetch? WebFetch => null;
+    WorkspaceModels? Models => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
@@ -47,6 +48,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly WorkspaceMemory? memory;
     private readonly WorkspaceKnowledge? knowledge;
     private readonly WorkspaceWebFetch? webFetch;
+    private readonly WorkspaceModels? models;
     internal bool EditorDirty { get; private set; }
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
@@ -66,7 +68,7 @@ internal sealed class WorkspaceBridge : IDisposable
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
-    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; webFetch = native.WebFetch; this.send = send; }
+    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; webFetch = native.WebFetch; models = native.Models; this.send = send; }
 
     internal void BeginDocument(string address)
     {
@@ -80,6 +82,7 @@ internal sealed class WorkspaceBridge : IDisposable
         memory?.BeginSession(SessionId);
         knowledge?.BeginSession(SessionId);
         webFetch?.BeginSession(SessionId);
+        models?.BeginSession(SessionId);
     }
 
     internal void Ready(string currentDocument)
@@ -92,6 +95,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal void Invalidate()
     {
         webFetch?.EndSession(SessionId);
+        models?.EndSession(SessionId);
         operations?.EndSession(SessionId);
         conversations?.EndSession(SessionId);
         memory?.EndSession(SessionId);
@@ -129,7 +133,15 @@ internal sealed class WorkspaceBridge : IDisposable
         try
         {
             object result;
-            if (WebFetchMethods.Contains(method))
+            if (ModelMethods.Contains(method))
+            {
+                if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
+                result = method == "models.mutate"
+                    ? await models.MutateAsync(session, payload.GetProperty("action").GetString()!, payload.GetProperty("handle").GetString()!,
+                        payload.GetProperty("expectedSelectionRevision").GetInt64(), payload.GetProperty("recoveryGeneration").ValueKind == JsonValueKind.Null ? null : payload.GetProperty("recoveryGeneration").GetString(), cancellation)
+                    : await models.InspectAsync(session, cancellation, method == "models.inspectRecovery");
+            }
+            else if (WebFetchMethods.Contains(method))
             {
                 if (webFetch is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "公共网络访问暂时不可用。");
                 result = method == "web.fetchSubmit"
@@ -265,6 +277,14 @@ internal sealed class WorkspaceBridge : IDisposable
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if (ModelMethods.Contains(method)) return method != "models.mutate" ? Fields(payload)
+            : Fields(payload, "action", "handle", "expectedSelectionRevision", "recoveryGeneration")
+              && Text(payload, "action", 23, out var action) && action is "SWITCH" or "RELEASE_OLD_THEN_SWITCH" or "RELEASE" or "VALIDATE" or "RECOVER"
+              && Text(payload, "handle", 36, out var handle) && CanonicalId(handle)
+              && payload.GetProperty("expectedSelectionRevision").ValueKind == JsonValueKind.Number
+              && payload.GetProperty("expectedSelectionRevision").TryGetInt64(out long modelRevision) && modelRevision >= 0 && modelRevision <= RuntimeClient.MaximumSelectionRevision
+              && (action == "RECOVER" ? Text(payload, "recoveryGeneration", 36, out var generation) && CanonicalId(generation)
+                  : payload.GetProperty("recoveryGeneration").ValueKind == JsonValueKind.Null);
         if (method == "web.fetchSubmit") return Fields(payload, "url") && Text(payload, "url", 2048, out _);
         if (method is "web.fetchGet" or "web.fetchCancel")
             return Fields(payload, "operationId") && Text(payload, "operationId", 36, out var webId) && CanonicalId(webId);
@@ -286,6 +306,8 @@ internal sealed class WorkspaceBridge : IDisposable
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
     internal static readonly IReadOnlySet<string> WebFetchMethods = new HashSet<string>(StringComparer.Ordinal)
     { "web.fetchSubmit", "web.fetchGet", "web.fetchCancel" };
+    internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
+    { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
     {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)

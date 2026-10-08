@@ -82,7 +82,7 @@ public sealed partial class RuntimeClient : IDisposable
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
         HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
         Func<JsonElement, DesktopError>? errorMap = null,
-        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse)
+        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse, TimeSpan? requestTimeout = null)
     {
         using var request = new HttpRequestMessage(method, path);
         // Actuator defaults to a vendor media type unless the client negotiates JSON.
@@ -103,7 +103,7 @@ public sealed partial class RuntimeClient : IDisposable
         {
             // A linked deadline also bounds streamed body reads, not just response headers.
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(TimeSpan.FromSeconds(8));
+            deadline.CancelAfter(requestTimeout ?? TimeSpan.FromSeconds(8));
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (response.StatusCode == HttpStatusCode.Unauthorized) throw new DesktopException(DesktopError.Unauthorized);
             if (expected == HttpStatusCode.NoContent && response.StatusCode == expected)
@@ -137,8 +137,9 @@ public sealed partial class RuntimeClient : IDisposable
                         400 or 413 => code == "INVALID_REQUEST",
                         403 => code == "POLICY_DENIED",
                         404 => code == "TASK_NOT_FOUND",
+                        409 => code is "MODEL_SWITCH_CONFLICT" or "MODEL_SELECTION_REVISION_CONFLICT" or "MODEL_EXECUTION_UNCERTAIN",
                         429 => code == "QUEUE_FULL",
-                        503 => code is "PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE",
+                        503 => code is "PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "MODEL_STATE_UNAVAILABLE" or "MODEL_CONFIGURATION_INVALID" or "MODEL_IDENTITY_CHANGED",
                         504 => code == "TASK_TIMEOUT",
                         500 => code is "INTERNAL_ERROR" or "PROVIDER_RESPONSE_INVALID",
                         _ => false
@@ -202,6 +203,12 @@ public sealed partial class RuntimeClient : IDisposable
 
     private static DesktopError MapError(string code) => code switch
     {
+        "MODEL_SWITCH_CONFLICT" => DesktopError.ModelSwitchConflict,
+        "MODEL_SELECTION_REVISION_CONFLICT" => DesktopError.ModelSelectionRevisionConflict,
+        "MODEL_EXECUTION_UNCERTAIN" => DesktopError.ModelExecutionUncertain,
+        "MODEL_STATE_UNAVAILABLE" => DesktopError.ModelStateUnavailable,
+        "MODEL_CONFIGURATION_INVALID" => DesktopError.ModelConfigurationInvalid,
+        "MODEL_IDENTITY_CHANGED" => DesktopError.ModelIdentityChanged,
         "PROVIDER_UNAVAILABLE" => DesktopError.ProviderUnavailable,
         "MODEL_UNAVAILABLE" => DesktopError.ModelUnavailable,
         "QUEUE_FULL" => DesktopError.QueueFull,

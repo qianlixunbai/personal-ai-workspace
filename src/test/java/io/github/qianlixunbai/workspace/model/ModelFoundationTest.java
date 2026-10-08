@@ -306,6 +306,7 @@ class ModelFoundationTest {
             assertEquals(probes, fixture.probes.get()); assertEquals(0, fixture.userCalls.get());
             assertEquals(0, fixture.candidateCalls.get());
             assertFalse(Files.exists(state().resolve("execution-guard.json")));
+            assertFalse(Files.exists(state().resolve("validation-required.json")));
             assertTrue(manager.readiness("translate.fast").modelAvailable());
             try (var lease = manager.reserve("translate.fast", "translate-v1")) {
                 assertEquals(MODEL, lease.model().model()); assertEquals(1, lease.model().revision());
@@ -319,16 +320,247 @@ class ModelFoundationTest {
             assertFalse(manager.status().uncertain()); // Completion and unknown old residency are distinct facts.
             assertEquals(ActiveModelManager.Fact.UNKNOWN, manager.status().loaded());
             assertEquals(committed, Files.readString(state().resolve("active-model.json")));
-            assertTrue(Files.exists(state().resolve("execution-guard.json")));
+            assertFalse(Files.exists(state().resolve("execution-guard.json"))); // Trusted completion is not outbound uncertainty.
+            assertTrue(Files.exists(state().resolve("validation-required.json")));
             code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> manager.reserve("translate.fast", "translate-v1"));
             assertFalse(manager.readiness("translate.fast").modelAvailable());
             assertEquals(probes + 1, fixture.probes.get()); // No automatic recovery load of A.
         }
         try (var fixture = new Fixture(); var restarted = fixture.manager()) {
-            assertTrue(restarted.status().uncertain());
-            code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.reserve("translate.fast", "translate-v1"));
+            assertFalse(restarted.status().uncertain());
+            assertTrue(restarted.managementStatus().validationRequired());
+            code(ErrorCode.MODEL_UNAVAILABLE, () -> restarted.reserve("translate.fast", "translate-v1"));
             assertEquals(0, fixture.probes.get()); assertEquals(0, fixture.userCalls.get());
         }
+    }
+
+    @Test void nativeCatalogCasExplicitReleaseValidationAndRecoveryAreOneGuardedLifecycle() throws Exception {
+        try (var f = new Fixture()) {
+            try (var manager = f.manager()) {
+                var status = manager.managementStatus(); var catalog = manager.catalog();
+                assertEquals(0, f.probes.get()); assertFalse(status.ready()); assertNull(status.activeModel());
+                assertEquals(ActiveModelManager.Fact.FALSE, status.loaded()); assertEquals(2, catalog.models().size());
+                var a = intent(manager, ActiveModelManager.Action.SWITCH, MODEL, false);
+                manager.catalog(); // Refresh replaces opaque authority; the old handle cannot send.
+                code(ErrorCode.MODEL_CATALOG_STALE, () -> manager.manage(a)); assertEquals(0, f.probes.get());
+                manager.manage(intent(manager, ActiveModelManager.Action.SWITCH, MODEL, false));
+                var epoch = manager.cacheReadiness("translate.fast", false).profile().version();
+                assertFalse(manager.cacheReadiness("translate.fast", true).readiness().modelAvailable());
+                var b = intent(manager, ActiveModelManager.Action.SWITCH, CANDIDATE, false);
+                try (var lease = manager.reserve("translate.fast", "translate-v1")) {
+                    code(ErrorCode.MODEL_SWITCH_CONFLICT, () -> manager.manage(b));
+                }
+                assertEquals(0, f.releases.get());
+                manager.manage(b);
+                assertEquals(2, manager.managementStatus().selectionRevision());
+                assertNotEquals(epoch, manager.cacheReadiness("translate.fast", false).profile().version());
+                code(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, () -> manager.manage(b));
+                assertEquals(0, f.releases.get()); // Normal switching never unloads.
+                var release = intent(manager, ActiveModelManager.Action.RELEASE, CANDIDATE, true);
+                var unauthorized = new ActiveModelManager.Intent(release.action(), release.catalogHandle(), release.candidateModel(), release.candidateDigest(),
+                        release.expectedSelectionRevision(), release.expectedActiveModel(), release.expectedActiveDigest(), null, false);
+                code(ErrorCode.INVALID_REQUEST, () -> manager.manage(unauthorized)); assertEquals(0, f.releases.get());
+                String selected = Files.readString(state().resolve("active-model.json"));
+                manager.manage(release); assertEquals(1, f.releases.get()); assertEquals(CANDIDATE + ":local", f.releasedModel.get());
+                assertFalse(manager.status().ready()); assertEquals(selected, Files.readString(state().resolve("active-model.json")));
+                int probes = f.probes.get();
+                code(ErrorCode.MODEL_UNAVAILABLE, () -> manager.reserve("translate.fast", "translate-v1"));
+                assertEquals(probes, f.probes.get());
+                manager.manage(intent(manager, ActiveModelManager.Action.VALIDATE, CANDIDATE, false));
+                assertEquals(selected, Files.readString(state().resolve("active-model.json"))); assertTrue(manager.status().ready());
+                manager.manage(intent(manager, ActiveModelManager.Action.RELEASE_OLD_THEN_SWITCH, MODEL, true));
+                assertEquals(2, f.releases.get()); assertEquals(CANDIDATE + ":local", f.releasedModel.get());
+                assertEquals(3, manager.managementStatus().selectionRevision());
+                f.malformed.set(true);
+                try (var lease = manager.reserve("translate.fast", "translate-v1")) {
+                    code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> f.provider.execute(request(lease), new Cancellation()));
+                }
+                assertTrue(manager.status().uncertain());
+            }
+            try (var restarted = f.manager()) {
+                assertTrue(restarted.status().uncertain()); assertFalse(restarted.status().ready());
+                var recovery = intent(restarted, ActiveModelManager.Action.RECOVER, MODEL, true);
+                var stale = new ActiveModelManager.Intent(recovery.action(), recovery.catalogHandle(), recovery.candidateModel(), recovery.candidateDigest(),
+                        recovery.expectedSelectionRevision(), recovery.expectedActiveModel(), recovery.expectedActiveDigest(), UUID.randomUUID().toString(), true);
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(stale));
+                assertTrue(Files.exists(state().resolve("execution-guard.json")));
+                int probes = f.probes.get(); f.digest.set(NEXT);
+                code(ErrorCode.MODEL_IDENTITY_CHANGED, () -> restarted.manage(recovery));
+                assertTrue(Files.exists(state().resolve("execution-guard.json"))); f.digest.set(DIGEST);
+                restarted.manage(recovery);
+                assertFalse(restarted.status().uncertain()); assertFalse(restarted.status().ready());
+                assertNotEquals(recovery.recoveryGeneration(), restarted.status().recoveryGeneration());
+                assertFalse(Files.exists(state().resolve("execution-guard.json"))); assertEquals(probes, f.probes.get());
+                code(ErrorCode.MODEL_UNAVAILABLE, () -> restarted.reserve("translate.fast", "translate-v1"));
+                assertEquals(probes, f.probes.get()); // Recovery is metadata-only; fresh native validation is still required.
+                f.malformed.set(false);
+                restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false)); assertTrue(restarted.status().ready());
+            }
+            f.tagsOverride.set("{\"models\":[{}]}");
+            code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> f.provider.catalog(8192, new Cancellation()));
+            f.tagsOverride.set(JSON.writeValueAsString(Map.of("models", java.util.stream.IntStream.range(0, 65)
+                    .mapToObj(i -> JSON.readTree(OllamaFixtures.tags("model" + i + ":latest", DIGEST)).path("models").get(0)).toList())));
+            code(ErrorCode.MODEL_CATALOG_LIMIT_EXCEEDED, () -> f.provider.catalog(8192, new Cancellation()));
+        }
+    }
+    @Test void confirmedGuardRecoveryFollowedByRestartStillRequiresNativeValidation() throws Exception {
+        try (var f = new Fixture()) {
+            try (var manager = f.manager()) {
+                manager.switchInternal(0, MODEL, DIGEST);
+                f.malformed.set(true);
+                try (var lease = manager.reserve("translate.fast", "translate-v1")) {
+                    code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> f.provider.execute(request(lease), new Cancellation()));
+                }
+                assertTrue(manager.status().uncertain());
+            }
+            try (var recovered = f.manager()) {
+                recovered.manage(intent(recovered, ActiveModelManager.Action.RECOVER, MODEL, true));
+                assertFalse(recovered.status().uncertain()); assertFalse(recovered.status().ready());
+                assertFalse(Files.exists(state().resolve("execution-guard.json")));
+                assertTrue(Files.exists(state().resolve("validation-required.json")));
+            }
+            f.malformed.set(false); int before = f.probes.get();
+            try (var restarted = f.manager()) {
+                assertFalse(restarted.status().ready());
+                // ADR-015 §8.1: recovery never grants a later automatic validation load, including restart.
+                code(ErrorCode.MODEL_UNAVAILABLE, () -> {
+                    try (var lease = restarted.reserve("translate.fast", "translate-v1")) { }
+                });
+                assertEquals(before, f.probes.get());
+                restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false));
+                assertFalse(Files.exists(state().resolve("validation-required.json")));
+                assertFalse(Files.exists(state().resolve("execution-guard.json")));
+                try (var lease = restarted.reserve("translate.fast", "translate-v1")) {
+                    assertEquals(1, lease.model().revision());
+                }
+            }
+            before = f.probes.get();
+            try (var normal = f.manager(); var lease = normal.reserve("translate.fast", "translate-v1")) {
+                assertEquals(1, lease.model().revision());
+                assertEquals(before + 1, f.probes.get()); // Normally validated durable selection retains approved bootstrap.
+            }
+        }
+    }
+
+    @Test void selectedReleaseCompletionAndUnknownRemainDistinctAcrossRestart() throws Exception {
+        try (var f = new Fixture()) {
+            String selection;
+            try (var manager = f.manager()) {
+                manager.switchInternal(0, MODEL, DIGEST);
+                selection = Files.readString(state().resolve("active-model.json"));
+                manager.manage(intent(manager, ActiveModelManager.Action.RELEASE, MODEL, true));
+                assertFalse(manager.status().uncertain());
+                assertFalse(Files.exists(state().resolve("execution-guard.json")));
+                assertTrue(Files.exists(state().resolve("validation-required.json")));
+                assertEquals(0, manager.status().executing());
+                assertEquals(selection, Files.readString(state().resolve("active-model.json")));
+            }
+            int probes = f.probes.get();
+            try (var restarted = f.manager()) {
+                assertFalse(restarted.status().uncertain());
+                code(ErrorCode.MODEL_UNAVAILABLE, () -> restarted.reserve("translate.fast", "translate-v1"));
+                assertEquals(probes, f.probes.get());
+                restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false));
+                assertEquals(selection, Files.readString(state().resolve("active-model.json")));
+                f.malformedRelease.set(true);
+                code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> restarted.manage(intent(restarted, ActiveModelManager.Action.RELEASE, MODEL, true)));
+                assertTrue(restarted.status().uncertain());
+                assertTrue(Files.exists(state().resolve("execution-guard.json")));
+            }
+            probes = f.probes.get();
+            try (var unknown = f.manager()) {
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> unknown.reserve("translate.fast", "translate-v1"));
+                assertEquals(probes, f.probes.get());
+                assertTrue(Files.exists(state().resolve("execution-guard.json")));
+            }
+        }
+    }
+
+    @Test void validationMarkerCrashOrderingStrictIdentityAndUnsafeArtifactsFailClosed() throws Exception {
+        // Simulate process exit after publication and a failed guard clear, without touching shared state.
+        try (var writer = store()) {
+            writer.armGuard();
+            writer.requireValidation(0, MODEL, DIGEST);
+            Files.writeString(state().resolve("execution-guard.pending"), "{\"version\":1,\"unresolved\":true}");
+            assertThrows(java.io.IOException.class, writer::recoverGuard);
+            assertNotNull(writer.validationRequired());
+        }
+        try (var f = new Fixture(); var restarted = f.manager()) {
+            assertTrue(restarted.status().uncertain());
+            code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.reserve("translate.fast", "translate-v1"));
+            assertEquals(0, f.probes.get());
+        }
+        Files.delete(state().resolve("execution-guard.pending"));
+        try (var writer = store()) { writer.recoverGuard(); }
+        Path marker = state().resolve("validation-required.json");
+        String valid = Files.readString(marker);
+        try (var f = new Fixture(); var legacy = f.manager()) {
+            code(ErrorCode.MODEL_UNAVAILABLE, () -> legacy.reserve("translate.fast", "translate-v1"));
+            assertEquals(0, f.probes.get());
+            Files.writeString(state().resolve("validation-required.pending"), valid);
+            code(ErrorCode.MODEL_STATE_UNAVAILABLE, () -> legacy.manage(intent(legacy, ActiveModelManager.Action.VALIDATE, MODEL, false)));
+            assertTrue(Files.exists(marker)); assertEquals(0, f.probes.get());
+        }
+        assertThrows(java.io.IOException.class, this::store);
+        Files.delete(state().resolve("validation-required.pending"));
+        for (String damaged : List.of(valid.replace("\"version\":1", "\"version\":2"), valid + " {}",
+                valid.replace("\"version\":1", "\"version\":1,\"version\":1"), valid.replace("true", "false"),
+                valid.replace("\"selectionRevision\":0", "\"selectionRevision\":0.5"),
+                valid.replace("\"provider\":\"ollama\"", "\"provider\":null"), valid.replace("{", "{\"extra\":1,"),
+                "\uFEFF" + valid, "x".repeat(4097))) {
+            Files.writeString(marker, damaged);
+            assertThrows(java.io.IOException.class, this::store);
+        }
+        Files.write(marker, new byte[]{(byte) 0xc3, 0x28}); assertThrows(java.io.IOException.class, this::store);
+        // Well-formed markers still cannot be applied to a different durable identity/revision.
+        for (String mismatched : List.of(valid.replace(MODEL, CANDIDATE), valid.replace("\"selectionRevision\":0", "\"selectionRevision\":1"))) {
+            Files.writeString(marker, mismatched);
+            try (var f = new Fixture(); var manager = f.manager()) {
+                code(ErrorCode.MODEL_STATE_UNAVAILABLE, () -> manager.reserve("translate.fast", "translate-v1"));
+                assertEquals(0, f.probes.get());
+            }
+        }
+        Files.writeString(marker, valid);
+        try (var writer = store()) {
+            Files.writeString(state().resolve("validation-required.pending"), valid);
+            assertThrows(java.io.IOException.class, writer::clearValidation); // Failed removal preserves authority.
+            assertTrue(Files.exists(marker));
+        }
+        Files.delete(state().resolve("validation-required.pending"));
+        var acl = Files.getFileAttributeView(marker, java.nio.file.attribute.AclFileAttributeView.class);
+        if (acl != null) {
+            var original = acl.getAcl();
+            try {
+                acl.setAcl(List.of(java.nio.file.attribute.AclEntry.newBuilder(original.getFirst())
+                        .setPermissions(java.nio.file.attribute.AclEntryPermission.READ_DATA).build()));
+                assertThrows(java.io.IOException.class, this::store);
+            } finally { acl.setAcl(original); }
+        } else {
+            var original = Files.getPosixFilePermissions(marker);
+            try {
+                Files.setPosixFilePermissions(marker, java.nio.file.attribute.PosixFilePermissions.fromString("rw-r-----"));
+                assertThrows(java.io.IOException.class, this::store);
+            } finally { Files.setPosixFilePermissions(marker, original); }
+        }
+        Files.delete(marker); Files.createDirectory(marker); assertThrows(java.io.IOException.class, this::store);
+        Files.delete(marker);
+        try (var writer = store()) { writer.requireValidation(0, MODEL, DIGEST); }
+        try (var f = new Fixture(); var legacy = f.manager()) {
+            f.digest.set(NEXT);
+            code(ErrorCode.MODEL_IDENTITY_CHANGED, () -> legacy.manage(intent(legacy, ActiveModelManager.Action.VALIDATE, MODEL, false)));
+            assertEquals(0, f.probes.get()); assertTrue(Files.exists(marker));
+            f.digest.set(DIGEST);
+            legacy.manage(intent(legacy, ActiveModelManager.Action.VALIDATE, MODEL, false));
+            assertFalse(Files.exists(marker)); assertFalse(Files.exists(state().resolve("active-model.json")));
+            try (var lease = legacy.reserve("translate.fast", "translate-v1")) { assertEquals(0, lease.model().revision()); }
+        }
+    }
+
+    static ActiveModelManager.Intent intent(ActiveModelManager manager, ActiveModelManager.Action action, String model, boolean external) {
+        var status = manager.managementStatus(); var catalog = manager.catalog();
+        var entry = catalog.models().stream().filter(e -> e.model().equals(model)).findFirst().orElseThrow();
+        return new ActiveModelManager.Intent(action, entry.handle(), entry.model(), entry.digest(), status.selectionRevision(),
+                status.activeModel(), status.activeDigest(), action == ActiveModelManager.Action.RECOVER ? status.recoveryGeneration() : null, external);
     }
 
     static Provider.ProviderExecution request(ActiveModelManager.Reservation lease) {
@@ -364,8 +596,11 @@ class ModelFoundationTest {
         final AtomicBoolean blockNextShow = new AtomicBoolean();
         volatile CountDownLatch showEntered, showRelease;
         final AtomicBoolean malformed = new AtomicBoolean();
+        final AtomicBoolean malformedRelease = new AtomicBoolean();
         final AtomicBoolean cloudTag = new AtomicBoolean(), driftDuringShow = new AtomicBoolean();
         final AtomicInteger probes = new AtomicInteger(), userCalls = new AtomicInteger(), candidateCalls = new AtomicInteger();
+        final AtomicInteger releases = new AtomicInteger();
+        final AtomicReference<String> releasedModel = new AtomicReference<>(), tagsOverride = new AtomicReference<>();
         volatile CountDownLatch probeEntered, probeRelease;
         final RuntimeProperties properties;
         final ProfileResolver profiles;
@@ -374,6 +609,7 @@ class ModelFoundationTest {
             server.setExecutor(executor);
             server.createContext("/api/version", e -> respond(e, JSON.writeValueAsString(Map.of("version", version.get()))));
             server.createContext("/api/tags", e -> {
+                if (tagsOverride.get() != null) { respond(e, tagsOverride.get()); return; }
                 var a = JSON.readTree(OllamaFixtures.tags(MODEL, digest.get())).path("models").get(0);
                 if (cloudTag.get()) ((tools.jackson.databind.node.ObjectNode) a).put("remote_host", "https://remote.example");
                 var b = JSON.readTree(OllamaFixtures.tags(CANDIDATE, NEXT)).path("models").get(0);
@@ -387,6 +623,14 @@ class ModelFoundationTest {
                 }
                 if (driftDuringShow.get()) digest.set(NEXT);
                 respond(e, show.get());
+            });
+            server.createContext("/api/ps", e -> respond(e, "{\"models\":[]}"));
+            server.createContext("/api/generate", e -> {
+                var input = JSON.readTree(e.getRequestBody().readAllBytes());
+                assertEquals(Set.of("model", "stream", "keep_alive"), new HashSet<>(input.propertyNames()));
+                assertEquals(0, input.path("keep_alive").asInt()); assertFalse(input.path("stream").asBoolean());
+                releases.incrementAndGet(); releasedModel.set(input.path("model").asString());
+                respond(e, malformedRelease.get() ? "{\"done\":true}" : JSON.writeValueAsString(Map.of("model", input.path("model").asString(), "created_at", "2026-10-08T01:00:00Z", "response", "", "done", true, "done_reason", "unload")));
             });
             server.createContext("/api/chat", e -> {
                 var input = JSON.readTree(e.getRequestBody().readAllBytes());

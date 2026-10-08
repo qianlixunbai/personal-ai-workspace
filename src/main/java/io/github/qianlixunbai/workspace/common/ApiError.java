@@ -3,6 +3,8 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case MODEL_CATALOG_STALE -> "Model catalog changed. Refresh and confirm again.";
+            case MODEL_CATALOG_LIMIT_EXCEEDED -> "Model catalog exceeds its supported limit.";
             case MODEL_SWITCH_CONFLICT -> "Model operation conflicts with active AI work.";
             case MODEL_SELECTION_REVISION_CONFLICT -> "Model selection changed. Read it again.";
             case MODEL_EXECUTION_UNCERTAIN -> "External execution is unresolved. AI operations are paused.";

@@ -25,6 +25,13 @@ public final class ModelStateStore implements AutoCloseable {
         }
         @Override public String toString() { return "ModelSelection[private]"; }
     }
+    public record ValidationRequired(long selectionRevision, String provider, String model, String digest) {
+        public ValidationRequired {
+            if (selectionRevision < 0 || selectionRevision > MAX_REVISION || !"ollama".equals(provider)
+                    || !validModel(model) || !validDigest(digest)) throw new IllegalArgumentException("Invalid validation binding");
+        }
+        @Override public String toString() { return "ModelValidationRequired[private]"; }
+    }
     private final Path root;
     private final UserPrincipal account;
     private final Object rootKey;
@@ -32,7 +39,10 @@ public final class ModelStateStore implements AutoCloseable {
     private final FileLock lock;
     private final Object lockKey;
     private final boolean windows;
-    private FileChannel selectionPin, guardPin;
+    private FileChannel selectionPin, guardPin, validationPin;
+    private ValidationRequired validation;
+    private byte[] validationBytes;
+    private Object validationKey;
     private Selection selection;
     private byte[] committed;
     private Object selectionKey;
@@ -94,8 +104,18 @@ public final class ModelStateStore implements AutoCloseable {
                     }
                 }
             }
+            // An interrupted marker is never promoted or ignored, even alongside a valid commit.
+            if (exists(root.resolve("validation-required.pending"))) throw new IOException("Interrupted validation requirement");
+            Path marker = root.resolve("validation-required.json");
+            if (exists(marker)) {
+                validationPin = pin(marker);
+                validationBytes = read(marker, 4096);
+                validation = parseValidation(validationBytes);
+                validationKey = verify(marker, false);
+            }
         } catch (IOException | RuntimeException failure) {
             if (selectionPin != null) selectionPin.close();
+            if (validationPin != null) validationPin.close();
             if (acquired != null) acquired.release();
             channel.close();
             throw failure;
@@ -104,6 +124,49 @@ public final class ModelStateStore implements AutoCloseable {
 
     public synchronized Selection selection() throws IOException { checkSelection(); return selection; }
     public synchronized boolean unresolved() { return unresolved; }
+
+    public synchronized ValidationRequired validationRequired() throws IOException {
+        checkSelection();
+        Path marker = root.resolve("validation-required.json");
+        if (exists(root.resolve("validation-required.pending"))) throw new IOException("Interrupted validation requirement");
+        if (validation == null) {
+            if (exists(marker)) throw new IOException("Unexpected validation requirement");
+        } else if (!exists(marker) || !Objects.equals(validationKey, verify(marker, false))
+                || !Arrays.equals(validationBytes, read(marker, 4096))) throw new IOException("Validation requirement changed externally");
+        return validation;
+    }
+
+    /** Publish before recovery clears its guard, or before a confirmed mutation can evict the selection. */
+    synchronized void requireValidation(long revision, String model, String digest) throws IOException {
+        var current = validationRequired();
+        var next = new ValidationRequired(revision, "ollama", model, digest);
+        if (selection != null ? revision != selection.selectionRevision() || !model.equals(selection.model()) || !digest.equals(selection.digest())
+                : revision != 0) throw new IOException("Validation selection binding changed");
+        if (current != null) {
+            if (!current.equals(next)) throw new IOException("Validation identity changed");
+            return;
+        }
+        byte[] bytes = JSON.writeValueAsBytes(Map.of("version", 1, "validationRequired", true,
+                "selectionRevision", revision, "provider", "ollama", "model", model, "digest", digest));
+        atomicWrite("validation-required.json", "validation-required.pending", bytes, 4096, false);
+        validationPin = pin(root.resolve("validation-required.json"));
+        byte[] actual = read(root.resolve("validation-required.json"), 4096);
+        if (!Arrays.equals(bytes, actual)) throw new IOException("Validation publication outcome unknown");
+        validation = parseValidation(actual);
+        validationBytes = actual;
+        validationKey = verify(root.resolve("validation-required.json"), false);
+    }
+
+    /** Only the model owner after successful explicitly confirmed validation/selection publication. */
+    synchronized void clearValidation() throws IOException {
+        if (validationRequired() == null) return;
+        Path marker = root.resolve("validation-required.json");
+        if (validationPin != null) { validationPin.close(); validationPin = null; }
+        try { Files.delete(marker); }
+        catch (IOException failure) { validationPin = pin(marker); throw failure; }
+        if (exists(marker)) throw new IOException("Validation removal outcome unknown");
+        validation = null; validationBytes = null; validationKey = null;
+    }
 
     public synchronized Selection commit(long expectedRevision, String model, String digest) throws IOException {
         checkSelection();
@@ -154,6 +217,19 @@ public final class ModelStateStore implements AutoCloseable {
         catch (IOException failure) { guardPin = pin(guard); throw failure; }
         unresolved = false;
         guardKey = null;
+    }
+
+    /** Explicit native recovery only. Startup guard remains unresolved until this action succeeds. */
+    synchronized void recoverGuard() throws IOException {
+        checkSelection();
+        if (!unresolved || exists(root.resolve("execution-guard.pending"))) throw new IOException("Unrecoverable execution guard");
+        Path guard = root.resolve("execution-guard.json");
+        parseGuard(read(guard, 128));
+        Object observed = verify(guard, false);
+        if (guardKey != null && !Objects.equals(guardKey, observed)) throw new IOException("Execution guard identity changed");
+        if (guardPin == null) guardPin = pin(guard);
+        guardKey = observed;
+        clearGuard();
     }
 
     private void atomicWrite(String targetName, String pendingName, byte[] bytes, int limit, boolean selectionWrite) throws IOException {
@@ -228,6 +304,18 @@ public final class ModelStateStore implements AutoCloseable {
         exact(node, Set.of("version", "unresolved"));
         if (!node.path("version").isIntegralNumber() || !node.path("version").canConvertToLong() || node.path("version").asLong() != 1
                 || !node.path("unresolved").isBoolean() || !node.path("unresolved").asBoolean()) throw new IOException("Invalid execution guard");
+    }
+    private static ValidationRequired parseValidation(byte[] bytes) throws IOException {
+        JsonNode node = parse(bytes);
+        exact(node, Set.of("version", "validationRequired", "selectionRevision", "provider", "model", "digest"));
+        if (!node.path("version").isIntegralNumber() || !node.path("version").canConvertToLong() || node.path("version").asLong() != 1
+                || !node.path("validationRequired").isBoolean() || !node.path("validationRequired").asBoolean()
+                || !node.path("selectionRevision").isIntegralNumber() || !node.path("selectionRevision").canConvertToLong()
+                || !node.path("provider").isString() || !node.path("model").isString() || !node.path("digest").isString())
+            throw new IOException("Invalid validation requirement schema");
+        try { return new ValidationRequired(node.path("selectionRevision").asLong(), node.path("provider").asString(),
+                node.path("model").asString(), node.path("digest").asString()); }
+        catch (IllegalArgumentException invalid) { throw new IOException("Invalid validation requirement values"); }
     }
     private static void exact(JsonNode node, Set<String> expected) throws IOException {
         Set<String> fields = new HashSet<>();
@@ -321,6 +409,7 @@ public final class ModelStateStore implements AutoCloseable {
         try {
             if (selectionPin != null) selectionPin.close();
             if (guardPin != null) guardPin.close();
+            if (validationPin != null) validationPin.close();
         } finally { try { lock.release(); } finally { channel.close(); } }
     }
 }

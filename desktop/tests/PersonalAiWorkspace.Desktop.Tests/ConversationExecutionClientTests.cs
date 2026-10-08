@@ -27,4 +27,43 @@ public sealed class ConversationExecutionClientTests
             Assert.Equal(DesktopError.InvalidResponse,(await Assert.ThrowsAsync<DesktopException>(()=>client.SubmitConversationTurnAsync(ConversationId,"USER",[],default))).Error);
         }
     }
+    [Fact] public async Task ModelAdmissionErrorsPreserveEachCapabilityAndRejectInvalidStatusOrManagementCodes() {
+        var errors = new (int Status, string Code, DesktopError Error)[] {
+            (409, "MODEL_SWITCH_CONFLICT", DesktopError.ModelSwitchConflict),
+            (409, "MODEL_SELECTION_REVISION_CONFLICT", DesktopError.ModelSelectionRevisionConflict),
+            (409, "MODEL_EXECUTION_UNCERTAIN", DesktopError.ModelExecutionUncertain),
+            (503, "MODEL_STATE_UNAVAILABLE", DesktopError.ModelStateUnavailable),
+            (503, "MODEL_CONFIGURATION_INVALID", DesktopError.ModelConfigurationInvalid),
+            (503, "MODEL_IDENTITY_CHANGED", DesktopError.ModelIdentityChanged)
+        };
+        foreach (var (status, code, expected) in errors) {
+            using var client = Rejection(status, code);
+            Assert.Equal(expected, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitMemoryAskAsync(new("question", [new(Id, 1)]), default))).Error);
+            Assert.Equal(expected, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitConversationTurnAsync(ConversationId, "question", [], default))).Error);
+            Assert.Equal(expected, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitKnowledgeAnswerAsync("question", "budget", default))).Error);
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.GetConversationAsync(ConversationId, 0, 10, default))).Error);
+        }
+        foreach (var (status, code) in new[] { (503, "MODEL_EXECUTION_UNCERTAIN"), (409, "MODEL_IDENTITY_CHANGED"),
+                (409, "MODEL_CATALOG_STALE"), (409, "MODEL_UNKNOWN") }) {
+            using var client = Rejection(status, code);
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitMemoryAskAsync(new("question", [new(Id, 1)]), default))).Error);
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitConversationTurnAsync(ConversationId, "question", [], default))).Error);
+            // Keep Knowledge's existing lost/invalid POST outcome contract; never replay it.
+            Assert.Equal(DesktopError.OutcomeUnknown, (await Assert.ThrowsAsync<DesktopException>(() =>
+                client.SubmitKnowledgeAnswerAsync("question", "budget", default))).Error);
+        }
+        foreach (string code in new[] { "MODEL_STATE_UNAVAILABLE", "MODEL_IDENTITY_CHANGED", "MODEL_EXECUTION_UNCERTAIN" }) {
+            string body = TaskBody("FAILED").Replace("conversation", "knowledge-answer").Replace("PROVIDER_UNAVAILABLE", code);
+            using var client = Client(body);
+            Assert.NotNull((await client.GetKnowledgeAnswerAsync(TaskId, default)).Error);
+        }
+        static RuntimeClient Rejection(int status, string code) => new(new Handler((_, _) => Task.FromResult(
+            Response(JsonSerializer.Serialize(new { code, message = PrivateContent, phase = "MODEL" }), (HttpStatusCode)status))), () => Token);
+    }
 }

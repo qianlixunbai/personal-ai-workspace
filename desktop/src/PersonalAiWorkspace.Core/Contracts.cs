@@ -4,6 +4,8 @@ namespace PersonalAiWorkspace.Core;
 
 public enum DesktopError
 {
+    ModelSwitchConflict, ModelSelectionRevisionConflict, ModelExecutionUncertain, ModelStateUnavailable,
+    ModelConfigurationInvalid, ModelIdentityChanged, ModelCatalogStale, ModelCatalogLimitExceeded,
     RuntimeUnavailable, Unauthorized, CredentialMissing, CredentialInvalid, CredentialStorage,
     QueueFull, ProviderUnavailable, ModelUnavailable, PolicyDenied, InvalidRequest,
     InvalidResponse, TaskNotFound, Cancelled, TimedOut, ClientTimeout, ProviderResponseInvalid, InternalError, OutcomeUnknown,
@@ -36,6 +38,14 @@ public static class ErrorText
 {
     public static string For(DesktopError error) => error switch
     {
+        DesktopError.ModelSwitchConflict => "模型操作与本 Workspace 的执行或排队冲突。",
+        DesktopError.ModelSelectionRevisionConflict => "模型选择已改变，请刷新并重新确认。",
+        DesktopError.ModelExecutionUncertain => "远端执行完成未知；AI、切换与释放已暂停。",
+        DesktopError.ModelStateUnavailable => "私有模型状态不可用；请保留现场并按恢复说明处理。",
+        DesktopError.ModelConfigurationInvalid => "本地模型配置不一致；请明确统一配置或选择模型。",
+        DesktopError.ModelIdentityChanged => "模型 identity/digest 已改变；保持暂停，请重新核对。",
+        DesktopError.ModelCatalogStale => "模型列表已过期，请刷新并重新确认。",
+        DesktopError.ModelCatalogLimitExceeded => "有效模型候选超过 64 个，管理列表受控拒绝。",
         DesktopError.WebDisabled => "公共网络访问已禁用。",
         DesktopError.WebTargetInvalid => "公共网络目标无效；须使用受支持的 HTTPS URL。",
         DesktopError.WebTargetNotPublic => "目标不属于允许访问的公共网络。",

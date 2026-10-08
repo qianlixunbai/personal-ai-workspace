@@ -85,6 +85,10 @@ class RuntimeApiTest {
                 exchange.getResponseBody().write(bytes);
             }
         });
+        mock.createContext("/api/ps", exchange -> {
+            try (exchange) { byte[] bytes = "{\"models\":[]}".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); }
+        });
         mock.createContext("/api/chat", exchange -> {
             JsonNode request = JsonMapper.builder().build().readTree(exchange.getRequestBody().readAllBytes());
             if (request.path("messages").get(0).path("content").asString().equals("Reply with OK only.")) {
@@ -185,9 +189,9 @@ class RuntimeApiTest {
         assertEquals(0, CHAT_CALLS.get()); assertEquals(0, PROBE_CALLS.get());
         assertFalse(readiness.toString().contains("qwen3.5"));
         var successful = submitAndPoll(valid()); assertPublicProfile(successful, "translate.fast");
-        for (String endpoint : List.of("/api/v1/models/catalog", "/api/v1/models/switch", "/api/v1/models/release", "/api/v1/models/recover")) {
+        for (String endpoint : List.of("/api/v1/models/selection", "/api/v1/models/validation", "/api/v1/models/release", "/api/v1/models/recovery")) {
             assertEquals(403, browser("POST", endpoint, "{untrusted", client.credential(), client.origin()).statusCode());
-            assertEquals(404, send("POST", endpoint, "{}", true).statusCode());
+            assertEquals(400, send("POST", endpoint, "{}", true).statusCode());
         }
         // Real HttpClient cancellation loses completion evidence. The late fixture response cannot clear STOP.
         MODE.set(5); slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
@@ -213,6 +217,47 @@ class RuntimeApiTest {
         assertFalse(memory.path("id").asString("").isEmpty());
         assertEquals(204, send("DELETE", "/api/v1/memory/items/" + memory.path("id").asString(), "{\"expectedRevision\":1}", true).statusCode());
         assertEquals("CANCELLED", pollNative(id).path("status").asString());
+    }
+    @Test
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.BEFORE_METHOD)
+    void nativeModelApiCatalogExactIntentRevisionAndBrowserPreBodyIsolation() throws Exception {
+        startMock(); var client = pairBrowser("chrome-extension://" + "k".repeat(32));
+        for (String suffix : List.of("catalog", "status", "recovery")) {
+            String route = "/api/v1/models/" + suffix;
+            assertEquals(401, send("GET", route, null, false).statusCode());
+            assertEquals(403, browser("GET", route, null, client.credential(), client.origin()).statusCode());
+            assertEquals(403, browser("GET", route, null, client.credential(), null).statusCode());
+        }
+        for (String suffix : List.of("selection", "release", "validation", "recovery")) {
+            var denied = browser("POST", "/api/v1/models/" + suffix, "x".repeat(40000), client.credential(), client.origin());
+            assertEquals(403, denied.statusCode()); assertFalse(denied.body().contains("qwen"));
+        }
+        var status = tree(send("GET", "/api/v1/models/status", null, true));
+        var catalog = tree(send("GET", "/api/v1/models/catalog", null, true));
+        assertEquals(0, PROBE_CALLS.get()); assertEquals("FALSE", status.path("loaded").asString());
+        var item = catalog.path("models").get(0);
+        var intent = new java.util.LinkedHashMap<String, Object>();
+        intent.put("action", "SWITCH"); intent.put("catalogHandle", item.path("handle").asString());
+        intent.put("candidateModel", item.path("model").asString()); intent.put("candidateDigest", item.path("digest").asString());
+        intent.put("expectedSelectionRevision", status.path("selectionRevision").asLong());
+        intent.put("expectedActiveModel", null); intent.put("expectedActiveDigest", null); intent.put("recoveryGeneration", null); intent.put("externalConfirmed", false);
+        var json = JsonMapper.builder().build(); String payload = json.writeValueAsString(intent);
+        assertEquals(400, send("POST", "/api/v1/models/selection", payload.replace("{", "{\"endpoint\":\"http://remote.invalid\","), true).statusCode());
+        assertEquals(400, send("POST", "/api/v1/models/selection", payload.replace("{", "{\"action\":\"SWITCH\","), true).statusCode());
+        assertEquals(400, send("POST", "/api/v1/models/selection", payload + " {}", true).statusCode());
+        assertEquals(400, send("POST", "/api/v1/models/release", payload, true).statusCode());
+        assertEquals(0, PROBE_CALLS.get());
+        var switched = send("POST", "/api/v1/models/selection", payload, true); assertEquals(200, switched.statusCode());
+        assertEquals(1, tree(switched).path("selectionRevision").asLong()); assertTrue(tree(switched).path("ready").asBoolean());
+        assertEquals(409, send("POST", "/api/v1/models/selection", payload, true).statusCode());
+        assertEquals(1, PROBE_CALLS.get());
+        var legacy = tree(browser("GET", "/api/v1/capabilities/translate/readiness", null, client.credential(), client.origin()));
+        assertFalse(legacy.path("available").asBoolean()); assertFalse(legacy.toString().contains("qwen"));
+        var fresh = tree(browser("GET", "/api/v1/capabilities/translate/readiness?cacheIdentityVersion=1", null, client.credential(), client.origin()));
+        assertTrue(fresh.path("available").asBoolean()); assertFalse(fresh.toString().contains("qwen")); assertFalse(fresh.toString().contains("digest"));
+        MODE.set(1); var offline = tree(send("GET", "/api/v1/models/status", null, true));
+        assertEquals("UNKNOWN", offline.path("loaded").asString()); assertFalse(offline.path("ready").asBoolean());
+        assertEquals(200, send("GET", "/actuator/health/readiness", null, false).statusCode());
     }
     @Test void webNativeStrictAdmissionReconciliationAndBrowserPreBodyDenial() throws Exception {
         String endpoint = "/api/v1/web/fetches", id = java.util.UUID.randomUUID().toString();

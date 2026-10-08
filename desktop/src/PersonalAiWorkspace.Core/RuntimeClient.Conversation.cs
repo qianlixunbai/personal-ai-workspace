@@ -8,9 +8,9 @@ public sealed partial class RuntimeClient
 {
     private static string ConversationPath(Guid id) { ConversationValidation.Id(id); return $"/api/v1/conversations/{id:D}"; }
     private Task<JsonDocument> SendConversationAsync(HttpMethod method, string path, object? body, HttpStatusCode expected,
-        CancellationToken ct, Action<HttpResponseMessage, JsonDocument>? validate = null) =>
+        CancellationToken ct, Action<HttpResponseMessage, JsonDocument>? validate = null, bool aiAdmission = false) =>
         SendAsync(method, path, body is null ? null : JsonSerializer.SerializeToUtf8Bytes(body), true, expected, ct,
-            validate: validate, endpointErrorMap: ConversationError);
+            validate: validate, endpointErrorMap: (status, root) => ConversationError(status, root, aiAdmission));
     public async Task<Conversation> CreateConversationAsync(string? title, CancellationToken ct)
     {
         if (title is not null && !ConversationValidation.Title(title)) throw new DesktopException(DesktopError.ConversationInvalid);
@@ -131,7 +131,7 @@ public sealed partial class RuntimeClient
         if (ConversationId(root, "turnId") != turnId || String(root, "role") != role.ToString() || !ConversationValidation.Content(content)) throw Invalid();
         return new ConversationMessage(id, turnId, role, content, MemoryTime(String(root, "createdAt")));
     }
-    private static DesktopError ConversationError(HttpStatusCode status, JsonElement root)
+    private static DesktopError ConversationError(HttpStatusCode status, JsonElement root, bool aiAdmission)
     {
         MemoryFields(root, "code", "message", "phase"); _ = String(root, "message"); _ = String(root, "phase");
         return ((int)status, String(root, "code")) switch
@@ -146,6 +146,16 @@ public sealed partial class RuntimeClient
             (503, "MEMORY_STORAGE_UNAVAILABLE") => DesktopError.MemoryStorageUnavailable,
             (429, "QUEUE_FULL") => DesktopError.QueueFull,
             (403, "POLICY_DENIED") => DesktopError.PolicyDenied,
+            (409, "MODEL_SWITCH_CONFLICT") when aiAdmission => DesktopError.ModelSwitchConflict,
+            (409, "MODEL_SELECTION_REVISION_CONFLICT") when aiAdmission => DesktopError.ModelSelectionRevisionConflict,
+            (409, "MODEL_EXECUTION_UNCERTAIN") when aiAdmission => DesktopError.ModelExecutionUncertain,
+            (503, "MODEL_STATE_UNAVAILABLE") when aiAdmission => DesktopError.ModelStateUnavailable,
+            (503, "MODEL_CONFIGURATION_INVALID") when aiAdmission => DesktopError.ModelConfigurationInvalid,
+            (503, "MODEL_IDENTITY_CHANGED") when aiAdmission => DesktopError.ModelIdentityChanged,
+            (503, "MODEL_UNAVAILABLE") when aiAdmission => DesktopError.ModelUnavailable,
+            (503, "PROVIDER_UNAVAILABLE") when aiAdmission => DesktopError.ProviderUnavailable,
+            (500, "PROVIDER_RESPONSE_INVALID") when aiAdmission => DesktopError.ProviderResponseInvalid,
+            (504, "TASK_TIMEOUT") when aiAdmission => DesktopError.TimedOut,
             (500, "INTERNAL_ERROR") => DesktopError.InternalError,
             _ => throw Invalid()
         };
@@ -161,7 +171,7 @@ public sealed partial class RuntimeClient
             new { message, memories = memories.Select(x=>new { id=x.Id, revision=x.Revision }).ToArray() }, HttpStatusCode.Accepted, ct,
             (response, body) => {
                 if (response.Headers.Location?.OriginalString != $"/api/v1/tasks/{ConversationId(body.RootElement,"taskId"):D}") throw Invalid();
-            });
+            }, aiAdmission: true);
         var root = document.RootElement;
         MemoryFields(root, "conversationId", "turnId", "taskId", "status", "memoryCount", "admittedSequences", "inputCharacters", "inputBytes");
         if (ConversationId(root,"conversationId") != conversationId || String(root,"status") != "QUEUED") throw Invalid();
