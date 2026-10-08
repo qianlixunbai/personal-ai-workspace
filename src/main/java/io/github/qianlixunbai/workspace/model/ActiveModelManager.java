@@ -36,6 +36,10 @@ public final class ActiveModelManager implements AutoCloseable {
     private Fact installed = Fact.UNKNOWN, loaded = Fact.UNKNOWN;
     private ErrorCode error;
     private int outbound;
+    private String cacheEpoch = newCacheEpoch();
+    private boolean modelManagementEnabled;
+    public record ReadinessSnapshot(Provider.ProviderReadiness readiness, ModelProfile.PublicProfile profile) {}
+    private static String newCacheEpoch() { return "am1-" + UUID.randomUUID(); }
     private String recoveryGeneration = UUID.randomUUID().toString();
 
     public ActiveModelManager(ProfileResolver profiles, OllamaProvider provider, RuntimeProperties properties, ModelStateStore store) {
@@ -49,6 +53,7 @@ public final class ActiveModelManager implements AutoCloseable {
             var selection = store.selection();
             if (selection != null) {
                 configuredModel = selection.model(); configuredDigest = selection.digest(); revision = selection.selectionRevision();
+                modelManagementEnabled = true; // Durable explicit selection preserves the legacy guard across restart.
             } else {
                 ModelProfile legacy = all.getFirst();
                 String canonical = ModelStateStore.canonicalModel(legacy.model());
@@ -69,7 +74,7 @@ public final class ActiveModelManager implements AutoCloseable {
             checkGate();
             if (!ready || active == null) throw unavailable();
             if (leases.size() >= capacity) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "MODEL_RESERVATION");
-            lease = new Reservation(active, bind(profiles.resolve(profileId), active.model()), promptVersion, false);
+            lease = new Reservation(active, bind(profiles.resolve(profileId), active.model(), cacheEpoch), promptVersion, false);
             leases.add(lease);
         }
         try {
@@ -106,7 +111,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 probe(operation);
                 synchronized (gate) {
                     if (uncertain || closed) throw unavailable();
-                    active = snapshot; ready = true; installed = Fact.TRUE; error = null;
+                    active = snapshot; cacheEpoch = newCacheEpoch(); ready = true; installed = Fact.TRUE; error = null;
                     // Probe completion proves execution completion, not a fresh /api/ps observation.
                     loaded = Fact.UNKNOWN;
                 }
@@ -119,7 +124,7 @@ public final class ActiveModelManager implements AutoCloseable {
     }
 
     private Reservation operation(ExecutionModel snapshot, boolean candidateSwitch) {
-        var profile = bind(profiles.resolve("translate.fast"), snapshot.model());
+        var profile = bind(profiles.resolve("translate.fast"), snapshot.model(), cacheEpoch);
         Reservation operation = new Reservation(snapshot, profile, "model-probe-v1", candidateSwitch);
         synchronized (gate) { leases.add(operation); }
         return operation;
@@ -148,6 +153,7 @@ public final class ActiveModelManager implements AutoCloseable {
             if (revision != expectedRevision) throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
             if (revision == ModelStateStore.MAX_REVISION) throw new WorkspaceException(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, "MODEL");
             if (!leases.isEmpty()) throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL");
+            modelManagementEnabled = true; // Legacy cache clients must be blocked before any switching can begin.
             previousReady = ready; previousInstalled = installed; previousLoaded = loaded; previousError = error;
             switching = true;
         }
@@ -162,6 +168,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 synchronized (gate) {
                     configuredModel = committed.model(); configuredDigest = committed.digest(); revision = committed.selectionRevision();
                     active = new ExecutionModel(configuredModel, configuredDigest, revision);
+                    cacheEpoch = newCacheEpoch();
                     ready = true; installed = Fact.TRUE; loaded = Fact.UNKNOWN; error = null;
                     recoveryLoadRequiresConfirmation = false;
                 }
@@ -186,7 +193,11 @@ public final class ActiveModelManager implements AutoCloseable {
     }
 
     public Provider.ProviderReadiness readiness(String profileId) {
-        String model, digest;
+        return cacheReadiness(profileId, false).readiness();
+    }
+    /** Metadata only; availability and public identity are captured together at the final gate check. */
+    public ReadinessSnapshot cacheReadiness(String profileId, boolean legacyBrowser) {
+        String model, digest, observedEpoch = null;
         long selectedRevision = -1;
         ExecutionModel observed = null;
         try {
@@ -194,7 +205,8 @@ public final class ActiveModelManager implements AutoCloseable {
                 throw new WorkspaceException(ErrorCode.POLICY_DENIED, "MODEL_READINESS");
             synchronized (gate) {
                 checkGate();
-                if (recoveryLoadRequiresConfirmation) throw unavailable();
+                if (recoveryLoadRequiresConfirmation || legacyBrowser && modelManagementEnabled) throw unavailable();
+                observedEpoch = cacheEpoch;
                 model = configuredModel; digest = active == null ? configuredDigest : active.digest();
                 selectedRevision = revision; observed = active;
             }
@@ -203,13 +215,14 @@ public final class ActiveModelManager implements AutoCloseable {
             if (digest != null && !digest.equals(evidence.digest())) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
             synchronized (gate) {
                 checkGate();
-                if (revision != selectedRevision || active != observed || recoveryLoadRequiresConfirmation)
+                if (revision != selectedRevision || active != observed || !cacheEpoch.equals(observedEpoch)
+                        || recoveryLoadRequiresConfirmation || legacyBrowser && modelManagementEnabled)
                     throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL_READINESS");
                 installed = Fact.TRUE;
+                // First-use metadata availability does not depend on the later text-validation probe.
+                return new ReadinessSnapshot(new Provider.ProviderReadiness("ollama", profileId, true, true, null),
+                        bind(profiles.resolve(profileId), model, cacheEpoch).publicInfo());
             }
-            // MMF-1 preserves legacy metadata availability. No load, inference, task or reservation.
-            // Internal ready remains false until the first admission's bounded text validation completes.
-            return new Provider.ProviderReadiness("ollama", profileId, true, true, null);
         } catch (WorkspaceException failure) {
             synchronized (gate) {
                 if (selectedRevision == revision && observed == active && !switching) {
@@ -217,8 +230,8 @@ public final class ActiveModelManager implements AutoCloseable {
                     installed = error == ErrorCode.MODEL_UNAVAILABLE ? Fact.FALSE : Fact.UNKNOWN;
                 }
             }
-            return new Provider.ProviderReadiness("ollama", profileId, failure.error().code() == ErrorCode.MODEL_UNAVAILABLE,
-                    false, failure.error());
+            return new ReadinessSnapshot(new Provider.ProviderReadiness("ollama", profileId, failure.error().code() == ErrorCode.MODEL_UNAVAILABLE,
+                    false, failure.error()), null);
         }
     }
     public Status status() {
@@ -244,9 +257,9 @@ public final class ActiveModelManager implements AutoCloseable {
             throw new WorkspaceException(ErrorCode.MODEL_STATE_UNAVAILABLE, "MODEL_STATE");
         }
     }
-    private static ModelProfile bind(ModelProfile p, String model) {
-        // Public profile version stays legacy-compatible until MMF-2's cross-repository cache gate.
-        return new ModelProfile(p.id(), "ollama", model, p.locality(), p.version(), p.contextBudget(), p.outputBudget(), p.temperature(), p.maxTextCharacters());
+    private static ModelProfile bind(ModelProfile p, String model, String epoch) {
+        // Effective public version is frozen at admission; configured versions stay private.
+        return new ModelProfile(p.id(), "ollama", model, p.locality(), epoch, p.contextBudget(), p.outputBudget(), p.temperature(), p.maxTextCharacters());
     }
     private static ErrorCode code(RuntimeException error) {
         return error instanceof WorkspaceException controlled ? controlled.error().code() : ErrorCode.INTERNAL_ERROR;

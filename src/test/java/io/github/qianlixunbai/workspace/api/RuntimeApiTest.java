@@ -146,6 +146,36 @@ class RuntimeApiTest {
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
     @Test
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.BEFORE_METHOD)
+    void readinessV1FirstUseAndStrictQuery() throws Exception {
+        startMock();
+        var client = pairBrowser("chrome-extension://" + "k".repeat(32));
+        assertFalse(activeModels.status().ready());
+        String optIn = "/api/v1/capabilities/translate/readiness?cacheIdentityVersion=1";
+        var identityResponse = browser("GET", optIn, null, client.credential(), client.origin());
+        assertEquals("no-store", identityResponse.headers().firstValue("Cache-Control").orElseThrow());
+        assertTrue(identityResponse.body().getBytes(StandardCharsets.UTF_8).length <= 1024);
+        var cache = tree(identityResponse).path("cacheIdentity");
+        assertEquals(1, cache.path("version").asInt());
+        assertEquals("translate-v1", cache.path("single").path("promptVersion").asString());
+        assertEquals("translate-batch-v1", cache.path("batch").path("promptVersion").asString());
+        assertEquals(cache.path("single").path("profile"), cache.path("batch").path("profile"));
+        assertPublicProfile(cache.path("single"), "translate.fast");
+        assertEquals(0, PROBE_CALLS.get()); assertEquals(0, CHAT_CALLS.get());
+        for (String query : List.of("cacheIdentityVersion=2", "cacheIdentityVersion=", "unknown=1",
+                "cacheIdentityVersion=1&cacheIdentityVersion=1", "cacheIdentityVersion=1&other=1", "cacheIdentityVersion=1&"))
+            assertEquals(400, browser("GET", "/api/v1/capabilities/translate/readiness?" + query, null, client.credential(), client.origin()).statusCode());
+        assertEquals(401, send("GET", optIn, null, false).statusCode());
+        assertEquals(401, browser("GET", optIn, null, client.credential(), "https://example.com").statusCode());
+        var successful = submitAndPoll(valid()); assertPublicProfile(successful, "translate.fast");
+        // First-use metadata identity does not require warm; publication advances the epoch once validated.
+        assertEquals(1, PROBE_CALLS.get());
+        var after = tree(browser("GET", optIn, null, client.credential(), client.origin())).path("cacheIdentity");
+        assertEquals(successful.path("profile"), after.path("single").path("profile"));
+        assertNotEquals(cache.path("single").path("profile"), after.path("single").path("profile"));
+        assertTrue(activeModels.status().ready());
+    }
+    @Test
     @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD)
     void modelFoundationBrowserCompatibilityAndUnavailableDomainOperations() throws Exception {
         startMock();
@@ -171,6 +201,8 @@ class RuntimeApiTest {
         var blocked = send("POST", "/api/v1/ask/tasks", "{\"question\":\"synthetic\"}", true);
         assertEquals(409, blocked.statusCode()); assertEquals("MODEL_EXECUTION_UNCERTAIN", tree(blocked).path("code").asString());
         assertFalse(tree(browser("GET", "/api/v1/capabilities/translate/readiness", null, client.credential(), client.origin())).path("available").asBoolean());
+        var uncertainReadiness = tree(browser("GET", "/api/v1/capabilities/translate/readiness?cacheIdentityVersion=1", null, client.credential(), client.origin()));
+        assertFalse(uncertainReadiness.path("available").asBoolean()); assertFalse(uncertainReadiness.has("cacheIdentity"));
         assertEquals(200, send("GET", "/actuator/health/readiness", null, false).statusCode());
         var c = conversations.create("synthetic");
         try {
@@ -569,7 +601,7 @@ class RuntimeApiTest {
     private void assertPublicProfile(JsonNode task, String profile) {
         JsonNode identity = task.path("profile");
         assertEquals(profile, identity.path("id").asString());
-        assertEquals(profile.equals("translate.fast") ? "m0-1" : "m1.5-1", identity.path("version").asString());
+        assertTrue(identity.path("version").asString().matches("am1-[a-f0-9-]{36}"));
         assertEquals("LOCAL", identity.path("locality").asString());
         assertFalse(identity.has("model")); assertFalse(identity.has("provider"));
         assertFalse(task.toString().contains("qwen3.5"));
@@ -773,7 +805,7 @@ class RuntimeApiTest {
             assertEquals(1, result.path("result").path("items").get(0).path("id").asInt());
             assertEquals("translate-batch-v1", result.path("promptVersion").asString());
             assertEquals("translate.fast", result.path("profile").path("id").asString());
-            assertEquals("m0-1", result.path("profile").path("version").asString());
+            assertPublicProfile(result, "translate.fast");
             assertEquals("LOCAL", result.path("profile").path("locality").asString());
             assertFalse(result.toString().contains("qwen3.5"));
             JsonNode messages = LAST_CHAT.get().path("messages");

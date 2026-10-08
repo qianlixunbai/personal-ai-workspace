@@ -187,16 +187,22 @@ class ModelFoundationTest {
     }
 
     @Test void oneSwitchOwnerFrozenTasksQueuedCancellationDrainAndZeroRejectedUserTurn() throws Exception {
+        String lastPublishedEpoch;
         try (var fixture = new Fixture(); var manager = fixture.manager()) {
             var tasks = new TaskManager(fixture.properties);
             try (AutoCloseable taskCleanup = tasks::close;
              var memory = new MemoryStore(data(), token()); var conversations = new ConversationStore(memory.databaseFile())) {
             var text = fixture.text(manager, tasks);
+            var cold = manager.cacheReadiness("translate.fast", true);
+            assertTrue(cold.readiness().modelAvailable()); assertFalse(manager.status().ready());
+            assertEquals(0, fixture.probes.get()); assertEquals(0, manager.status().reserved());
             var conversation = new ConversationExecution(conversations, memory, fixture.profiles, text, tasks);
             try (var reserved = text.reserve("translate", "translate.fast", "translate-v1")) {
                 code(ErrorCode.MODEL_SWITCH_CONFLICT, () -> manager.switchInternal(0, CANDIDATE, NEXT));
                 assertEquals(MODEL, reserved.profile().model());
             }
+            String epochA = manager.cacheReadiness("translate.fast", false).profile().version();
+            assertNotEquals(cold.profile().version(), epochA);
             int probes = fixture.probes.get();
             code(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, () -> manager.switchInternal(1, CANDIDATE, NEXT));
             code(ErrorCode.MODEL_IDENTITY_CHANGED, () -> manager.switchInternal(0, CANDIDATE, DIGEST));
@@ -205,18 +211,30 @@ class ModelFoundationTest {
                 assertEquals(MODEL, unchanged.model().model()); assertEquals(0, unchanged.model().revision());
             }
             assertEquals(probes, fixture.probes.get()); // Read-only candidate rejection needs no old-model reload.
+            fixture.showEntered = new CountDownLatch(1); fixture.showRelease = new CountDownLatch(1);
+            fixture.blockNextShow.set(true);
+            var racingReadiness = CompletableFuture.supplyAsync(() -> manager.cacheReadiness("translate.fast", false));
+            assertTrue(fixture.showEntered.await(2, TimeUnit.SECONDS));
             fixture.probeEntered = new CountDownLatch(1); fixture.probeRelease = new CountDownLatch(1);
             var switched = CompletableFuture.runAsync(() -> manager.switchInternal(0, CANDIDATE, NEXT));
             assertTrue(fixture.probeEntered.await(2, TimeUnit.SECONDS));
+            assertFalse(manager.cacheReadiness("translate.fast", false).readiness().modelAvailable());
             var c = conversations.create("synthetic");
             code(ErrorCode.MODEL_SWITCH_CONFLICT, () -> conversation.submit(c.id(), new ConversationExecution.Request("USER", List.of())));
             assertEquals(0, conversations.detail(c.id(), 0, 10).totalTurns());
             code(ErrorCode.MODEL_SWITCH_CONFLICT, () -> manager.switchInternal(0, MODEL, DIGEST));
             fixture.probeRelease.countDown(); switched.get(3, TimeUnit.SECONDS);
             fixture.probeRelease = null;
+            fixture.showRelease.countDown();
+            var stale = racingReadiness.get(3, TimeUnit.SECONDS);
+            assertFalse(stale.readiness().modelAvailable()); assertNull(stale.profile());
+            String epochB = manager.cacheReadiness("translate.fast", false).profile().version();
+            assertNotEquals(epochA, epochB);
+            assertFalse(manager.cacheReadiness("translate.fast", true).readiness().modelAvailable());
+            assertTrue(manager.readiness("translate.fast").modelAvailable()); // Native/opt-in compatibility.
             try (var snapshot = text.reserve("translate", "translate.fast", "translate-v1")) {
                 assertEquals(CANDIDATE, snapshot.model().model()); assertEquals(1, snapshot.model().revision());
-                assertEquals("test-v1", snapshot.profile().version());
+                assertEquals(epochB, snapshot.profile().version());
             }
             var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
             var lease = text.reserve("translate", "translate.fast", "translate-batch-v1");
@@ -229,6 +247,7 @@ class ModelFoundationTest {
             assertTrue(entered.await(2, TimeUnit.SECONDS));
             TaskView queued = text.submit("translate", "translate.fast", "translate-v1", "Translate", "queued");
             assertEquals(TaskStatus.QUEUED, queued.status());
+            assertEquals(epochB, queued.profile().version()); assertEquals(epochB, running.profile().version());
             code(ErrorCode.MODEL_SWITCH_CONFLICT, () -> manager.switchInternal(1, MODEL, DIGEST));
             tasks.cancel(queued.taskId()); tasks.cancel(running.taskId());
             assertEquals(TaskStatus.CANCELLED, tasks.get(running.taskId()).status());
@@ -238,11 +257,17 @@ class ModelFoundationTest {
             assertFalse(manager.status().uncertain()); assertEquals(1, fixture.userCalls.get());
             manager.switchInternal(1, MODEL, DIGEST);
             assertEquals(TaskStatus.CANCELLED, tasks.get(running.taskId()).status());
-            assertEquals("test-v1", tasks.get(running.taskId()).profile().version());
+            assertEquals(epochB, tasks.get(running.taskId()).profile().version());
+            assertEquals(epochB, tasks.get(queued.taskId()).profile().version());
+            String epochA2 = manager.cacheReadiness("translate.fast", false).profile().version();
+            assertNotEquals(epochA, epochA2); assertNotEquals(epochB, epochA2);
+            lastPublishedEpoch = epochA2;
             assertEquals(2, JSON.readTree(Files.readString(state().resolve("active-model.json"))).path("selectionRevision").asLong());
             }
         }
         try (var fixture = new Fixture(); var restarted = fixture.manager()) {
+            assertFalse(restarted.cacheReadiness("translate.fast", true).readiness().modelAvailable());
+            assertNotEquals(lastPublishedEpoch, restarted.cacheReadiness("translate.fast", false).profile().version());
             try (var lease = restarted.reserve("chat.balanced", "ask-v1")) {
                 assertEquals(MODEL, lease.model().model()); assertEquals(2, lease.model().revision());
             }
@@ -336,6 +361,8 @@ class ModelFoundationTest {
         final ExecutorService executor = Executors.newCachedThreadPool();
         final AtomicReference<String> show = new AtomicReference<>(OllamaFixtures.show()), digest = new AtomicReference<>(DIGEST),
                 version = new AtomicReference<>("0.40.0"), output = new AtomicReference<>("OK"), probeOutput = new AtomicReference<>("OK");
+        final AtomicBoolean blockNextShow = new AtomicBoolean();
+        volatile CountDownLatch showEntered, showRelease;
         final AtomicBoolean malformed = new AtomicBoolean();
         final AtomicBoolean cloudTag = new AtomicBoolean(), driftDuringShow = new AtomicBoolean();
         final AtomicInteger probes = new AtomicInteger(), userCalls = new AtomicInteger(), candidateCalls = new AtomicInteger();
@@ -353,6 +380,11 @@ class ModelFoundationTest {
                 respond(e, JSON.writeValueAsString(Map.of("models", List.of(a, b))));
             });
             server.createContext("/api/show", e -> {
+                if (blockNextShow.compareAndSet(true, false)) {
+                    showEntered.countDown();
+                    try { showRelease.await(3, TimeUnit.SECONDS); }
+                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                }
                 if (driftDuringShow.get()) digest.set(NEXT);
                 respond(e, show.get());
             });
@@ -391,6 +423,7 @@ class ModelFoundationTest {
         }
         public void close() {
             if (probeRelease != null) probeRelease.countDown();
+            if (showRelease != null) showRelease.countDown();
             provider.close(); server.stop(0); executor.shutdownNow();
         }
     }

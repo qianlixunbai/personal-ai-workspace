@@ -85,6 +85,9 @@ public class TextTaskSubmission {
                 && input.getBytes(StandardCharsets.UTF_8).length <= profile.contextBudget() - profile.outputBudget() - 512;
     }
     public Provider.ProviderReadiness readiness(String capability, String profileId) {
+        return cacheReadiness(capability, profileId, false).readiness();
+    }
+    public ActiveModelManager.ReadinessSnapshot cacheReadiness(String capability, String profileId, boolean legacyBrowser) {
         if (!ClientIdentity.current().allowedCapabilities().contains(capability))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = profiles.resolve(profileId);
@@ -92,7 +95,7 @@ public class TextTaskSubmission {
         policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
         if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
-        return models.readiness(profileId);
+        return models.cacheReadiness(profileId, legacyBrowser);
     }
     public record Prepared(ModelProfile profile, TaskManager.Work work) {
         @Override public String toString() { return "PreparedExecution[redacted]"; }

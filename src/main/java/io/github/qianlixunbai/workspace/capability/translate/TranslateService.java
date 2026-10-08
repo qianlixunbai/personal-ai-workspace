@@ -22,9 +22,15 @@ public class TranslateService {
         return tasks.submit("translate", profile,
                 TranslatePrompt.VERSION, TranslatePrompt.system(request.sourceLanguage(), request.targetLanguage()), request.text());
     }
-    public TranslateReadiness readiness() {
-        var ready = tasks.readiness("translate", "translate.fast");
+    public TranslateReadiness readiness() { return readiness(false); }
+    public TranslateReadiness readiness(boolean identityV1) {
+        boolean browser = !io.github.qianlixunbai.workspace.security.ClientIdentity.current().clientType().equals("native");
+        var snapshot = tasks.cacheReadiness("translate", "translate.fast", browser && !identityV1);
+        var ready = snapshot.readiness();
         boolean available = ready.available() && ready.modelAvailable() && ready.error() == null;
-        return new TranslateReadiness(available, available ? null : new TranslateReadiness.Error(ErrorCode.PROVIDER_UNAVAILABLE));
+        return new TranslateReadiness(available, available ? null : new TranslateReadiness.Error(ErrorCode.PROVIDER_UNAVAILABLE),
+                available && identityV1 ? new TranslateReadiness.CacheIdentity(1,
+                        new TranslateReadiness.Identity(snapshot.profile(), TranslatePrompt.VERSION),
+                        new TranslateReadiness.Identity(snapshot.profile(), TranslateBatchPrompt.VERSION)) : null);
     }
 }
