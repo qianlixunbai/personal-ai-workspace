@@ -37,7 +37,7 @@ class ConversationExecutionTest {
             public String execute(ProviderExecution request,Cancellation cancellation) { calls.incrementAndGet(); received.set(request); return work.apply(cancellation); }
             public ProviderReadiness readiness(ModelProfile profile) { throw new AssertionError(); }
         };
-        execution=new ConversationExecution(store,memory,profiles,new TextTaskSubmission(profiles,new ProviderRegistry(List.of(provider)),new ProviderPolicy(),tasks),tasks);
+        execution=new ConversationExecution(store,memory,profiles,new TextTaskSubmission(profiles,new ProviderRegistry(List.of(provider)),new ProviderPolicy(),tasks,TestSettings.models(settings)),tasks);
     }
     @AfterEach void close() { tasks.close(); store.close(); memory.close(); }
     ConversationExecution.Accepted send(UUID id,String text) { return execution.submit(id,new ConversationExecution.Request(text,List.of())); }
@@ -169,11 +169,11 @@ class ConversationExecutionTest {
     @Test void policyAndUnexpectedSubmissionFailuresAreSanitizedAndUserRemains() {
         var settings=TestSettings.withTasks(TestSettings.tasks(Duration.ofSeconds(2),Duration.ofSeconds(2),Duration.ofSeconds(2)));
         var profiles=new ProfileResolver(settings);var registry=new ProviderRegistry(List.of());
-        var denied=new ConversationExecution(store,memory,profiles,new TextTaskSubmission(profiles,registry,new ProviderPolicy(),tasks),tasks);
+        var denied=new ConversationExecution(store,memory,profiles,new TextTaskSubmission(profiles,registry,new ProviderPolicy(),tasks,TestSettings.models(settings)),tasks);
         var c=store.create(null);code(ErrorCode.POLICY_DENIED,()->denied.submit(c.id(),new ConversationExecution.Request("USER",List.of())));
         assertEquals(FailureCode.POLICY_DENIED,turn(c.id(),0).failureCode());assertNull(turn(c.id(),0).assistantMessage());
-        var broken=new TextTaskSubmission(profiles,registry,new ProviderPolicy(),tasks) {
-            @Override public Prepared prepareConversation(String system,List<Provider.ChatMessage> messages){throw new IllegalStateException("raw secret provider body");}
+        var broken=new TextTaskSubmission(profiles,registry,new ProviderPolicy(),tasks,TestSettings.models(settings)) {
+            @Override public Prepared prepareConversation(ActiveModelManager.Reservation reservation,String system,List<Provider.ChatMessage> messages){throw new IllegalStateException("raw secret provider body");}
         };
         var failed=new ConversationExecution(store,memory,profiles,broken,tasks);var d=store.create(null);
         var error=assertThrows(WorkspaceException.class,()->failed.submit(d.id(),new ConversationExecution.Request("USER",List.of())));

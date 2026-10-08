@@ -13,6 +13,12 @@ import java.util.concurrent.*;
 @Component
 public final class TaskManager {
     @FunctionalInterface public interface Work { Object execute(Cancellation cancellation); }
+    /** Callbacks always run outside the task monitor. */
+    public interface Lease extends AutoCloseable {
+        void running();
+        void cancelled();
+        @Override void close();
+    }
     /** Serialized with cancellation/deadlines, before publishing the terminal task. */
     @FunctionalInterface public interface Completion { void finish(UUID taskId, TaskStatus status, Object result, ApiError error); }
     private final RuntimeProperties.Tasks settings;
@@ -42,11 +48,15 @@ public final class TaskManager {
     }
     public synchronized TaskView submit(UUID taskId, String ownerClientId, String capability, ModelProfile profile,
                                         String promptVersion, Work work, Completion completion) {
+        return submit(taskId, ownerClientId, capability, profile, promptVersion, work, completion, null);
+    }
+    public synchronized TaskView submit(UUID taskId, String ownerClientId, String capability, ModelProfile profile,
+                                        String promptVersion, Work work, Completion completion, Lease lease) {
         Objects.requireNonNull(ownerClientId);
         expire();
         if (closed || tasks.size() >= settings.maxRetained()) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "ADMISSION");
         if (tasks.containsKey(taskId)) throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "TASK_ID");
-        Job job = new Job(taskId, ownerClientId, capability, profile.publicInfo(), promptVersion, work, completion);
+        Job job = new Job(taskId, ownerClientId, capability, profile.publicInfo(), promptVersion, work, completion, lease);
         tasks.put(job.id, job);
         job.deadline = timer.schedule(() -> timeout(job, TaskStatus.QUEUED, "QUEUE"),
                 settings.queueTimeout().toNanos(), TimeUnit.NANOSECONDS);
@@ -62,29 +72,46 @@ public final class TaskManager {
 
     public synchronized TaskView get(UUID id) { return get(id, ClientIdentity.NATIVE_OWNER); }
 
-    public synchronized TaskView cancel(UUID id) {
+    public TaskView cancel(UUID id) {
         return cancel(id, ClientIdentity.NATIVE_OWNER);
     }
 
     public synchronized TaskView get(UUID id, String ownerClientId) { return find(id, ownerClientId).view(); }
 
-    public synchronized TaskView cancel(UUID id, String ownerClientId) {
-        Job job = find(id, ownerClientId);
-        if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
-            finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "CANCELLATION"));
+    public TaskView cancel(UUID id, String ownerClientId) {
+        Job job; boolean release = false, cancelled = false; TaskView view;
+        synchronized (this) {
+            job = find(id, ownerClientId);
+            if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
+                finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "CANCELLATION"));
+                workers.remove(job);
+                job.work = null;
+                job.cancellation.cancel();
+                release = !job.inWorker; cancelled = true;
+            }
+            view = job.view();
+        }
+        endCancelledLease(job, cancelled, release);
+        return view;
+    }
+
+    private void timeout(Job job, TaskStatus expected, String phase) {
+        boolean release;
+        synchronized (this) {
+            if (job.status != expected) return;
+            finish(job, TaskStatus.TIMED_OUT, null, ApiError.of(ErrorCode.TASK_TIMEOUT, phase));
             workers.remove(job);
             job.work = null;
             job.cancellation.cancel();
+            release = !job.inWorker;
         }
-        return job.view();
+        endCancelledLease(job, true, release);
     }
-
-    private synchronized void timeout(Job job, TaskStatus expected, String phase) {
-        if (job.status != expected) return;
-        finish(job, TaskStatus.TIMED_OUT, null, ApiError.of(ErrorCode.TASK_TIMEOUT, phase));
-        workers.remove(job);
-        job.work = null;
-        job.cancellation.cancel();
+    private static void endCancelledLease(Job job, boolean cancelled, boolean release) {
+        if (job.lease != null && cancelled) {
+            job.lease.cancelled();
+            if (release) job.lease.close();
+        }
     }
 
     private Job find(UUID id, String ownerClientId) {
@@ -120,18 +147,25 @@ public final class TaskManager {
     }
 
     @PreDestroy
-    public synchronized void close() {
-        closed = true;
-        for (Job job : tasks.values()) {
-            if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
-                finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "SHUTDOWN"));
-                job.cancellation.cancel();
-                job.work = null;
+    public void close() {
+        List<Job> cancelled = new ArrayList<>();
+        Set<Job> release = new HashSet<>();
+        synchronized (this) {
+            closed = true;
+            for (Job job : tasks.values()) {
+                if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
+                    finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "SHUTDOWN"));
+                    job.cancellation.cancel();
+                    job.work = null;
+                    cancelled.add(job);
+                    if (!job.inWorker) release.add(job);
+                }
             }
+            timer.shutdownNow();
+            workers.shutdownNow();
+            tasks.clear();
         }
-        timer.shutdownNow();
-        workers.shutdownNow();
-        tasks.clear();
+        for (Job job : cancelled) endCancelledLease(job, true, release.contains(job));
     }
 
     private final class Job implements Runnable {
@@ -142,6 +176,7 @@ public final class TaskManager {
         final String capability;
         final String ownerClientId;
         final Cancellation cancellation = new Cancellation();
+        final Lease lease;
         TaskStatus status = TaskStatus.QUEUED;
         Work work;
         Completion completion;
@@ -151,8 +186,9 @@ public final class TaskManager {
         ScheduledFuture<?> deadline;
         boolean inWorker;
 
-        Job(UUID id, String ownerClientId, String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work, Completion completion) {
+        Job(UUID id, String ownerClientId, String capability, ModelProfile.PublicProfile profile, String promptVersion, Work work, Completion completion, Lease lease) {
             this.id = id; this.completion = completion;
+            this.lease = lease;
             this.ownerClientId = ownerClientId;
             this.capability = capability; this.profile = profile; this.promptVersion = promptVersion; this.work = work;
         }
@@ -170,6 +206,7 @@ public final class TaskManager {
                 work = null;
             }
             try {
+                if (lease != null) lease.running();
                 cancellation.check();
                 Object output = execution.execute(cancellation);
                 if (!(output instanceof String || output instanceof TaskResult))
@@ -194,7 +231,8 @@ public final class TaskManager {
                         finish(this, TaskStatus.FAILED, null, ApiError.of(ErrorCode.INTERNAL_ERROR, "EXECUTION"));
                 }
             } finally {
-                synchronized (TaskManager.this) { inWorker = false; }
+                try { if (lease != null) lease.close(); }
+                finally { synchronized (TaskManager.this) { inWorker = false; } }
             }
         }
 

@@ -15,6 +15,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler(WorkspaceException.class)
     ResponseEntity<ApiError> controlled(WorkspaceException failure) {
         HttpStatus status = switch (failure.error().code()) {
+            case MODEL_SWITCH_CONFLICT, MODEL_SELECTION_REVISION_CONFLICT, MODEL_EXECUTION_UNCERTAIN -> HttpStatus.CONFLICT;
+            case MODEL_STATE_UNAVAILABLE, MODEL_CONFIGURATION_INVALID, MODEL_IDENTITY_CHANGED -> HttpStatus.SERVICE_UNAVAILABLE;
             case WEB_TARGET_INVALID -> HttpStatus.BAD_REQUEST;
             case WEB_DISABLED, WEB_TARGET_NOT_PUBLIC, WEB_REDIRECT_DENIED -> HttpStatus.FORBIDDEN;
             case WEB_FETCH_NOT_FOUND -> HttpStatus.NOT_FOUND;

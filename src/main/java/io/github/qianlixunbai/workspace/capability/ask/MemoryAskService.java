@@ -19,8 +19,11 @@ public class MemoryAskService {
                 || request.profile() != null && !request.profile().equals("chat.balanced"))
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "MEMORY_SELECTION");
         var snapshot = memory.snapshotForAsk(request.memories());
-        // Combined serialization, including wrapper/escaping, is the actual input and budget authority.
-        return tasks.submit("ask", "chat.balanced", MemoryAskPrompt.VERSION, MemoryAskPrompt.SYSTEM,
-                MemoryAskPrompt.input(request.question(), snapshot));
+        var reservation = tasks.reserve("ask", "chat.balanced", MemoryAskPrompt.VERSION);
+        try {
+            // Combined serialization, including wrapper/escaping, is the actual input and budget authority.
+            return tasks.submitReserved(reservation, "ask", MemoryAskPrompt.SYSTEM,
+                    MemoryAskPrompt.input(request.question(), snapshot));
+        } finally { reservation.closeUnlessTransferred(); }
     }
 }

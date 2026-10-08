@@ -1,6 +1,24 @@
 # Personal AI Workspace — Current Architecture
 
-## Model Management Foundation — Accepted architecture / implementation NOT STARTED
+## MMF-1 Runtime foundation — Implementation Candidate / Source Review PENDING
+
+[MMF-1 candidate evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 是本次实现事实；ADR-015 仍 Accepted，未改写批准记录。
+Runtime 的 `ActiveModelManager` 是唯一 selection/lifecycle/switch owner。`ModelStateStore` 独占私有 `workspace.model-state-directory`，
+与 credentials/data/领域备份分开；JSON 严格、有界、私有、revision CAS 和 atomic replacement，execution guard 在 send 前 force。
+`TextTaskSubmission` 获取 immutable model/profile/prompt reservation；Conversation 在 durable USER Turn 前获取，Knowledge packing 用同一 profile。
+TaskManager 保留原 scheduler/queue/deadlines/retention/completion，lease callbacks 在 monitor 外，terminal 不释放 running drain。
+OllamaProvider 复用原 loopback/no proxy/no redirects/policy/parser，增加固定 v0.40.0 的 version/tags/show/tags source/digest/capability/context 验证。
+模型 transport 使用明确 `:local` source；未知 runner/manifest/cloud/metadata fail closed，仍拒绝 tool calls。
+内部 switch 在独占 owner 下 validate/probe → durable commit → publish；候选操作 lease/guard 保持到 publication，失败不自动 reload 旧模型。
+出站未知独立于 task terminal/retention，关闭所有 AI admission 和 load/switch；restart guard 不自动清除，未新增恢复 mutation。
+首次合法统一 YAML revision 0、零 selection write；只有成功内部显式选择才创建 durable revision 1。
+bootstrap text validation 在首个 AI admission 有界执行；metadata readiness 本身不 load/infer 或创建 reservation，内部 ready 与 legacy metadata availability 分开。
+`loaded` 保持 Unknown（本轮未查询 residency），不把 probe、terminal、HTTP cancellation 或空 ps 当作外部完成证明。
+Browser readiness/task public profile version 保持 legacy；无可调用的跨模型 HTTP/React/Windows bridge。MMF-2 须先接 native exact-intent 与 ADR §7 cache gate。
+领域 schema、backup、Finance、Vision、W1 Search 均无变化；纯数据服务不依赖模型 ready。
+下面的 ADR 批准快照保留其形成时未实施的事实。
+
+## Historical Model Management architecture approval snapshot
 
 [ADR-015](../ADR/ADR-015-active-model-management.md) 为 **Accepted**；Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**。
 **Architecture approval does not authorize implementation；Production implementation: NOT STARTED；Windows/Browser acceptance: NOT PERFORMED。**

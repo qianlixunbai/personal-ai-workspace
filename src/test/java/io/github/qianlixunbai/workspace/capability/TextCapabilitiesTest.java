@@ -75,6 +75,6 @@ class TextCapabilitiesTest {
         }
     }
     private static TextTaskSubmission submission(RuntimeProperties p, Provider provider, TaskManager manager) {
-        return new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager);
+        return new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager, TestSettings.models(p));
     }
 }

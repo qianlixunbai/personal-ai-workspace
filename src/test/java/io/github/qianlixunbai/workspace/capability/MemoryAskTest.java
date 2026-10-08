@@ -37,7 +37,7 @@ class MemoryAskTest {
         };
         var manager = new TaskManager(p);
         try (var store = new MemoryStore(temporary.resolve("data"), temporary.resolve("auth/client-token"))) {
-            var tasks = new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager);
+            var tasks = new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager, TestSettings.models(p));
             var item = store.create(MemoryItem.Type.PROJECT_NOTE, "private-title", "private-context");
             var accepted = new MemoryAskService(tasks, store).submit(new MemoryAskRequest("private-question", List.of(new MemoryReference(item.id(), 1)), "chat.balanced"));
             assertTrue(started.await(2, TimeUnit.SECONDS)); store.delete(item.id(), 1); release.countDown();
@@ -66,7 +66,7 @@ class MemoryAskTest {
         };
         var manager = new TaskManager(p);
         try (var store = new MemoryStore(temporary.resolve("data"), temporary.resolve("auth/client-token"))) {
-            var tasks = new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager);
+            var tasks = new TextTaskSubmission(new ProfileResolver(p), new ProviderRegistry(List.of(provider)), new ProviderPolicy(), manager, TestSettings.models(p));
             var service = new MemoryAskService(tasks, store);
             var item = store.create(MemoryItem.Type.PROJECT_NOTE, "title", "x".repeat(2000));
             for (String question : List.of("q".repeat(1100), "\"".repeat(600))) {

@@ -8,12 +8,13 @@ import org.springframework.web.bind.annotation.*;
 public class ProviderHealthController {
     private final ProfileResolver profiles;
     private final ProviderRegistry providers;
-    public ProviderHealthController(ProfileResolver profiles, ProviderRegistry providers) {
-        this.profiles = profiles; this.providers = providers;
+    private final ActiveModelManager models;
+    public ProviderHealthController(ProfileResolver profiles, ProviderRegistry providers, ActiveModelManager models) {
+        this.profiles = profiles; this.providers = providers; this.models = models;
     }
     @GetMapping("/api/v1/providers/readiness")
     public Provider.ProviderReadiness readiness() {
         ModelProfile profile = profiles.resolve("translate.fast");
-        return providers.resolve(profile.provider()).readiness(profile);
+        return models.readiness(profile.id());
     }
 }

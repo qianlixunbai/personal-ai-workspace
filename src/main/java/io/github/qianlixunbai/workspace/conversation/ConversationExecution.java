@@ -34,31 +34,36 @@ public class ConversationExecution {
         if (request.memories() != null && !request.memories().isEmpty()) MemoryReference.validate(request.memories());
         var refs = request.memories() == null ? List.<MemoryReference>of() : List.copyOf(request.memories());
         var snapshot = refs.isEmpty() ? List.<MemorySnapshot>of() : memory.snapshotForAsk(refs);
-        // Validate the mandatory current input and selected Memory before any durable mutation.
-        var profile = profiles.resolve("chat.balanced");
-        ConversationContext.assemble(profile, request.message(), snapshot, List.of());
-        UUID taskId = UUID.randomUUID();
-        Turn turn = store.createTurnWithUserMessage(conversationId, request.message(), taskId, refs);
+        var reservation = text.reserve("conversation", "chat.balanced", ConversationContext.VERSION);
         try {
-            var context = ConversationContext.assemble(profile, request.message(), snapshot, store.successfulHistory(conversationId));
-            var prepared = text.prepareConversation(ConversationContext.SYSTEM, context.messages());
-            var accepted = tasks.submit(taskId, ClientIdentity.NATIVE_OWNER, "conversation", prepared.profile(), ConversationContext.VERSION,
-                    prepared.work(), (id, status, result, error) -> store.finalizeExecution(conversationId, turn.id(), id,
-                            switch (status) {
-                                case SUCCEEDED -> TurnStatus.SUCCEEDED;
-                                case CANCELLED -> TurnStatus.CANCELLED;
-                                case TIMED_OUT -> TurnStatus.TIMED_OUT;
-                                default -> TurnStatus.FAILED;
-                            }, status == TaskStatus.SUCCEEDED ? (String) result : null,
-                            status == TaskStatus.FAILED ? failure(error == null ? ErrorCode.INTERNAL_ERROR : error.code()) : null));
-            return new Accepted(conversationId, turn.id(), taskId, accepted.status(), context.memoryCount(),
-                    context.admittedSequences(), context.inputCharacters(), context.inputBytes());
-        } catch (RuntimeException rejected) {
-            ErrorCode code = rejected instanceof WorkspaceException controlled ? controlled.error().code() : ErrorCode.INTERNAL_ERROR;
-            store.finalizeExecution(conversationId, turn.id(), taskId, TurnStatus.FAILED, null, failure(code));
-            if (rejected instanceof WorkspaceException controlled) throw controlled;
-            throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "SUBMISSION");
-        }
+            // The model gate precedes all profile/context validation and durable USER mutation.
+            var profile = reservation.profile();
+            ConversationContext.assemble(profile, request.message(), snapshot, List.of());
+            UUID taskId = UUID.randomUUID();
+            Turn turn = store.createTurnWithUserMessage(conversationId, request.message(), taskId, refs);
+            try {
+                var context = ConversationContext.assemble(profile, request.message(), snapshot, store.successfulHistory(conversationId));
+                var prepared = text.prepareConversation(reservation, ConversationContext.SYSTEM, context.messages());
+                reservation.transferToTask();
+                var accepted = tasks.submit(taskId, ClientIdentity.NATIVE_OWNER, "conversation", prepared.profile(), ConversationContext.VERSION,
+                        prepared.work(), (id, status, result, error) -> store.finalizeExecution(conversationId, turn.id(), id,
+                                switch (status) {
+                                    case SUCCEEDED -> TurnStatus.SUCCEEDED;
+                                    case CANCELLED -> TurnStatus.CANCELLED;
+                                    case TIMED_OUT -> TurnStatus.TIMED_OUT;
+                                    default -> TurnStatus.FAILED;
+                                }, status == TaskStatus.SUCCEEDED ? (String) result : null,
+                                status == TaskStatus.FAILED ? failure(error == null ? ErrorCode.INTERNAL_ERROR : error.code()) : null), reservation);
+                return new Accepted(conversationId, turn.id(), taskId, accepted.status(), context.memoryCount(),
+                        context.admittedSequences(), context.inputCharacters(), context.inputBytes());
+            } catch (RuntimeException rejected) {
+                reservation.close();
+                ErrorCode code = rejected instanceof WorkspaceException controlled ? controlled.error().code() : ErrorCode.INTERNAL_ERROR;
+                store.finalizeExecution(conversationId, turn.id(), taskId, TurnStatus.FAILED, null, failure(code));
+                if (rejected instanceof WorkspaceException controlled) throw controlled;
+                throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "SUBMISSION");
+            }
+        } finally { reservation.closeUnlessTransferred(); }
     }
     private static FailureCode failure(ErrorCode code) {
         return switch (code) {

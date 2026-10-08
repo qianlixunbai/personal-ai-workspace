@@ -7,6 +7,23 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 public final class TestSettings {
+    /** Existing capability tests isolate model ownership with mocks; real ownership uses ModelFoundationTest. */
+    public static io.github.qianlixunbai.workspace.model.ActiveModelManager models(RuntimeProperties p) {
+        var manager = org.mockito.Mockito.mock(io.github.qianlixunbai.workspace.model.ActiveModelManager.class);
+        org.mockito.Mockito.when(manager.reserve(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> {
+                    var profile = new io.github.qianlixunbai.workspace.model.ProfileResolver(p).resolve(call.getArgument(0));
+                    return reservation(profile, call.getArgument(1));
+                });
+        return manager;
+    }
+    public static io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation reservation(ModelProfile p, String promptVersion) {
+        var lease = org.mockito.Mockito.mock(io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation.class);
+        org.mockito.Mockito.when(lease.profile()).thenReturn(p);
+        org.mockito.Mockito.when(lease.promptVersion()).thenReturn(promptVersion);
+        org.mockito.Mockito.when(lease.model()).thenReturn(new io.github.qianlixunbai.workspace.model.ActiveModelManager.ExecutionModel(p.model(), "a".repeat(64), 0));
+        return lease;
+    }
     private TestSettings() {}
     public static ModelProfile profile() {
         return new ModelProfile("translate.fast", "ollama", "test-model:latest", ModelProfile.Locality.LOCAL,

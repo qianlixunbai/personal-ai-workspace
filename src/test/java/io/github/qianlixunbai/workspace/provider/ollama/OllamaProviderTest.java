@@ -19,8 +19,9 @@ class OllamaProviderTest {
     private ExecutorService executor;
     private OllamaProvider provider;
     private final AtomicInteger tagStatus = new AtomicInteger(200), chatStatus = new AtomicInteger(200);
-    private final AtomicReference<String> tags = new AtomicReference<>("{\"models\":[{\"name\":\"test-model:latest\"}]}");
-    private final AtomicReference<String> chat = new AtomicReference<>("{\"model\":\"test-model:latest\",\"done\":true,\"message\":{\"role\":\"assistant\",\"content\":\"你好\"}}");
+    private final AtomicReference<String> tags = new AtomicReference<>(OllamaFixtures.tags("test-model:latest", "a".repeat(64)));
+    private final AtomicReference<String> show = new AtomicReference<>(OllamaFixtures.show());
+    private final AtomicReference<String> chat = new AtomicReference<>(OllamaFixtures.completed("test-model:latest:local", "你好"));
     private final AtomicReference<String> payload = new AtomicReference<>();
     private final AtomicInteger chatCalls = new AtomicInteger();
     private final CountDownLatch chatEntered = new CountDownLatch(1);
@@ -30,6 +31,8 @@ class OllamaProviderTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         executor = Executors.newCachedThreadPool();
         server.setExecutor(executor);
+        server.createContext("/api/version", e -> respond(e, 200, "{\"version\":\"0.40.0\"}"));
+        server.createContext("/api/show", e -> respond(e, 200, show.get()));
         server.createContext("/api/tags", e -> respond(e, tagStatus.get(), tags.get()));
         server.createContext("/api/chat", e -> {
             chatCalls.incrementAndGet();
@@ -46,12 +49,38 @@ class OllamaProviderTest {
     @Test void realHttpParsingAndGenerationSettings() {
         assertEquals("你好", provider.execute(execution(), new Cancellation()));
         var body = JsonMapper.builder().build().readTree(payload.get());
-        assertEquals("test-model:latest", body.path("model").asString());
+        assertEquals("test-model:latest:local", body.path("model").asString());
         assertFalse(body.path("stream").asBoolean());
         assertFalse(body.path("think").asBoolean());
         assertEquals(8192, body.path("options").path("num_ctx").asInt());
         assertEquals(2048, body.path("options").path("num_predict").asInt());
         assertTrue(provider.readiness(TestSettings.profile()).modelAvailable());
+    }
+    @Test void installedDefaultMetadataRequiresStableSupportedVersionAndPositiveLocalSource() throws Exception {
+        var json = JsonMapper.builder().build();
+        tools.jackson.databind.JsonNode fixture;
+        try (var resource = getClass().getResourceAsStream("/ollama/qwen35-local-v0.40.0.json")) {
+            fixture = json.readTree(resource);
+        }
+        tags.set(json.writeValueAsString(java.util.Map.of("models", java.util.List.of(fixture.path("tag")))));
+        show.set(json.writeValueAsString(fixture.path("show")));
+        var evidence = provider.admitLocal("qwen3.5:4b", 8192, new Cancellation());
+        assertEquals("a".repeat(64), evidence.digest()); assertEquals(262144, evidence.contextLimit());
+        for (String requirement : java.util.List.of("0.40.1", "0.41.0", "1.0.0", "unknown", "0.17.1-cloud", "0.017.1")) {
+            var rejected = fixture.path("show").deepCopy();
+            ((tools.jackson.databind.node.ObjectNode) rejected).put("requires", requirement);
+            show.set(json.writeValueAsString(rejected));
+            assertEquals(ErrorCode.POLICY_DENIED, assertThrows(WorkspaceException.class,
+                    () -> provider.admitLocal("qwen3.5:4b", 8192, new Cancellation())).error().code());
+        }
+        for (String remote : java.util.List.of("remote_host", "remote_model", "source", "runner")) {
+            var rejected = fixture.path("show").deepCopy();
+            ((tools.jackson.databind.node.ObjectNode) rejected).put(remote, "unknown");
+            show.set(json.writeValueAsString(rejected));
+            assertEquals(ErrorCode.POLICY_DENIED, assertThrows(WorkspaceException.class,
+                    () -> provider.admitLocal("qwen3.5:4b", 8192, new Cancellation())).error().code());
+        }
+        assertEquals(0, chatCalls.get()); // Metadata compatibility never grants load/inference or Vision execution.
     }
     @Test void unavailableMissingAndRawErrorAreControlled() {
         tagStatus.set(503); tags.set("private secret raw error /internal/path");
@@ -62,7 +91,7 @@ class OllamaProviderTest {
         assertCode(ErrorCode.MODEL_UNAVAILABLE);
         assertTrue(provider.readiness(TestSettings.profile()).available());
         assertFalse(provider.readiness(TestSettings.profile()).modelAvailable());
-        tags.set("{\"models\":[{\"name\":\"test-model:latest\"}]}");
+        tags.set(OllamaFixtures.tags("test-model:latest", "a".repeat(64)));
         chatStatus.set(500); chat.set("private secret raw error /internal/path");
         WorkspaceException failure = assertCode(ErrorCode.PROVIDER_UNAVAILABLE);
         assertFalse(failure.error().message().contains("secret"));
@@ -110,7 +139,8 @@ class OllamaProviderTest {
         assertEquals(code, failure.error().code()); return failure;
     }
     private Provider.ProviderExecution execution() {
-        return new Provider.ProviderExecution(TestSettings.profile(), PrivacyMode.LOCAL_ONLY, "Translate only", "hello");
+        return new Provider.ProviderExecution(TestSettings.profile(), PrivacyMode.LOCAL_ONLY, "Translate only", "hello",
+                java.util.List.of(new Provider.ChatMessage("user", "hello")), TestSettings.reservation(TestSettings.profile(), "test"));
     }
     private static void respond(HttpExchange exchange, int status, String body) throws java.io.IOException {
         try (exchange) {

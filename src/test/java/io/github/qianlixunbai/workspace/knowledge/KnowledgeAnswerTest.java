@@ -33,7 +33,7 @@ class KnowledgeAnswerTest {
         public ProviderReadiness readiness(ModelProfile p){return null;}
         public String execute(ProviderExecution e,Cancellation c){execution=e;entered.countDown();try{assertTrue(release.await(5,TimeUnit.SECONDS));}catch(InterruptedException x){throw new IllegalStateException();}return "{\"answer\":\"fixture answer\",\"citations\":[\"S1\"]}";}
     }
-    private TextTaskSubmission submission(LocalProvider provider,TaskManager manager){var p=TestSettings.settings(URI.create("http://127.0.0.1:1"));return new TextTaskSubmission(new ProfileResolver(p),new ProviderRegistry(List.of(provider)),new ProviderPolicy(),manager);}
+    private TextTaskSubmission submission(LocalProvider provider,TaskManager manager){var p=TestSettings.settings(URI.create("http://127.0.0.1:1"));return new TextTaskSubmission(new ProfileResolver(p),new ProviderRegistry(List.of(provider)),new ProviderPolicy(),manager,TestSettings.models(p));}
     private static TaskView terminal(TaskManager manager,TaskView task)throws Exception {
         long end=System.nanoTime()+5_000_000_000L;while(Set.of(TaskStatus.QUEUED,TaskStatus.RUNNING).contains(task.status())&&System.nanoTime()<end){Thread.sleep(5);task=manager.get(task.taskId());}return task;
     }

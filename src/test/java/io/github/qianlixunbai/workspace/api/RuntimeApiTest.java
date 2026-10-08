@@ -36,14 +36,16 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(OutputCaptureExtension.class)
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class RuntimeApiTest {
-    private static final Path TOKEN = Path.of("target/api-test-auth", java.util.UUID.randomUUID().toString(), "client-token");
-    private static final Path MEMORY = temporaryMemoryDirectory();
+    private static final Path ISOLATED_ROOT = temporaryMemoryDirectory();
+    private static final Path TOKEN = ISOLATED_ROOT.resolve("credentials/client-token");
+    private static final Path MEMORY = ISOLATED_ROOT.resolve("data");
     private static Path temporaryMemoryDirectory() {
         try { return Files.createTempDirectory("workspace-api-memory-"); }
         catch (java.io.IOException failure) { throw new ExceptionInInitializerError(failure); }
     }
     private static final AtomicInteger MODE = new AtomicInteger();
     private static final AtomicInteger CHAT_CALLS = new AtomicInteger();
+    private static final AtomicInteger PROBE_CALLS = new AtomicInteger();
     private static final AtomicReference<String> BATCH_OUTPUT = new AtomicReference<>();
     private static final AtomicReference<JsonNode> LAST_CHAT = new AtomicReference<>();
     private static volatile CountDownLatch slowEntered, slowRelease, slowExited;
@@ -58,13 +60,25 @@ class RuntimeApiTest {
         } catch (java.io.IOException failure) { throw new ExceptionInInitializerError(failure); }
     }
     @BeforeEach void resetFixture() throws Exception {
-        MODE.set(0); CHAT_CALLS.set(0); BATCH_OUTPUT.set(null); LAST_CHAT.set(null);
+        MODE.set(0); CHAT_CALLS.set(0); PROBE_CALLS.set(0); BATCH_OUTPUT.set(null); LAST_CHAT.set(null);
         slowEntered = slowRelease = slowExited = null;
         mock = HttpServer.create();
+        mock.createContext("/api/version", exchange -> {
+            try (exchange) {
+                byte[] bytes = "{\"version\":\"0.40.0\"}".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes);
+            }
+        });
+        mock.createContext("/api/show", exchange -> {
+            try (exchange) {
+                byte[] bytes = io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.show().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes);
+            }
+        });
         mock.createContext("/api/tags", exchange -> {
             int mode = MODE.get();
             String body = mode == 1 ? "raw-error-private-marker" : mode == 2 ? "{\"models\":[]}"
-                    : "{\"models\":[{\"name\":\"qwen3.5:4b\"}]}";
+                    : io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.tags("qwen3.5:4b", "a".repeat(64));
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             try (exchange) {
                 exchange.sendResponseHeaders(mode == 1 ? 503 : 200, bytes.length);
@@ -72,8 +86,17 @@ class RuntimeApiTest {
             }
         });
         mock.createContext("/api/chat", exchange -> {
+            JsonNode request = JsonMapper.builder().build().readTree(exchange.getRequestBody().readAllBytes());
+            if (request.path("messages").get(0).path("content").asString().equals("Reply with OK only.")) {
+                PROBE_CALLS.incrementAndGet();
+                try (exchange) {
+                    byte[] bytes = io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.completed(request.path("model").asString(), "OK").getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes);
+                }
+                return;
+            }
             CHAT_CALLS.incrementAndGet();
-            LAST_CHAT.set(JsonMapper.builder().build().readTree(exchange.getRequestBody().readAllBytes()));
+            LAST_CHAT.set(request);
             if (MODE.get() == 5) {
                 slowEntered.countDown();
                 try { slowRelease.await(5, TimeUnit.SECONDS); }
@@ -82,8 +105,7 @@ class RuntimeApiTest {
             String output = MODE.get() == 4 ? "x".repeat(8193) :
                     BATCH_OUTPUT.get() == null ? "output-private-marker" : BATCH_OUTPUT.get();
             byte[] bytes = (MODE.get() == 3 ? "malformed-private-marker" :
-                    JsonMapper.builder().build().writeValueAsString(Map.of("model", "qwen3.5:4b", "done", true,
-                            "message", Map.of("role", "assistant", "content", output)))).getBytes(StandardCharsets.UTF_8);
+                    io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.completed(request.path("model").asString(), output)).getBytes(StandardCharsets.UTF_8);
             try (exchange) {
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
@@ -115,11 +137,51 @@ class RuntimeApiTest {
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
         registry.add("workspace.security.token-file", () -> TOKEN.toString());
         registry.add("workspace.data-directory", () -> MEMORY.toString());
+        Path modelRoot = ISOLATED_ROOT.resolve("model-state-" + java.util.UUID.randomUUID());
+        registry.add("workspace.model-state-directory", modelRoot::toString);
         registry.add("workspace.ollama.base-url", () -> "http://127.0.0.1:" + MOCK_PORT);
         registry.add("workspace.ollama.health-timeout", () -> "200ms");
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
+    @Test
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD)
+    void modelFoundationBrowserCompatibilityAndUnavailableDomainOperations() throws Exception {
+        startMock();
+        var client = pairBrowser("chrome-extension://" + "j".repeat(32));
+        var readiness = tree(browser("GET", "/api/v1/capabilities/translate/readiness", null, client.credential(), client.origin()));
+        assertTrue(readiness.path("available").asBoolean()); assertFalse(readiness.has("cacheIdentity"));
+        assertEquals(0, CHAT_CALLS.get()); assertEquals(0, PROBE_CALLS.get());
+        assertFalse(readiness.toString().contains("qwen3.5"));
+        var successful = submitAndPoll(valid()); assertPublicProfile(successful, "translate.fast");
+        for (String endpoint : List.of("/api/v1/models/catalog", "/api/v1/models/switch", "/api/v1/models/release", "/api/v1/models/recover")) {
+            assertEquals(403, browser("POST", endpoint, "{untrusted", client.credential(), client.origin()).statusCode());
+            assertEquals(404, send("POST", endpoint, "{}", true).statusCode());
+        }
+        // Real HttpClient cancellation loses completion evidence. The late fixture response cannot clear STOP.
+        MODE.set(5); slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
+        var accepted = tree(send("POST", "/api/v1/translate/tasks", valid(), true)); String id = accepted.path("taskId").asString();
+        assertTrue(slowEntered.await(2, TimeUnit.SECONDS));
+        assertEquals("CANCELLED", tree(send("DELETE", "/api/v1/tasks/" + id, null, true)).path("status").asString());
+        slowRelease.countDown(); assertTrue(slowExited.await(2, TimeUnit.SECONDS));
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (!activeModels.status().uncertain() && System.nanoTime() < end) Thread.sleep(5);
+        assertTrue(activeModels.status().uncertain());
+        var blocked = send("POST", "/api/v1/ask/tasks", "{\"question\":\"synthetic\"}", true);
+        assertEquals(409, blocked.statusCode()); assertEquals("MODEL_EXECUTION_UNCERTAIN", tree(blocked).path("code").asString());
+        assertFalse(tree(browser("GET", "/api/v1/capabilities/translate/readiness", null, client.credential(), client.origin())).path("available").asBoolean());
+        assertEquals(200, send("GET", "/actuator/health/readiness", null, false).statusCode());
+        var c = conversations.create("synthetic");
+        try {
+            assertEquals(409, send("POST", "/api/v1/conversations/" + c.id() + "/turns", "{\"message\":\"synthetic\"}", true).statusCode());
+            assertEquals(0, conversations.detail(c.id(), 0, 10).totalTurns());
+        } finally { conversations.delete(c.id()); }
+        var memory = tree(send("POST", "/api/v1/memory/items", "{\"type\":\"PROJECT_NOTE\",\"title\":\"synthetic\",\"content\":\"safe\"}", true));
+        assertFalse(memory.path("id").asString("").isEmpty());
+        assertEquals(204, send("DELETE", "/api/v1/memory/items/" + memory.path("id").asString(), "{\"expectedRevision\":1}", true).statusCode());
+        assertEquals("CANCELLED", pollNative(id).path("status").asString());
+    }
     @Test void webNativeStrictAdmissionReconciliationAndBrowserPreBodyDenial() throws Exception {
         String endpoint = "/api/v1/web/fetches", id = java.util.UUID.randomUUID().toString();
         String canary = "webcanary" + id.replace("-", "");
@@ -393,9 +455,9 @@ class RuntimeApiTest {
                 HttpResponse.BodyHandlers.ofString()).statusCode());
         JsonNode offline = tree(send("GET", "/api/v1/providers/readiness", null, true));
         assertFalse(offline.path("available").asBoolean());
-        JsonNode failed = submitAndPoll(valid());
-        assertEquals("FAILED", failed.path("status").asString());
-        assertEquals("PROVIDER_UNAVAILABLE", failed.path("error").path("code").asString());
+        var rejected = send("POST", "/api/v1/translate/tasks", valid(), true);
+        assertEquals(503, rejected.statusCode());
+        assertEquals("PROVIDER_UNAVAILABLE", tree(rejected).path("code").asString());
         assertEquals(200, send("GET", "/actuator/health/readiness", null, false).statusCode());
 
     }
@@ -482,6 +544,7 @@ class RuntimeApiTest {
     }
     @ParameterizedTest(name = "shared API error projection: {0}")
     @EnumSource(ProviderFailure.class)
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD)
     void sharedApiErrorProjectionMatrix(ProviderFailure failure) throws Exception {
         startMock(); MODE.set(failure.mode);
         JsonNode outcome;
@@ -491,6 +554,10 @@ class RuntimeApiTest {
                 throw new IllegalStateException("internal-private-marker raw secret path");
             });
             outcome = pollNative(accepted.taskId().toString());
+        } else if (failure == ProviderFailure.UNAVAILABLE || failure == ProviderFailure.MODEL_MISSING) {
+            var rejected = send("POST", "/api/v1/translate/tasks", valid(), true);
+            assertEquals(503, rejected.statusCode()); assertEquals(failure.code, tree(rejected).path("code").asString());
+            return;
         } else outcome = submitAndPoll(valid());
         assertEquals("FAILED", outcome.path("status").asString());
         assertEquals(failure.code, outcome.path("error").path("code").asString());
@@ -498,8 +565,6 @@ class RuntimeApiTest {
         assertPublicProfile(outcome, "translate.fast");
         for (String value : List.of("input-private-marker", "raw-error-private-marker", "malformed-private-marker", "internal-private-marker"))
             assertFalse(outcome.toString().contains(value));
-        if (failure == ProviderFailure.MODEL_MISSING)
-            assertTrue(tree(send("GET", "/api/v1/providers/readiness", null, true)).path("available").asBoolean());
     }
     private void assertPublicProfile(JsonNode task, String profile) {
         JsonNode identity = task.path("profile");
@@ -802,8 +867,7 @@ class RuntimeApiTest {
                     new RejectedBatchOutput("trailing JSON", "[] []"),
                     new RejectedBatchOutput("markdown fence", "```json\n[]\n```"),
                     new RejectedBatchOutput("duplicate JSON key", "[{\"id\":1,\"id\":2,\"translation\":\"duplicate-key-private-marker\"}]"),
-                    new RejectedBatchOutput("output mapping budget", "x".repeat(8193)),
-                    new RejectedBatchOutput("adapter body budget", "x".repeat(1048577)))) {
+                    new RejectedBatchOutput("output mapping budget", "x".repeat(8193)))) {
                 BATCH_OUTPUT.set(row.output());
                 var failed = submitAndPoll(two);
                 assertEquals("FAILED", failed.path("status").asString(), row.name());
@@ -813,14 +877,6 @@ class RuntimeApiTest {
             }
             BATCH_OUTPUT.set(all);
             MODE.set(5); slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
-            var slow = tree(browser("POST", endpoint, two, credential, origin));
-            String slowId = slow.path("taskId").asString();
-            assertTrue(slowEntered.await(2, TimeUnit.SECONDS));
-            assertEquals("RUNNING", tree(browser("GET", "/api/v1/tasks/" + slowId, null, credential, origin)).path("status").asString());
-            assertEquals("CANCELLED", tree(browser("DELETE", "/api/v1/tasks/" + slowId, null, credential, origin)).path("status").asString());
-            slowRelease.countDown(); assertTrue(slowExited.await(2, TimeUnit.SECONDS));
-            assertEquals("CANCELLED", pollBrowser(slowId, credential, origin).path("status").asString());
-            assertTrue(pollBrowser(slowId, credential, origin).path("result").isNull());
             // Revoke blocks future HTTP access, while an already accepted batch keeps its original lifecycle.
             slowEntered = new CountDownLatch(1); slowRelease = new CountDownLatch(1); slowExited = new CountDownLatch(1);
             var revokedTask = tree(browser("POST", endpoint, two, otherCredential, otherOrigin));

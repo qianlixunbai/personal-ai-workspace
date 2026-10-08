@@ -38,6 +38,7 @@ workspace:
   web:
     policy: ASK_EVERY_TIME
   data-directory: ${user.home}/.personal-ai-workspace/data
+  model-state-directory: ${user.home}/.personal-ai-workspace/model-state
   security:
     token-file: .runtime/client-token
   ollama:

@@ -20,10 +20,14 @@ public interface Provider {
         }
         @Override public String toString() { return "ChatMessage[redacted]"; }
     }
-    record ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages) {
+    record ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages,
+                             io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation reservation) {
         public ProviderExecution { messages = List.copyOf(messages); }
+        public ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages) {
+            this(profile, privacyMode, system, input, messages, null);
+        }
         public ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input) {
-            this(profile, privacyMode, system, input, List.of(new ChatMessage("user", input)));
+            this(profile, privacyMode, system, input, List.of(new ChatMessage("user", input)), null);
         }
         @Override public String toString() { return "ProviderExecution[redacted]"; }
     }

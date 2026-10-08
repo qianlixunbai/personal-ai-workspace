@@ -25,19 +25,22 @@ public final class KnowledgeAnswerService {
     public TaskView submit(KnowledgeAnswerRequest request) {
         if(!ClientIdentity.current().equals(ClientIdentity.NATIVE))throw new WorkspaceException(ErrorCode.POLICY_DENIED,"CAPABILITY");
         if(request==null||request.question()==null||request.question().isBlank())throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"REQUEST");
-        if(!tasks.fitsInput("chat.balanced",request.question()))throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"INPUT_BUDGET");
         Snapshot snapshot=evidence.capture(request.query()); // Store lock ends before packing/queue/provider execution.
-        List<Evidence> prefix=new ArrayList<>();String input=null;
-        for(var next:snapshot.items()) {
-            List<Evidence> proposed=new ArrayList<>(prefix);proposed.add(next);
-            String serialized=JSON.writeValueAsString(new ModelInput(request.question(),proposed.stream()
-                    .map(e->new ModelEvidence(e.label(),e.citation().title(),e.citation().heading(),e.text())).toList()));
-            if(!tasks.fitsInput("chat.balanced",serialized))break;
-            prefix=proposed;input=serialized;
-        }
-        if(input==null)throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"KNOWLEDGE_EVIDENCE_BUDGET");
-        Snapshot admitted=new Snapshot(prefix);
-        return tasks.submitMapped("knowledge-answer","chat.balanced",KnowledgeAnswerPrompt.VERSION,KnowledgeAnswerPrompt.SYSTEM,
-                input,input.length(),output->KnowledgeAnswerParser.parse(output,admitted));
+        var reservation=tasks.reserve("knowledge-answer","chat.balanced",KnowledgeAnswerPrompt.VERSION);
+        try {
+            if(!tasks.fitsInput(reservation,request.question()))throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"INPUT_BUDGET");
+            List<Evidence> prefix=new ArrayList<>();String input=null;
+            for(var next:snapshot.items()) {
+                List<Evidence> proposed=new ArrayList<>(prefix);proposed.add(next);
+                String serialized=JSON.writeValueAsString(new ModelInput(request.question(),proposed.stream()
+                        .map(e->new ModelEvidence(e.label(),e.citation().title(),e.citation().heading(),e.text())).toList()));
+                if(!tasks.fitsInput(reservation,serialized))break;
+                prefix=proposed;input=serialized;
+            }
+            if(input==null)throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"KNOWLEDGE_EVIDENCE_BUDGET");
+            Snapshot admitted=new Snapshot(prefix);
+            return tasks.submitReserved(reservation,"knowledge-answer",KnowledgeAnswerPrompt.SYSTEM,
+                    input,input.length(),output->KnowledgeAnswerParser.parse(output,admitted));
+        } finally { reservation.closeUnlessTransferred(); }
     }
 }

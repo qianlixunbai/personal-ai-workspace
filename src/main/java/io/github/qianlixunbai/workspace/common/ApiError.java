@@ -3,6 +3,12 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case MODEL_SWITCH_CONFLICT -> "Model operation conflicts with active AI work.";
+            case MODEL_SELECTION_REVISION_CONFLICT -> "Model selection changed. Read it again.";
+            case MODEL_EXECUTION_UNCERTAIN -> "External execution is unresolved. AI operations are paused.";
+            case MODEL_STATE_UNAVAILABLE -> "Private model state is unavailable.";
+            case MODEL_CONFIGURATION_INVALID -> "Local model configuration is inconsistent.";
+            case MODEL_IDENTITY_CHANGED -> "Local model identity changed. AI operations are paused.";
             case WEB_DISABLED -> "Web access is disabled.";
             case WEB_TARGET_INVALID -> "Web target is invalid.";
             case WEB_TARGET_NOT_PUBLIC -> "Web target is not public.";
