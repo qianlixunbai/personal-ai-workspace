@@ -35,8 +35,20 @@ internal sealed class WorkspaceWebViewHost
     internal int BlockedPermissions { get; private set; }
     internal int BlockedDownloads { get; private set; }
 
-    internal WorkspaceWebViewHost(WebView2 view, IWorkspaceNativeActions native, Action<string> fallback, string? assetFolder = null, Func<bool>? confirmDiscard = null)
-    { this.view = view; this.native = native; this.fallback = fallback; this.assetFolder = assetFolder ?? Path.Combine(AppContext.BaseDirectory, "MainWorkspace"); this.confirmDiscard = confirmDiscard ?? (() => false); }
+#if MMF3_ACCEPTANCE && DEBUG
+    private readonly Mmf3AcceptanceLaunch? acceptance;
+#endif
+    internal WorkspaceWebViewHost(WebView2 view, IWorkspaceNativeActions native, Action<string> fallback, string? assetFolder = null, Func<bool>? confirmDiscard = null
+#if MMF3_ACCEPTANCE && DEBUG
+        , Mmf3AcceptanceLaunch? acceptance = null
+#endif
+        )
+    {
+        this.view = view; this.native = native; this.fallback = fallback; this.assetFolder = assetFolder ?? Path.Combine(AppContext.BaseDirectory, "MainWorkspace"); this.confirmDiscard = confirmDiscard ?? (() => false);
+#if MMF3_ACCEPTANCE && DEBUG
+        this.acceptance = acceptance;
+#endif
+    }
 
     internal async Task InitializeAsync()
     {
@@ -45,12 +57,24 @@ internal sealed class WorkspaceWebViewHost
         {
             var assets = new WorkspaceAssets(assetFolder);
             policy = new WorkspaceContentPolicy(assets.Files);
+#if MMF3_ACCEPTANCE && DEBUG
+            UserDataFolder = acceptance is not null ? WorkspaceProfile.Mmf3PrivateFolder(acceptance) : WorkspaceProfile.CreatePrivateFolder();
+#else
             UserDataFolder = WorkspaceProfile.CreatePrivateFolder();
+#endif
             // Environment overrides are not frontend configuration; reject rather than inherit a debug port or foreign profile.
             foreach (string name in new[] { "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "WEBVIEW2_USER_DATA_FOLDER", "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", "WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER", "WEBVIEW2_WAIT_FOR_SCRIPT_DEBUGGER" })
                 if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name))) throw new InvalidOperationException("Unexpected WebView environment override.");
             environment = await CoreWebView2Environment.CreateAsync(null, UserDataFolder,
                 new CoreWebView2EnvironmentOptions { AreBrowserExtensionsEnabled = false, IsCustomCrashReportingEnabled = true });
+#if MMF3_ACCEPTANCE && DEBUG
+            if (acceptance is not null)
+            {
+                acceptance.Validate();
+                if (!string.Equals(Path.GetFullPath(environment.UserDataFolder), acceptance.Profile, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("MMF3 profile mismatch.");
+            }
+#endif
             if (closing) return;
             var options = environment.CreateCoreWebView2ControllerOptions();
             options.ProfileName = "MainWorkspace";
@@ -58,6 +82,10 @@ internal sealed class WorkspaceWebViewHost
             await view.EnsureCoreWebView2Async(environment, options);
             if (closing) return;
             var core = view.CoreWebView2;
+#if MMF3_ACCEPTANCE && DEBUG
+            if (acceptance is not null && !string.Equals(Path.GetFullPath(core.Environment.UserDataFolder), acceptance.Profile, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MMF3 controller profile mismatch.");
+#endif
             if (!core.Profile.IsInPrivateModeEnabled) throw new InvalidOperationException("Private profile required.");
             core.Profile.IsPasswordAutosaveEnabled = false;
             core.Profile.IsGeneralAutofillEnabled = false;

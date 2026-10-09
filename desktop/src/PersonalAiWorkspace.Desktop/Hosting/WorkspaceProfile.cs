@@ -7,6 +7,13 @@ namespace PersonalAiWorkspace.Desktop.Hosting;
 
 internal static class WorkspaceProfile
 {
+#if MMF3_ACCEPTANCE && DEBUG
+    internal static string Mmf3PrivateFolder(Mmf3AcceptanceLaunch acceptance)
+    {
+        acceptance.Validate();
+        return acceptance.Profile;
+    }
+#endif
     internal static string CreatePrivateFolder()
     {
         // Fixed account-local location, completely separate from Runtime/auth/backup/project storage.

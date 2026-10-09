@@ -16,6 +16,15 @@ public sealed partial class RuntimeClient : IDisposable
         UseProxy = false, AllowAutoRedirect = false, UseCookies = false
     }, credential) { }
 
+#if MMF3_ACCEPTANCE && DEBUG
+    internal static RuntimeClient CreateMmf3Acceptance(Func<string?> credential)
+    {
+        var client = new RuntimeClient(credential);
+        client.http.BaseAddress = new Uri("http://127.0.0.1:18765");
+        return client;
+    }
+#endif
+
     // Handler injection supports contract tests; callers cannot configure a remote base URL.
     public RuntimeClient(HttpMessageHandler handler, Func<string?> credential)
     {

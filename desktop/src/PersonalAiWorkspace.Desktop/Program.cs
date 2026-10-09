@@ -13,16 +13,30 @@ internal static class Program
             return SelectionWorker.Run(new IntPtr(window));
         if (args.Length > 0 && args[0] is "--clipboard-snapshot" or "--clipboard-read" or "--clipboard-restore")
             return NativeCopyPort.RunWorker(args[0], args);
+#if MMF3_ACCEPTANCE && DEBUG
+        Mmf3AcceptanceLaunch acceptance;
+        try { acceptance = Mmf3AcceptanceLaunch.Parse(args); }
+        catch (Exception) { return 2; }
+#else
         if (args.Length != 0) return 2;
+#endif
         try
         {
+#if MMF3_ACCEPTANCE && DEBUG
+            using var single = new SingleInstance(acceptance.InstanceSuffix);
+#else
             using var single = new SingleInstance();
+#endif
             if (!single.IsPrimary)
             {
                 if (!single.SignalPrimary()) MessageBox.Show("已有实例正在启动，请稍后从托盘打开。", "Personal AI Workspace");
                 return 0;
             }
+#if MMF3_ACCEPTANCE && DEBUG
+            var app = new AssistantApp(single, acceptance: acceptance);
+#else
             var app = new AssistantApp(single);
+#endif
             try { return app.Run(); }
             finally { app.Cleanup(); }
         }

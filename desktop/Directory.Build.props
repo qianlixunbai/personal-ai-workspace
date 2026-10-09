@@ -5,5 +5,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <Mmf3AcceptanceBuild Condition="'$(Mmf3AcceptanceBuild)' == ''">false</Mmf3AcceptanceBuild>
+    <Configuration Condition="'$(Configuration)' == '' and '$(Mmf3AcceptanceBuild)' == 'true'">Debug</Configuration>
+    <DefineConstants Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_ACCEPTANCE</DefineConstants>
   </PropertyGroup>
+  <ItemGroup Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'PersonalAiWorkspace.Core'">
+    <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop" />
+    <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop.Tests" />
+  </ItemGroup>
+  <Target Name="ValidateMmf3AcceptanceBuild" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Mmf3AcceptanceBuild)' != 'false' and '$(Mmf3AcceptanceBuild)' != 'true'" Text="Mmf3AcceptanceBuild must be true or false." />
+    <Error Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' != 'Debug'" Text="Mmf3AcceptanceBuild is Debug-only." />
+    <Error Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(MainWorkspaceDev)' == 'true'" Text="MMF3 acceptance requires bundled production WebView content." />
+  </Target>
 </Project>

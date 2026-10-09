@@ -41,11 +41,31 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     internal Forms.ContextMenuStrip? TrayMenu => trayMenu;
     internal MainWorkspaceWindow? Workspace => workspace;
     internal bool TrayVisible => tray?.Visible == true;
-    internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null)
+#if MMF3_ACCEPTANCE && DEBUG
+    private readonly Mmf3AcceptanceLaunch? acceptance;
+#endif
+    internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null
+#if MMF3_ACCEPTANCE && DEBUG
+        , Mmf3AcceptanceLaunch? acceptance = null
+#endif
+        )
     {
         this.single = single;
-        credentials = testCredentials ?? new CredentialStore();
-        runtime = new RuntimeClient(() => credentials.Load());
+#if MMF3_ACCEPTANCE && DEBUG
+        this.acceptance = acceptance;
+        if (acceptance is not null)
+        {
+            acceptance.Validate();
+            if (testCredentials is not null) throw new InvalidOperationException("Conflicting MMF3 credentials.");
+            credentials = new CredentialStore(acceptance.CredentialTarget);
+            runtime = RuntimeClient.CreateMmf3Acceptance(ReadCredential);
+        }
+        else
+#endif
+        {
+            credentials = testCredentials ?? new CredentialStore();
+            runtime = new RuntimeClient(ReadCredential);
+        }
         workspaceOperations = new WorkspaceOperations(runtime, SelectWorkspaceMemoryAsync, text => Clipboard.SetText(text));
         workspaceConversations = new WorkspaceConversations(runtime, SelectWorkspaceMemoryAsync);
         workspaceMemory = new WorkspaceMemory(runtime);
@@ -65,17 +85,29 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         base.OnStartup(e);
         window = new AssistantWindow(this, runtime);
+#if MMF3_ACCEPTANCE && DEBUG
+        if (acceptance is not null) window.Title += " · " + Mmf3AcceptanceLaunch.Label;
+#endif
         messages = new HwndSource(new HwndSourceParameters("Personal AI Assistant messages")
         { ParentWindow = new IntPtr(-3), WindowStyle = 0, Width = 0, Height = 0 });
         messages.AddHook(WindowMessage);
+#if MMF3_ACCEPTANCE && DEBUG
+        if (acceptance is null)
+#endif
         try { hotkey = new HotkeyRegistration(messages.Handle); }
         catch (InvalidOperationException failure) { window.HotkeyText.Text = failure.Message; }
+#if MMF3_ACCEPTANCE && DEBUG
+        if (acceptance is not null) window.HotkeyText.Text = Mmf3AcceptanceLaunch.Label + " · hotkey disabled";
+#endif
         trayMenu = new Forms.ContextMenuStrip();
         trayMenu.Items.Add("Open Personal AI Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
         trayMenu.Items.Add("Quick Assistant / Quick Translate", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
         trayMenu.Items.Add("检查 Runtime", null, async (_, _) => await CheckHealthAsync());
         trayMenu.Items.Add("退出", null, async (_, _) => await ExitAsync());
         tray = new Forms.NotifyIcon { Icon = SystemIcons.Application, Text = "Personal AI Workspace · Local Only", ContextMenuStrip = trayMenu, Visible = true };
+#if MMF3_ACCEPTANCE && DEBUG
+        if (acceptance is not null) tray.Text = Mmf3AcceptanceLaunch.Label;
+#endif
         tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowWorkspace);
         single.Listen(() => Dispatcher.BeginInvoke(ShowWorkspace));
         RefreshCredentialStatus();
@@ -108,7 +140,11 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (exitRequested) return;
         if (workspace is null)
         {
-            workspace = new MainWorkspaceWindow(this);
+            workspace = new MainWorkspaceWindow(this
+#if MMF3_ACCEPTANCE && DEBUG
+                , acceptance: acceptance
+#endif
+                );
             workspace.Closed += (_, _) => workspace = null;
         }
         MainWindow = workspace;
@@ -117,7 +153,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         workspace.Activate();
     }
     Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
-        new WorkspaceStatusProbe(runtime, credentials.Load).ReadAsync(cancellation);
+        new WorkspaceStatusProbe(runtime, ReadCredential).ReadAsync(cancellation);
     WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
     WorkspaceConversations IWorkspaceNativeActions.Conversations => workspaceConversations;
     WorkspaceMemory IWorkspaceNativeActions.Memory => workspaceMemory;
@@ -255,15 +291,29 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     public async Task CheckHealthAsync()
     {
         if (exitRequested) return;
-        try { await runtime.CheckHealthAsync(lifetime.Token); window.HealthText.Text = "Runtime UP · http://127.0.0.1:8765"; }
-        catch (DesktopException error) { window.HealthText.Text = error.Message; }
+        try { await runtime.CheckHealthAsync(lifetime.Token); window.HealthText.Text = HealthIdentity("Runtime UP · http://127.0.0.1:8765"); }
+        catch (DesktopException error) { window.HealthText.Text = HealthIdentity(error.Message); }
         catch (OperationCanceledException) { }
+    }
+    private string HealthIdentity(string text)
+    {
+#if MMF3_ACCEPTANCE && DEBUG
+        if (acceptance is not null) return Mmf3AcceptanceLaunch.Label + " · " + text.Replace("8765", "18765", StringComparison.Ordinal);
+#endif
+        return text;
+    }
+    private string? ReadCredential()
+    {
+#if MMF3_ACCEPTANCE && DEBUG
+        acceptance?.Validate();
+#endif
+        return credentials.Load();
     }
     private bool RefreshCredentialStatus()
     {
         try
         {
-            bool ready = credentials.Load() is not null;
+            bool ready = ReadCredential() is not null;
             window.CredentialText.Text = ready ? "凭据已保存在 Windows Credential Manager · 同一本机信任域" : ErrorText.For(DesktopError.CredentialMissing);
             return ready;
         }
@@ -274,6 +324,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (Busy || exitRequested) return;
         try
         {
+#if MMF3_ACCEPTANCE && DEBUG
+            if (acceptance is not null) file = acceptance.ValidateTokenImport(file);
+#endif
             credentials.Import(file);
             RefreshCredentialStatus();
             // Authenticated probe confirms imported credential without creating a task.
@@ -291,7 +344,13 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     public void ForgetCredential()
     {
         if (Busy) return;
-        try { credentials.Forget(); RefreshCredentialStatus(); }
+        try
+        {
+#if MMF3_ACCEPTANCE && DEBUG
+            acceptance?.Validate();
+#endif
+            credentials.Forget(); RefreshCredentialStatus();
+        }
         catch (DesktopException error) { window.CredentialText.Text = error.Message; }
     }
     internal async Task ExitAsync()
