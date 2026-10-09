@@ -6,10 +6,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <Mmf3AcceptanceBuild Condition="'$(Mmf3AcceptanceBuild)' == ''">false</Mmf3AcceptanceBuild>
-    <Configuration Condition="'$(Configuration)' == '' and '$(Mmf3AcceptanceBuild)' == 'true'">Debug</Configuration>
-    <DefineConstants Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_ACCEPTANCE</DefineConstants>
+    <Mmf3ProfileAcceptanceBuild Condition="'$(Mmf3ProfileAcceptanceBuild)' == ''">false</Mmf3ProfileAcceptanceBuild>
+    <Configuration Condition="'$(Configuration)' == '' and ('$(Mmf3AcceptanceBuild)' == 'true' or '$(Mmf3ProfileAcceptanceBuild)' == 'true')">Debug</Configuration>
+    <DefineConstants Condition="('$(Mmf3AcceptanceBuild)' == 'true' or '$(Mmf3ProfileAcceptanceBuild)' == 'true') and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_ACCEPTANCE</DefineConstants>
+    <DefineConstants Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_PROFILE_ACCEPTANCE</DefineConstants>
   </PropertyGroup>
-  <ItemGroup Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'PersonalAiWorkspace.Core'">
+  <ItemGroup Condition="('$(Mmf3AcceptanceBuild)' == 'true' or '$(Mmf3ProfileAcceptanceBuild)' == 'true') and '$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'PersonalAiWorkspace.Core'">
     <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop" />
     <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop.Tests" />
   </ItemGroup>
@@ -17,5 +19,9 @@
     <Error Condition="'$(Mmf3AcceptanceBuild)' != 'false' and '$(Mmf3AcceptanceBuild)' != 'true'" Text="Mmf3AcceptanceBuild must be true or false." />
     <Error Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(Configuration)' != 'Debug'" Text="Mmf3AcceptanceBuild is Debug-only." />
     <Error Condition="'$(Mmf3AcceptanceBuild)' == 'true' and '$(MainWorkspaceDev)' == 'true'" Text="MMF3 acceptance requires bundled production WebView content." />
+    <Error Condition="'$(Mmf3ProfileAcceptanceBuild)' != 'false' and '$(Mmf3ProfileAcceptanceBuild)' != 'true'" Text="Mmf3ProfileAcceptanceBuild must be true or false." />
+    <Error Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Configuration)' != 'Debug'" Text="Mmf3ProfileAcceptanceBuild is Debug-only." />
+    <Error Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Mmf3AcceptanceBuild)' == 'true'" Text="Legacy and Profile MMF3 acceptance builds are mutually exclusive." />
+    <Error Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(MainWorkspaceDev)' == 'true'" Text="MMF3 profile acceptance requires bundled production WebView content." />
   </Target>
 </Project>
