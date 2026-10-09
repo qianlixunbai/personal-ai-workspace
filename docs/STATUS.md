@@ -1,6 +1,19 @@
 # Personal AI Workspace — Current Status
 
-## Current MMF-2B — SOURCE REVIEW APPROVED — GO
+## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+
+2026-10-09（Asia/Shanghai）。Architecture Guard 独立 B1 Source Review **APPROVED — GO；Source blockers: 0**。
+批准八个生产文件及一个 Mmf3AcceptanceTests.cs，合计九文件；批准补丁 SHA-256：
+`24f7181f14fe12bee6c1e371d9bff187ca8f4713f07d51b70c0bfa221707966e`。
+独立 implementation commit：`7405562a673ff0911427adaa0445e39e3d57afea`，已 fast-forward 发布至 origin/main 并经 fresh fetch 核验。
+同账号测试入口仅存在于 Mmf3AcceptanceBuild=true 的 Debug；严格 run identity、18765/test credential/UDF/mutex 隔离，
+不注册正式 hotkey，沿用真实 WPF confirmation/bridge；普通生产端点与安全边界保持。
+已有 Debug/Release build、negative build、focused tests 及产物身份已重新核对；发布本轮未重跑构建或测试。
+**Windows/Chrome 无推理真实 GUI 验收 NOT PERFORMED；MMF-3 实际模型集成尚未通过。**
+无推理 GUI Preflight 须另获 Architecture Guard 独立授权；模型 probe/load/inference/switch/Release 等仍须单独批准。
+**MMF-3 NOT CLOSED；Model Management Overall NOT CLOSED。** 本轮仅源码与状态文档发布，ADR-015 Accepted 正文不变。
+
+## Historical MMF-2B — SOURCE REVIEW APPROVED — GO
 
 2026-10-08（Asia/Shanghai）。Architecture Guard 已独立批准完整 MMF-2B Runtime/native/Desktop/Settings 源码，
 **Source blockers: 0；P0 Recovery/Restart: CLOSED；P1 Release Guard Lifecycle: CLOSED；P1 Desktop Error Compatibility: CLOSED。**

@@ -1,6 +1,15 @@
 # Personal AI Workspace — V1 Roadmap
 
-## Current MMF-2B — SOURCE REVIEW APPROVED — GO
+## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+
+2026-10-09（Asia/Shanghai）。Architecture Guard B1 Source Review **APPROVED — GO；Source blockers: 0**。
+同账号测试专用入口准确九文件已批准；implementation `7405562a673ff0911427adaa0445e39e3d57afea`
+已 fast-forward 发布至 origin/main 并经 fresh fetch 核验，补丁与证据状态见 [STATUS](../STATUS.md#current-mmf-3-b1--source-approved--published)。
+已有 Debug/Release build、negative build、focused tests 已核对；发布本轮未重跑。
+**Windows/Chrome 无推理 GUI 验收 NOT PERFORMED；MMF-3 实际模型集成尚未通过；MMF-3 NOT CLOSED；Model Management Overall NOT CLOSED。**
+下一步仅在 Architecture Guard 独立授权后开展无推理真实 GUI Preflight；实际模型集成与共享 Ollama 操作仍须单独批准。
+
+## Historical MMF-2B — SOURCE REVIEW APPROVED — GO
 
 2026-10-08（Asia/Shanghai）。MMF-2B Runtime/native/Desktop/Settings source review **APPROVED — GO**，
 **Source blockers: 0；P0 Recovery/Restart 与两项 P1 均 CLOSED。**
@@ -49,7 +58,7 @@ Search implementation NOT STARTED，W1C/W1D 未开始；**W1 Overall PAUSED / NO
 [ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**；Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**。
 **Architecture approval does not authorize implementation。** 用户已另行授权 MMF-1，Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；Finding A/B: CLOSED。
 [MMF-1 evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 记录正式批准与历史 focused tests（Codex previously reported PASS；本轮未重跑）。
-Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED。MMF-2B source APPROVED — GO；MMF-3 NOT STARTED；MMF Overall NOT CLOSED。
+Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED。MMF-2B source APPROVED — GO；MMF-3 B1 Source Approved / Published，GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
 `c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
@@ -131,7 +140,7 @@ Portable logical backup 是产品原则；当前各备份格式的范围独立�
 | — | T0 工程门禁 | Test Suite Consolidation / Slimming | CLOSED — GO | K2 closing；位于 K3 前 |
 | 11 | K3 | Grounded Knowledge Answer + Citations | CLOSED — GO | K2 / ADR-013；implementation/source closing approved |
 | 12 | W1 | Controlled Web Access | W1A CLOSED — GO；W1 Overall PAUSED / NOT CLOSED | ADR-014；W1B 候选研究完成，Search implementation NOT STARTED；W1C/W1D 未开始 |
-| — | Model Management Foundation | ONE Active Model / safe switch / durable selection | MMF-1 / MMF-2A / MMF-2B SOURCE REVIEW APPROVED — GO；source blockers 0；ADR-015 Accepted | native/Desktop/Settings 和 validation-required implementation supplement 已批准；real integrated acceptance NOT PERFORMED；MMF-3 NOT STARTED；MMF Overall NOT CLOSED |
+| — | Model Management Foundation | ONE Active Model / safe switch / durable selection | MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW APPROVED — GO；source blockers 0；ADR-015 Accepted | MMF-3 B1 Source Published；native/Desktop/Settings 和 validation-required implementation supplement 已批准；无推理 GUI / real model integration NOT PERFORMED；MMF Overall NOT CLOSED |
 | 13 | V1 | Multimodal / Vision Foundation | NOT STARTED | Model Management Foundation |
 | — | Personal Finance OS 独立收尾 | 独立 Finance 工作，不授权 Workspace 集成 | 用户决定的后续顺序；本仓库不实施 | V1 Vision 后、F0 前；独立仓库审核 |
 | 14 | F0 | Finance Reality Sync | NOT STARTED | Personal Finance OS 独立收尾后，authoritative Finance worktree |
@@ -802,10 +811,10 @@ F4 计划让一个用户请求有意组合多个已授权领域，同时保留�
 
 ## 9. Model Management Foundation（跨阶段平台任务）
 
-**阶段定位 / 当前状态：** Architecture Guard MMF-1 / MMF-2A / MMF-2B SOURCE REVIEW — APPROVED — GO；Source blockers: 0；MMF-1 Finding A/B 与 MMF-2B P0/P1 均 CLOSED。MMF-3 NOT STARTED；MMF Overall NOT CLOSED。
+**阶段定位 / 当前状态：** Architecture Guard MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；MMF-1 Finding A/B 与 MMF-2B P0/P1 均 CLOSED。MMF-3 B1 Source Published；GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
 Runtime Active Model owner、私有 selection/guard/validation-required、统一 reservation，以及 native-confirmed switch/Release/VALIDATE/RECOVER、Desktop/Settings 源码已批准；real integrated acceptance NOT PERFORMED。
 这是跨阶段平台任务，不新增编号的产品 milestone；[ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**。
-Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**；MMF-1 / MMF-2A / MMF-2B 已独立授权并获 source approval；MMF-3 尚未授权。
+Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**；MMF-1 / MMF-2A / MMF-2B 与 MMF-3 B1 源码已独立授权并获 source approval；MMF-3 真实 GUI/model execution 尚未授权。
 
 当前优先顺序：**暂停 W1 后续联网开发 → Model Management Foundation → V1 Vision → Personal Finance OS 独立收尾 → F0**。
 目标为 Runtime 唯一权威的 **ONE Active Model**；capability profiles 保留 prompt/capability、budgets、temperature、validators、LOCAL_ONLY。
@@ -844,7 +853,7 @@ pre-send 可证零 inference egress；可信完成响应 + worker exit 才正常
 **其他领域：** 模型故障不阻塞在线 Runtime 的健康纯数据 API/lexical search；Runtime 离线不声称领域功能正常。
 Provider Vision 声明 ≠ Workspace Vision 验收；图片上传/多模态执行/model tools 均不实施。
 **明确不做：** 模型市场、多 Provider Registry、Agent、自动下载、通用进程或资源监控。
-MMF-1 / MMF-2A / MMF-2B 已获 source approval；MMF-3 NOT STARTED。Focused tests: previously reported PASS；本轮不重跑。
+MMF-1 / MMF-2A / MMF-2B 与 MMF-3 B1 已获 source approval，B1 Source Published；无推理 GUI/model acceptance NOT PERFORMED。Focused tests: previously reported PASS；本轮不重跑。
 Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED；P1 负责最终体验整合。
 
 ## 10. Resource Monitor / System Status（跨阶段平台任务）
@@ -1006,7 +1015,7 @@ Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO*
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
 K3 Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
-当前状态为 **Model Management Foundation — ADR-015 Accepted / MMF-1 / MMF-2A / MMF-2B SOURCE REVIEW APPROVED — GO**；MMF-3 NOT STARTED；MMF Overall NOT CLOSED。
+当前状态为 **Model Management Foundation — ADR-015 Accepted / MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW APPROVED — GO**；B1 Source Published；无推理 GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
 W1 Overall PAUSED / NOT CLOSED；W1B 候选研究完成但 Search implementation NOT STARTED。
 **W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
 W1C / W1D 未开始；public Internet smoke / Windows product acceptance NOT PERFORMED。

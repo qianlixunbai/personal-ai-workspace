@@ -1,6 +1,20 @@
 # Personal AI Workspace — Current Architecture
 
-## Current MMF-2B — SOURCE REVIEW APPROVED — GO
+## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+
+2026-10-09（Asia/Shanghai）。Architecture Guard B1 Source Review **APPROVED — GO；Source blockers: 0**。
+implementation `7405562a673ff0911427adaa0445e39e3d57afea` 已 fast-forward 发布至 origin/main，fresh fetch 核验一致；
+准确九文件范围与批准补丁身份见 [STATUS](../STATUS.md#current-mmf-3-b1--source-approved--published)。
+shared Mmf3AcceptanceBuild 默认 false，仅 Debug opt-in；Release opt-in 构建失败，普通 Release 无可调用测试工厂。
+测试 main 在任何 credential/client/mutex/WebView 构造前验证 run ID、固定 LocalAppData 根、current SID/private ACL/no reparse；
+固定 18765、run-derived credential target/token source、私有 UDF 与 mutex/event，不注册正式 hotkey，不回退正式配置。
+真实 WorkspaceBridge/WorkspaceModels/NativeModelConfirmation/ModelConfirmationWindow、60 秒/default-Cancel/session/exact-intent/one-shot
+与 unknown outcome 不重发 POST 保持；无 development origin、DevTools 或 CSP 放宽，Runtime 模型管理 API 与 ADR-015 未改。
+已有 Debug/Release/negative build、focused tests 与编译产物证据已核对；发布本轮未重跑。
+**Windows/Chrome 无推理 GUI 验收 NOT PERFORMED；MMF-3 实际模型集成尚未通过；MMF-3 NOT CLOSED；Model Management Overall NOT CLOSED。**
+后续真实无推理启动/认证须 Architecture Guard 独立授权；模型操作与共享 Ollama 管理仍需单独批准。
+
+## Historical MMF-2B — SOURCE REVIEW APPROVED — GO
 
 2026-10-08（Asia/Shanghai）。Architecture Guard 独立源码审查：**APPROVED — GO；Source blockers: 0**。
 P0 Recovery/Restart、P1 Release Guard Lifecycle、P1 Desktop Error Compatibility 均 CLOSED。
