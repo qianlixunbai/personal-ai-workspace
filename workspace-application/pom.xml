@@ -15,6 +15,12 @@
 		<workspace.runtime.kind>default</workspace.runtime.kind>
 	</properties>
 	<dependencies>
+		<!-- Offline backup standard OpenPGP; pure Java, no native executable or new process. -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcpg-jdk18on</artifactId>
+			<version>1.86</version>
+		</dependency>
 		<dependency>
 			<groupId>io.github.qianlixunbai</groupId>
 			<artifactId>finance-domain</artifactId>

@@ -14,6 +14,7 @@ Workspace SQLite → PostgreSQL migration — **F2.3-B1 MEMORY/CONVERSATION POST
 Memory/Conversation 显式 PostgreSQL 路径与独立 workspace schema 已通过真实合成导入和 Store 读写；默认 SQLite 不变，见 [B1 报告](../engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)。
 F2.3-B2 Knowledge V2、合成 SQLite/文件迁移、真实 Store 数据库读写及 PostgreSQL 派生检索已通过聚焦集成；受信 Windows 文件发布与删除恢复未验收，整体 PARTIAL，见 [B2 报告](../engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。
 F2.3-B3 增加显式离线 PostgreSQL custom archive + revision 文件维护模块，非空合成数据库与文件隔离恢复、Store/preview/检索和索引重建已验证；不进入 Runtime 自动启动。认证加密、Windows 准入及身份重绑未完成，整体 PARTIAL，见 [B3 报告](../engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。
+F2.3-B3E 在原 B3 格式外封装标准 RFC 9580 OpenPGP（BC 1.86，Argon2id + AES-256-GCM），完整认证和内部校验后才读取目标配置及恢复；合成加解密/新库恢复已验证。明文暂存、Windows 生命周期及身份重绑仍待完成，产品整体 PARTIAL，见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。
 现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
 以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
 

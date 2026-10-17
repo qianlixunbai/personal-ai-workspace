@@ -18,12 +18,14 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | Workspace SQLite → PostgreSQL migration | B1 Memory/Conversation、B2 Knowledge 数据库主链路通过；整体 PARTIAL，受信文件生命周期／恢复／正式切换未完成 |
 | F2.3-B2 Knowledge PostgreSQL | 真实 PostgreSQL V2／合成迁移／Store 读写／检索通过；受信 Windows 文件发布与删除恢复未验收，整体 PARTIAL |
 | F2.3-B3 Unified Backup / Restore | 数据库与合成 Knowledge 文件真实备份／隔离恢复／Store／索引验证通过；认证加密、Windows 准入和身份重绑未完成，整体 PARTIAL |
+| F2.3-B3E Portable Encrypted Backup | 标准 OpenPGP 加密／完整认证解密／新库合成恢复 VERIFIED；明文暂存、Windows 准入和身份重绑未完成，产品整体 PARTIAL |
 
 Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
 实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
 本轮迁移源码、实际证据及剩余范围见 [F2.3-B1 Report](engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)。B1 不是数据库迁移完成或 Windows Runtime GO。
 B2 的实际执行与未执行范围见 [Knowledge PostgreSQL Report](engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B2 已保存为本地 commit `2a4a2b7`。
-B3 成果保持未提交，真实非空合成恢复及正式产品缺口见 [Unified Backup / Restore Report](engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。未进入 B4。
+B3 已保存为本地 commit `5bf4a09`，真实非空合成恢复及该阶段边界见 [Unified Backup / Restore Report](engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。
+B3E 成果未提交，加密、认证、新隔离恢复证据与产品缺口见 [Portable Encrypted Backup Report](engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。未进入 B4。
 Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。B1 仅执行合成测试数据的 workspace schema 迁移，未迁移正式数据或重跑 Finance 初始化；W1 后续开发继续 PAUSED。
 以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
 
