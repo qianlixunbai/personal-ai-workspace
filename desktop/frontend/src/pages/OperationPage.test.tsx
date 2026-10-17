@@ -4,6 +4,8 @@ import { OperationPage } from './OperationPage'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
 import { Port, status } from '../test/fixtures'
+// Vision owns its picker/status flow in its own integrated fixture; these tests protect text editing.
+vi.mock('../components/VisionPanel', () => ({ VisionPanel: () => null }))
 const id = '33333333-3333-4333-8333-333333333333'
 const memory = { memoryId: '44444444-4444-4444-8444-444444444444', revision: '9007199254740993', position: 0, title: '<img onerror=alert(1)> &lt;上下文\u202e' }
 const queued = { operationId: id, status: 'QUEUED', result: null, error: null }
@@ -13,7 +15,7 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.dispose(
 function page(kind: 'assistant' | 'translate' = 'assistant') {
   const port = new Port(); const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
   render(<OperationPage kind={kind} bridge={bridge} enabled status={status} />)
-  return { port, bridge, input: screen.getByRole('textbox') }
+  return { port, bridge, input: screen.getByRole('textbox', { name: kind === 'assistant' ? '问题' : '待翻译文本' }) }
 }
 async function reply(port: Port, value: unknown, index = port.sent.length - 1) { await act(async () => { port.reply(index, value) }) }
 async function choose(port: Port) {

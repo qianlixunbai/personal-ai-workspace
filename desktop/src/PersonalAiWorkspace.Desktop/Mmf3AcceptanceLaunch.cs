@@ -56,6 +56,9 @@ internal sealed class Mmf3AcceptanceLaunch
                 throw new IOException("Invalid MMF3 run identity.");
         var launch = new Mmf3AcceptanceLaunch(args[1]);
         launch.Validate();
+#if MMF3_PROFILE_ACCEPTANCE
+        Mmf3ProfileNative.Verify(launch);
+#endif
         return launch;
     }
 

@@ -24,6 +24,7 @@ internal interface IWorkspaceNativeActions
     WorkspaceKnowledge? Knowledge => null;
     WorkspaceWebFetch? WebFetch => null;
     WorkspaceModels? Models => null;
+    WorkspaceVision? Vision => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
@@ -49,6 +50,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly WorkspaceKnowledge? knowledge;
     private readonly WorkspaceWebFetch? webFetch;
     private readonly WorkspaceModels? models;
+    private readonly Action<string,string> visionCleared;
     internal bool EditorDirty { get; private set; }
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
@@ -68,7 +70,11 @@ internal sealed class WorkspaceBridge : IDisposable
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
-    { this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; webFetch = native.WebFetch; models = native.Models; this.send = send; }
+    {
+        this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; webFetch = native.WebFetch; models = native.Models; this.send = send;
+        visionCleared=(session,handle)=>{if(ready&&session==SessionId)Send(new {type="vision.cleared",version=Version,sessionId=session,handle});};
+        if(native.Vision is {} vision)vision.Cleared+=visionCleared;
+    }
 
     internal void BeginDocument(string address)
     {
@@ -83,6 +89,7 @@ internal sealed class WorkspaceBridge : IDisposable
         knowledge?.BeginSession(SessionId);
         webFetch?.BeginSession(SessionId);
         models?.BeginSession(SessionId);
+        native.Vision?.BeginSession(SessionId);
     }
 
     internal void Ready(string currentDocument)
@@ -96,6 +103,7 @@ internal sealed class WorkspaceBridge : IDisposable
     {
         webFetch?.EndSession(SessionId);
         models?.EndSession(SessionId);
+        native.Vision?.EndSession(SessionId);
         operations?.EndSession(SessionId);
         conversations?.EndSession(SessionId);
         memory?.EndSession(SessionId);
@@ -133,7 +141,19 @@ internal sealed class WorkspaceBridge : IDisposable
         try
         {
             object result;
-            if (ModelMethods.Contains(method))
+            if (VisionMethods.Contains(method))
+            {
+                var vision=native.Vision??throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Vision 暂时不可用。");
+                result=method switch {
+                    "vision.readiness"=>await vision.ReadinessAsync(session,cancellation),
+                    "vision.pick"=>await vision.PickAsync(session,cancellation),
+                    "vision.validate"=>await vision.ValidateAsync(session,cancellation),
+                    "vision.clear"=>vision.Clear(session),
+                    "vision.submit"=>await vision.SubmitAsync(session,payload.GetProperty("handle").GetString()!,payload.GetProperty("question").GetString()!,cancellation),
+                    _=>await vision.TaskAsync(session,payload.TryGetProperty("taskId",out var visionId)?visionId.GetString():null,method=="vision.cancel",cancellation)
+                };
+            }
+            else if (ModelMethods.Contains(method))
             {
                 if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
                 result = method == "models.mutate"
@@ -277,6 +297,12 @@ internal sealed class WorkspaceBridge : IDisposable
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if(VisionMethods.Contains(method)) return method switch {
+            "vision.submit"=>Fields(payload,"handle","question")&&Text(payload,"handle",36,out var imageHandle)&&CanonicalId(imageHandle)
+                &&Text(payload,"question",1000,out var question)&&!string.IsNullOrWhiteSpace(question)&&Encoding.UTF8.GetByteCount(question)<=4096,
+            "vision.get" or "vision.cancel"=>method=="vision.get"&&Fields(payload)||Fields(payload,"taskId")&&Text(payload,"taskId",36,out var taskId)&&CanonicalId(taskId),
+            _=>Fields(payload)
+        };
         if (ModelMethods.Contains(method)) return method != "models.mutate" ? Fields(payload)
             : Fields(payload, "action", "handle", "expectedSelectionRevision", "recoveryGeneration")
               && Text(payload, "action", 23, out var action) && action is "SWITCH" or "RELEASE_OLD_THEN_SWITCH" or "RELEASE" or "VALIDATE" or "RECOVER"
@@ -306,6 +332,8 @@ internal sealed class WorkspaceBridge : IDisposable
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
     internal static readonly IReadOnlySet<string> WebFetchMethods = new HashSet<string>(StringComparer.Ordinal)
     { "web.fetchSubmit", "web.fetchGet", "web.fetchCancel" };
+    internal static readonly IReadOnlySet<string> VisionMethods=new HashSet<string>(StringComparer.Ordinal)
+    {"vision.readiness","vision.pick","vision.validate","vision.submit","vision.get","vision.cancel","vision.clear"};
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
@@ -418,5 +446,5 @@ internal sealed class WorkspaceBridge : IDisposable
         foreach (var field in value.EnumerateObject()) if (!remaining.Remove(field.Name)) return false;
         return remaining.Count == 0;
     }
-    public void Dispose() { Invalidate(); sessionLifetime.Dispose(); }
+    public void Dispose() { Invalidate();if(native.Vision is {} vision)vision.Cleared-=visionCleared; sessionLifetime.Dispose(); }
 }

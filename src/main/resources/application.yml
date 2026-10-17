@@ -35,6 +35,10 @@ management:
         liveness:
           include: livenessState
 workspace:
+  finance:
+    enabled: false
+    flyway:
+      enabled: false
   web:
     policy: ASK_EVERY_TIME
   data-directory: ${user.home}/.personal-ai-workspace/data

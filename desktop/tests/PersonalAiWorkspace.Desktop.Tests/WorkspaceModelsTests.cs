@@ -17,8 +17,8 @@ public sealed class WorkspaceModelsTests
 {
     internal const string Handle = "33333333-3333-4333-8333-333333333333", Generation = "44444444-4444-4444-8444-444444444444";
     internal static readonly string Digest = new('a', 64);
-    internal static object Status(long revision = 0) => new { configuredModel = "a:latest", configuredDigest = Digest, activeModel = (string?)null,
-        activeDigest = (string?)null, selectionRevision = revision, installed = "TRUE", loaded = "UNKNOWN", ready = false,
+    internal static object Status(long revision = 0) => new { configuredModel = "a:latest", configuredDigest = Digest, configuredRunner = "ggml", activeModel = (string?)null,
+        activeDigest = (string?)null, activeRunner = (string?)null, selectionRevision = revision, installed = "TRUE", loaded = "UNKNOWN", ready = false,
         reserved = 0, queued = 0, executing = 0, draining = 0, switching = false, uncertain = false,
         recoveryGeneration = Generation, validationRequired = true, error = (string?)null };
     internal sealed class Confirmation : IModelConfirmation
@@ -55,7 +55,7 @@ public sealed class WorkspaceModelsTests
                     return Response(HttpStatusCode.OK, JsonSerializer.Serialize(Status(1)));
                 }
                 if (route == "/api/v1/models/catalog") return Response(HttpStatusCode.OK, JsonSerializer.Serialize(new { selectionRevision = 0,
-                    models = new[] { new { handle = Handle, model = "a:latest", digest = Digest, contextLimit = 32768, completion = true, localSourceVerified = true, providerDeclaredVision = false } } }));
+                    models = new[] { new { handle = Handle, model = "a:latest", runner = "ggml", digest = Digest, contextLimit = 32768, completion = true, localSourceVerified = true, providerDeclaredVision = false } } }));
                 Assert.Equal("/api/v1/models/status", route); StatusReads++;
                 return Response(HttpStatusCode.OK, JsonSerializer.Serialize(Status(Posts > 0 && !Stale ? 1 : 0)));
             }), () => new string('t', 43));
@@ -79,6 +79,7 @@ public sealed class WorkspaceModelsTests
         await f.Receive("models.mutate", f.Payload(revision: 1)); Assert.Contains("ModelSelectionRevisionConflict", Assert.Single(f.Sent)); Assert.Null(f.Dialog.Intent);
         f.Sent.Clear(); Task replaced = f.Receive("models.mutate", f.Payload()); var frozen = f.Dialog.Intent!;
         Assert.Equal("a:latest", frozen.CandidateModel); Assert.Equal(Digest, frozen.CandidateDigest); Assert.Null(frozen.ExpectedActiveModel);
+        Assert.Equal("ggml", frozen.CandidateRunner); Assert.Null(frozen.ExpectedActiveRunner);
         Assert.False(frozen.ExternalConfirmed); f.Rotate(); Assert.True(f.Dialog.Token.IsCancellationRequested);
         f.Dialog.Choice.SetResult(true); await replaced; Assert.Empty(f.Sent); Assert.Equal(0, f.Posts);
         f.Dialog.Reset(); await f.Inspect(); f.LosePost = true;
@@ -87,7 +88,8 @@ public sealed class WorkspaceModelsTests
         f.Dialog.Choice.SetResult(true); await unknown;
         Assert.Equal(1, f.Posts); Assert.Equal(reads + 1, f.StatusReads); Assert.Contains("UNKNOWN", Assert.Single(f.Sent));
         using var body = JsonDocument.Parse(f.Posted!);
-        Assert.Equal(new[] { "action", "catalogHandle", "candidateModel", "candidateDigest", "expectedSelectionRevision", "expectedActiveModel", "expectedActiveDigest", "recoveryGeneration", "externalConfirmed" }, body.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "action", "catalogHandle", "candidateModel", "candidateRunner", "candidateDigest", "expectedSelectionRevision", "expectedActiveModel", "expectedActiveRunner", "expectedActiveDigest", "recoveryGeneration", "externalConfirmed" }, body.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("ggml", body.RootElement.GetProperty("candidateRunner").GetString());
         Assert.Equal("RELEASE", body.RootElement.GetProperty("action").GetString());
         f.Sent.Clear(); await f.Receive("models.mutate", f.Payload()); Assert.Equal(1, f.Posts); Assert.Contains("ModelCatalogStale", Assert.Single(f.Sent));
         using var stale = new Fixture { Stale = true }; await stale.Inspect();
@@ -110,11 +112,12 @@ public sealed class WorkspaceModelsTests
         var host = new Window { Width = 200, Height = 100, ShowInTaskbar = false }; host.Show();
         try {
             foreach (var action in new[] { ModelAction.SWITCH, ModelAction.RELEASE, ModelAction.RECOVER }) {
-                var intent = new ModelIntent(action, Handle, "a:latest", Digest, 0, null, null, action == ModelAction.RECOVER ? Generation : null, action != ModelAction.SWITCH);
+                var intent = new ModelIntent(action, Handle, "a:latest", "ggml", Digest, 0, null, null, null, action == ModelAction.RECOVER ? Generation : null, action != ModelAction.SWITCH);
                 var dialog = new ModelConfirmationWindow(host, intent);
                 _ = dialog.Dispatcher.BeginInvoke(new Action(() => {
                     var panel = Assert.IsType<StackPanel>(Assert.IsType<ScrollViewer>(dialog.Content).Content);
                     Assert.Contains(Digest, panel.Children.OfType<TextBox>().First().Text);
+                    Assert.Contains("Runner：ggml", panel.Children.OfType<TextBox>().First().Text);
                     Assert.All(panel.Children.OfType<TextBox>(), field => Assert.True(field.IsReadOnly));
                     var buttons = panel.Children.OfType<StackPanel>().Single().Children.OfType<Button>().ToArray();
                     Assert.True(buttons[0].IsCancel); Assert.True(buttons[0].IsDefault); Assert.True(buttons[0].IsKeyboardFocused); Assert.False(buttons[1].IsDefault);

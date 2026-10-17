@@ -1,6 +1,43 @@
 # Personal AI Workspace — Current Status
 
-## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+## Current G1 — pre-F2.3-A2 source baseline
+
+2026-10-17（Asia/Shanghai）。G1 保存相互依赖的 Workspace、Model Management、V1 Vision、Native Bootstrap/Gate、Desktop/Bridge 与 Finance 源码，不构成运行或发布批准。
+**V1 Vision Code-only Source Review — 限定范围 GO**；不是 Vision Runtime、GPU、Windows 或 Production GO。
+**MMF-3 Profile Gate — PENDING**；现有 Windows 正式 launcher 限制未解除，Runtime / Database / Production GO 均未授予。
+
+Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在 Workspace 进行。
+
+| 阶段 | 当前状态 |
+| --- | --- |
+| F2.1 Finance Foundation | READY |
+| F2.2-A Finance Infrastructure | READY |
+| F2.2-B Finance Account Integration | SOURCE READY / DATABASE PENDING |
+| F2.3-A1 PostgreSQL Environment | READY，仅本机环境，不属于 Git 源码安装内容 |
+| F2.3-A2 Finance Real SQL Verification | NOT STARTED |
+| Workspace SQLite → PostgreSQL migration | NOT STARTED |
+
+Finance 默认关闭；A1 环境连接验证不等于 Finance schema、Account SQL、身份绑定、金额、隔离或事务验证。
+Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。本次收口不重跑历史测试或执行数据库迁移；W1 后续开发继续 PAUSED。
+以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
+
+## Historical MMF-3 — CLOSED — GO（Development-only，2026-10-11）
+
+2026-10-11（Asia/Shanghai）。独立 Final Closing Review：**MMF-3 CLOSED — GO，仅限 Development-only 集成关闭**。
+权威范围、源码身份、Windows/Chrome 证据等级和保留项见 [MMF-3 Closing Record](engineering/MMF-3-CLOSING-RECORD.md)。
+关闭绑定 HEAD `cb36879d93aa9a23c8b3d94e9fa26f5166a3c659`、源码基线清单及实际文件哈希；尚未提交的批准候选不能仅以 HEAD 标识。
+Legacy 门禁关闭；Revoke 真实认证/UI 阻断与既有 cache guard fixture 组合满足阶段关闭要求。
+**Development-only CLOSED 不等于 Production RELEASE GO**：Production Trusted、正式 Windows launcher/Installer/签名/生产发布未验收。
+
+下一独立活动为 [V1 Vision Foundation Scope Candidate](engineering/V1-VISION-FOUNDATION-SCOPE-CANDIDATE.md)：
+**准备完成 / Proposal / Pending Architecture Guard；implementation 与真实 Vision execution 未授权、未执行**。
+Finance 仍独立修 bug、尚未冻结；后续 Finance bug closing → Freeze → Home PC Migration → F0 Reality Sync → 再定集成。
+W1 后续开发继续 PAUSED；Finance Integration BLOCKED pending F0。此次仅文档归档/范围准备，不改源码、不重跑验收、不发布。
+以下 B1 与更早记录为历史快照，不覆盖本节关闭裁定。
+
+<a id="current-mmf-3-b1--source-approved--published"></a>
+
+## Historical MMF-3 B1 — SOURCE APPROVED / PUBLISHED
 
 2026-10-09（Asia/Shanghai）。Architecture Guard 独立 B1 Source Review **APPROVED — GO；Source blockers: 0**。
 批准八个生产文件及一个 Mmf3AcceptanceTests.cs，合计九文件；批准补丁 SHA-256：

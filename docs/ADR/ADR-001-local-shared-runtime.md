@@ -19,8 +19,27 @@ M0 需要真实 Translate 执行链和未来客户端可以复用的有限任务
 Java Runtime 负责编排、安全、策略与执行控制；Ollama 负责推理。
 不引入 Spring AI/Agent framework，当前单一 text-generation adapter 不需要它们。
 
-独立于 Finance Backend，不复制旧代码、不接 PostgreSQL。
-未来 Workspace 对 Finance 的调用必须经过认证 Tool Gateway，而不能访问 Finance DB；本轮不实现。
+M0 的历史决策为独立于 Finance Backend，不复制旧代码、不接 PostgreSQL，未来经认证 Tool Gateway 调用。
+该拓扑约束由以下 F2.1 决策修订；M0 阶段的实现与安全边界记录保留。
+
+### F2.1 修订：Finance 融入单一模块化后端（2026-10-17）
+
+Workspace 是唯一持续开发主线和未来唯一主要 Spring Boot 业务后端；Finance 是其内部正式业务模块，
+采用普通 Maven JAR，由唯一 Workspace 应用入口装配。双后端 API Bridge 仅可作为可选过渡手段，
+不是最终架构；不创建第二个可执行 Finance 后端。
+
+两个 GitHub 仓库永久独立保留。Personal Finance OS 原仓库冻结、只读，作为权威迁移来源；
+后续兼容修改与业务开发全部在 Workspace 完成。不安排 Git 历史合并、双向同步或永久 Submodule，
+正式构建不依赖原 Finance 仓库路径、工作树或 fat JAR。
+
+**The server owns financial truth.** Finance 内部服务拥有金融规则、精确金额、用户隔离、事务、
+账本、审计与幂等；Shared AI Runtime 只能经受控 Finance 应用服务／未来只读 Tools Adapter 获取事实，
+不直接访问 Mapper、SQL 或金融写事务，Finance 不反向依赖 AI Runtime。
+
+Finance 保留 PostgreSQL 数据边界，不改写为 SQLite，不与 Workspace SQLite 建立跨库事务。
+Workspace 身份不自动成为 Finance 用户身份。F2.1 只接入账户查询源码及默认关闭的显式装配，
+不提供数据库、migration、登录、Controller、写接口或 AI Tools；编译不代表运行、安全或数据库验收。
+既有 V1 Profile、ACL、Sandbox、Native、Token Policy 及其他安全和运行门禁全部保持。
 
 Local-first / private-by-default，Translate 固定 LOCAL_ONLY。
 LOCAL_PREFERRED、CLOUD_OPTIONAL 仅建立明确策略概念，M0 同样拒绝 cloud。

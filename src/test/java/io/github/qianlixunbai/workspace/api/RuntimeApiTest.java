@@ -238,9 +238,9 @@ class RuntimeApiTest {
         var item = catalog.path("models").get(0);
         var intent = new java.util.LinkedHashMap<String, Object>();
         intent.put("action", "SWITCH"); intent.put("catalogHandle", item.path("handle").asString());
-        intent.put("candidateModel", item.path("model").asString()); intent.put("candidateDigest", item.path("digest").asString());
+        intent.put("candidateModel", item.path("model").asString()); intent.put("candidateRunner", item.path("runner").asString()); intent.put("candidateDigest", item.path("digest").asString());
         intent.put("expectedSelectionRevision", status.path("selectionRevision").asLong());
-        intent.put("expectedActiveModel", null); intent.put("expectedActiveDigest", null); intent.put("recoveryGeneration", null); intent.put("externalConfirmed", false);
+        intent.put("expectedActiveModel", null); intent.put("expectedActiveRunner", null); intent.put("expectedActiveDigest", null); intent.put("recoveryGeneration", null); intent.put("externalConfirmed", false);
         var json = JsonMapper.builder().build(); String payload = json.writeValueAsString(intent);
         assertEquals(400, send("POST", "/api/v1/models/selection", payload.replace("{", "{\"endpoint\":\"http://remote.invalid\","), true).statusCode());
         assertEquals(400, send("POST", "/api/v1/models/selection", payload.replace("{", "{\"action\":\"SWITCH\","), true).statusCode());

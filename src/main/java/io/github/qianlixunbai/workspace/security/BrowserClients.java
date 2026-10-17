@@ -38,14 +38,18 @@ public final class BrowserClients implements AutoCloseable {
         this.file = file.toAbsolutePath().normalize(); this.pending = this.file.resolveSibling("browser-clients.pending");
         this.clock = clock; this.exchangeWindow = clock.instant();
         try {
-            Files.createDirectories(this.file.getParent());
+            if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.directory(this.file.getParent());
+            else Files.createDirectories(this.file.getParent());
             for (Path part = this.file.getParent(); part != null; part = part.getParent()) {
                 if (Files.isSymbolicLink(part) || Files.readAttributes(part, java.nio.file.attribute.BasicFileAttributes.class,
                         LinkOption.NOFOLLOW_LINKS).isOther()) throw new IllegalStateException();
             }
             LocalClientToken.restrict(this.file.getParent(), true);
             Path lockFile = this.file.resolveSibling("browser-clients.lock");
-            if (!Files.exists(lockFile, LinkOption.NOFOLLOW_LINKS)) Files.createFile(lockFile);
+            if (!Files.exists(lockFile, LinkOption.NOFOLLOW_LINKS)) {
+                if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.createFile(lockFile);
+                else Files.createFile(lockFile);
+            }
             regular(lockFile); LocalClientToken.restrict(lockFile, false);
             lockChannel = FileChannel.open(lockFile, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
             registryLock = lockChannel.tryLock();
@@ -58,7 +62,9 @@ public final class BrowserClients implements AutoCloseable {
                 // Never promote an uncommitted file or silently reset ambiguous security state.
                 throw new IllegalStateException();
             }
-            if (Files.exists(pending, LinkOption.NOFOLLOW_LINKS)) { regular(pending); Files.delete(pending); }
+            if (Files.exists(pending, LinkOption.NOFOLLOW_LINKS)) {
+                regular(pending); LocalClientToken.restrict(pending, false); Files.delete(pending);
+            }
         } catch (Exception ignored) { close(); throw new IllegalStateException("Cannot initialize private browser security registry"); }
     }
 
@@ -86,13 +92,16 @@ public final class BrowserClients implements AutoCloseable {
         try {
             byte[] bytes = json.writeValueAsBytes(new Registry(1, next));
             if (bytes.length > MAX_BYTES) throw new java.io.IOException();
-            Files.createFile(pending); created = true; LocalClientToken.restrict(pending, false);
+            if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.createFile(pending);
+            else Files.createFile(pending);
+            created = true; LocalClientToken.restrict(pending, false);
             try (FileChannel channel = FileChannel.open(pending, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 while (buffer.hasRemaining()) channel.write(buffer);
                 channel.force(true);
             }
             Files.move(pending, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            LocalClientToken.restrict(file, false);
             clients = next; // Publish in memory only after the atomic commit succeeds.
         } catch (Exception ignored) {
             throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "SECURITY_STATE");

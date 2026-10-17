@@ -84,13 +84,13 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
     {s?.error && <p role="alert" className="error">模型受控状态：{s.error}</p>}
     {snapshot?.error && <p role="alert" className="error">{snapshot.error.message}</p>}
     <label>Installed Models <select value={handle} disabled={disabled || !snapshot?.catalog} onChange={event => setHandle(event.target.value)}>
-      <option value="">明确选择一个已核验的本地候选</option>{snapshot?.catalog?.models.map(model => <option key={model.handle} value={model.handle}>{model.model}</option>)}
+      <option value="">明确选择一个已核验的本地候选</option>{snapshot?.catalog?.models.map(model => <option key={model.handle} value={model.handle}>{model.model} · {model.runner} · {model.digest}</option>)}
     </select></label>
     {snapshot?.catalog?.models.length === 0 && <p className="hint">没有符合当前本地 source / completion / context 策略的候选。</p>}
     {selected && <p className="hint">Local source metadata verified · Completion · Context {selected.contextLimit} · Provider-declared Vision: {selected.providerDeclaredVision ? 'Yes' : 'No'} · Workspace Vision Not Validated</p>}
     <div className="card-heading">
       <button disabled={disabled || !selected || !idle || s?.uncertain} onClick={() => { void mutate('SWITCH', handle) }}>Explicit Switch</button>
-      <button className="secondary" disabled={disabled || !selected || !idle || s?.uncertain || !s?.activeModel || s.activeModel === selected.model} onClick={() => { void mutate('RELEASE_OLD_THEN_SWITCH', handle) }}>释放旧 Active 后切换</button>
+      <button className="secondary" disabled={disabled || !selected || !idle || s?.uncertain || !s?.activeModel || s.activeModel === selected.model && s.activeRunner === selected.runner && s.activeDigest === selected.digest} onClick={() => { void mutate('RELEASE_OLD_THEN_SWITCH', handle) }}>释放旧 Active 后切换</button>
       <button className="secondary" disabled={disabled || !selected || !idle || s?.uncertain} onClick={() => { void mutate('RELEASE', handle) }}>Release 指定单模型</button>
     </div>
     <div className="card-heading">

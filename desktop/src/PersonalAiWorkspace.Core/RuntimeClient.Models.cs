@@ -17,12 +17,12 @@ public sealed partial class RuntimeClient
         var entries = new List<ModelCatalogEntry>(); var handles = new HashSet<string>(); var names = new HashSet<string>();
         foreach (var item in models.EnumerateArray())
         {
-            MemoryFields(item, "handle", "model", "digest", "contextLimit", "completion", "localSourceVerified", "providerDeclaredVision");
-            string handle = String(item, "handle"), model = String(item, "model"), digest = String(item, "digest");
-            if (!ModelId(handle) || !ModelName(model) || !ModelDigest(digest) || !handles.Add(handle) || !names.Add(model)
+            MemoryFields(item, "handle", "model", "runner", "digest", "contextLimit", "completion", "localSourceVerified", "providerDeclaredVision");
+            string handle = String(item, "handle"), model = String(item, "model"), runner = String(item, "runner"), digest = String(item, "digest");
+            if (!ModelId(handle) || !ModelName(model) || !ModelRunner(runner) || !ModelDigest(digest) || !handles.Add(handle) || !names.Add(model + "/" + runner)
                 || !Property(item, "contextLimit").TryGetInt64(out long context) || context < 1 || context > MaximumSelectionRevision
                 || !ModelBoolean(item, "completion") || !ModelBoolean(item, "localSourceVerified")) throw Invalid();
-            entries.Add(new(handle, model, digest, context, true, true, ModelBoolean(item, "providerDeclaredVision")));
+            entries.Add(new(handle, model, runner, digest, context, true, true, ModelBoolean(item, "providerDeclaredVision")));
         }
         return new(revision, entries.ToArray());
     }
@@ -36,16 +36,18 @@ public sealed partial class RuntimeClient
     {
         string route = intent.Action switch { ModelAction.SWITCH or ModelAction.RELEASE_OLD_THEN_SWITCH => "selection",
             ModelAction.RELEASE => "release", ModelAction.VALIDATE => "validation", ModelAction.RECOVER => "recovery", _ => throw new DesktopException(DesktopError.InvalidRequest) };
-        if (!ModelId(intent.CatalogHandle) || !ModelName(intent.CandidateModel) || !ModelDigest(intent.CandidateDigest)
+        if (!ModelId(intent.CatalogHandle) || !ModelName(intent.CandidateModel) || !ModelRunner(intent.CandidateRunner) || !ModelDigest(intent.CandidateDigest)
             || intent.ExpectedSelectionRevision < 0 || intent.ExpectedSelectionRevision > MaximumSelectionRevision
             || (intent.ExpectedActiveModel is null) != (intent.ExpectedActiveDigest is null)
+            || (intent.ExpectedActiveModel is null) != (intent.ExpectedActiveRunner is null)
+            || intent.ExpectedActiveRunner is { } runner && !ModelRunner(runner)
             || intent.ExpectedActiveModel is { } old && (!ModelName(old) || !ModelDigest(intent.ExpectedActiveDigest!))
             || (intent.Action == ModelAction.RECOVER ? !ModelId(intent.RecoveryGeneration) : intent.RecoveryGeneration is not null)
             || intent.ExternalConfirmed != (intent.Action is ModelAction.RELEASE or ModelAction.RELEASE_OLD_THEN_SWITCH or ModelAction.RECOVER))
             throw new DesktopException(DesktopError.InvalidRequest);
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { action = intent.Action.ToString(), catalogHandle = intent.CatalogHandle,
-            candidateModel = intent.CandidateModel, candidateDigest = intent.CandidateDigest, expectedSelectionRevision = intent.ExpectedSelectionRevision,
-            expectedActiveModel = intent.ExpectedActiveModel, expectedActiveDigest = intent.ExpectedActiveDigest,
+            candidateModel = intent.CandidateModel, candidateRunner = intent.CandidateRunner, candidateDigest = intent.CandidateDigest, expectedSelectionRevision = intent.ExpectedSelectionRevision,
+            expectedActiveModel = intent.ExpectedActiveModel, expectedActiveRunner = intent.ExpectedActiveRunner, expectedActiveDigest = intent.ExpectedActiveDigest,
             recoveryGeneration = intent.RecoveryGeneration, externalConfirmed = intent.ExternalConfirmed });
         try
         {
@@ -61,6 +63,7 @@ public sealed partial class RuntimeClient
     internal static bool ModelName(string value) => value.Length <= 256 && Regex.IsMatch(value, @"\A[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)?:[a-z0-9][a-z0-9._-]*\z")
         && !value.Contains("..") && !value.EndsWith(":cloud") && !value.EndsWith("-cloud") && !value.EndsWith(":local");
     internal static bool ModelDigest(string value) => Regex.IsMatch(value, @"\A[0-9a-f]{64}\z");
+    internal static bool ModelRunner(string value) => value is "ggml" or "llamacpp" or "mlx";
     private static long ModelRevision(JsonElement root, string field)
     { if (!Property(root, field).TryGetInt64(out long value) || value < 0 || value > MaximumSelectionRevision) throw Invalid(); return value; }
     private static bool ModelBoolean(JsonElement root, string field) => Property(root, field).ValueKind switch
@@ -68,17 +71,20 @@ public sealed partial class RuntimeClient
     private static string? ModelNullable(JsonElement root, string field) => Property(root, field).ValueKind == JsonValueKind.Null ? null : String(root, field);
     private static ModelStatus ParseModelStatus(JsonElement root)
     {
-        MemoryFields(root, "configuredModel", "configuredDigest", "activeModel", "activeDigest", "selectionRevision", "installed", "loaded", "ready",
+        MemoryFields(root, "configuredModel", "configuredDigest", "configuredRunner", "activeModel", "activeDigest", "activeRunner", "selectionRevision", "installed", "loaded", "ready",
             "reserved", "queued", "executing", "draining", "switching", "uncertain", "recoveryGeneration", "validationRequired", "error");
         string? configured = ModelNullable(root, "configuredModel"), digest = ModelNullable(root, "configuredDigest"), active = ModelNullable(root, "activeModel"), activeDigest = ModelNullable(root, "activeDigest");
+        string? configuredRunner = ModelNullable(root, "configuredRunner"), activeRunner = ModelNullable(root, "activeRunner");
         if (configured is not null && !ModelName(configured) || digest is not null && !ModelDigest(digest)
             || configured is null && digest is not null || (active is null) != (activeDigest is null)
-            || active is not null && (!ModelName(active) || !ModelDigest(activeDigest!))) throw Invalid();
+            || configuredRunner is not null && (configured is null || digest is null || !ModelRunner(configuredRunner))
+            || (active is null) != (activeRunner is null)
+            || active is not null && (!ModelName(active) || !ModelDigest(activeDigest!) || !ModelRunner(activeRunner!))) throw Invalid();
         ModelFact Fact(string field) { string text = String(root, field); return Enum.TryParse<ModelFact>(text, out var fact) && fact.ToString() == text ? fact : throw Invalid(); }
         int Count(string field) { if (!Property(root, field).TryGetInt32(out int count) || count < 0 || count > 34) throw Invalid(); return count; }
         string generation = String(root, "recoveryGeneration"); if (!ModelId(generation)) throw Invalid();
         string? error = ModelNullable(root, "error"); if (error is not null) _ = ModelCode(error);
-        var result = new ModelStatus(configured, digest, active, activeDigest, ModelRevision(root, "selectionRevision"), Fact("installed"), Fact("loaded"), ModelBoolean(root, "ready"),
+        var result = new ModelStatus(configured, digest, configuredRunner, active, activeDigest, activeRunner, ModelRevision(root, "selectionRevision"), Fact("installed"), Fact("loaded"), ModelBoolean(root, "ready"),
             Count("reserved"), Count("queued"), Count("executing"), Count("draining"), ModelBoolean(root, "switching"), ModelBoolean(root, "uncertain"), generation, ModelBoolean(root, "validationRequired"), error);
         if (result.Ready && (active is null || result.Switching || result.Uncertain || result.ValidationRequired)) throw Invalid();
         return result;

@@ -2,6 +2,9 @@
 param([string]$DataDirectory = '', [string]$StateDirectory = '', [string]$TokenFile = '', [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Fail before imports, Java discovery or any state/service action. Local package checksums
+# cannot authorize the current Profile-only Development native admission as production.
+throw 'Windows native admission is Development-only; production launch is blocked pending trusted release integration.'
 # Load the Windows PowerShell built-ins explicitly even with a minimal PATH.
 # Do not rely on an inherited PowerShell 7 module-discovery environment.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1')

@@ -1,0 +1,29 @@
+{
+  "sourceRepository": "personal-finance-OS",
+  "sourceBranch": "zh-cn",
+  "sourceCommit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
+  "policy": "Frozen read-only source; one-time copy, no synchronization or build dependency.",
+  "files": [
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/account/service/AccountQueryService.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/account/service/AccountQueryService.java",
+      "sourceSha256": "6fdba9bba5833e8f1975e78f6ebbe15a9570890b8f03c03cc9f8b1a6236eb381",
+      "workspaceSha256": "6fdba9bba5833e8f1975e78f6ebbe15a9570890b8f03c03cc9f8b1a6236eb381",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/account/mapper/AccountMapper.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/account/mapper/AccountMapper.java",
+      "sourceSha256": "48ca4dbea5d193f75c934cfc7646af6be214199d6964c93cf6b1c770a76b6fde",
+      "workspaceSha256": "48ca4dbea5d193f75c934cfc7646af6be214199d6964c93cf6b1c770a76b6fde",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/account/entity/Account.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/account/entity/Account.java",
+      "sourceSha256": "73ef4626fc16e69120dc02a8d1d268ef6ee671b01caecf9414db30d04deace27",
+      "workspaceSha256": "73ef4626fc16e69120dc02a8d1d268ef6ee671b01caecf9414db30d04deace27",
+      "adaptation": "none; byte-for-byte copy"
+    }
+  ]
+}

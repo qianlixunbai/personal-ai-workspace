@@ -22,6 +22,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private readonly WorkspaceKnowledge workspaceKnowledge;
     private readonly WorkspaceWebFetch workspaceWebFetch;
     private readonly WorkspaceModels workspaceModels;
+    private readonly WorkspaceVision workspaceVision;
     private MemorySelectionWindow? workspaceSelector;
     private AssistantWindow window = null!;
     private MainWorkspaceWindow? workspace;
@@ -72,6 +73,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         workspaceKnowledge = new WorkspaceKnowledge(runtime,new NativeKnowledgeSourceFiles(()=>workspace));
         workspaceWebFetch = new WorkspaceWebFetch(runtime, new NativeWebFetchConfirmation(() => workspace));
         workspaceModels = new WorkspaceModels(runtime, new NativeModelConfirmation(() => workspace));
+        workspaceVision = new WorkspaceVision(runtime,new NativeVisionImages(()=>workspace,()=>workspaceVision?.PreviewClosed()),
+            (intent,token)=>NativeVisionConfirmation.Confirm(workspace,intent,token));
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += (_, error) =>
         {
@@ -160,6 +163,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     WorkspaceKnowledge IWorkspaceNativeActions.Knowledge => workspaceKnowledge;
     WorkspaceWebFetch IWorkspaceNativeActions.WebFetch => workspaceWebFetch;
     WorkspaceModels IWorkspaceNativeActions.Models => workspaceModels;
+    WorkspaceVision IWorkspaceNativeActions.Vision => workspaceVision;
     private Task<System.Collections.Generic.IReadOnlyList<MemorySelection>?> SelectWorkspaceMemoryAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();

@@ -3,6 +3,13 @@ package io.github.qianlixunbai.workspace.common;
 public record ApiError(ErrorCode code, String message, String phase) {
     public static ApiError of(ErrorCode code, String phase) {
         String message = switch (code) {
+            case FINANCE_NOT_BOUND -> "Finance has no confirmed local profile binding.";
+            case FINANCE_BINDING_INVALID -> "Finance identity binding is unavailable or no longer matches.";
+            case FINANCE_UNAVAILABLE -> "Finance database is unavailable.";
+            case FINANCE_ACCOUNT_NOT_FOUND -> "Finance account does not exist or is inaccessible.";
+            case VISION_UNVERIFIED -> "The active model has no valid Vision execution proof.";
+            case VISION_TOO_LARGE -> "Vision input exceeds its size budget.";
+            case DUPLICATE_TASK_ID -> "This task ID has already been accepted.";
             case MODEL_CATALOG_STALE -> "Model catalog changed. Refresh and confirm again.";
             case MODEL_CATALOG_LIMIT_EXCEEDED -> "Model catalog exceeds its supported limit.";
             case MODEL_SWITCH_CONFLICT -> "Model operation conflicts with active AI work.";

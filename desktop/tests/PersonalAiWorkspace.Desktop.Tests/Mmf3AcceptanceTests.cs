@@ -152,6 +152,20 @@ public sealed class Mmf3AcceptanceTests
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     private static void ProfileFixture(MethodInfo main)
     {
+        // dotnet test supplies SDK host overrides. Model a clean apphost entry without relaxing
+        // the production gate; restore these test-process values even when the fixture fails.
+        string[] sdkVariables = ["DOTNET_CLI_TELEMETRY_SESSIONID", "DOTNET_ROOT_X64", "DOTNET_HOST_PATH"];
+        var sdkPrevious = sdkVariables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+        foreach (string name in sdkVariables) Environment.SetEnvironmentVariable(name, null);
+        try
+        {
+            ProfileFixtureWithCleanHost(main);
+        }
+        finally { foreach (string name in sdkVariables) Environment.SetEnvironmentVariable(name, sdkPrevious[name]); }
+    }
+
+    private static void ProfileFixtureWithCleanHost(MethodInfo main)
+    {
         string id = Guid.NewGuid().ToString("N");
         string root = Mmf3ProfileState.Root(id);
         var sid = WindowsIdentity.GetCurrent().User!;
@@ -181,6 +195,18 @@ public sealed class Mmf3AcceptanceTests
             Assert.Equal(FileSystemRights.FullControl, ace.FileSystemRights);
             Assert.Equal(InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, ace.InheritanceFlags);
             Assert.False(ace.IsInherited);
+        }
+        // Existing integrated flow now covers native rejection and the same Profile helper.
+        Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]));
+        var provision = new ProcessStartInfo(Mmf3ProfileNative.Helper) { UseShellExecute = false,
+            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        provision.ArgumentList.Add("ProvisionProfileNative"); provision.ArgumentList.Add(id);
+        provision.ArgumentList.Add(Environment.GetEnvironmentVariable("MMF3_JNA_ARTIFACT")
+            ?? throw new IOException("Explicit fixed JNA artifact required for this focused fixture."));
+        using (var helper = Process.Start(provision)!)
+        {
+            try { Assert.True(helper.WaitForExit(15000)); Assert.Equal(0, helper.ExitCode); }
+            finally { if (!helper.HasExited) { helper.Kill(); helper.WaitForExit(5000); } }
         }
         var launch = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
         // Reject the legacy argument even with an otherwise valid Profile root (Parse only, no GUI).

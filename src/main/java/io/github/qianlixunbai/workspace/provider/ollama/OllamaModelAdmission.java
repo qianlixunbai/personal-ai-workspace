@@ -6,9 +6,9 @@ import tools.jackson.databind.JsonNode;
 import java.util.*;
 import java.util.regex.*;
 
-/** Reviewed subset of v0.40.0 api/types.go, server/routes.go and server/images.go. */
+/** Reviewed subset of v0.40.0/v0.40.1 api/types.go, server/routes.go and server/images.go. */
 final class OllamaModelAdmission {
-    static final String VERSION = "0.40.0";
+    static final Set<String> SUPPORTED_VERSIONS = Set.of("0.40.0", "0.40.1");
     private static final Set<String> ARCHITECTURES = Set.of("llama", "qwen2", "qwen3", "qwen35", "qwen35moe");
     private static final Set<String> SHOW_FIELDS = Set.of("thinking", "license", "modelfile", "parameters", "template",
             "system", "renderer", "parser", "details", "messages", "remote_model", "remote_host", "model_info",
@@ -18,47 +18,69 @@ final class OllamaModelAdmission {
     private static final Set<String> DETAIL_FIELDS = Set.of("parent_model", "format", "family", "families", "parameter_size",
             "quantization_level", "context_length", "embedding_length", "runner");
     private static final Pattern FROM = Pattern.compile("(?m)^FROM ([^\r\n]+)\r?$");
-    record Evidence(String model, String digest, String architecture, long contextLimit) {
+    record Evidence(String model, String runner, String digest, String architecture, long contextLimit) {
         @Override public String toString() { return "LocalModelEvidence[private]"; }
     }
 
-    static JsonNode installed(JsonNode tags, String model) {
+    static JsonNode installed(JsonNode tags, String model, String runner, String expectedDigest) {
         if (!ModelStateStore.validModel(model) || !tags.isObject() || tags.size() != 1 || !tags.path("models").isArray()
                 || tags.path("models").size() > 256) reject();
         JsonNode match = null;
+        Set<String> runners = new HashSet<>(), digests = new HashSet<>();
         for (JsonNode item : tags.path("models")) {
             if (!item.isObject() || !item.path("name").isString() || !item.path("model").isString()) reject();
             if (model.equals(item.path("name").asString()) || model.equals(item.path("model").asString())) {
-                if (match != null || !model.equals(item.path("name").asString()) || !model.equals(item.path("model").asString())) reject();
+                if (!model.equals(item.path("name").asString()) || !model.equals(item.path("model").asString())) reject();
+                String observedRunner = runner(item.path("details"));
+                String observedDigest = digest(item.path("digest"));
+                // Runner addressing selects the first matching child. Neither duplicate runners nor
+                // a digest shared by runners can be restored uniquely from the existing disk format.
+                if (!runners.add(observedRunner) || !digests.add(observedDigest)) reject();
+                if (runner != null && !runner.equals(observedRunner)
+                        || expectedDigest != null && !expectedDigest.equals(observedDigest)) continue;
+                if (match != null) reject();
                 fields(item, TAG_FIELDS);
                 noRemote(item);
                 String family = item.path("details").path("family").asString("");
                 if (!ARCHITECTURES.contains(family)) reject();
-                details(item.path("details"), family);
+                if (OllamaVisionAdmission.candidate(model, observedRunner, observedDigest)) OllamaVisionAdmission.details(item.path("details"));
+                else details(item.path("details"), family);
                 digest(item.path("digest"));
                 if (!item.path("size").isIntegralNumber() || !item.path("size").canConvertToLong() || item.path("size").asLong() <= 0) reject();
                 match = item;
             }
         }
-        if (match == null) throw new WorkspaceException(ErrorCode.MODEL_UNAVAILABLE, "MODEL");
+        if (match == null) throw new WorkspaceException(expectedDigest == null || runners.isEmpty()
+                ? ErrorCode.MODEL_UNAVAILABLE : ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
         return match;
     }
 
-    static Evidence verify(String model, JsonNode before, JsonNode show, JsonNode after, int contextBudget) {
+    static String runner(JsonNode details) {
+        JsonNode runner = details.path("runner");
+        if (!runner.isString() || !Set.of("ggml", "llamacpp", "mlx").contains(runner.asString())) reject();
+        return runner.asString();
+    }
+
+    static Evidence verify(String model, JsonNode before, JsonNode show, JsonNode after, int contextBudget, String version) {
         fields(show, SHOW_FIELDS);
         noRemote(show);
         if (show.has("manifests") && !show.path("manifests").isArray()
                 || show.has("projector_info") && !show.path("projector_info").isObject()) reject();
-        if (show.path("manifests").size() != 0 || show.path("projector_info").size() != 0
+        if (show.path("projector_info").size() != 0
                 || !show.path("model_info").isObject()
                 || !show.path("capabilities").isArray()) reject();
-        minimumVersion(show);
+        minimumVersion(show, version);
         boolean completion = false;
         for (JsonNode capability : show.path("capabilities")) {
             if (!capability.isString() || !Set.of("completion", "tools", "vision", "thinking", "embedding").contains(capability.asString())) reject();
             completion |= "completion".equals(capability.asString());
         }
         if (!completion) reject();
+        String runner = runner(before.path("details"));
+        // Phase one admits only the reviewed GGML text path; no automatic llama.cpp fallback.
+        if (!"ggml".equals(runner) || !runner.equals(runner(after.path("details")))) reject();
+        if (show.path("details").has("runner") && !show.path("details").path("runner").asString("").isEmpty()
+                && !runner.equals(runner(show.path("details")))) reject();
         JsonNode info = show.path("model_info");
         String architecture = info.path("general.architecture").asString("");
         if (!ARCHITECTURES.contains(architecture)) reject();
@@ -77,6 +99,24 @@ final class OllamaModelAdmission {
         String a = digest(before.path("digest")), b = digest(after.path("digest"));
         if (!a.equals(b)) throw new WorkspaceException(ErrorCode.MODEL_IDENTITY_CHANGED, "MODEL");
         if (!before.equals(after)) reject();
+        if (show.path("manifests").size() != 0) {
+            if (!runner.equals(runner(show.path("details"))) || show.path("manifests").size() > 64) reject();
+            Set<String> runners = new HashSet<>(), digests = new HashSet<>();
+            boolean selected = false;
+            for (JsonNode child : show.path("manifests")) {
+                fields(child, Set.of("digest", "runner", "format", "selected"));
+                String childRunner = runner(child), childDigest = digest(child.path("digest"));
+                if (!runners.add(childRunner) || !digests.add(childDigest)
+                        || !child.path("format").isString()
+                        || child.has("selected") && !child.path("selected").isBoolean()) reject();
+                if (child.path("selected").asBoolean(false)) {
+                    if (selected || !runner.equals(childRunner) || !a.equals(childDigest)
+                            || !"gguf".equals(child.path("format").asString())) reject();
+                    selected = true;
+                } else if (runner.equals(childRunner) || a.equals(childDigest)) reject();
+            }
+            if (!selected) reject();
+        }
         String modelfile = show.path("modelfile").asString("");
         // The first generated command must be a single absolute blob FROM. Never open this path.
         String first = modelfile.lines().filter(line -> !line.isBlank() && !line.startsWith("#")).findFirst().orElse("");
@@ -87,16 +127,16 @@ final class OllamaModelAdmission {
         if (!(source.matches("/[A-Za-z0-9._ /-]+/blobs/sha256-[0-9a-f]{64}")
                 || source.matches("[A-Za-z]:[\\\\/][A-Za-z0-9._ \\\\/-]+[\\\\/]blobs[\\\\/]sha256-[0-9a-f]{64}"))
                 || source.contains("..") || matcher.find()
-                || Pattern.compile("(?mi)^(ADAPTER|DRAFT|REQUIRES|RUNNER)\\b").matcher(modelfile).find()) reject();
-        return new Evidence(model, a, architecture, context.asLong());
+                || Pattern.compile("(?mi)^(ADAPTER|DRAFT|REQUIRES|RUNNER|PROJECTOR)\\b").matcher(modelfile).find()) reject();
+        return new Evidence(model, runner, a, architecture, context.asLong());
     }
-    private static void minimumVersion(JsonNode show) {
+    private static void minimumVersion(JsonNode show, String version) {
         if (!nonempty(show, "requires")) return;
-        // v0.40.0 ShowResponse.Requires is a minimum version, not a source/runner directive.
+        // ShowResponse.Requires is a minimum version, compared with the admitted server version.
         // Support only canonical stable triples; malformed, prerelease and unknown forms fail closed.
         String required = show.path("requires").asString();
         if (!required.matches("(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})")) reject();
-        String[] minimum = required.split("\\."), supported = VERSION.split("\\.");
+        String[] minimum = required.split("\\."), supported = version.split("\\.");
         for (int i = 0; i < supported.length; i++) {
             int comparison = Integer.compare(Integer.parseInt(minimum[i]), Integer.parseInt(supported[i]));
             if (comparison > 0) reject();
@@ -120,7 +160,7 @@ final class OllamaModelAdmission {
         if (node.isObject()) {
             for (String key : node.propertyNames()) {
                 if (key.equals("runner") && (!node.path(key).isString()
-                        || !Set.of("", "ggml", "llamacpp").contains(node.path(key).asString()))) reject();
+                        || !Set.of("", "ggml", "llamacpp", "mlx").contains(node.path(key).asString()))) reject();
                 if (Set.of("remote_host", "remote_model", "source", "cloud", "routing", "manifest").contains(key)
                         && nonempty(node, key)) reject();
                 noRemote(node.path(key));

@@ -8,10 +8,10 @@ import { SettingsPage } from './SettingsPage'
 afterEach(() => { cleanup(); vi.useRealTimers() })
 it('uses typed native model intents, preserves unknown residency and blocks replay or stale session responses', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
-  const snapshot: ModelSnapshot = { status: { configuredModel: 'a:latest', configuredDigest: 'a'.repeat(64), activeModel: 'a:latest', activeDigest: 'a'.repeat(64),
+  const snapshot: ModelSnapshot = { status: { configuredModel: 'a:latest', configuredDigest: 'a'.repeat(64), configuredRunner: 'ggml', activeModel: 'a:latest', activeDigest: 'a'.repeat(64), activeRunner: 'ggml',
     selectionRevision: 1, installed: 'TRUE', loaded: 'UNKNOWN', ready: true, reserved: 0, queued: 0, executing: 0, draining: 0, switching: false, uncertain: false,
     recoveryGeneration: '44444444-4444-4444-8444-444444444444', validationRequired: false, error: null }, catalog: { selectionRevision: 1,
-    models: [{ handle: '33333333-3333-4333-8333-333333333333', model: 'b:latest', digest: 'b'.repeat(64), contextLimit: 32768, completion: true, localSourceVerified: true, providerDeclaredVision: true }] }, error: null }
+    models: [{ handle: '33333333-3333-4333-8333-333333333333', model: 'b:latest', runner: 'ggml', digest: 'b'.repeat(64), contextLimit: 32768, completion: true, localSourceVerified: true, providerDeclaredVision: true }] }, error: null }
   render(<SettingsPage bridge={bridge} status={status} busy={false} open={vi.fn()} refresh={vi.fn()} />)
   fireEvent.click(screen.getByText('只读刷新模型')); expect(port.sent[0]).toMatchObject({ method: 'models.inspect', payload: {} })
   await act(async () => { port.reply(0, snapshot) })

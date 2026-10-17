@@ -62,11 +62,13 @@ internal sealed class WorkspaceModels(RuntimeClient runtime, IModelConfirmation 
             if (kind == ModelAction.RECOVER ? generation != snapshot.Status.RecoveryGeneration || !snapshot.Status.Uncertain : generation is not null)
                 throw new DesktopException(DesktopError.ModelExecutionUncertain);
             if (kind is ModelAction.RECOVER or ModelAction.VALIDATE && (candidate.Model != snapshot.Status.ConfiguredModel
-                || snapshot.Status.ConfiguredDigest is { } digest && candidate.Digest != digest)) throw new DesktopException(DesktopError.ModelIdentityChanged);
-            if (kind == ModelAction.RELEASE_OLD_THEN_SWITCH && (snapshot.Status.ActiveModel is null || snapshot.Status.ActiveModel == candidate.Model))
+                || snapshot.Status.ConfiguredDigest is { } digest && candidate.Digest != digest
+                || snapshot.Status.ConfiguredRunner is { } runner && candidate.Runner != runner)) throw new DesktopException(DesktopError.ModelIdentityChanged);
+            if (kind == ModelAction.RELEASE_OLD_THEN_SWITCH && (snapshot.Status.ActiveModel is null
+                || snapshot.Status.ActiveModel == candidate.Model && snapshot.Status.ActiveRunner == candidate.Runner && snapshot.Status.ActiveDigest == candidate.Digest))
                 throw new DesktopException(DesktopError.InvalidRequest);
-            frozen = new(kind, candidate.Handle, candidate.Model, candidate.Digest, revision,
-                snapshot.Status.ActiveModel, snapshot.Status.ActiveDigest, generation,
+            frozen = new(kind, candidate.Handle, candidate.Model, candidate.Runner, candidate.Digest, revision,
+                snapshot.Status.ActiveModel, snapshot.Status.ActiveRunner, snapshot.Status.ActiveDigest, generation,
                 kind is ModelAction.RELEASE or ModelAction.RELEASE_OLD_THEN_SWITCH or ModelAction.RECOVER);
             intent = CancellationTokenSource.CreateLinkedTokenSource(token, known.Lifetime.Token);
             intent.CancelAfter(ConfirmationLifetime); pending = intent;

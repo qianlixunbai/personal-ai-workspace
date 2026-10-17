@@ -1,5 +1,6 @@
 package io.github.qianlixunbai.workspace.memory;
 
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
@@ -12,20 +13,24 @@ public final class PrivateMemoryDirectory {
     public static Path prepare(Path directory, Path tokenFile) throws IOException {
         Path data = directory.toAbsolutePath().normalize();
         validateLocation(data, tokenFile);
-        Files.createDirectories(data);
+        directory(data);
         noLinks(data);
         protect(data, true);
         for (String name : List.of("memory.db", "memory.db-wal", "memory.db-shm", "memory.db-journal")) {
             Path file = data.resolve(name);
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
                 if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid Memory file");
-                protect(file, false);
+                if (WindowsPrivateAcl.isWindows() && !name.equals("memory.db")) WindowsPrivateAcl.verifySqliteSidecar(file);
+                else protect(file, false);
             }
         }
         Path database = data.resolve("memory.db");
         if (!Files.exists(database, LinkOption.NOFOLLOW_LINKS)) {
             // Create privately before JDBC writes any data; sidecars inherit the private directory ACL.
-            try { Files.createFile(database); }
+            try {
+                if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.createFile(database);
+                else Files.createFile(database);
+            }
             catch (FileAlreadyExistsException ignored) { /* Another Runtime may have created it. */ }
         }
         if (!Files.isRegularFile(database, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid Memory file");
@@ -65,6 +70,7 @@ public final class PrivateMemoryDirectory {
     }
 
     public static void protect(Path path, boolean directory) throws IOException {
+        if (WindowsPrivateAcl.isWindows()) { WindowsPrivateAcl.verify(path, directory); return; }
         var lookup = path.getFileSystem().getUserPrincipalLookupService();
         UserPrincipal account = lookup.lookupPrincipalByName(System.getProperty("user.name"));
         if (!Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).equals(account))
@@ -76,13 +82,13 @@ public final class PrivateMemoryDirectory {
             if (!posix.readAttributes().permissions().equals(permissions)) throw new IOException("Private permissions unavailable");
             return;
         }
-        AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
-        if (acl == null) throw new IOException("Private permissions unavailable");
-        var entry = AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(account)
-                .setPermissions(EnumSet.allOf(AclEntryPermission.class));
-        if (directory) entry.setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT);
-        List<AclEntry> expected = List.of(entry.build());
-        acl.setAcl(expected);
-        if (!acl.getAcl().equals(expected)) throw new IOException("Private permissions unavailable");
+        throw new IOException("Private permissions unavailable");
+    }
+
+    public static void directory(Path path) throws IOException {
+        noLinks(path);
+        if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.directory(path);
+        else Files.createDirectories(path);
+        protect(path, true);
     }
 }

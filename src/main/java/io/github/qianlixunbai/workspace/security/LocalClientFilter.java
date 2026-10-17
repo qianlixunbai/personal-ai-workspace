@@ -84,6 +84,10 @@ final class LocalClientFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 identity, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
         if (List.of("POST", "PUT", "PATCH", "DELETE").contains(method)) {
+            if(identity.clientType().equals("native") && method.equals("POST") && path.equals("/api/v1/vision/tasks")) {
+                // Exact route only. Controller takes the global slot before consuming this bounded stream.
+                chain.doFilter(request,response);return;
+            }
             boolean knowledgeBackup=identity.clientType().equals("native") && method.equals("POST")
                     && List.of("/api/v1/knowledge/backup/validate","/api/v1/knowledge/backup/restore").contains(path);
             if(knowledgeBackup){if(request.getContentLengthLong()>io.github.qianlixunbai.workspace.knowledge.KnowledgeLimits.BACKUP_BYTES){

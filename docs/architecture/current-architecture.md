@@ -1,6 +1,34 @@
 # Personal AI Workspace — Current Architecture
 
-## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+## Current G1 — integrated source baseline, runtime gates pending
+
+2026-10-17（Asia/Shanghai）。当前源码包含 Workspace Runtime、Model Management、V1 Vision 候选、Native Bootstrap/JNA/Gate、Windows Desktop/WPF、React/WebView2 Bridge 与 Finance 模块。
+**V1 Vision Code-only Source Review — 限定范围 GO**，不是 Vision Runtime、GPU、Windows 或 Production GO。
+**MMF-3 Profile Gate — PENDING**；Windows 正式 launcher 的现有限制未解除，Runtime / Database / Production GO 均未授予。
+
+Finance 原仓库冻结、只读，Workspace 是后续源码集成主线；`workspace-application → finance-domain`，Finance 通过专用 PostgreSQL DataSource、MyBatis 与事务管理器显式装配，默认关闭，不自动执行 Flyway。
+F2.1 Finance Foundation 与 F2.2-A Finance Infrastructure — READY；F2.2-B Finance Account Integration — **SOURCE READY / DATABASE PENDING**。
+F2.3-A1 PostgreSQL Environment — READY，仅为本机环境，不属于源码安装内容，也不代表 Finance 数据库执行已验证。
+F2.3-A2 Finance Real SQL Verification 与 Workspace SQLite → PostgreSQL migration — **NOT STARTED**。
+现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
+以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
+
+## Historical MMF-3 — CLOSED — GO（Development-only，2026-10-11） / Vision scope pending
+
+2026-10-11（Asia/Shanghai）。MMF-3 独立关闭：**CLOSED — GO，仅 Development-only**。
+见 [Closing Record](../engineering/MMF-3-CLOSING-RECORD.md) 的 HEAD + source-baseline + 实际文件哈希及证据边界。
+唯一 Runtime Active owner、logical model + runner + child Manifest digest、私有 selection/guard、native exact-intent、
+统一 reservation 与 Browser opaque cache freshness 合同保持；已完成限定 Windows/模型/Chrome 验收。
+Production Trusted 未建立，正式 launcher 的阻断仍保留；关闭不是 Installer/签名/生产发布批准。
+
+当前 Provider 仍为文本执行；Vision metadata 声明不等于 Workspace Vision validated。
+当前准入只接受审核 ggml 文本子集，拒绝非空 projector；没有图片输入 API/bridge 或实际 image-input 验证。
+[V1 Vision Scope Candidate](../engineering/V1-VISION-FOUNDATION-SCOPE-CANDIDATE.md) 提议单张本地图像 → native Windows →
+受控 Runtime → 已验证 Vision Active → 文本结果，共用现有 owner/task；**所有新合同 Proposal/Pending，实施未授权**。
+Finance 尚未冻结；同机迁移不共享领域 authority/凭据。Finance OS 是金融事实唯一权威，Workspace 不直连 PostgreSQL，F0 前不开放 Finance Tool Calling。
+本轮没有生产/测试/配置改动，ADR-015 Accepted 正文不变；以下为历史阶段快照。
+
+## Historical MMF-3 B1 — SOURCE APPROVED / PUBLISHED
 
 2026-10-09（Asia/Shanghai）。Architecture Guard B1 Source Review **APPROVED — GO；Source blockers: 0**。
 implementation `7405562a673ff0911427adaa0445e39e3d57afea` 已 fast-forward 发布至 origin/main，fresh fetch 核验一致；

@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.util.*;
 import com.sun.nio.file.ExtendedOpenOption;
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 
 /** Private, single-writer state. Neither selection nor execution guards belong to domain backups. */
 public final class ModelStateStore implements AutoCloseable {
@@ -236,7 +237,8 @@ public final class ModelStateStore implements AutoCloseable {
         if (bytes.length > limit) throw new IOException("Model state exceeds budget");
         Path pending = root.resolve(pendingName), target = root.resolve(targetName);
         if (exists(pending)) throw new IOException("Pending model state exists");
-        Files.createFile(pending, permissions(false));
+        if (windows) WindowsPrivateAcl.createFile(pending);
+        else Files.createFile(pending, permissions(false));
         Object pendingKey = verify(pending, false);
         try (var out = FileChannel.open(pending, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
@@ -365,17 +367,22 @@ public final class ModelStateStore implements AutoCloseable {
     }
     private static Path nearestExisting(Path path) throws IOException { while (!exists(path)) path = path.getParent(); return path; }
     private void createDirectories(Path path) throws IOException {
+        if (windows) { WindowsPrivateAcl.directory(path); return; }
         if (exists(path)) return;
         createDirectories(path.getParent());
         Files.createDirectory(path, permissions(true));
     }
     private void createPrivate(Path file) throws IOException {
         if (!exists(file)) {
-            try { Files.createFile(file, permissions(false)); }
+            try {
+                if (windows) WindowsPrivateAcl.createFile(file);
+                else Files.createFile(file, permissions(false));
+            }
             catch (FileAlreadyExistsException ignored) { /* Verify the existing identity and permissions. */ }
         }
     }
     private Object verify(Path path, boolean directory) throws IOException {
+        if (windows) WindowsPrivateAcl.verify(path, directory);
         noLinks(path);
         var attr = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         if ((directory ? !attr.isDirectory() : !attr.isRegularFile()) || (!windows && attr.fileKey() == null)

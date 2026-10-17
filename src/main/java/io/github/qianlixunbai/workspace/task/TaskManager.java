@@ -55,11 +55,11 @@ public final class TaskManager {
         Objects.requireNonNull(ownerClientId);
         expire();
         if (closed || tasks.size() >= settings.maxRetained()) throw new WorkspaceException(ErrorCode.QUEUE_FULL, "ADMISSION");
-        if (tasks.containsKey(taskId)) throw new WorkspaceException(ErrorCode.INTERNAL_ERROR, "TASK_ID");
+        if (tasks.containsKey(taskId)) throw new WorkspaceException("vision".equals(capability) ? ErrorCode.DUPLICATE_TASK_ID : ErrorCode.INTERNAL_ERROR, "TASK_ID");
         Job job = new Job(taskId, ownerClientId, capability, profile.publicInfo(), promptVersion, work, completion, lease);
         tasks.put(job.id, job);
         job.deadline = timer.schedule(() -> timeout(job, TaskStatus.QUEUED, "QUEUE"),
-                settings.queueTimeout().toNanos(), TimeUnit.NANOSECONDS);
+                budget(capability,settings.queueTimeout(),30).toNanos(), TimeUnit.NANOSECONDS);
         try { workers.execute(job); }
         catch (RejectedExecutionException failure) {
             tasks.remove(job.id);
@@ -112,6 +112,10 @@ public final class TaskManager {
             job.lease.cancelled();
             if (release) job.lease.close();
         }
+    }
+    private static java.time.Duration budget(String capability,java.time.Duration configured,long seconds) {
+        var maximum=java.time.Duration.ofSeconds(seconds);
+        return "vision".equals(capability)&&configured.compareTo(maximum)>0?maximum:configured;
     }
 
     private Job find(UUID id, String ownerClientId) {
@@ -201,7 +205,7 @@ public final class TaskManager {
                 inWorker = true;
                 deadline.cancel(false);
                 deadline = timer.schedule(() -> timeout(this, TaskStatus.RUNNING, "EXECUTION"),
-                        settings.executionTimeout().toNanos(), TimeUnit.NANOSECONDS);
+                        budget(capability,settings.executionTimeout(),150).toNanos(), TimeUnit.NANOSECONDS);
                 execution = work;
                 work = null;
             }

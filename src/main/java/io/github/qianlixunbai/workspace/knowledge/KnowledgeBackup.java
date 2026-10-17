@@ -65,7 +65,7 @@ public final class KnowledgeBackup {
                 empty(target);createdTarget=!Files.exists(target);PrivateKnowledgeDirectory.directory(target);
             }
             // Restore staging is inside the explicitly selected empty target, so publication stays on its volume.
-            staging=(target==null?active.root().resolve("staging"):target).resolve(UUID.randomUUID()+".backup");Files.createDirectory(staging);PrivateKnowledgeDirectory.protect(staging,true);owned.add(staging);
+            staging=(target==null?active.root().resolve("staging"):target).resolve(UUID.randomUUID()+".backup");PrivateKnowledgeDirectory.directory(staging);owned.add(staging);
             Path knowledge=staging.resolve("knowledge");
             Metadata result;
             try(var store=new KnowledgeStore(staging,token)){

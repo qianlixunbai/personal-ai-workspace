@@ -357,8 +357,8 @@ class ModelFoundationTest {
                 code(ErrorCode.MODEL_SELECTION_REVISION_CONFLICT, () -> manager.manage(b));
                 assertEquals(0, f.releases.get()); // Normal switching never unloads.
                 var release = intent(manager, ActiveModelManager.Action.RELEASE, CANDIDATE, true);
-                var unauthorized = new ActiveModelManager.Intent(release.action(), release.catalogHandle(), release.candidateModel(), release.candidateDigest(),
-                        release.expectedSelectionRevision(), release.expectedActiveModel(), release.expectedActiveDigest(), null, false);
+                var unauthorized = new ActiveModelManager.Intent(release.action(), release.catalogHandle(), release.candidateModel(), release.candidateRunner(), release.candidateDigest(),
+                        release.expectedSelectionRevision(), release.expectedActiveModel(), release.expectedActiveRunner(), release.expectedActiveDigest(), null, false);
                 code(ErrorCode.INVALID_REQUEST, () -> manager.manage(unauthorized)); assertEquals(0, f.releases.get());
                 String selected = Files.readString(state().resolve("active-model.json"));
                 manager.manage(release); assertEquals(1, f.releases.get()); assertEquals(CANDIDATE + ":local", f.releasedModel.get());
@@ -380,8 +380,8 @@ class ModelFoundationTest {
             try (var restarted = f.manager()) {
                 assertTrue(restarted.status().uncertain()); assertFalse(restarted.status().ready());
                 var recovery = intent(restarted, ActiveModelManager.Action.RECOVER, MODEL, true);
-                var stale = new ActiveModelManager.Intent(recovery.action(), recovery.catalogHandle(), recovery.candidateModel(), recovery.candidateDigest(),
-                        recovery.expectedSelectionRevision(), recovery.expectedActiveModel(), recovery.expectedActiveDigest(), UUID.randomUUID().toString(), true);
+                var stale = new ActiveModelManager.Intent(recovery.action(), recovery.catalogHandle(), recovery.candidateModel(), recovery.candidateRunner(), recovery.candidateDigest(),
+                        recovery.expectedSelectionRevision(), recovery.expectedActiveModel(), recovery.expectedActiveRunner(), recovery.expectedActiveDigest(), UUID.randomUUID().toString(), true);
                 code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(stale));
                 assertTrue(Files.exists(state().resolve("execution-guard.json")));
                 int probes = f.probes.get(); f.digest.set(NEXT);
@@ -559,8 +559,8 @@ class ModelFoundationTest {
     static ActiveModelManager.Intent intent(ActiveModelManager manager, ActiveModelManager.Action action, String model, boolean external) {
         var status = manager.managementStatus(); var catalog = manager.catalog();
         var entry = catalog.models().stream().filter(e -> e.model().equals(model)).findFirst().orElseThrow();
-        return new ActiveModelManager.Intent(action, entry.handle(), entry.model(), entry.digest(), status.selectionRevision(),
-                status.activeModel(), status.activeDigest(), action == ActiveModelManager.Action.RECOVER ? status.recoveryGeneration() : null, external);
+        return new ActiveModelManager.Intent(action, entry.handle(), entry.model(), entry.runner(), entry.digest(), status.selectionRevision(),
+                status.activeModel(), status.activeRunner(), status.activeDigest(), action == ActiveModelManager.Action.RECOVER ? status.recoveryGeneration() : null, external);
     }
 
     static Provider.ProviderExecution request(ActiveModelManager.Reservation lease) {
@@ -627,7 +627,8 @@ class ModelFoundationTest {
             server.createContext("/api/ps", e -> respond(e, "{\"models\":[]}"));
             server.createContext("/api/generate", e -> {
                 var input = JSON.readTree(e.getRequestBody().readAllBytes());
-                assertEquals(Set.of("model", "stream", "keep_alive"), new HashSet<>(input.propertyNames()));
+                assertEquals(Set.of("model", "runner", "stream", "keep_alive"), new HashSet<>(input.propertyNames()));
+                assertEquals("ggml", input.path("runner").asString());
                 assertEquals(0, input.path("keep_alive").asInt()); assertFalse(input.path("stream").asBoolean());
                 releases.incrementAndGet(); releasedModel.set(input.path("model").asString());
                 respond(e, malformedRelease.get() ? "{\"done\":true}" : JSON.writeValueAsString(Map.of("model", input.path("model").asString(), "created_at", "2026-10-08T01:00:00Z", "response", "", "done", true, "done_reason", "unload")));

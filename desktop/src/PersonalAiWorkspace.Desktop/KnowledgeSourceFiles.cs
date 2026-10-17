@@ -34,6 +34,11 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
         return new(OpenRegular(path,RuntimeClient.MaximumKnowledgeSourceBytes),filename);
     }
     internal static FileStream OpenBackup(string path)=>OpenRegular(path,RuntimeClient.MaximumKnowledgeBackupBytes);
+    internal static FileStream OpenVisionImage(string path)
+    {
+        try { return OpenRegular(path,4*1024*1024); }
+        catch(Exception) { throw new DesktopException(DesktopError.InvalidRequest); }
+    }
     private static FileStream OpenRegular(string path,long maximum)
     {
         SafeFileHandle? handle=null;FileStream? file=null;

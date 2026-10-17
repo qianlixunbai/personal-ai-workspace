@@ -8,6 +8,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Current native admission is Profile Development-only. Refuse before Java discovery,
+# state/ACL mutation, service reuse or Ollama/Desktop launch; no production trust source exists.
+throw 'Windows native admission is Development-only; production launch is blocked pending trusted release integration.'
 $repo = Split-Path -Parent $PSScriptRoot
 $jar = Join-Path $repo 'target\personal-ai-workspace-0.1.0.jar'
 $desktopProject = Join-Path $repo 'desktop\src\PersonalAiWorkspace.Desktop\PersonalAiWorkspace.Desktop.csproj'
@@ -194,7 +197,7 @@ try {
 
     Push-Location -LiteralPath $repo
     try {
-        if (-not $runtimeReady -and (Test-NeedsBuild $jar @((Join-Path $repo 'pom.xml'), (Join-Path $repo 'src\main')))) {
+        if (-not $runtimeReady -and (Test-NeedsBuild $jar @((Join-Path $repo 'pom.xml'), (Join-Path $repo 'workspace-application\pom.xml'), (Join-Path $repo 'finance-domain\pom.xml'), (Join-Path $repo 'finance-domain\src\main'), (Join-Path $repo 'src\main')))) {
             Write-Host 'Building Runtime (tests skipped)...'
             & (Join-Path $repo 'mvnw.cmd') package -DskipTests
             if ($LASTEXITCODE -ne 0) { throw 'Runtime build failed.' }

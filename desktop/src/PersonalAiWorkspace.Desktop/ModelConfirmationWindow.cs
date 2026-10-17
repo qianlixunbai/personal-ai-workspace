@@ -30,8 +30,8 @@ internal sealed class ModelConfirmationWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "本次操作：" + intent.Action, Margin = new Thickness(0, 0, 0, 8) });
-        panel.Children.Add(Field("候选 / 目标：" + intent.CandidateModel + "\nManifest SHA-256：" + intent.CandidateDigest));
-        panel.Children.Add(Field("旧 Active：" + (intent.ExpectedActiveModel ?? "明确无 Active") + "\n旧 digest：" + (intent.ExpectedActiveDigest ?? "无")
+        panel.Children.Add(Field("候选 / 目标：" + intent.CandidateModel + "\nRunner：" + intent.CandidateRunner + "\nChild Manifest SHA-256：" + intent.CandidateDigest));
+        panel.Children.Add(Field("旧 Active：" + (intent.ExpectedActiveModel ?? "明确无 Active") + "\n旧 runner：" + (intent.ExpectedActiveRunner ?? "无") + "\n旧 digest：" + (intent.ExpectedActiveDigest ?? "无")
             + "\nExpected selection revision：" + intent.ExpectedSelectionRevision + (intent.RecoveryGeneration is null ? "" : "\nRecovery generation：" + intent.RecoveryGeneration)));
         panel.Children.Add(new TextBlock { Text = intent.Action == ModelAction.RECOVER
             ? "仅清除当前 guard；不会加载模型或重放原任务。原请求完成或原服务/runner 已结束是你接受的信任假设，Workspace 无法独立证明。\n本地执行尚未退出时必须保持 STOP。"

@@ -1,6 +1,7 @@
 package io.github.qianlixunbai.workspace.memory;
 
 import io.github.qianlixunbai.workspace.common.*;
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 import java.nio.file.*;
 import java.util.*;
 import static io.github.qianlixunbai.workspace.memory.MemoryLimits.error;
@@ -41,7 +42,10 @@ public final class MemoryBackupService {
             emptyOrNew(target);
             var directoryIdentity = existed ? Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class,
                     LinkOption.NOFOLLOW_LINKS) : null;
-            staging = Files.createTempDirectory(parent, workspace ? ".workspace-restore-" : ".memory-restore-");
+            if (WindowsPrivateAcl.isWindows()) {
+                staging = parent.resolve((workspace ? ".workspace-restore-" : ".memory-restore-") + UUID.randomUUID());
+                PrivateMemoryDirectory.directory(staging);
+            } else staging = Files.createTempDirectory(parent, workspace ? ".workspace-restore-" : ".memory-restore-");
             builder.accept(staging);
             beforePublish.run();
             // Recheck after the potentially slow reconstruction. Unknown states are never replaced.

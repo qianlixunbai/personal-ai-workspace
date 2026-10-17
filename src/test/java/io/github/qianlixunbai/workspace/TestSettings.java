@@ -21,7 +21,7 @@ public final class TestSettings {
         var lease = org.mockito.Mockito.mock(io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation.class);
         org.mockito.Mockito.when(lease.profile()).thenReturn(p);
         org.mockito.Mockito.when(lease.promptVersion()).thenReturn(promptVersion);
-        org.mockito.Mockito.when(lease.model()).thenReturn(new io.github.qianlixunbai.workspace.model.ActiveModelManager.ExecutionModel(p.model(), "a".repeat(64), 0));
+        org.mockito.Mockito.when(lease.model()).thenReturn(new io.github.qianlixunbai.workspace.model.ActiveModelManager.ExecutionModel(p.model(), "ggml", "a".repeat(64), 0));
         return lease;
     }
     private TestSettings() {}

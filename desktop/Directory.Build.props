@@ -11,6 +11,12 @@
     <DefineConstants Condition="('$(Mmf3AcceptanceBuild)' == 'true' or '$(Mmf3ProfileAcceptanceBuild)' == 'true') and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_ACCEPTANCE</DefineConstants>
     <DefineConstants Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);MMF3_PROFILE_ACCEPTANCE</DefineConstants>
   </PropertyGroup>
+  <!-- Only the opt-in Profile Debug identity carries the reviewed Development-only helper.
+       Build that helper in Release explicitly first; never bootstrap/download it at app launch. -->
+  <ItemGroup Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'">
+    <Content Include="$(MSBuildThisFileDirectory)../bootstrap/PersonalAiWorkspace.NativeBootstrap/bin/Release/net10.0-windows/PersonalAiWorkspace.NativeBootstrap.exe;$(MSBuildThisFileDirectory)../bootstrap/PersonalAiWorkspace.NativeBootstrap/bin/Release/net10.0-windows/PersonalAiWorkspace.NativeBootstrap.dll;$(MSBuildThisFileDirectory)../bootstrap/PersonalAiWorkspace.NativeBootstrap/bin/Release/net10.0-windows/PersonalAiWorkspace.NativeBootstrap.deps.json;$(MSBuildThisFileDirectory)../bootstrap/PersonalAiWorkspace.NativeBootstrap/bin/Release/net10.0-windows/PersonalAiWorkspace.NativeBootstrap.runtimeconfig.json"
+      Link="NativeBootstrap/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup Condition="('$(Mmf3AcceptanceBuild)' == 'true' or '$(Mmf3ProfileAcceptanceBuild)' == 'true') and '$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'PersonalAiWorkspace.Core'">
     <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop" />
     <InternalsVisibleTo Include="PersonalAiWorkspace.Desktop.Tests" />

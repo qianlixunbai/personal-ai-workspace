@@ -1,6 +1,33 @@
 # Personal AI Workspace — V1 Roadmap
 
-## Current MMF-3 B1 — SOURCE APPROVED / PUBLISHED
+## Current G1 — source consolidation before F2.3-A2
+
+2026-10-17（Asia/Shanghai）。当前收口将已完成且相互依赖的源码保存为一个 Git 基线。
+**V1 Vision Code-only Source Review — 限定范围 GO**；不是 Vision Runtime、GPU、Windows 或 Production GO。
+**MMF-3 Profile Gate — PENDING**，Windows 正式 launcher 限制未解除；Runtime / Database / Production GO 均未授予。
+
+Finance 原仓库已冻结、只读保留，后续源码集成在 Workspace 进行。
+F2.1 Finance Foundation — READY；F2.2-A Finance Infrastructure — READY；F2.2-B Finance Account Integration — **SOURCE READY / DATABASE PENDING**。
+F2.3-A1 PostgreSQL Environment — READY，仅为操作系统本地环境，不属于 Workspace Git 源码安装内容。
+F2.3-A2 Finance Real SQL Verification — **NOT STARTED**；后续受控 schema、Account SQL、身份绑定、BigDecimal、隔离和事务验证须独立执行。
+Workspace SQLite → PostgreSQL migration — **NOT STARTED**。本次 G1 不启动 A2、数据迁移或产品发布；W1 后续开发继续 PAUSED。
+当前状态以 [STATUS](../STATUS.md) 为准；以下 2026-10-11 及更早章节保留历史计划与裁定，不作为当前进度。
+
+## Historical MMF-3 closing / V1 Vision scope preparation（2026-10-11）
+
+2026-10-11（Asia/Shanghai）。**MMF-3 CLOSED — GO（Development-only）**，权威身份与证据限制见
+[Closing Record](../engineering/MMF-3-CLOSING-RECORD.md)。Production Trusted/正式 launcher/Installer/签名/生产发布未验收。
+下一独立活动为 [V1 Vision Foundation Scope Candidate](../engineering/V1-VISION-FOUNDATION-SCOPE-CANDIDATE.md)：
+单张本地图像 → Windows Assistant → native-only Runtime → 已验证本地 Vision Active → 有界文本。
+**范围候选准备完成 / Proposal / Pending；V1 implementation 与模型操作未授权**。
+更广 OCR/截图权限/多模态 RAG/Finance 图片识别均 DEFERRED，不因旧路线图愿景进入首版。
+
+Finance 仍独立修 bug、尚未正式冻结。后续：Finance bug closing → 独立 Freeze → Home PC Migration →
+Workspace/Finance 同机独立运行 → F0 authoritative Reality Sync → 再定集成。
+迁移须可信数据库备份/校验/目标恢复和独立凭据流程，不以运行中 PostgreSQL 目录复制为唯一备份，不自动共享权限。
+W1 PAUSED、Finance Integration BLOCKED pending F0；本轮仅 docs，不发布、不自动实施。以下 B1/早期批准保留历史状态。
+
+## Historical MMF-3 B1 — SOURCE APPROVED / PUBLISHED
 
 2026-10-09（Asia/Shanghai）。Architecture Guard B1 Source Review **APPROVED — GO；Source blockers: 0**。
 同账号测试专用入口准确九文件已批准；implementation `7405562a673ff0911427adaa0445e39e3d57afea`
@@ -58,7 +85,7 @@ Search implementation NOT STARTED，W1C/W1D 未开始；**W1 Overall PAUSED / NO
 [ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**；Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**。
 **Architecture approval does not authorize implementation。** 用户已另行授权 MMF-1，Architecture Guard MMF-1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；Finding A/B: CLOSED。
 [MMF-1 evidence](../engineering/MMF-1-IMPLEMENTATION-CANDIDATE.md) 记录正式批准与历史 focused tests（Codex previously reported PASS；本轮未重跑）。
-Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED。MMF-2B source APPROVED — GO；MMF-3 B1 Source Approved / Published，GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
+MMF-2B source APPROVED — GO；MMF-3 于 2026-10-11 CLOSED — GO（Development-only）；限定 Windows/模型/Chrome 验收及未实测项见 Closing Record，不继承为 Production Ready。
 历史阶段事实基线保留 T0 formal closing main commit：`b59da429711ca23e77e7772c5005b29c8dab12b2`；
 当前 K3 baseline：`e9737393916b7b256a31e7727e78be375ed490b1`，approved implementation candidate：
 `c938e21539cc001576a243f8cfb2ba6163223d56`；FORMAL PUBLICATION — COMPLETE。
@@ -76,7 +103,7 @@ Assistant、Conversation、Memory、Knowledge，并在未来获得受控 Web、V
 K3 已把显式检索证据用于带引用的回答；后续计划增加联网、多模态和财务领域编排。
 
 **当前已交付到 K3 + T0 + W1A foundation。** 本地三种文本操作、持久对话、显式 Memory、Knowledge 管理、词法搜索与带引用的回答已存在。
-Secure Fetch / native approval / typed bridge 已实现；MMF-2B 单 Active Model 的 Runtime/native/Desktop/Settings 源码已获批准，实际集成验收未执行。
+Secure Fetch / native approval / typed bridge 已实现；单 Active Model 的 Runtime/native/Desktop/Settings 源码已获批准，MMF-3 Development-only 集成已关闭，生产发布未批准。
 Search、WebAnswer、final Web UI、Vision、Finance integration、完整 Resource Monitor 和 P1 最终整合仍是未来目标。
 最终 V1 不应把所有个人数据混成一个通用记忆库，也不应因一个子系统不可用而让整个工作区失效。
 
@@ -140,8 +167,8 @@ Portable logical backup 是产品原则；当前各备份格式的范围独立�
 | — | T0 工程门禁 | Test Suite Consolidation / Slimming | CLOSED — GO | K2 closing；位于 K3 前 |
 | 11 | K3 | Grounded Knowledge Answer + Citations | CLOSED — GO | K2 / ADR-013；implementation/source closing approved |
 | 12 | W1 | Controlled Web Access | W1A CLOSED — GO；W1 Overall PAUSED / NOT CLOSED | ADR-014；W1B 候选研究完成，Search implementation NOT STARTED；W1C/W1D 未开始 |
-| — | Model Management Foundation | ONE Active Model / safe switch / durable selection | MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW APPROVED — GO；source blockers 0；ADR-015 Accepted | MMF-3 B1 Source Published；native/Desktop/Settings 和 validation-required implementation supplement 已批准；无推理 GUI / real model integration NOT PERFORMED；MMF Overall NOT CLOSED |
-| 13 | V1 | Multimodal / Vision Foundation | NOT STARTED | Model Management Foundation |
+| — | Model Management Foundation | ONE Active Model / safe switch / durable selection | ADR-015 Accepted；源码批准；MMF-3 CLOSED — GO（Development-only） | 关闭绑定 HEAD/源码清单/实际哈希；限定 Windows/模型/Chrome evidence；Production Trusted/正式发布未验收 |
+| 13 | V1 | Multimodal / Vision Foundation | Scope Candidate READY / Pending Guard；implementation NOT STARTED | MMF-3 Development-only CLOSED；单图/本地模型候选 |
 | — | Personal Finance OS 独立收尾 | 独立 Finance 工作，不授权 Workspace 集成 | 用户决定的后续顺序；本仓库不实施 | V1 Vision 后、F0 前；独立仓库审核 |
 | 14 | F0 | Finance Reality Sync | NOT STARTED | Personal Finance OS 独立收尾后，authoritative Finance worktree |
 | 15 | F1 | Finance Integration Foundation | BLOCKED pending F0 | F0 事实 / 独立集成审核 |
@@ -698,15 +725,16 @@ W1A publication 当时为 docs-only，tests/builds/inference/public Web requests
 
 ### V1 — Multimodal / Vision Foundation
 
-**阶段定位 / 进入前状态：** NOT STARTED。当前只处理文本与 TXT/Markdown Knowledge，不能理解图像。
+**阶段定位 / 进入前状态：** SCOPE PREPARATION COMPLETE / Pending Architecture Guard；implementation NOT STARTED。当前仍无 Workspace 图像执行能力。
 这里的 V1 指保留原名的 Vision milestone，不代表整个产品版本已经完成。
 
-**计划核心工作：** image、screenshot、document image、chart、receipt understanding 与 OCR-like structured extraction。
-能力选择、native input ownership、预算与失败表达须独立 review，不预定最终 OCR engine/model/API。
+**本轮范围候选：** 一张用户显式选择的本地 PNG/JPEG → Windows Assistant → 受控 Runtime → 已验证本地 Vision Active → 有界文本。
+见 [Scope Candidate](../engineering/V1-VISION-FOUNDATION-SCOPE-CANDIDATE.md)。模型准入、native input/preview、图像预算/解码隔离、API 和故障边界均 Proposal/Pending。
+截图捕获权限、document/receipt structured extraction、OCR 平台与多模态 RAG 等更广愿景暂缓，不预定 OCR engine/model/API。
 
 **目标用户能力：** 未来可以明确提供图像，获得解释或结构化提取候选；不会据此宣称识别内容绝对正确。
 **核心技术与组件：** 计划依赖 Runtime multimodal execution、已审核的模型 capability/profile、Windows 输入边界与 Workspace 展示。
-**数据与持久化：** 图像、提取结果与候选的保留策略待审核；Vision output 是 candidate information，不是 authoritative Finance truth。
+**数据与持久化：** 首版候选默认不持久化图片、问题或结果，仅 session/task 短期内存；最终策略待审核。Vision output 不是 authoritative Finance truth。
 不得因 receipt 被识别就写入交易。
 
 **安全与权限边界：** 输入须显式，不能引入后台 screen capture 或自动送图到 Web/cloud；source/候选与 commit 权限分离。
@@ -719,7 +747,7 @@ Vision → structured candidate → later F2 validation → mapping → dedup
 
 只有 Finance commit 才创建 authoritative transaction truth；文档图像理解也不等于已批准 Knowledge PDF/DOCX ingestion。
 **明确不做：** Vision 不直接记账、不绕过 Finance validation、不预定 OCR/model/API，也不授权 Knowledge 新格式。
-**阶段结果 / 依赖：** NOT STARTED；计划在 Model Management Foundation 后，receipt commit 另依赖 F0/F1/F2 授权。
+**阶段结果 / 依赖：** 范围候选 READY，等待独立 review/实施授权；MMF-3 Development-only 已关闭。更晚 receipt commit 另依赖 F0/F1/F2 授权，当前 DEFERRED。
 
 ### F0 — Finance Reality Sync
 
@@ -739,7 +767,7 @@ validation、transaction ownership、write semantics、当前 AI integration、b
 **与其他领域的关系：** Finance 是独立 durable domain；Knowledge 财务文档、Memory 或 Vision 候选不能替代 Finance state。
 **明确不做：** F0 前 ZERO integration contract assumptions；不发明 FinanceAdapter、generic Connector、Finance tool schema、
 auth contract、transaction API 或 future write API。
-**阶段结果 / 依赖：** NOT STARTED；Finance Freeze 保持。F0 核验完成并经适用 review 后，才可能为 F1 定义事实基础。
+**阶段结果 / 依赖：** NOT STARTED；Finance 仍独立修 bug、尚未冻结。bug closing/独立 Freeze → Home PC Migration → F0 核验并经适用 review 后，才可能为 F1 定义事实基础。
 
 ### F1 — Finance Integration Foundation
 
@@ -811,16 +839,16 @@ F4 计划让一个用户请求有意组合多个已授权领域，同时保留�
 
 ## 9. Model Management Foundation（跨阶段平台任务）
 
-**阶段定位 / 当前状态：** Architecture Guard MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW — APPROVED — GO；Source blockers: 0；MMF-1 Finding A/B 与 MMF-2B P0/P1 均 CLOSED。MMF-3 B1 Source Published；GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
-Runtime Active Model owner、私有 selection/guard/validation-required、统一 reservation，以及 native-confirmed switch/Release/VALIDATE/RECOVER、Desktop/Settings 源码已批准；real integrated acceptance NOT PERFORMED。
+**阶段定位 / 当前状态：** MMF-1/MMF-2A/MMF-2B 及 MMF-3 集成/身份增量源码获批；MMF-1 Finding A/B 与 MMF-2B P0/P1 CLOSED。**MMF-3 CLOSED — GO（Development-only）**；生产发布未批准。
+Runtime Active Model owner、私有 selection/guard/validation-required、统一 reservation，以及 native-confirmed switch/Release/VALIDATE/RECOVER、Desktop/Settings 源码已批准；限定真实验收及保留项见 Closing Record，不能写成全部操作已实测。
 这是跨阶段平台任务，不新增编号的产品 milestone；[ADR-015](../ADR/ADR-015-active-model-management.md) 正式 **Accepted**。
-Architecture Guard Final Review: **APPROVED — GO**；Architecture blockers: **0**；MMF-1 / MMF-2A / MMF-2B 与 MMF-3 B1 源码已独立授权并获 source approval；MMF-3 真实 GUI/model execution 尚未授权。
+Architecture Guard 架构/源码批准及 2026-10-11 Final Closing Review 见 [Closing Record](../engineering/MMF-3-CLOSING-RECORD.md)；原批准候选仍未提交，关闭版本须绑定实际文件哈希。
 
 当前优先顺序：**暂停 W1 后续联网开发 → Model Management Foundation → V1 Vision → Personal Finance OS 独立收尾 → F0**。
 目标为 Runtime 唯一权威的 **ONE Active Model**；capability profiles 保留 prompt/capability、budgets、temperature、validators、LOCAL_ONLY。
 catalog/installed/loading/vision declaration 属 Runtime lifecycle metadata，不成为 profile 的新领域职责；不重构 Provider。
 
-**已批准源码合同 / 待实际验收的用户结果：** configured/Active、installed/loaded/ready、local busy/draining 和 uncertainty 分开显示；
+**已批准源码合同 / 限定验收关闭：** configured/Active、installed/loaded/ready、local busy/draining 和 uncertainty 分开显示；
 明确模型是否支持请求能力，并安全切换。源码切换流程为：
 
 ```text
@@ -853,8 +881,7 @@ pre-send 可证零 inference egress；可信完成响应 + worker exit 才正常
 **其他领域：** 模型故障不阻塞在线 Runtime 的健康纯数据 API/lexical search；Runtime 离线不声称领域功能正常。
 Provider Vision 声明 ≠ Workspace Vision 验收；图片上传/多模态执行/model tools 均不实施。
 **明确不做：** 模型市场、多 Provider Registry、Agent、自动下载、通用进程或资源监控。
-MMF-1 / MMF-2A / MMF-2B 与 MMF-3 B1 已获 source approval，B1 Source Published；无推理 GUI/model acceptance NOT PERFORMED。Focused tests: previously reported PASS；本轮不重跑。
-Independent Windows GUI / Chrome acceptance: NOT PERFORMED；Shared Ollama real inference acceptance: NOT PERFORMED；P1 负责最终体验整合。
+MMF-3 Development-only CLOSED；focused tests 为此前执行，本轮不重跑。Single/Batch/Mixed 用户观察、Legacy PASS、Revoke UI 阻断与 fixture 分别记录；真实 Release/部分外部恢复/断电/低显存故障等未实测。P1 与生产可信链负责后续独立体验/发布验收。
 
 ## 10. Resource Monitor / System Status（跨阶段平台任务）
 
@@ -1015,11 +1042,11 @@ Architecture Guard **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO*
 W1、Vision、Model Management、Resource Monitor 与 Finance 的未来能力不会因列入路线图而启动；Finance contracts 尚未核验。
 
 K3 Architecture Guard final closing-documentation review / formal publication：**APPROVED — GO**。
-当前状态为 **Model Management Foundation — ADR-015 Accepted / MMF-1 / MMF-2A / MMF-2B / MMF-3 B1 SOURCE REVIEW APPROVED — GO**；B1 Source Published；无推理 GUI/model acceptance NOT PERFORMED；MMF Overall NOT CLOSED。
+当前状态为 **MMF-3 CLOSED — GO（Development-only） / V1 Vision Scope Candidate READY — Pending Architecture Guard**；生产发布与 Vision 实施未授权。
 W1 Overall PAUSED / NOT CLOSED；W1B 候选研究完成但 Search implementation NOT STARTED。
 **W1A — CLOSED — GO；FORMAL PUBLICATION — COMPLETE**（完整 W1A 链及本 closing commit 成功发布到 main 后生效）。
 W1C / W1D 未开始；public Internet smoke / Windows product acceptance NOT PERFORMED。
-既有 W1A closing/publication 证据保持；本轮仅 docs-only approval / publication，发布结果以 push 后远端 HEAD 核对为准。
-后续顺序为 Model Management Foundation → V1 Vision → Personal Finance OS 独立收尾 → F0；Finance Integration 保持冻结。
+既有 W1A closing/publication 证据保持；本轮仅文档归档与范围准备，未 commit/push/merge/tag，不授权发布或实施。
+后续为 V1 Vision 独立范围评审；Finance 独立 bug closing → Freeze → Home PC Migration → F0 → 再确定集成。Finance 尚未冻结，Integration 继续 BLOCKED；同机部署不授权共享凭据或 Tool Calling。
 路线图只定义预期范围与顺序，不授权实施。每个未来阶段均须独立完成适用的 architecture review、
 范围确认与明确的实施授权。

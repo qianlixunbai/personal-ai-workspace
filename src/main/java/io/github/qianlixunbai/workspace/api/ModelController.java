@@ -30,8 +30,8 @@ public final class ModelController {
         JsonNode body;
         try { byte[] bytes = request.getInputStream().readNBytes(4097); if (bytes.length > 4096) invalid(); body = JSON.readTree(bytes); }
         catch (RuntimeException malformed) { invalid(); return null; }
-        Set<String> fields = Set.of("action", "catalogHandle", "candidateModel", "candidateDigest", "expectedSelectionRevision",
-                "expectedActiveModel", "expectedActiveDigest", "recoveryGeneration", "externalConfirmed");
+        Set<String> fields = Set.of("action", "catalogHandle", "candidateModel", "candidateRunner", "candidateDigest", "expectedSelectionRevision",
+                "expectedActiveModel", "expectedActiveRunner", "expectedActiveDigest", "recoveryGeneration", "externalConfirmed");
         if (body == null || !body.isObject() || body.size() != fields.size()) invalid();
         for (String field : body.propertyNames()) if (!fields.contains(field)) invalid();
         ActiveModelManager.Action action;
@@ -47,11 +47,14 @@ public final class ModelController {
                 || !body.path("externalConfirmed").isBoolean()) invalid();
         String model = text(body, "candidateModel", false), digest = text(body, "candidateDigest", false), handle = text(body, "catalogHandle", false);
         String old = text(body, "expectedActiveModel", true), oldDigest = text(body, "expectedActiveDigest", true), generation = text(body, "recoveryGeneration", true);
+        String runner = text(body, "candidateRunner", false), oldRunner = text(body, "expectedActiveRunner", true);
         if (!ModelStateStore.validModel(model) || !ModelStateStore.validDigest(digest) || !handle.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+                || !validRunner(runner) || (old == null) != (oldRunner == null) || oldRunner != null && !validRunner(oldRunner)
                 || (old == null) != (oldDigest == null) || old != null && (!ModelStateStore.validModel(old) || !ModelStateStore.validDigest(oldDigest))
                 || generation != null && !generation.matches("[0-9a-f-]{36}")) invalid();
-        return models.manage(new ActiveModelManager.Intent(action, handle, model, digest, revision.asLong(), old, oldDigest, generation, body.path("externalConfirmed").asBoolean()));
+        return models.manage(new ActiveModelManager.Intent(action, handle, model, runner, digest, revision.asLong(), old, oldRunner, oldDigest, generation, body.path("externalConfirmed").asBoolean()));
     }
+    private static boolean validRunner(String runner) { return Set.of("ggml", "llamacpp", "mlx").contains(runner); }
     private static String text(JsonNode body, String field, boolean nullable) {
         JsonNode node = body.path(field);
         if (nullable && node.isNull()) return null;

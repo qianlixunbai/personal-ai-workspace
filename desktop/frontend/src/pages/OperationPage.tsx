@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { OperationView, SelectedMemory, ShellStatus } from '../bridge/contracts'
 import { StatusPanel } from '../components/StatusPanel'
+import { VisionPanel } from '../components/VisionPanel'
 
 type Phase = 'Idle' | 'Validating' | 'Submitting' | 'Queued' | 'Running' | 'Cancelling' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut' | 'OutcomeUnknown'
 const terminal = (operation: OperationView) => !['QUEUED', 'RUNNING'].includes(operation.status)
@@ -165,6 +166,7 @@ export function OperationPage({ kind, bridge, enabled, status, visible = true }:
     {operation?.status === 'SUCCEEDED' && <section className="card result-card" aria-labelledby={`${kind}-result-title`}>
       <div className="card-heading"><h2 id={`${kind}-result-title`}>结果</h2><button className="secondary" onClick={() => { void copy() }} disabled={copying}>Copy result</button></div>
       <pre className="operation-result" dir="auto">{operation.result}</pre><p role="status">{notice}</p></section>}
+    {kind === 'assistant' && <VisionPanel bridge={bridge} enabled={enabled && visible} />}
     {visible && <section className="card compact-card"><h2>本机状态</h2><StatusPanel status={status} /></section>}
   </>
 }

@@ -8,6 +8,8 @@ import type { KnowledgeAnswerTask } from './knowledgeAnswer'
 import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
 import type { WebFetchOperation, WebFetchSubmission } from './webFetch'
 import { modelMethods, isModelRequest, isModelSnapshot, isModelOutcome } from './models'
+import { visionMethods, isVisionReadiness, isVisionPick, isVisionTask, isVisionValidation } from './vision'
+import type { VisionReadiness, VisionPick, VisionTask, VisionValidation } from './vision'
 import type { ModelSnapshot, ModelOutcome, ModelRequest } from './models'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
@@ -20,7 +22,7 @@ export class BridgeError extends Error { constructor(public code: string, messag
 const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
-const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate'
+const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
 interface Pending { method: Method; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -28,12 +30,21 @@ export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
   private listeners = new Set<() => void>()
+  private visionListeners = new Set<(handle: string) => void>()
   constructor(private port: WebViewPort | undefined) { port?.addEventListener('message', this.receive) }
   get available() { return !!this.port }
   get ready() { return this.session !== null }
   onSession(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
+  onVisionClear(listener: (handle: string) => void) { this.visionListeners.add(listener); return () => { this.visionListeners.delete(listener) } }
   bootstrap() { return this.request('shell.bootstrap') as Promise<ShellStatus> }
   refreshStatus() { return this.request('shell.refreshStatus') as Promise<ShellStatus> }
+  visionReadiness() { return this.request('vision.readiness') as Promise<VisionReadiness> }
+  pickVision() { return this.request('vision.pick') as Promise<VisionPick> }
+  validateVision() { return this.request('vision.validate') as Promise<VisionValidation> }
+  submitVision(handle: string, question: string) { return this.request('vision.submit', { handle, question }) as Promise<VisionTask> }
+  visionTask(taskId: string, cancel = false) { return this.request(cancel ? 'vision.cancel' : 'vision.get', { taskId }) as Promise<VisionTask> }
+  currentVisionTask() { return this.request('vision.get') as Promise<VisionTask> }
+  clearVision() { return this.request('vision.clear') as Promise<{ cleared: true }> }
   inspectModels(recovery = false) { return this.request(recovery ? 'models.inspectRecovery' : 'models.inspect') as Promise<ModelSnapshot> }
   mutateModel(payload: ModelRequest) {
     if (!isModelRequest(payload)) return Promise.reject(new BridgeError('InvalidRequest', '模型意图无效，请刷新。'))
@@ -88,7 +99,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -96,7 +107,7 @@ export class WorkspaceClient {
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(typeof payload.taskId === 'string' ? { taskId: payload.taskId } : {}),
         ...(typeof payload.documentId === 'string' ? { documentId: payload.documentId } : {}),
@@ -120,6 +131,11 @@ export class WorkspaceClient {
     if (!isObject(data)) return
     const bytes = new TextEncoder().encode(JSON.stringify(data)).length
     if (bytes > conversationResponseBytes) return
+    if (data.type === 'vision.cleared') {
+      if (bytes <= 64 * 1024 && exactFields(data, ['type', 'version', 'sessionId', 'handle']) && data.version === 1 && data.sessionId === this.session && isId(data.handle))
+        this.visionListeners.forEach(listener => listener(data.handle as string))
+      return
+    }
     if (data.type === 'shell.session') {
       if (!exactFields(data, ['type', 'version', 'sessionId']) || data.version !== 1 || !isId(data.sessionId)) return
       if (data.sessionId === this.session) return
@@ -135,6 +151,11 @@ export class WorkspaceClient {
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
+        : pending.method === 'vision.readiness' ? isVisionReadiness(data.result)
+        : pending.method === 'vision.pick' ? isVisionPick(data.result)
+        : pending.method === 'vision.validate' ? isVisionValidation(data.result)
+        : ['vision.submit', 'vision.get', 'vision.cancel'].includes(pending.method) ? isVisionTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
+        : pending.method === 'vision.clear' ? isObject(data.result) && exactFields(data.result, ['cleared']) && data.result.cleared === true
         : pending.method === 'models.mutate' ? isModelOutcome(data.result)
         : pending.method === 'models.inspect' || pending.method === 'models.inspectRecovery' ? isModelSnapshot(data.result)
         : pending.method === 'web.fetchSubmit' ? isWebFetchSubmission(data.result)
@@ -184,6 +205,6 @@ export class WorkspaceClient {
   }
   dispose() {
     this.port?.removeEventListener('message', this.receive)
-    this.rejectPending('工作区已关闭。'); this.listeners.clear(); this.session = null
+    this.rejectPending('工作区已关闭。'); this.listeners.clear(); this.visionListeners.clear(); this.session = null
   }
 }

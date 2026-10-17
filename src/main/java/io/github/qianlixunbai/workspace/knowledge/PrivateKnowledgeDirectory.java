@@ -1,5 +1,6 @@
 package io.github.qianlixunbai.workspace.knowledge;
 
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
@@ -12,7 +13,11 @@ public final class PrivateKnowledgeDirectory {
         validate(data,token); directory(data);
         Path root=data.resolve("knowledge"); directory(root); directory(root.resolve("sources")); directory(root.resolve("staging"));
         for(String name:List.of("knowledge.db","knowledge.db-journal","knowledge.db-wal","knowledge.db-shm","knowledge.lock")) {
-            Path file=root.resolve(name); if(Files.exists(file,LinkOption.NOFOLLOW_LINKS)) { regular(file); protect(file,false); }
+            Path file=root.resolve(name); if(Files.exists(file,LinkOption.NOFOLLOW_LINKS)) {
+                regular(file);
+                if(WindowsPrivateAcl.isWindows() && name.startsWith("knowledge.db-"))WindowsPrivateAcl.verifySqliteSidecar(file);
+                else protect(file,false);
+            }
         }
         return root;
     }
@@ -38,24 +43,24 @@ public final class PrivateKnowledgeDirectory {
         noLinks(file); if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid Knowledge object");
     }
     public static void directory(Path path) throws IOException {
-        noLinks(path); Files.createDirectories(path); noLinks(path);
+        noLinks(path);
+        if(WindowsPrivateAcl.isWindows())WindowsPrivateAcl.directory(path);else Files.createDirectories(path);
+        noLinks(path);
         if(!Files.isDirectory(path,LinkOption.NOFOLLOW_LINKS))throw new IOException("Invalid Knowledge object");
         protect(path,true);
     }
     public static void file(Path path) throws IOException {
-        noLinks(path); Files.createFile(path); protect(path,false);
+        noLinks(path);
+        if(WindowsPrivateAcl.isWindows())WindowsPrivateAcl.createFile(path);else Files.createFile(path);
+        protect(path,false);
     }
     public static void protect(Path path,boolean directory) throws IOException {
+        if(WindowsPrivateAcl.isWindows()){WindowsPrivateAcl.verify(path,directory);return;}
         var owner=path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(System.getProperty("user.name"));
         if(!Files.getOwner(path,LinkOption.NOFOLLOW_LINKS).equals(owner)) throw new IOException("Knowledge owner required");
         var posix=Files.getFileAttributeView(path,PosixFileAttributeView.class,LinkOption.NOFOLLOW_LINKS);
         if(posix!=null) { var modes=PosixFilePermissions.fromString(directory?"rwx------":"rw-------");posix.setPermissions(modes);
             if(!posix.readAttributes().permissions().equals(modes))throw new IOException("Private permissions unavailable");return; }
-        var acl=Files.getFileAttributeView(path,AclFileAttributeView.class,LinkOption.NOFOLLOW_LINKS);
-        if(acl==null)throw new IOException("Private permissions unavailable");
-        var entry=AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(owner).setPermissions(EnumSet.allOf(AclEntryPermission.class));
-        if(directory)entry.setFlags(AclEntryFlag.DIRECTORY_INHERIT,AclEntryFlag.FILE_INHERIT);
-        var expected=List.of(entry.build());acl.setAcl(expected);
-        if(!acl.getAcl().equals(expected))throw new IOException("Private permissions unavailable");
+        throw new IOException("Private permissions unavailable");
     }
 }
