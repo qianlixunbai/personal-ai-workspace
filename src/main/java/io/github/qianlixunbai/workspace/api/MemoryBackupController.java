@@ -23,6 +23,7 @@ public class MemoryBackupController {
     @PostMapping(value = "/restore", consumes = MediaType.APPLICATION_JSON_VALUE)
     MemoryBackup.Metadata restore(@RequestBody byte[] payload) {
         nativeOnly();
+        if (store.postgresql()) throw new WorkspaceException(ErrorCode.MEMORY_RESTORE_FAILED, "MEMORY");
         var request = MemoryBackup.readRestore(payload);
         // Native credential represents the same-account Desktop; Browser credentials never reach this parser or filesystem.
         return service.restore(request.backup(), request.targetDirectory());

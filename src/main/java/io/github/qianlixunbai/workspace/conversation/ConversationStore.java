@@ -2,6 +2,8 @@ package io.github.qianlixunbai.workspace.conversation;
 
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
+import io.github.qianlixunbai.workspace.persistence.PostgresqlWorkspace;
+import javax.sql.DataSource;
 import io.github.qianlixunbai.workspace.memory.MemoryReference;
 import java.nio.file.Path;
 import java.sql.*;
@@ -13,6 +15,13 @@ import static io.github.qianlixunbai.workspace.conversation.ConversationLimits.*
 /** Independent durable domain; no TaskManager, provider or Memory business dependency. */
 public final class ConversationStore implements AutoCloseable {
     private Connection db;
+    private boolean postgresql;
+    public ConversationStore(DataSource dataSource) {
+        try {
+            db = dataSource.getConnection(); postgresql = true;
+            PostgresqlWorkspace.verify(db);
+        } catch (Exception failure) { close(); throw error(ErrorCode.CONVERSATION_STORAGE_UNAVAILABLE); }
+    }
     /** Location must come from the already initialized, private Workspace SQLite infrastructure. */
     public ConversationStore(Path databaseFile) {
         try {
@@ -206,7 +215,7 @@ public final class ConversationStore implements AutoCloseable {
     }
     private static long now() { return Instant.now().toEpochMilli(); }
     private PreparedStatement prepare(String sql, Object... values) throws SQLException {
-        var s = db.prepareStatement(sql);
+        var s = db.prepareStatement(postgresql ? sql.replace("max(updated_at,?)", "greatest(updated_at,?)") : sql);
         try { for (int i = 0; i < values.length; i++) s.setObject(i + 1, values[i]); return s; }
         catch (SQLException failure) { s.close(); throw failure; }
     }
@@ -219,7 +228,9 @@ public final class ConversationStore implements AutoCloseable {
         boolean begun = false;
         try {
             if (db == null || db.isClosed()) throw new SQLException();
-            execute(write ? "BEGIN IMMEDIATE" : "BEGIN"); begun = true;
+            if (postgresql) PostgresqlWorkspace.begin(db, write);
+            else execute(write ? "BEGIN IMMEDIATE" : "BEGIN");
+            begun = true;
             T result = work.run(); execute("COMMIT"); return result;
         } catch (Exception failure) {
             if (begun) { try { execute("ROLLBACK"); } catch (SQLException ignored) { close(); } }

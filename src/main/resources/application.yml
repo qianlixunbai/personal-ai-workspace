@@ -35,6 +35,8 @@ management:
         liveness:
           include: livenessState
 workspace:
+  persistence:
+    backend: sqlite
   finance:
     enabled: false
     flyway:

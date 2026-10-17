@@ -31,7 +31,7 @@ public final class WorkspaceBackupService {
     private final Path token;
     private final MemoryBackupService publication;
     public WorkspaceBackupService(MemoryStore active, Path token) {
-        this(active, token, new MemoryBackupService(active.databaseFile().getParent(), token));
+        this(active, token, new MemoryBackupService(active.dataDirectory(), token));
     }
     public WorkspaceBackupService(MemoryStore active, Path token, MemoryBackupService publication) {
         this.active = active; this.token = token; this.publication = publication;
@@ -44,8 +44,7 @@ public final class WorkspaceBackupService {
 
     /** The first SELECT pins the read snapshot; digest and response both use that same transaction. */
     public Metadata export(OutputStream output) {
-        try (var db = DriverManager.getConnection("jdbc:sqlite:" + active.databaseFile())) {
-            sql(db, "PRAGMA busy_timeout=3000"); sql(db, "PRAGMA query_only=ON"); sql(db, "BEGIN");
+        try (var db = active.openReadSnapshot()) {
             if (count(db, "SELECT count(*) FROM conversation_turns WHERE status='PENDING'") != 0)
                 throw error(ErrorCode.WORKSPACE_BACKUP_CONFLICT);
             var metadata = metadata(db, Instant.ofEpochMilli(System.currentTimeMillis()).toString(), "");
@@ -84,6 +83,7 @@ public final class WorkspaceBackupService {
         finally { if (staging != null) cleanup(staging); }
     }
     public Metadata restore(InputStream input, String targetDirectory) {
+        if (active.postgresql()) throw error(ErrorCode.WORKSPACE_RESTORE_FAILED);
         var result = new AtomicReference<Metadata>();
         try {
             publication.restoreWorkspaceDatabase(targetDirectory, staging -> result.set(construct(input, staging)));
@@ -239,8 +239,9 @@ public final class WorkspaceBackupService {
     private static void validateDatabase(Connection db, Metadata m) throws Exception {
         require(m.memoryCount() >= 0 && m.memoryCount() <= 1000 && m.conversationCount() >= 0 && m.conversationCount() <= 1000
                 && m.turnCount() >= 0 && m.turnCount() <= MAX_TURNS && m.messageCount() >= 0 && m.messageCount() <= 2 * MAX_TURNS);
-        require(count(db,"SELECT count(*) FROM (SELECT conversation_id FROM conversation_turns GROUP BY conversation_id HAVING count(*)>1000 OR min(sequence)!=1 OR max(sequence)!=count(*))") == 0);
-        try (var s = db.createStatement(); var r = s.executeQuery("PRAGMA foreign_key_check")) { require(!r.next()); }
+        require(count(db,"SELECT count(*) FROM (SELECT conversation_id FROM conversation_turns GROUP BY conversation_id HAVING count(*)>1000 OR min(sequence)!=1 OR max(sequence)!=count(*)) AS invalid_sequences") == 0);
+        if ("SQLite".equals(db.getMetaData().getDatabaseProductName()))
+            try (var s = db.createStatement(); var r = s.executeQuery("PRAGMA foreign_key_check")) { require(!r.next()); }
         WorkspaceSchema.verify(db);
     }
     private static String digest(Connection db, Metadata m) throws Exception {

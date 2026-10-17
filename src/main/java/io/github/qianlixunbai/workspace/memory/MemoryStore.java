@@ -2,6 +2,8 @@ package io.github.qianlixunbai.workspace.memory;
 
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
+import io.github.qianlixunbai.workspace.persistence.PostgresqlWorkspace;
+import javax.sql.DataSource;
 import java.nio.file.Path;
 import java.sql.*;
 import java.time.Instant;
@@ -13,6 +15,8 @@ public final class MemoryStore implements AutoCloseable {
     /** Memory source / logical backup version; Workspace DB user_version is versioned separately. */
     public static final int SCHEMA_VERSION = 1;
     private Path databaseFile;
+    private Path dataDirectory;
+    private DataSource postgresql;
     private Connection connection;
     public record Page(List<MemoryItem> items, long total, int page, int limit) {
         public Page { items = List.copyOf(items); }
@@ -22,10 +26,21 @@ public final class MemoryStore implements AutoCloseable {
         this(directory, tokenFile, true);
     }
 
+    /** The schema must already have been explicitly migrated with a separate migration role. */
+    public MemoryStore(DataSource dataSource, Path directory) {
+        try {
+            postgresql = Objects.requireNonNull(dataSource);
+            dataDirectory = directory.toAbsolutePath().normalize();
+            connection = dataSource.getConnection();
+            PostgresqlWorkspace.verify(connection);
+        } catch (Exception failure) { close(); throw error(ErrorCode.MEMORY_STORAGE_UNAVAILABLE); }
+    }
+
     // ADR-006: maintenance restore still constructs a fresh Memory-only schema v1.
     MemoryStore(Path directory, Path tokenFile, boolean workspaceUpgrade) {
         try {
             Path file = PrivateMemoryDirectory.prepare(directory, tokenFile);
+            dataDirectory = file.getParent();
             databaseFile = file;
             connection = DriverManager.getConnection("jdbc:sqlite:" + file);
             execute("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MS);
@@ -64,7 +79,24 @@ public final class MemoryStore implements AutoCloseable {
     }
 
     /** Already validated account-private shared SQLite location, never returned in the HTTP contract. */
-    public Path databaseFile() { return databaseFile; }
+    public Path databaseFile() {
+        if (postgresql != null) throw new IllegalStateException("PostgreSQL has no SQLite database file");
+        return databaseFile;
+    }
+    public Path dataDirectory() { return dataDirectory; }
+    public boolean postgresql() { return postgresql != null; }
+
+    /** Caller owns this connection and must close it; exports share one consistent read snapshot. */
+    public Connection openReadSnapshot() throws SQLException {
+        Connection db = postgresql == null ? DriverManager.getConnection("jdbc:sqlite:" + databaseFile) : postgresql.getConnection();
+        try {
+            if (postgresql != null) { PostgresqlWorkspace.verify(db); PostgresqlWorkspace.begin(db, false); }
+            else try (var s = db.createStatement()) {
+                s.execute("PRAGMA busy_timeout=3000"); s.execute("PRAGMA query_only=ON"); s.execute("BEGIN");
+            }
+            return db;
+        } catch (SQLException failure) { db.close(); throw failure; }
+    }
 
     private void createSource() throws SQLException {
         execute("""
@@ -82,6 +114,7 @@ public final class MemoryStore implements AutoCloseable {
     }
 
     private void rebuildIndex() throws SQLException {
+        if (postgresql != null) return; // Bounded literal substring search uses source rows directly.
         execute("DROP TRIGGER IF EXISTS memory_insert");
         execute("DROP TRIGGER IF EXISTS memory_update");
         execute("DROP TRIGGER IF EXISTS memory_delete");
@@ -144,6 +177,7 @@ public final class MemoryStore implements AutoCloseable {
 
     /** Staging Workspace only: caller streams logical rows inside this single transaction. */
     public synchronized void reconstructWorkspace(java.util.function.Function<Connection, List<MemoryItem>> loader) {
+        if (postgresql != null) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
         transaction(true, () -> {
             if (number("SELECT count(*) FROM memory_items") != 0 || number("SELECT count(*) FROM conversations") != 0)
                 throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
@@ -237,7 +271,10 @@ public final class MemoryStore implements AutoCloseable {
             parameters.add((status == null ? MemoryItem.Status.ACTIVE : status).name());
             if (type != null) { where += " AND m.type=?"; parameters.add(type.name()); }
             if (query != null && !query.isEmpty()) {
-                if (query.codePointCount(0, query.length()) >= 3) {
+                if (postgresql != null) {
+                    where += " AND (strpos(m.title,?)>0 OR strpos(m.content,?)>0)";
+                    parameters.add(query); parameters.add(query);
+                } else if (query.codePointCount(0, query.length()) >= 3) {
                     // Quoted literal phrase, never raw FTS syntax. Doubling quotes escapes FTS strings.
                     where += " AND m.rowid IN (SELECT rowid FROM memory_fts WHERE memory_fts MATCH ?)";
                     parameters.add("\"" + query.replace("\"", "\"\"") + "\"");
@@ -312,7 +349,9 @@ public final class MemoryStore implements AutoCloseable {
         boolean begun = false;
         try {
             if (connection == null || connection.isClosed()) throw new SQLException();
-            execute(write ? "BEGIN IMMEDIATE" : "BEGIN"); begun = true;
+            if (postgresql != null) PostgresqlWorkspace.begin(connection, write);
+            else execute(write ? "BEGIN IMMEDIATE" : "BEGIN");
+            begun = true;
             T result = work.run(); execute("COMMIT"); return result;
         } catch (Exception failure) {
             if (begun) {

@@ -15,11 +15,12 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | F2.2-B Finance Account Integration | SOURCE READY / DATABASE PENDING |
 | F2.3-A1 PostgreSQL Environment | READY，仅本机环境，不属于 Git 源码安装内容 |
 | F2.3-A2 Finance Real SQL Verification | PARTIAL：真实 schema／SQL／数据库身份／事务通过；Windows 绑定文件发布受阻 |
-| Workspace SQLite → PostgreSQL migration | NOT STARTED |
+| Workspace SQLite → PostgreSQL migration | F2.3-B1 Memory/Conversation 真实 PostgreSQL 导入与 Store 读写通过；整体 PARTIAL，Knowledge／恢复／正式切换未完成 |
 
 Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
 实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
-Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。本次收口不重跑历史测试或执行数据库迁移；W1 后续开发继续 PAUSED。
+本轮迁移源码、实际证据及剩余范围见 [F2.3-B1 Report](engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)。B1 不是数据库迁移完成或 Windows Runtime GO。
+Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。B1 仅执行合成测试数据的 workspace schema 迁移，未迁移正式数据或重跑 Finance 初始化；W1 后续开发继续 PAUSED。
 以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
 
 ## Historical MMF-3 — CLOSED — GO（Development-only，2026-10-11）
