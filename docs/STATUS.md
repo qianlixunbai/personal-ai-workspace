@@ -1,8 +1,8 @@
 # Personal AI Workspace — Current Status
 
-## Current G1 — pre-F2.3-A2 source baseline
+## Current G3 — PostgreSQL source published / B4A integration candidate
 
-2026-10-17（Asia/Shanghai）。G1 保存相互依赖的 Workspace、Model Management、V1 Vision、Native Bootstrap/Gate、Desktop/Bridge 与 Finance 源码，不构成运行或发布批准。
+2026-10-18（Asia/Shanghai）。G3 已将 A2、B1、B2、B3、B3E、B3F 源码 fast-forward 发布至 GitHub main `b35a1ac`，普通 push 后再次 fetch 核验一致。B4A 为未提交产品集成候选；源码发布不构成 Windows Runtime 或 Production GO。
 **V1 Vision Code-only Source Review — 限定范围 GO**；不是 Vision Runtime、GPU、Windows 或 Production GO。
 **MMF-3 Profile Gate — PENDING**；现有 Windows 正式 launcher 限制未解除，Runtime / Database / Production GO 均未授予。
 
@@ -20,6 +20,7 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | F2.3-B3 Unified Backup / Restore | 数据库与合成 Knowledge 文件真实备份／隔离恢复／Store／索引验证通过；认证加密、Windows 准入和身份重绑未完成，整体 PARTIAL |
 | F2.3-B3E Portable Encrypted Backup | 标准 OpenPGP 加密／完整认证解密／新库合成恢复 VERIFIED；明文暂存、Windows 准入和身份重绑未完成，产品整体 PARTIAL |
 | F2.3-B3F Secure Backup Pipeline | 直接加密／两遍认证解密／非空隔离恢复 VERIFIED（合成）；临时明文清理通过，正式卷保护与 Windows 生命周期未验收，产品 PARTIAL |
+| F2.3-B4A Desktop PostgreSQL Integration | Runtime 只读状态／真实隔离连接、React／Bridge 契约 VERIFIED；正式配置注入与完整 Windows Runtime PENDING，成果未提交 |
 
 Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
 实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
@@ -27,7 +28,8 @@ Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚
 B2 的实际执行与未执行范围见 [Knowledge PostgreSQL Report](engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B2 已保存为本地 commit `2a4a2b7`。
 B3 已保存为本地 commit `5bf4a09`，真实非空合成恢复及该阶段边界见 [Unified Backup / Restore Report](engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。
 B3E 已保存为本地 commit `d4e60ec`，阶段证据见 [Portable Encrypted Backup Report](engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。
-B3F 成果未提交；直接流式加密、恢复明文生命周期与实际剩余依赖见 [Secure Backup Pipeline Report](engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。未进入 B4。
+B3F 已保存为本地 commit `b35a1ac` 并随 G3 发布至 main；阶段证据见 [Secure Backup Pipeline Report](engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。
+B4A 设置页“本地数据与存储”接入 Native Bearer 只读状态查询，合成库实际验证与配置／安全限制见 [Desktop PostgreSQL Integration Report](engineering/F2.3-B4A-DESKTOP-POSTGRESQL-INTEGRATION-REPORT.md)。未进行正式迁移或 B4B。
 Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。B1 仅执行合成测试数据的 workspace schema 迁移，未迁移正式数据或重跑 Finance 初始化；W1 后续开发继续 PAUSED。
 以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
 

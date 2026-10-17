@@ -157,6 +157,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
         new WorkspaceStatusProbe(runtime, ReadCredential).ReadAsync(cancellation);
+    Task<StorageStatus> IWorkspaceNativeActions.StorageStatusAsync(CancellationToken cancellation) => runtime.GetStorageStatusAsync(cancellation);
     WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
     WorkspaceConversations IWorkspaceNativeActions.Conversations => workspaceConversations;
     WorkspaceMemory IWorkspaceNativeActions.Memory => workspaceMemory;

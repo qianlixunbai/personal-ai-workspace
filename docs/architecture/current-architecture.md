@@ -1,8 +1,8 @@
 # Personal AI Workspace — Current Architecture
 
-## Current G1 — integrated source baseline, runtime gates pending
+## Current G3 — PostgreSQL source baseline published, runtime gates pending
 
-2026-10-17（Asia/Shanghai）。当前源码包含 Workspace Runtime、Model Management、V1 Vision 候选、Native Bootstrap/JNA/Gate、Windows Desktop/WPF、React/WebView2 Bridge 与 Finance 模块。
+2026-10-18（Asia/Shanghai）。G3 已发布 PostgreSQL A2–B3F 源码至 main `b35a1ac`；B4A 开发成果未提交。当前源码包含 Workspace Runtime、Model Management、V1 Vision 候选、Native Bootstrap/JNA/Gate、Windows Desktop/WPF、React/WebView2 Bridge 与 Finance 模块。
 **V1 Vision Code-only Source Review — 限定范围 GO**，不是 Vision Runtime、GPU、Windows 或 Production GO。
 **MMF-3 Profile Gate — PENDING**；Windows 正式 launcher 的现有限制未解除，Runtime / Database / Production GO 均未授予。
 
@@ -16,6 +16,7 @@ F2.3-B2 Knowledge V2、合成 SQLite/文件迁移、真实 Store 数据库读写
 F2.3-B3 增加显式离线 PostgreSQL custom archive + revision 文件维护模块，非空合成数据库与文件隔离恢复、Store/preview/检索和索引重建已验证；不进入 Runtime 自动启动。认证加密、Windows 准入及身份重绑未完成，整体 PARTIAL，见 [B3 报告](../engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。
 F2.3-B3E 在原 B3 格式外封装标准 RFC 9580 OpenPGP（BC 1.86，Argon2id + AES-256-GCM），完整认证和内部校验后才读取目标配置及恢复；合成加解密/新库恢复已验证。明文暂存、Windows 生命周期及身份重绑仍待完成，产品整体 PARTIAL，见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。
 F2.3-B3F 增加 v2 直接加密入口：同一 PostgreSQL 导出快照／锁定 revision → pg_dump stdout 与文件有界 ZIP → 原 OpenPGP 流；不落明文 dump／ZIP。恢复先认证到空输出，再从同一锁定密文解包，临时 backup 子树在失败或恢复结束后清理。默认要求祖先 ACL 与 BitLocker 验证；本机仅合成数据例外通过，正式数据入口仍受原合成库边界限制。未改 Runtime/Gate/身份合同，产品 PARTIAL，见 [B3F 报告](../engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。
+B4A 复用 Workspace PostgreSQL 配置工厂，增加 Native Bearer `/api/v1/storage/status`：只读查询连接、角色和 schema 元数据，不初始化／迁移／切换。React 设置页经会话 Bridge → WPF → 固定 loopback RuntimeClient 查询，严格限制响应字段，凭据和目录不进入 React。正式 Gate 仍拒绝新增配置注入，完整 Windows Runtime、Finance 绑定与正式数据切换未完成，见 [B4A 报告](../engineering/F2.3-B4A-DESKTOP-POSTGRESQL-INTEGRATION-REPORT.md)。
 现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
 以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
 
