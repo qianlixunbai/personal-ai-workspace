@@ -7,6 +7,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
+import javax.sql.DataSource;
 import static io.github.qianlixunbai.workspace.knowledge.KnowledgeLimits.*;
 import static io.github.qianlixunbai.workspace.knowledge.KnowledgeParser.error;
 
@@ -15,6 +16,7 @@ public final class KnowledgeStore implements AutoCloseable {
     public static final int SCHEMA_VERSION=1;
     private final Path root;
     private Connection db;
+    private DataSource postgresql;
     private FileChannel lockChannel;
     private FileLock processLock;
     private volatile Runnable corpusChanged=()->{};
@@ -63,7 +65,35 @@ public final class KnowledgeStore implements AutoCloseable {
         }catch(WorkspaceException e){close();throw e;}
         catch(Exception e){close();throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);}
     }
-    private static final List<String> SCHEMA_DDL=List.of(
+    /** Database maintenance/read session. File publication/deletion is unavailable without a private root. */
+    public KnowledgeStore(DataSource dataSource) {
+        root=null;postgresql=Objects.requireNonNull(dataSource);
+        try{db=dataSource.getConnection();KnowledgePostgresql.verify(db);
+            try(var s=db.createStatement();var r=s.executeQuery("SELECT pg_try_advisory_lock_shared(170017,2)")){
+                if(!r.next()||!r.getBoolean(1))throw new IOException();
+            }
+        }
+        catch(Exception e){close();throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);}
+    }
+    /** Runtime entry retains the existing private-file admission and single-writer contract. */
+    public KnowledgeStore(DataSource dataSource,Path data,Path token) {
+        postgresql=Objects.requireNonNull(dataSource);
+        Path prepared=null;
+        try {
+            prepared=PrivateKnowledgeDirectory.prepare(data.toAbsolutePath().normalize(),token);root=prepared;
+            Path lock=root.resolve("knowledge.lock");if(!Files.exists(lock))PrivateKnowledgeDirectory.file(lock);
+            lockChannel=FileChannel.open(lock,StandardOpenOption.WRITE);processLock=lockChannel.tryLock();
+            if(processLock==null)throw new IOException();
+            db=dataSource.getConnection();KnowledgePostgresql.verify(db);
+            try(var s=db.createStatement();var r=s.executeQuery("SELECT pg_try_advisory_lock(170017,2)")){
+                if(!r.next()||!r.getBoolean(1))throw new IOException();
+            }
+            reconcile();verifyReady();
+        }catch(Exception e){close();throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);}
+    }
+    boolean postgresql(){return postgresql!=null;}
+    Connection indexConnection()throws SQLException{return postgresql.getConnection();}
+    static final List<String> SCHEMA_DDL=List.of(
         """
             CREATE TABLE documents(id TEXT PRIMARY KEY, title TEXT NOT NULL,
               status TEXT NOT NULL CHECK(status IN ('ACTIVE','ARCHIVED')),
@@ -171,12 +201,15 @@ public final class KnowledgeStore implements AutoCloseable {
             exec("UPDATE documents SET last_job=?,updated=? WHERE id=?",request,now,doc);return job(request);
         });
     }
-    Path upload(String request){return root.resolve("staging").resolve(id(request)+".upload");}
-    Path source(String doc,String revision){return root.resolve("sources").resolve(id(doc)).resolve(version(revision)+".source");}
-    public Path root(){return root;}
+    Path upload(String request){return root().resolve("staging").resolve(id(request)+".upload");}
+    Path source(String doc,String revision){return root().resolve("sources").resolve(id(doc)).resolve(version(revision)+".source");}
+    public Path root(){if(root==null)throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);return root;}
     synchronized boolean cancelled(String request){String state=job(request).state();return !state.equals("PENDING")&&!state.equals("PARSING");}
-    synchronized void parsing(String request){if(cancelled(request))throw error(ErrorCode.KNOWLEDGE_CANCELLED);sql(()->{exec("UPDATE jobs SET state='PARSING' WHERE id=?",request);return null;});}
+    synchronized void parsing(String request){transaction(()->{if(cancelled(request))throw error(ErrorCode.KNOWLEDGE_CANCELLED);exec("UPDATE jobs SET state='PARSING' WHERE id=?",request);return null;});}
     synchronized void complete(String request,KnowledgeParser.Representation representation,String digest) {
+        root();publication(()->{completeWithFiles(request,representation,digest);return null;});
+    }
+    private void completeWithFiles(String request,KnowledgeParser.Representation representation,String digest) {
         sql(()->{try(var s=statement("SELECT * FROM jobs WHERE id=?",request);var r=s.executeQuery()){
             if(!r.next()||!r.getString("state").equals("PARSING"))throw error(ErrorCode.KNOWLEDGE_CANCELLED);
             String doc=r.getString("doc_id"),rev=r.getString("revision"),filename=r.getString("filename"),type=r.getString("type"),now=Instant.now().toString();
@@ -206,14 +239,15 @@ public final class KnowledgeStore implements AutoCloseable {
         }});
     }
     synchronized void failed(String request,ErrorCode code) {
-        sql(()->{exec("UPDATE jobs SET state=?,error=? WHERE id=? AND state IN ('PENDING','PARSING')",
+        transaction(()->{exec("UPDATE jobs SET state=?,error=? WHERE id=? AND state IN ('PENDING','PARSING')",
                 code==ErrorCode.KNOWLEDGE_CANCELLED?"CANCELLED":"FAILED",code.name(),request);return null;});cleanupCandidate(request);
     }
     public synchronized Job cancel(String request,String document) {
         var current=job(request);if(!current.documentId().equals(id(document)))throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);
-        sql(()->{exec("UPDATE jobs SET state='CANCELLED',error='KNOWLEDGE_CANCELLED' WHERE id=? AND state IN ('PENDING','PARSING')",request);return null;});return job(request);
+        transaction(()->{exec("UPDATE jobs SET state='CANCELLED',error='KNOWLEDGE_CANCELLED' WHERE id=? AND state IN ('PENDING','PARSING')",request);return null;});return job(request);
     }
     synchronized void cleanupCandidate(String request) {
+        root();
         sql(()->{try(var s=statement("SELECT doc_id,revision FROM jobs WHERE id=?",request);var r=s.executeQuery()){
             if(!r.next())return null;Path staged=upload(request),candidate=source(r.getString(1),r.getString(2));
             removeFile(staged);if(scalar("SELECT count(*) FROM revisions WHERE doc_id=? AND revision=?",r.getString(1),r.getLong(2))==0)removeFile(candidate);
@@ -222,22 +256,22 @@ public final class KnowledgeStore implements AutoCloseable {
     }
     private void removeFile(Path path)throws IOException {if(Files.exists(path,LinkOption.NOFOLLOW_LINKS)){PrivateKnowledgeDirectory.regular(path);Files.delete(path);}}
     private void reconcile()throws Exception {
-        List<String> interrupted=new ArrayList<>();try(var s=db.createStatement();var r=s.executeQuery("SELECT id FROM jobs WHERE state IN ('PENDING','PARSING')")){while(r.next())interrupted.add(id(r.getString(1)));}
-        transaction(()->{exec("UPDATE jobs SET state='INTERRUPTED',error='KNOWLEDGE_INTERRUPTED' WHERE state IN ('PENDING','PARSING')");return null;});
+        recoverInterruptedJobs();
         // Include terminal candidates whose cleanup was interrupted. Unknown staging is preserved.
-        try(var s=db.createStatement();var r=s.executeQuery("SELECT id FROM jobs")){while(r.next())cleanupCandidate(r.getString(1));}
-        List<String> deletion=new ArrayList<>();try(var s=db.createStatement();var r=s.executeQuery("SELECT doc_id FROM deletes")){while(r.next())deletion.add(id(r.getString(1)));}
+        try(var s=statement("SELECT id FROM jobs");var r=s.executeQuery()){while(r.next())cleanupCandidate(r.getString(1));}
+        List<String> deletion=new ArrayList<>();try(var s=statement("SELECT doc_id FROM deletes");var r=s.executeQuery()){while(r.next())deletion.add(id(r.getString(1)));}
         for(String doc:deletion)reconcileDelete(doc);
     }
+    synchronized void recoverInterruptedJobs(){transaction(()->{exec("UPDATE jobs SET state='INTERRUPTED',error='KNOWLEDGE_INTERRUPTED' WHERE state IN ('PENDING','PARSING')");return null;});}
     private void verifyReady()throws Exception {
         if(scalar("SELECT count(*) FROM documents")>DOCUMENTS||scalar("SELECT count(*) FROM revisions")>REVISIONS
                 ||scalar("SELECT coalesce(sum(bytes),0) FROM revisions")>CORPUS_BYTES
                 ||scalar("SELECT coalesce(sum(artifact_bytes),0) FROM revisions")>ARTIFACT_BYTES
                 ||scalar("SELECT count(*) FROM jobs")>DOCUMENTS+5)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
-        try(var s=db.createStatement();var r=s.executeQuery("SELECT * FROM documents")){while(r.next()){
+        try(var s=statement("SELECT * FROM documents");var r=s.executeQuery()){while(r.next()){
             id(r.getString("id"));KnowledgeParser.filename(r.getString("title"));version(r.getString("version"));
             Instant.parse(r.getString("created"));Instant.parse(r.getString("updated"));}}
-        try(var s=db.createStatement();var r=s.executeQuery("SELECT * FROM revisions")){while(r.next()){
+        try(var s=statement("SELECT * FROM revisions");var r=s.executeQuery()){while(r.next()){
             var row=revision(r);Path file=source(row.documentId(),row.sourceRevision());PrivateKnowledgeDirectory.regular(file);PrivateKnowledgeDirectory.protect(file,false);
             if(Files.size(file)!=row.byteLength()||!KnowledgeParser.sourceDigest(file).equals(row.sourceDigest()))throw new IOException("Incomplete Knowledge source");
             KnowledgeParser.filename(row.originalFilename());
@@ -257,6 +291,9 @@ public final class KnowledgeStore implements AutoCloseable {
     }
     private boolean busy(String doc)throws SQLException {return scalar("SELECT count(*) FROM jobs WHERE doc_id=? AND state IN ('PENDING','PARSING')",doc)>0||scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0;}
     public synchronized void delete(String doc,String expected) {
+        root();publication(()->{deleteWithFiles(doc,expected);return null;});
+    }
+    private void deleteWithFiles(String doc,String expected) {
         id(doc);long requested=version(expected);
         sql(()->{if(scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0){
             if(scalar("SELECT expected_version FROM deletes WHERE doc_id=?",doc)!=requested)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
@@ -307,13 +344,18 @@ public final class KnowledgeStore implements AutoCloseable {
     }
     interface Operation<T>{T run()throws Exception;}
     private <T>T sql(Operation<T> work){try{return work.run();}catch(WorkspaceException e){throw e;}catch(Exception e){throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);}}
-    private <T>T transaction(Operation<T> work){return sql(()->{exec("BEGIN IMMEDIATE");try{T result=work.run();exec("COMMIT");return result;}catch(Exception e){try{exec("ROLLBACK");}catch(Exception ignored){}throw e;}});}
-    PreparedStatement statement(String sql,Object... args)throws SQLException {var s=db.prepareStatement(sql);for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);return s;}
+    private <T>T transaction(Operation<T> work){return sql(()->{if(postgresql())KnowledgePostgresql.begin(db,true);else exec("BEGIN IMMEDIATE");try{T result=work.run();exec("COMMIT");return result;}catch(Exception e){try{exec("ROLLBACK");}catch(Exception ignored){close();}throw e;}});}
+    private <T>T publication(Operation<T> work){return sql(()->{
+        if(!postgresql())return work.run();
+        exec("SET lock_timeout='3s'");exec("SELECT pg_advisory_lock(170017,3)");
+        try{return work.run();}finally{exec("SELECT pg_advisory_unlock(170017,3)");}
+    });}
+    PreparedStatement statement(String sql,Object... args)throws SQLException {var s=db.prepareStatement(postgresql()?KnowledgePostgresql.sql(sql):sql);for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);return s;}
     void exec(String sql,Object... args)throws SQLException{try(var s=statement(sql,args)){s.execute();}}
     long scalar(String sql,Object... args)throws SQLException{try(var s=statement(sql,args);var r=s.executeQuery()){if(!r.next())throw new SQLException();return r.getLong(1);}}
-    private void integrity()throws SQLException{for(String pragma:List.of("PRAGMA quick_check","PRAGMA foreign_key_check")){try(var s=db.createStatement();var r=s.executeQuery(pragma)){
+    private void integrity()throws SQLException{if(postgresql()){KnowledgePostgresql.verify(db);return;}for(String pragma:List.of("PRAGMA quick_check","PRAGMA foreign_key_check")){try(var s=db.createStatement();var r=s.executeQuery(pragma)){
         if(pragma.endsWith("quick_check")){if(!r.next()||!r.getString(1).equals("ok")||r.next())throw new SQLException();}else if(r.next())throw new SQLException();}}}
-    synchronized <T>T snapshot(Operation<T> work){return sql(()->{exec("BEGIN");try{T result=work.run();exec("COMMIT");return result;}catch(Exception e){exec("ROLLBACK");throw e;}});}
+    synchronized <T>T snapshot(Operation<T> work){return sql(()->{if(postgresql())KnowledgePostgresql.begin(db,false);else exec("BEGIN");try{T result=work.run();exec("COMMIT");return result;}catch(Exception e){exec("ROLLBACK");throw e;}});}
     synchronized void reconstructDocument(KnowledgeDocument d){transaction(()->{id(d.documentId());KnowledgeParser.filename(d.title());version(d.metadataVersion());
         if(!Set.of("ACTIVE","ARCHIVED").contains(d.status()))throw error(ErrorCode.KNOWLEDGE_BACKUP_INVALID);
         Instant.parse(d.createdAt());Instant.parse(d.updatedAt());

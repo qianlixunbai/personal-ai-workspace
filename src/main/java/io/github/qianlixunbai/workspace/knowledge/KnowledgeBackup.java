@@ -54,7 +54,7 @@ public final class KnowledgeBackup {
         byte[] buffer=new byte[65536];while(length>0){int n=input.read(buffer,0,(int)Math.min(length,buffer.length));if(n<0)throw new EOFException();if(n==0)continue;output.write(buffer,0,n);length-=n;}
     }
     public Metadata validate(InputStream input){synchronized(maintenance){return reconstruct(input,null);}}
-    public Metadata restore(InputStream input,String target){synchronized(maintenance){return reconstruct(input,target);}}
+    public Metadata restore(InputStream input,String target){if(active.postgresql())throw error(ErrorCode.KNOWLEDGE_RESTORE_FAILED);synchronized(maintenance){return reconstruct(input,target);}}
     private Metadata reconstruct(InputStream input,String targetText) {
         Path staging=null,target=null;boolean createdTarget=false;Set<Path> owned=new HashSet<>();
         try {

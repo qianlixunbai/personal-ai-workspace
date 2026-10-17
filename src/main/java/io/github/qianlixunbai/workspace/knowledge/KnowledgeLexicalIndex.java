@@ -42,11 +42,17 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
     public KnowledgeLexicalIndex(KnowledgeStore store){this(store,MAX_BYTES,LexicalChunker.MAX_CHUNKS);}
     KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks){
         this.store=store;this.maxBytes=maxBytes;this.maxChunks=maxChunks;
-        directory=store.root().resolve("index");staging=directory.resolve("staging");database=directory.resolve("lexical.db");
+        directory=store.postgresql()?null:store.root().resolve("index");staging=directory==null?null:directory.resolve("staging");database=directory==null?null:directory.resolve("lexical.db");
         store.onCorpusChanged(this::invalidate);
         try {
-            prepare();sqliteVersion=engine();var refs=store.searchCorpus();String current=fingerprint(refs,sqliteVersion);
-            if(Files.exists(database,LinkOption.NOFOLLOW_LINKS)){
+            if(store.postgresql())sqliteVersion="postgresql-token-bm25-1";else{prepare();sqliteVersion=engine();}
+            var refs=store.searchCorpus();String current=fingerprint(refs,sqliteVersion);
+            if(store.postgresql()){
+                try(var db=store.indexConnection()){var meta=PostgresqlKnowledgeIndex.metadata(db);if(!meta.entrySet().containsAll(versions().entrySet())||!current.equals(meta.get("fingerprint")))throw new SQLException();
+                    documentCount=Integer.parseInt(meta.get("documents"));chunkCount=Integer.parseInt(meta.get("chunks"));
+                    if(documentCount<0||documentCount>KnowledgeLimits.DOCUMENTS||chunkCount<0||chunkCount>maxChunks||scalar(db,"SELECT count(*) FROM workspace.knowledge_chunks")!=chunkCount)throw new SQLException();
+                    publishedFingerprint=current;state="READY";}
+            }else if(Files.exists(database,LinkOption.NOFOLLOW_LINKS)){
                 try(var db=DriverManager.getConnection("jdbc:sqlite:"+database)){var meta=verify(db);exec(db,"INSERT INTO lexical(lexical) VALUES('integrity-check')");if(!current.equals(meta.get("fingerprint")))throw new SQLException();
                     documentCount=Integer.parseInt(meta.get("documents"));chunkCount=Integer.parseInt(meta.get("chunks"));publishedFingerprint=current;state="READY";}
             }
@@ -93,6 +99,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         finally{running.set(false);if(rerun.get()&&!closed)requestRebuild();}
     }
     private void build()throws Exception {
+        if(store.postgresql()){buildPostgresql();return;}
         prepare();if(sqliteVersion==null)sqliteVersion=engine();
         var refs=store.searchCorpus();String identity=fingerprint(refs,sqliteVersion);
         Path candidate=staging.resolve("k2-"+UUID.randomUUID()+".candidate");PrivateKnowledgeDirectory.file(candidate);
@@ -132,8 +139,21 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         }catch(SQLException e){throw sqlFailure(e);}
         finally{if(Files.exists(candidate,LinkOption.NOFOLLOW_LINKS)){PrivateKnowledgeDirectory.regular(candidate);Files.delete(candidate);}}
     }
+    private void buildPostgresql()throws Exception {
+        synchronized(store){
+            try(var db=store.indexConnection()){
+                KnowledgePostgresql.begin(db,true);
+                try{
+                    var refs=store.searchCorpus();String identity=fingerprint(refs,sqliteVersion);
+                    int count=PostgresqlKnowledgeIndex.build(db,refs,ref->{if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_REBUILD_FAILED);return store.searchSource(ref);},maxChunks,maxBytes);
+                    exec(db,"COMMIT");
+                    synchronized(publication){publishedFingerprint=identity;documentCount=refs.size();chunkCount=count;failure=null;state="READY";}
+                }catch(Exception e){try{exec(db,"ROLLBACK");}catch(SQLException ignored){}throw e;}
+            }
+        }
+    }
     private static WorkspaceException sqlFailure(SQLException e){return error(e.getErrorCode()==13?ErrorCode.KNOWLEDGE_INDEX_LIMIT_EXCEEDED:ErrorCode.KNOWLEDGE_INDEX_REBUILD_FAILED);}
-    private Map<String,String> versions(){Map<String,String> v=new TreeMap<>();v.put("schema","1");v.put("chunker",LexicalChunker.VERSION);v.put("analyzer",LexicalAnalyzer.VERSION);v.put("ranking",RANKING_VERSION);v.put("sqlite",sqliteVersion);return v;}
+    private Map<String,String> versions(){Map<String,String> v=new TreeMap<>();v.put("schema","1");v.put("chunker",LexicalChunker.VERSION);v.put("analyzer",LexicalAnalyzer.VERSION);v.put("ranking",RANKING_VERSION);v.put(store.postgresql()?"engine":"sqlite",sqliteVersion);return v;}
     private Map<String,String> verify(Connection db)throws Exception {
         Map<String,String> meta=new TreeMap<>();try(var s=db.createStatement();var r=s.executeQuery("SELECT k,v FROM metadata")){while(r.next())meta.put(r.getString(1),r.getString(2));}
         var expected=versions();if(meta.size()!=8||!meta.entrySet().containsAll(expected.entrySet())||!meta.getOrDefault("fingerprint","").matches("[0-9a-f]{64}"))throw new SQLException();
@@ -166,7 +186,12 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         List<Row> rows=new ArrayList<>();
         try {
             synchronized(publication){if(!state.equals("READY")||!Objects.equals(current,publishedFingerprint))throw error(ErrorCode.KNOWLEDGE_INDEX_NOT_READY);
-                try(var db=read(database);var s=db.prepareStatement("SELECT c.document,c.revision,c.ordinal,c.start,c.end,c.first_line,c.last_line,c.heading FROM lexical JOIN chunks c ON c.id=lexical.rowid WHERE lexical MATCH ? ORDER BY bm25(lexical,4.0,2.0,1.0),c.document COLLATE BINARY,c.revision,c.ordinal LIMIT ?")){
+                if(store.postgresql()){
+                    try(var db=store.indexConnection()){
+                        for(var row:PostgresqlKnowledgeIndex.search(db,current,versions(),query.tokens(),limit,maxChunks,maxBytes))
+                            rows.add(new Row(row.document(),Long.toString(row.revision()),row.ordinal(),row.start(),row.end(),row.firstLine(),row.lastLine(),row.heading()));
+                    }
+                }else try(var db=read(database);var s=db.prepareStatement("SELECT c.document,c.revision,c.ordinal,c.start,c.end,c.first_line,c.last_line,c.heading FROM lexical JOIN chunks c ON c.id=lexical.rowid WHERE lexical MATCH ? ORDER BY bm25(lexical,4.0,2.0,1.0),c.document COLLATE BINARY,c.revision,c.ordinal LIMIT ?")){
                     try(var identity=db.prepareStatement("SELECT v FROM metadata WHERE k='fingerprint'");var value=identity.executeQuery()){
                         if(!value.next()||!current.equals(value.getString(1)))throw error(ErrorCode.KNOWLEDGE_INDEX_NOT_READY);}
                     s.setString(1,query.expression());s.setInt(2,limit);

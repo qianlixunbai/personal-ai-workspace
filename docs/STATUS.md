@@ -15,11 +15,13 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | F2.2-B Finance Account Integration | SOURCE READY / DATABASE PENDING |
 | F2.3-A1 PostgreSQL Environment | READY，仅本机环境，不属于 Git 源码安装内容 |
 | F2.3-A2 Finance Real SQL Verification | PARTIAL：真实 schema／SQL／数据库身份／事务通过；Windows 绑定文件发布受阻 |
-| Workspace SQLite → PostgreSQL migration | F2.3-B1 Memory/Conversation 真实 PostgreSQL 导入与 Store 读写通过；整体 PARTIAL，Knowledge／恢复／正式切换未完成 |
+| Workspace SQLite → PostgreSQL migration | B1 Memory/Conversation、B2 Knowledge 数据库主链路通过；整体 PARTIAL，受信文件生命周期／恢复／正式切换未完成 |
+| F2.3-B2 Knowledge PostgreSQL | 真实 PostgreSQL V2／合成迁移／Store 读写／检索通过；受信 Windows 文件发布与删除恢复未验收，整体 PARTIAL |
 
 Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
 实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
 本轮迁移源码、实际证据及剩余范围见 [F2.3-B1 Report](engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)。B1 不是数据库迁移完成或 Windows Runtime GO。
+B2 的实际执行与未执行范围见 [Knowledge PostgreSQL Report](engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B1 已保存为本地 commit，B2 保持未提交。
 Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。B1 仅执行合成测试数据的 workspace schema 迁移，未迁移正式数据或重跑 Finance 初始化；W1 后续开发继续 PAUSED。
 以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
 
