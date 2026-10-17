@@ -14,10 +14,11 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | F2.2-A Finance Infrastructure | READY |
 | F2.2-B Finance Account Integration | SOURCE READY / DATABASE PENDING |
 | F2.3-A1 PostgreSQL Environment | READY，仅本机环境，不属于 Git 源码安装内容 |
-| F2.3-A2 Finance Real SQL Verification | NOT STARTED |
+| F2.3-A2 Finance Real SQL Verification | PARTIAL：真实 schema／SQL／数据库身份／事务通过；Windows 绑定文件发布受阻 |
 | Workspace SQLite → PostgreSQL migration | NOT STARTED |
 
-Finance 默认关闭；A1 环境连接验证不等于 Finance schema、Account SQL、身份绑定、金额、隔离或事务验证。
+Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
+实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
 Finance 源码范围、来源记录与历史聚焦证据见 [Finance Module](../finance-domain/README.md)。本次收口不重跑历史测试或执行数据库迁移；W1 后续开发继续 PAUSED。
 以下 2026-10-11 及更早章节为历史快照，保留原裁定，不覆盖本节当前状态。
 

@@ -1,0 +1,113 @@
+{
+  "sourceRepository": "personal-finance-OS",
+  "sourceBranch": "zh-cn",
+  "sourceCommit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
+  "policy": "Byte-for-byte one-time copy V1-V21. Workspace owns future maintenance; no runtime dependency on the frozen repository. Historical SQL and checksums must not be rewritten.",
+  "files": [
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V1__baseline.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V1__baseline.sql",
+      "sha256": "74f0309c3493efcb4fad836811b59785a620d0408064cc9da3493bdb35456ee6"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V2__market_quotes.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V2__market_quotes.sql",
+      "sha256": "2418d05656ac56789fa7ab7576e1a9f9a78ca6c076d6b02ad9f18032874a589a"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V3__exchange_rates.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V3__exchange_rates.sql",
+      "sha256": "8ba5e99ea5aaea1926415b077b7537d3ef583428662128c1ad7d3e001ab233f5"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V4__investment_ledger_foundation.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V4__investment_ledger_foundation.sql",
+      "sha256": "8b4c74341a270765c6ca9787402056e9be9574aff1d31fa0a0da63dcac3d6dd1"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V5__harden_investment_ledger_constraints.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V5__harden_investment_ledger_constraints.sql",
+      "sha256": "4ccd5e3f7aa3d69d62022eedbc448bfbb0a23fb60f3fcb5cc30f1ea940bd6484"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V6__align_asset_projection_precision.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V6__align_asset_projection_precision.sql",
+      "sha256": "3ca02928a6704146c8653eb54c15bda393da215dadcaaeab5497ad805c6911e8"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V7__create_investment_instruments.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V7__create_investment_instruments.sql",
+      "sha256": "87782f914b1d32c9b5f16db1538997a3d92c7307acab214585ca9453728da3d9"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V8__bind_asset_positions_to_instruments.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V8__bind_asset_positions_to_instruments.sql",
+      "sha256": "f2d979d47b5a7c377eae362ad79f95741d9edb8a9fac0d980e433b3430b20192"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V9__harden_opening_position_migration.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V9__harden_opening_position_migration.sql",
+      "sha256": "51693db22326851cb1e516c7364a89d37306a71c675f0d72c1e279000a2226a0"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V10__harden_investment_write_receipts.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V10__harden_investment_write_receipts.sql",
+      "sha256": "5537301230998638ae4f3c1b46fd8122709df771979f0f02c80ebd908421853f"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V11__harden_dividend_write_receipts.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V11__harden_dividend_write_receipts.sql",
+      "sha256": "1e89224fe672df5aff075ef4049f5c79432caa5686fa345c9a4127a61bb51358"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V12__add_append_only_investment_reversals.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V12__add_append_only_investment_reversals.sql",
+      "sha256": "88e39b1a883a529b23b5f1d30a0541a4c981d60c95a107685c7e168199889a6d"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V13__add_investment_transaction_replacements.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V13__add_investment_transaction_replacements.sql",
+      "sha256": "66815db834c04ce20b7e0a2988cc263d641f282bea17e4e3dae5f3774ad380d1"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V14__add_transaction_import_backend_foundation.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V14__add_transaction_import_backend_foundation.sql",
+      "sha256": "457e90a3a58534a609e1af874b3995ec984872108da2b53428ae4dd80fe638f6"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V15__allow_cleared_transaction_import_file_references.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V15__allow_cleared_transaction_import_file_references.sql",
+      "sha256": "ffccd1e9da078a63190e45f7ea1d2d0a3f7beed035c3b4af0741889c6bc83092"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V16__add_transaction_import_confirm_receipt.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V16__add_transaction_import_confirm_receipt.sql",
+      "sha256": "54b286e0473072749e34ccc6feb356e83d956a9187a557f976387dbc80fc834f"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V17__repair_transaction_import_receipt_digest_timestamps.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V17__repair_transaction_import_receipt_digest_timestamps.sql",
+      "sha256": "b103e73b0d11eb98922f6de609f8f78742056a61f0f419f4a91d5de70a358de1"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V18__add_transaction_create_idempotency.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V18__add_transaction_create_idempotency.sql",
+      "sha256": "ac32f3ebdb083ef09805180fd7b0143a652a93210919e30d71c3efc77ba0ac32"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V19__add_transfer_ledger_foundation.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V19__add_transfer_ledger_foundation.sql",
+      "sha256": "7497327d865a284182bef0050dfa401c0019fc27b8fb4a3209420cba674a7044"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V20__decouple_import_receipt_transaction_lifecycle.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V20__decouple_import_receipt_transaction_lifecycle.sql",
+      "sha256": "cd67d816c09288fb0055b0499b59b9f46ed478b916e115f920ea063c3c073fd4"
+    },
+    {
+      "sourcePath": "backend/src/main/resources/db/migration/V21__add_import_file_lifecycle_registry.sql",
+      "workspacePath": "finance-domain/src/main/resources/db/finance/migration/V21__add_import_file_lifecycle_registry.sql",
+      "sha256": "2285d93ba9671c87cec048864f266db9b8b47d379c9df42d70ec092ffdbd7c3b"
+    }
+  ]
+}

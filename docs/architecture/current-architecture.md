@@ -9,7 +9,8 @@
 Finance 原仓库冻结、只读，Workspace 是后续源码集成主线；`workspace-application → finance-domain`，Finance 通过专用 PostgreSQL DataSource、MyBatis 与事务管理器显式装配，默认关闭，不自动执行 Flyway。
 F2.1 Finance Foundation 与 F2.2-A Finance Infrastructure — READY；F2.2-B Finance Account Integration — **SOURCE READY / DATABASE PENDING**。
 F2.3-A1 PostgreSQL Environment — READY，仅为本机环境，不属于源码安装内容，也不代表 Finance 数据库执行已验证。
-F2.3-A2 Finance Real SQL Verification 与 Workspace SQLite → PostgreSQL migration — **NOT STARTED**。
+F2.3-A2 Finance Real SQL Verification — **PARTIAL**：独立测试库真实 schema、Account SQL、数据库身份与事务验证通过；Windows 私有绑定文件发布未通过，见 [报告](../engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
+Workspace SQLite → PostgreSQL migration — **NOT STARTED**。
 现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
 以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
 

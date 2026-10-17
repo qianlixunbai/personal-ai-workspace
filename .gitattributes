@@ -6,3 +6,5 @@
 *.yml text eol=lf
 *.xml text eol=lf
 *.properties text eol=lf
+# Preserve the frozen Finance migration bytes and recorded SHA-256 across checkouts.
+/finance-domain/src/main/resources/db/finance/migration/*.sql -text

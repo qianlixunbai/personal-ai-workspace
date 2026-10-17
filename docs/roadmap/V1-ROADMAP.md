@@ -9,8 +9,8 @@
 Finance 原仓库已冻结、只读保留，后续源码集成在 Workspace 进行。
 F2.1 Finance Foundation — READY；F2.2-A Finance Infrastructure — READY；F2.2-B Finance Account Integration — **SOURCE READY / DATABASE PENDING**。
 F2.3-A1 PostgreSQL Environment — READY，仅为操作系统本地环境，不属于 Workspace Git 源码安装内容。
-F2.3-A2 Finance Real SQL Verification — **NOT STARTED**；后续受控 schema、Account SQL、身份绑定、BigDecimal、隔离和事务验证须独立执行。
-Workspace SQLite → PostgreSQL migration — **NOT STARTED**。本次 G1 不启动 A2、数据迁移或产品发布；W1 后续开发继续 PAUSED。
+F2.3-A2 Finance Real SQL Verification — **PARTIAL**；真实 schema、Account SQL、数据库身份、BigDecimal、隔离和事务验证已完成，Windows 绑定文件发布仍受阻，见 [报告](../engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
+Workspace SQLite → PostgreSQL migration — **NOT STARTED**。未进入 F2.3-B、数据迁移或产品发布；W1 后续开发继续 PAUSED。
 当前状态以 [STATUS](../STATUS.md) 为准；以下 2026-10-11 及更早章节保留历史计划与裁定，不作为当前进度。
 
 ## Historical MMF-3 closing / V1 Vision scope preparation（2026-10-11）

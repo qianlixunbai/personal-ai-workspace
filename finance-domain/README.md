@@ -1,4 +1,33 @@
-# Finance Module — F2.2-B
+# Finance Module — F2.3-A2 PARTIAL
+
+## F2.3-A2 当前结果（2026-10-17）
+
+真实 PostgreSQL 17.11 测试库 `personal_ai_workspace_test` 已从空库用 Flyway 12.4.0
+完整初始化 V1–V21。原始 SQL 的一次性副本与 SHA-256 见
+[migration-provenance.json](migration-provenance.json)；Git 对这些 SQL 禁用换行转换，保留原始字节。
+Workspace 独立维护副本，运行和构建均不读取冻结 Finance 仓库。
+
+真实 Account SQL、MyBatis/Plus、精确 BigDecimal/CNY、双向用户隔离、数据库身份指纹／ACTIVE
+校验和 Finance 只读 REPEATABLE_READ／并发快照／失败回滚／连接释放验证通过。
+仅执行一次聚焦 Maven 集成测试，BUILD SUCCESS；没有业务代码改动或新依赖。
+
+**整体仍为 PARTIAL**：独立 JVM 中真实 `LocalFinanceProfile` 文件发布返回
+`FINANCE_BINDING_INVALID`；此路径依赖 Windows 私有 ACL／Native Gate，未放宽准入。
+数据库绑定校验使用真实 PostgreSQL 和真实绑定解析器，但文件读写端采用替代夹具。
+不得将该结果计为真实绑定文件验收、首次日常绑定交付或完整 Runtime GO。
+默认 Finance／Flyway 关闭、普通启动不迁移、MMF-3 PENDING 均保留。
+
+本地复用：先在 Windows PowerShell 运行
+`scripts/verification/prepare-finance-postgresql-test.ps1 -CredentialsOnly`，验证两个已有账号并私有暂存凭据，
+再运行 `scripts/verification/run-finance-postgresql-test.ps1`。
+runner 在成功或失败后删除临时凭据；不会保留管理员密码。
+首次空库的管理员准备脚本仅在确认目标／空状态后创建专用迁移角色；已有角色时停止，不重复初始化。
+复跑测试仅验证已完整迁移的 V1–V21 history，不对未知／部分 schema 再次 migrate。
+测试只删除本次生成的合成用户／账户，不执行 clean、repair、baseline 或删除数据库。
+
+完整权限、实际证据与剩余条件见
+[F2.3-A2 Report](../docs/engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
+以下 F2.2-B/A 内容为历史阶段记录。
 
 普通 Maven JAR，接入 Workspace 正式 reactor；只有 `workspace-application` 使用 Spring Boot
 可执行打包。应用源码仍位于根 `src/`，默认输出仍为根 `target/`，JAR 名称及既有启动入口保留。
@@ -16,7 +45,7 @@ Personal Finance OS：`zh-cn`，提交 `c6c87a0627b746e70a45b1c7896f63defd76a810
 保留 BigDecimal、CNY 过滤、userId 隔离、SQL 和 Mapper 所有方法，包括内部写方法。
 不建立同步机制，构建不读取原 Finance 仓库，也不依赖其绝对路径或 JAR。
 
-## F2.2-B 当前状态：SOURCE READY / DATABASE PENDING
+## F2.2-B 历史状态：SOURCE READY / DATABASE PENDING
 
 已建立正式 Native 账户查询链；用户明确确认没有授权隔离测试数据库，因此本轮未连接 PostgreSQL，
 没有真实 SQL／数据库事务／金额与用户隔离执行证据，也未在本机创建真实绑定。Finance 仍默认关闭。
