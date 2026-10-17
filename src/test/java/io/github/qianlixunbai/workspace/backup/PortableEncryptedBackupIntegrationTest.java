@@ -29,16 +29,25 @@ import static io.github.qianlixunbai.workspace.backup.PortableEncryptedBackup.*;
 @EnabledIfSystemProperty(named="encrypted.backup.test",matches="true")
 class PortableEncryptedBackupIntegrationTest {
     @Test void streamedAuthenticatedPayloadStillRejectsUnsafePathsAndExpansionBeforeTargetConfig() throws Exception {
-        Path config=Path.of(".runtime/workspace/b3e-test-credentials.json");privatePath(config,false);
+        Path config=Path.of(System.getProperty("encrypted.backup.config",".runtime/workspace/b3e-test-credentials.json"));privatePath(config,false);
         var c=JSON.readTree(Files.readAllBytes(config));Path source=Path.of(c.path("backupRoot").asString());
         Path root=Path.of(c.path("maintenanceRoot").asString()).resolve("streaming-"+UUID.randomUUID());directory(root);
-        var secure=new PortableEncryptedBackup(Path.of(c.path("tools").asString()));
+        var secure=new PortableEncryptedBackup(Path.of(c.path("tools").asString()),StagingProtection.SYNTHETIC_ONLY);
         var plain=new UnifiedPostgresqlBackup(Path.of(c.path("tools").asString()));c=null;
         char[] password=randomPassword();
         try {
             Path encrypted=root.resolve("encrypted");secure.encrypt(source,encrypted,password.clone());
             var decrypted=secure.decrypt(encrypted,root.resolve("decrypted"),password.clone());
             assertEquals(plain.validate(source),decrypted.manifest());assertTrue(Files.exists(root.resolve("decrypted/DECRYPTION_VERIFIED")));
+            MaintenanceStaging.clean(root.resolve("decrypted"));
+            Path defaultProbe=root.resolve("default-policy-probe");
+            try {
+                new PortableEncryptedBackup(Path.of("D:/PostgreSQL/bin")).decrypt(encrypted,defaultProbe,password.clone());
+                MaintenanceStaging.clean(defaultProbe);System.out.println("B3F volume policy: OS_VERIFIED_ENCRYPTED_VOLUME");
+            }catch(IOException denied){
+                assertFalse(Files.exists(defaultProbe));System.out.println("B3F volume policy: UNVERIFIED_DEFAULT_DENIED_BEFORE_PLAINTEXT");
+            }
+            interruptedEncryption(secure,source,root,password);
             for(String attack:List.of("traversal","expansion")) {
                 Path hostile=root.resolve(attack);hostileAuthenticatedZip(hostile,password,attack.equals("expansion"));
                 Path staging=root.resolve("reject-"+attack);
@@ -46,12 +55,12 @@ class PortableEncryptedBackupIntegrationTest {
                 assertTrue(failure.getMessage().contains("INTERNAL_VALIDATION"),failure::getMessage);
                 assertFalse(Files.exists(staging.resolve("DECRYPTION_VERIFIED")));assertFalse(Files.exists(staging.resolve("candidate")));
                 assertFalse(Files.exists(root.resolve("escape")));
-                if(attack.equals("expansion"))assertTrue(Files.size(staging.resolve("backup/database.dump"))<=Files.size(hostile.resolve(PAYLOAD)));
+                assertFalse(Files.exists(staging.resolve("backup")));assertTrue(Files.exists(staging.resolve("PLAINTEXT_CLEANED")));
             }
         }finally{Arrays.fill(password,'\0');}
     }
     /** Standard-library hostile ZIP fixture inside standard BC OpenPGP, with the normal KDF strength. */
-    private static void hostileAuthenticatedZip(Path target,char[] password,boolean expansion) throws Exception {
+    static void hostileAuthenticatedZip(Path target,char[] password,boolean expansion) throws Exception {
         directory(target);Path payload=target.resolve(PAYLOAD);write(payload,new byte[0]);
         var builder=new BcPGPDataEncryptorBuilder(SymmetricKeyAlgorithmTags.AES_256).setUseV6AEAD().setWithAEAD(AEADAlgorithmTags.GCM,16);
         var generator=new PGPEncryptedDataGenerator(builder);generator.setForceSessionKey(true);
@@ -66,13 +75,13 @@ class PortableEncryptedBackupIntegrationTest {
         write(target.resolve(COMPLETE),JSON.writeValueAsBytes(completion));
     }
     @Test void authenticatedCollectionBeforeTargetThenRealStoresAndIndependentProcess() throws Exception {
-        Path config=Path.of(".runtime/workspace/b3e-test-credentials.json");privatePath(config,false);
+        Path config=Path.of(System.getProperty("encrypted.backup.config",".runtime/workspace/b3e-test-credentials.json"));privatePath(config,false);
         var c=JSON.readTree(Files.readAllBytes(config));
         Path source=Path.of(c.path("backupRoot").asString()),parent=Path.of(c.path("maintenanceRoot").asString());
         Path root=parent.resolve("attempt-"+UUID.randomUUID());directory(root);
         var owner=new Endpoint(c.path("targetDatabase").asString(),c.path("ownerUsername").asString(),c.path("ownerPassword").asString());
         var app=new Endpoint(owner.database(),c.path("appUsername").asString(),c.path("appPassword").asString());
-        var plain=new UnifiedPostgresqlBackup(Path.of(c.path("tools").asString()));var secure=new PortableEncryptedBackup(Path.of(c.path("tools").asString()));c=null;
+        var plain=new UnifiedPostgresqlBackup(Path.of(c.path("tools").asString()));var secure=new PortableEncryptedBackup(Path.of(c.path("tools").asString()),StagingProtection.SYNTHETIC_ONLY);c=null;
         var original=plain.validate(source);assertEquals(2,original.snapshot().tables().get("public.users").rows());
         assertEquals(1,original.snapshot().tables().get("workspace.conversations").rows());
         char[] password=randomPassword();Path encrypted=root.resolve("encrypted");
@@ -109,7 +118,7 @@ class PortableEncryptedBackupIntegrationTest {
                     mode.equals("kdf-cost")?"CONTAINER_VALIDATION":"AUTHENTICATED_DECRYPTION");
             }
             Path wrongVersion=root.resolve("wrong-version");cloneEncrypted(encrypted,wrongVersion);
-            var future=new Completion(complete.format(),2,complete.status(),complete.profile(),PAYLOAD,complete.bytes(),complete.sha256());
+            var future=new Completion(complete.format(),3,complete.status(),complete.profile(),PAYLOAD,complete.bytes(),complete.sha256());
             Files.write(wrongVersion.resolve(COMPLETE),JSON.writeValueAsBytes(future));
             rejectBeforeTarget(secure,wrongVersion,root.resolve("reject-version"),password.clone(),absentConfig,"CONTAINER_VALIDATION");
             interruptedEncryption(secure,source,root,password);
@@ -119,7 +128,7 @@ class PortableEncryptedBackupIntegrationTest {
             var result=secure.restore(encrypted,root.resolve("restore"),password.clone(),config,true);
             assertEquals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"),result);
             assertTrue(Files.exists(root.resolve("restore/DECRYPTION_VERIFIED")));
-            var decrypted=plain.validate(root.resolve("restore/backup"));assertEquals(original,decrypted);
+            assertFalse(Files.exists(root.resolve("restore/backup")));assertTrue(Files.exists(root.resolve("restore/PLAINTEXT_CLEANED")));
             Snapshot restored;
             try(var db=owner.dataSource().getConnection()) {
                 restored=snapshot(db);histories(db);
@@ -166,10 +175,10 @@ class PortableEncryptedBackupIntegrationTest {
         assertTrue(error.getMessage().contains(expected),error::getMessage);cleared(password);
         assertFalse(Files.exists(stage.resolve("backup")));assertFalse(Files.exists(stage.resolve("DECRYPTION_VERIFIED")));assertFalse(Files.exists(stage.resolve("candidate")));
     }
-    private static void cloneEncrypted(Path from,Path to) throws Exception {
+    static void cloneEncrypted(Path from,Path to) throws Exception {
         directory(to);for(String name:List.of(PAYLOAD,COMPLETE,"ENCRYPTED_BACKUP_INCOMPLETE"))copy(from.resolve(name),to.resolve(name));
     }
-    private static char[] randomPassword() {
+    static char[] randomPassword() {
         var random=new SecureRandom();char[] password=new char[48];String alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         for(int i=0;i<password.length;i++)password[i]=alphabet.charAt(random.nextInt(alphabet.length()));return password;
     }
@@ -203,7 +212,7 @@ class PortableEncryptedBackupIntegrationTest {
         try(var input=new DataInputStream(System.in)) {
             int length=input.readInt();if(length<16||length>1024)throw new IOException();password=new char[length];
             for(int i=0;i<length;i++)password[i]=input.readChar();
-            var result=new PortableEncryptedBackup(Path.of("D:/PostgreSQL/bin")).decrypt(Path.of(args[0]),Path.of(args[1]),password);
+            var result=new PortableEncryptedBackup(Path.of("D:/PostgreSQL/bin"),StagingProtection.SYNTHETIC_ONLY).decrypt(Path.of(args[0]),Path.of(args[1]),password);
             if(result.manifest().knowledgeFiles().size()!=7)throw new IOException();
             System.out.println("INDEPENDENT_DECRYPTION_VERIFIED");
         }finally{if(password!=null)Arrays.fill(password,'\0');}

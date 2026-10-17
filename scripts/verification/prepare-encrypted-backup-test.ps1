@@ -4,6 +4,8 @@ param([switch]$Finish)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if ($PSVersionTable.PSEdition -ne 'Desktop') { throw 'Use Windows PowerShell 5.1.' }
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Management/Microsoft.PowerShell.Management.psd1') -ErrorAction Stop
 $repo=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $repo 'scripts\release\release-functions.ps1')
 $private=Join-Path $repo '.runtime\workspace'
@@ -77,6 +79,13 @@ SELECT json_build_object('database',current_database(),'host',host(inet_server_a
     if($facts.database -ne 'postgres' -or $facts.host -ne '127.0.0.1' -or $facts.port -ne 5432 -or
        $facts.major -ne 17 -or $facts.data.Replace('\','/').TrimEnd('/') -ine 'D:/PostgreSQL/data') { throw 'Unexpected local PostgreSQL instance.' }
     $suffix=[Guid]::NewGuid().ToString('N').Substring(0,12)
+    # Newly created synthetic staging, with a private DACL from creation; no existing ACL repair.
+    $root=Join-Path 'C:\' ('PAW-B3E-'+$suffix)
+    if(Test-Path -LiteralPath $root){throw 'Maintenance root exists.'}
+    $rootAcl=[Security.AccessControl.DirectorySecurity]::new()
+    $rootAcl.SetAccessRuleProtection($true,$false)
+    $rootAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.WindowsIdentity]::GetCurrent().User,'FullControl',[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))
+    [IO.DirectoryInfo]::new($root).Create($rootAcl); Assert-Private $root
     $owner='workspace_b3_owner_'+$suffix; $app='workspace_b3_app_'+$suffix
     $database='personal_ai_workspace_b3_'+$suffix; $receipt='workspace-b3:'+([Guid]::NewGuid().ToString())
     $ownerPassword=New-TaskPassword; $appPassword=New-TaskPassword
@@ -88,8 +97,6 @@ CREATE ROLE $app LOGIN PASSWORD '$appPassword' NOSUPERUSER NOCREATEDB NOCREATERO
 "@ | Out-Null
     Invoke-Admin 'postgres' "CREATE DATABASE $database WITH OWNER=$owner TEMPLATE=template0 ENCODING='UTF8';" | Out-Null
     Invoke-Admin $database "COMMENT ON DATABASE $database IS '$receipt'; REVOKE ALL ON DATABASE $database FROM PUBLIC; GRANT CONNECT ON DATABASE $database TO $app; REVOKE ALL ON SCHEMA public FROM PUBLIC;" | Out-Null
-    $root=Join-Path $private ('b3e-'+$suffix)
-    [IO.Directory]::CreateDirectory($root) | Out-Null; Set-ReleasePrivateAcl $root $true; Assert-Private $root
     $json=@{targetDatabase=$database;ownerUsername=$owner;ownerPassword=$ownerPassword;appUsername=$app;appPassword=$appPassword
         ownershipReceipt=$receipt;maintenanceRoot=$root;tools='D:\PostgreSQL\bin'
         backupRoot=(Join-Path $private 'b3-ffb4fd708e51\backup')} | ConvertTo-Json -Compress

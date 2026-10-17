@@ -13,20 +13,49 @@ import java.util.*;
 import java.util.zip.*;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 
-/** Standard RFC 9580 OpenPGP around the complete, unchanged B3 synthetic collection.
+/** Standard RFC 9580 OpenPGP around a B3 v1 collection or direct v2 snapshot stream.
  * No crypto protocol implementation, DPAPI, native tool, Runtime bean or HTTP endpoint.
  * Private disk staging remains necessary on decryption; production personal-data readiness is pending.
  */
 public final class PortableEncryptedBackup {
     public static final String FORMAT="personal-ai-workspace.openpgp-backup";
     static final String LITERAL="workspace-b3-v1.zip",PAYLOAD="backup.pgp",COMPLETE="ENCRYPTED_BACKUP_COMPLETE.json";
+    private static final String STREAM_LITERAL="workspace-b3-v2.zip";
     static final long MAX_BYTES=1L<<40;
     private static final int BUFFER=65536,MAX_ENTRIES=1004;
     private final UnifiedPostgresqlBackup plain;
-    public PortableEncryptedBackup(Path postgresqlTools){plain=new UnifiedPostgresqlBackup(postgresqlTools);}
+    public enum StagingProtection { REQUIRE_ENCRYPTED_VOLUME, SYNTHETIC_ONLY }
+    private final StagingProtection stagingProtection;
+    public PortableEncryptedBackup(Path postgresqlTools){this(postgresqlTools,StagingProtection.REQUIRE_ENCRYPTED_VOLUME);}
+    public PortableEncryptedBackup(Path postgresqlTools,StagingProtection protection){
+        plain=new UnifiedPostgresqlBackup(postgresqlTools);stagingProtection=Objects.requireNonNull(protection);
+    }
     public record Completion(String format,int version,String status,String profile,String payload,long bytes,String sha256) {}
     public record Decrypted(Path backup,UnifiedPostgresqlBackup.Manifest manifest) {
         @Override public String toString(){return "DecryptedBackup[private]";}
+    }
+
+    /** Explicit stopped-writers maintenance only. The source admission remains synthetic-only until B4.
+     * The only on-disk output is ciphertext. Snapshot/handles and the AEAD stream close before publication.
+     */
+    public Completion backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase) throws IOException {
+        String stage="DIRECT_BACKUP_ADMISSION";
+        try {
+            password(passphrase);Path root=knowledgeRoot.toAbsolutePath().normalize();encrypted=encrypted.toAbsolutePath().normalize();
+            require(writersStopped&&!root.startsWith(encrypted)&&!encrypted.startsWith(root));stagingParent(encrypted);
+            require(!Files.exists(encrypted,LinkOption.NOFOLLOW_LINKS));
+            directory(encrypted);write(encrypted.resolve("ENCRYPTED_BACKUP_INCOMPLETE"),new byte[0]);
+            Path pending=encrypted.resolve(PAYLOAD+".pending");write(pending,new byte[0]);stage="DIRECT_SNAPSHOT_STREAM";
+            try(var file=FileChannel.open(pending,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+                encryptZip(Channels.newOutputStream(file),passphrase,STREAM_LITERAL,zip->plain.stream(source,root,writersStopped,zip));file.force(true);
+            }
+            require(!Thread.currentThread().isInterrupted());
+            Files.move(pending,encrypted.resolve(PAYLOAD),StandardCopyOption.ATOMIC_MOVE);
+            var result=new Completion(FORMAT,2,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",PAYLOAD,
+                Files.size(encrypted.resolve(PAYLOAD)),digest(encrypted.resolve(PAYLOAD)));
+            stage="COMPLETION_PUBLICATION";publish(encrypted.resolve(COMPLETE),UnifiedPostgresqlBackup.JSON.writeValueAsBytes(result));return result;
+        }catch(Exception failure){throw rejected(stage,failure);}
+        finally{clear(passphrase);}
     }
 
     /** Consumes/clears the caller's passphrase array, including failures. Never overwrites a collection. */
@@ -59,6 +88,19 @@ public final class PortableEncryptedBackup {
         for(var file:manifest.knowledgeFiles())names.add("knowledge/"+file.path());return List.copyOf(names);
     }
     private static void encryptBundle(List<String> names,List<FileChannel> sources,OutputStream output,char[] password) throws Exception {
+        encryptZip(output,password,LITERAL,zip->{
+            byte[] buffer=new byte[BUFFER];
+            try {
+                for(int i=0;i<names.size();i++) {
+                    var entry=new ZipEntry(names.get(i));entry.setTime(0);zip.putNextEntry(entry);
+                    var source=sources.get(i);source.position(0);var input=Channels.newInputStream(source);int n;
+                    while((n=input.read(buffer))!=-1){require(!Thread.currentThread().isInterrupted());zip.write(buffer,0,n);}zip.closeEntry();
+                }
+            }finally{Arrays.fill(buffer,(byte)0);}
+        });
+    }
+    @FunctionalInterface private interface ZipContents {void write(ZipOutputStream zip) throws Exception;}
+    private static void encryptZip(OutputStream output,char[] password,String literalName,ZipContents contents) throws Exception {
         var random=new SecureRandom();var builder=new BcPGPDataEncryptorBuilder(SymmetricKeyAlgorithmTags.AES_256)
             .setUseV6AEAD().setWithAEAD(AEADAlgorithmTags.GCM,16).setSecureRandom(random);
         var generator=new PGPEncryptedDataGenerator(builder);generator.setForceSessionKey(true);
@@ -69,50 +111,53 @@ public final class PortableEncryptedBackup {
             @Override public void close() throws IOException{flush();}
         };
         try(var crypt=generator.open(shield,new byte[BUFFER]);
-            var literal=new PGPLiteralDataGenerator().open(crypt,PGPLiteralData.BINARY,LITERAL,new Date(0),new byte[BUFFER]);
-            var zip=new ZipOutputStream(literal,StandardCharsets.UTF_8)) {
-            zip.setLevel(Deflater.NO_COMPRESSION);byte[] buffer=new byte[BUFFER];
-            try {
-                for(int i=0;i<names.size();i++) {
-                    var entry=new ZipEntry(names.get(i));entry.setTime(0);zip.putNextEntry(entry);
-                    var source=sources.get(i);source.position(0);var input=Channels.newInputStream(source);int n;
-                    while((n=input.read(buffer))!=-1)zip.write(buffer,0,n);zip.closeEntry();
-                }
-            }finally{Arrays.fill(buffer,(byte)0);}
+            var literal=new PGPLiteralDataGenerator().open(crypt,PGPLiteralData.BINARY,literalName,new Date(0),new byte[BUFFER]);
+            var bounded=new FilterOutputStream(literal){
+                long bytes;
+                @Override public void write(int value) throws IOException{bytes++;require(bytes<=MAX_BYTES);out.write(value);}
+                @Override public void write(byte[] b,int off,int len) throws IOException{bytes=Math.addExact(bytes,len);require(bytes<=MAX_BYTES);out.write(b,off,len);}
+            };
+            var zip=new ZipOutputStream(bounded,StandardCharsets.UTF_8)) {
+            zip.setLevel(Deflater.NO_COMPRESSION);contents.write(zip);
         }
     }
 
-    /** Entire message and final AEAD tag must authenticate before any ZIP entry is extracted.
-     * A failure keeps only an explicitly incomplete, private staging directory; no DB API is called.
+    /** Pass 1 authenticates to a null sink. Pass 2 extracts from the same pinned ciphertext.
+     * No plaintext ZIP exists. A failure removes only this operation's temporary backup subtree.
      */
     public Decrypted decrypt(Path encrypted,Path staging,char[] passphrase) throws IOException {
-        String stage="CONTAINER_VALIDATION";
+        String stage="CONTAINER_VALIDATION";boolean created=false;
         try {
             password(passphrase);encrypted=encrypted.toAbsolutePath().normalize();staging=staging.toAbsolutePath().normalize();
-            require(!staging.startsWith(encrypted)&&!encrypted.startsWith(staging));stagingParent(staging);
+            require(!staging.startsWith(encrypted)&&!encrypted.startsWith(staging));
+            MaintenanceStaging.admit(staging,stagingProtection==StagingProtection.SYNTHETIC_ONLY);
             var completion=completion(encrypted);
             Decrypted result;
             try(var receipt=pin(encrypted.resolve(COMPLETE));var payload=pin(encrypted.resolve(PAYLOAD))) {
                 require(completion.equals(completion(encrypted)));profile(payload);payload.position(0);
                 long budget=Math.min(MAX_BYTES,completion.bytes);
-                require(Files.getFileStore(staging.getParent()).getUsableSpace()>Math.multiplyExact(budget,3)+1048576);
-                directory(staging);write(staging.resolve("DECRYPTION_INCOMPLETE"),new byte[0]);
-                Path pending=staging.resolve("bundle.zip.pending");write(pending,new byte[0]);stage="AUTHENTICATED_DECRYPTION";
-                try(var file=FileChannel.open(pending,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-                    decryptBundle(Channels.newInputStream(payload),Channels.newOutputStream(file),passphrase,budget);file.force(true);
-                }
-                Files.move(pending,staging.resolve("bundle.zip"),StandardCopyOption.ATOMIC_MOVE);
-                stage="INTERNAL_VALIDATION";Path backup=staging.resolve("backup");extract(staging.resolve("bundle.zip"),backup,budget);
-                var manifest=plain.validate(backup);
+                require(Files.getFileStore(staging.getParent()).getUsableSpace()>Math.multiplyExact(budget,2)+1048576);
+                directory(staging);created=true;write(staging.resolve("DECRYPTION_INCOMPLETE"),new byte[0]);stage="AUTHENTICATED_DECRYPTION";
+                String literal=completion.version==1?LITERAL:STREAM_LITERAL;
+                decryptBundle(Channels.newInputStream(payload),passphrase,literal,input->transfer(input,OutputStream.nullOutputStream(),budget));
+                payload.position(0);
+                stage="INTERNAL_VALIDATION";Path backup=staging.resolve("backup");
+                decryptBundle(Channels.newInputStream(payload),passphrase,literal,input->{extract(input,backup,budget);transfer(input,OutputStream.nullOutputStream(),budget);});
+                var manifest=plain.validate(backup,true);
+                require(completion.version==1?manifest.formatVersion()==1:manifest.formatVersion()==2);
                 result=new Decrypted(backup,manifest);
             }
             // All input handles close successfully before the final durable verification receipt.
             stage="DECRYPTION_PUBLICATION";
-            publish(staging.resolve("DECRYPTION_VERIFIED"),digest(result.backup.resolve("manifest.json")).getBytes(StandardCharsets.US_ASCII));return result;
-        }catch(Exception failure){throw rejected(stage,failure);}
+            publish(staging.resolve("DECRYPTION_VERIFIED"),"AUTHENTICATION_AND_CONTENTS_VERIFIED".getBytes(StandardCharsets.US_ASCII));return result;
+        }catch(Exception failure){
+            if(created)try{MaintenanceStaging.clean(staging);}catch(IOException cleanup){throw new IOException("Encrypted backup rejected: "+stage+"; PLAINTEXT_CLEANUP_REQUIRED; no activation");}
+            throw rejected(stage,failure);
+        }
         finally{clear(passphrase);}
     }
-    private static void decryptBundle(InputStream input,OutputStream output,char[] password,long budget) throws Exception {
+    @FunctionalInterface private interface ClearContents {void read(InputStream input) throws Exception;}
+    private static void decryptBundle(InputStream input,char[] password,String literalName,ClearContents contents) throws Exception {
         var objects=new BcPGPObjectFactory(input);Object first=objects.nextObject();
         require(first instanceof PGPEncryptedDataList);
         var list=(PGPEncryptedDataList)first;require(list.size()==1&&list.get(0) instanceof PGPPBEEncryptedData);
@@ -120,8 +165,8 @@ public final class PortableEncryptedBackup {
         var decryptor=new BcPBEDataDecryptorFactory(password,new BcPGPDigestCalculatorProvider());
         try(var clear=data.getDataStream(decryptor)) {
             var inner=new BcPGPObjectFactory(clear);Object literal=inner.nextObject();require(literal instanceof PGPLiteralData);
-            var file=(PGPLiteralData)literal;require(file.getFormat()==PGPLiteralData.BINARY&&file.getFileName().equals(LITERAL));
-            transfer(file.getDataStream(),output,budget);
+            var file=(PGPLiteralData)literal;require(file.getFormat()==PGPLiteralData.BINARY&&file.getFileName().equals(literalName));
+            contents.read(file.getDataStream());
             require(inner.nextObject()==null);require(clear.read()==-1);require(data.verify());
             require(objects.nextObject()==null); // No concatenated unauthenticated/trailing packets.
         }
@@ -139,11 +184,12 @@ public final class PortableEncryptedBackup {
         var data=(SymmetricEncIntegrityPacket)second;
         require(data.getVersion()==2&&data.getCipherAlgorithm()==SymmetricKeyAlgorithmTags.AES_256&&data.getAeadAlgorithm()==AEADAlgorithmTags.GCM&&data.getChunkSize()==10);
     }
-    private static void extract(Path zipPath,Path backup,long budget) throws Exception {
+    private static void extract(InputStream input,Path backup,long budget) throws Exception {
         directory(backup);long total=0;Set<String> paths=new HashSet<>();
         // ZipFile eagerly allocates its central directory before size() can enforce an entry cap.
         // Streaming local entries keeps authenticated-but-hostile ZIP metadata bounded as well.
-        try(var zip=new ZipInputStream(Files.newInputStream(zipPath),StandardCharsets.UTF_8)) {
+        var shield=new FilterInputStream(input){@Override public void close(){}};
+        try(var zip=new ZipInputStream(shield,StandardCharsets.UTF_8)) {
             ZipEntry entry;
             while((entry=zip.getNextEntry())!=null) {
                 String name=entry.getName();require(paths.size()<MAX_ENTRIES);
@@ -168,7 +214,7 @@ public final class PortableEncryptedBackup {
     Completion completion(Path directory) throws Exception {
         privatePath(directory,true);Path marker=directory.resolve(COMPLETE);privatePath(marker,false);require(Files.size(marker)<=2048);
         var result=UnifiedPostgresqlBackup.JSON.readValue(Files.readAllBytes(marker),Completion.class);
-        require(FORMAT.equals(result.format)&&result.version==1&&result.status.equals("ENCRYPTED_BACKUP_COMPLETE")&&result.profile.equals("RFC9580-AES256-GCM-ARGON2ID")&&result.payload.equals(PAYLOAD));
+        require(FORMAT.equals(result.format)&&(result.version==1||result.version==2)&&result.status.equals("ENCRYPTED_BACKUP_COMPLETE")&&result.profile.equals("RFC9580-AES256-GCM-ARGON2ID")&&result.payload.equals(PAYLOAD));
         require(result.bytes>0&&result.bytes<=MAX_BYTES+MAX_BYTES/100&&result.sha256.matches("[0-9a-f]{64}"));
         privatePath(directory.resolve(PAYLOAD),false);require(Files.size(directory.resolve(PAYLOAD))==result.bytes&&digest(directory.resolve(PAYLOAD)).equals(result.sha256));
         try(var files=Files.list(directory)) {
@@ -183,9 +229,10 @@ public final class PortableEncryptedBackup {
      * Config is not even opened until authentication + every B3 static validation has completed.
      */
     public UnifiedPostgresqlBackup.Result restore(Path encrypted,Path staging,char[] passphrase,Path targetConfig,boolean trustedSqlSource) throws IOException {
-        String stage="SQL_SOURCE_TRUST";
+        String stage="SQL_SOURCE_TRUST";boolean decryptedTemporary=false;
         try {
             require(trustedSqlSource);stage="AUTHENTICATION";var decrypted=decrypt(encrypted,staging,passphrase);
+            decryptedTemporary=true;
             stage="TARGET_CONFIGURATION_AND_RESTORE";
             privatePath(targetConfig,false);require(Files.size(targetConfig)<16384);
             var c=UnifiedPostgresqlBackup.JSON.readTree(Files.readAllBytes(targetConfig));
@@ -193,15 +240,15 @@ public final class PortableEncryptedBackup {
             var app=new UnifiedPostgresqlBackup.Endpoint(owner.database(),c.path("appUsername").asString(),c.path("appPassword").asString());
             // Tool installation belongs to the destination computer, never to the saved source paths.
             var targetMaintenance=new UnifiedPostgresqlBackup(Path.of(c.path("tools").asString()));
-            return targetMaintenance.restore(decrypted.backup,owner,app,c.path("ownershipReceipt").asString(),staging.resolve("candidate"));
+            return targetMaintenance.restore(decrypted.backup,owner,app,c.path("ownershipReceipt").asString(),staging.resolve("candidate"),true);
         }catch(Exception failure){
             if(stage.equals("AUTHENTICATION")&&failure instanceof IOException io)throw io;
             throw new IOException("Encrypted restore stopped: "+stage+"; no activation; retain private evidence");
-        }finally{clear(passphrase);}
+        }finally{clear(passphrase);if(decryptedTemporary)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());}
     }
     private static long transfer(InputStream input,OutputStream output,long limit) throws IOException {
         byte[] buffer=new byte[BUFFER];long count=0;int n;
-        try {while((n=input.read(buffer))!=-1){count=Math.addExact(count,n);require(count<=limit);output.write(buffer,0,n);}return count;}
+        try {while((n=input.read(buffer))!=-1){require(!Thread.currentThread().isInterrupted());count=Math.addExact(count,n);require(count<=limit);output.write(buffer,0,n);}return count;}
         finally{Arrays.fill(buffer,(byte)0);}
     }
     private static final class LimitedInputStream extends FilterInputStream {

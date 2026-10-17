@@ -13,7 +13,8 @@ F2.3-A2 Finance Real SQL Verification — **PARTIAL**；真实 schema、Account 
 Workspace SQLite → PostgreSQL migration — **F2.3-B1 MEMORY/CONVERSATION POSTGRESQL VERIFIED；整体 PARTIAL**；Memory/Conversation 真实合成数据导入与 Store 读写通过，见 [B1 报告](../engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)；Knowledge 当前进度见下列 B2。正式数据切换与产品发布未执行；W1 后续开发继续 PAUSED。
 F2.3-B2 Knowledge PostgreSQL — **PARTIAL**：真实 PostgreSQL V2、合成迁移、Store 读写、事务并发和检索通过；受信 Windows 文件发布与删除恢复未验收，见 [B2 报告](../engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B2 已本地提交。
 F2.3-B3 Unified Backup / Restore — **PARTIAL / DATABASE AND SYNTHETIC FILE RESTORE VERIFIED**：同库完整 archive、Knowledge 文件与 Manifest、非空隔离恢复及真实 Store/索引验证通过；该阶段缺口见 [B3 报告](../engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。B3 已本地提交。
-F2.3-B3E Portable Encrypted Backup — **ENCRYPTION / AUTHENTICATED DECRYPTION / SYNTHETIC RESTORE VERIFIED，PRODUCT PARTIAL**：标准 OpenPGP 整套加密、认证后新库恢复及负向保护通过；明文暂存、Windows 生命周期及身份重绑待完成，见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。B3E 未提交，未进入 B4。
+F2.3-B3E Portable Encrypted Backup — **ENCRYPTION / AUTHENTICATED DECRYPTION / SYNTHETIC RESTORE VERIFIED，PRODUCT PARTIAL**：阶段证据见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。已本地提交为 `d4e60ec`。
+F2.3-B3F Secure Backup Pipeline — **DIRECT ENCRYPTED BACKUP / AUTHENTICATED DECRYPTION / ISOLATED RESTORE VERIFIED（合成），PRODUCT PARTIAL**：明文 ZIP 已消除，临时解包目录清理通过；正式卷保护、Windows 生命周期、身份与跨设备验收待完成，见 [B3F 报告](../engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。B3F 未提交，未进入 B4。
 当前状态以 [STATUS](../STATUS.md) 为准；以下 2026-10-11 及更早章节保留历史计划与裁定，不作为当前进度。
 
 ## Historical MMF-3 closing / V1 Vision scope preparation（2026-10-11）

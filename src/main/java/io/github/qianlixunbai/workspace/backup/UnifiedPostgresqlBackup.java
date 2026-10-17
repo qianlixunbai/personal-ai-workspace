@@ -17,6 +17,7 @@ import java.sql.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.*;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 
 /** Explicit offline maintenance API. Not a Spring bean, HTTP endpoint or Runtime startup hook.
@@ -29,6 +30,7 @@ public final class UnifiedPostgresqlBackup {
         .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(12).maxStringLength(16384).maxNameLength(128).build()).build())
         .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private static final String FORMAT="personal-ai-workspace.postgresql-synthetic-backup";
+    static final String STREAM_FORMAT="personal-ai-workspace.postgresql-encrypted-stream";
     private static final Set<String> DERIVED=Set.of("workspace.knowledge_chunks","workspace.knowledge_index_metadata");
     public record Endpoint(String database,String username,String password) {
         public Endpoint {if(!database.matches("[a-z][a-z0-9_]{0,62}")||!username.matches("[a-z][a-z0-9_]{0,62}"))throw new IllegalArgumentException("Invalid endpoint");}
@@ -142,21 +144,103 @@ public final class UnifiedPostgresqlBackup {
         finally{for(var handle:pins)try{handle.close();}catch(IOException ignored){}}
     }
 
+    /** Format 2: archive/files first, final Manifest and its digest last. Only called inside OpenPGP.
+     * Reuses B3's admission, exported snapshot, locks, revision and final live-state checks.
+     * No plaintext database archive, ZIP or Knowledge copy is created by this path.
+     */
+    Manifest stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip) throws Exception {
+        require(writersStopped&&syntheticDatabase(source.database));
+        knowledgeRoot=knowledgeRoot.toAbsolutePath().normalize();privatePath(knowledgeRoot,true);
+        String dumpVersion=tool("pg_dump",null,List.of("--version"));
+        String restoreVersion=tool("pg_restore",null,List.of("--version"));
+        List<FileChannel> pins=new ArrayList<>();
+        try(var db=source.dataSource().getConnection()) {
+            session(db);safeRole(db);require(major(db)==17);checkTools(dumpVersion,restoreVersion,17);
+            if(!source.database.equals("personal_ai_workspace_test"))require(value(db,"SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()").matches("workspace-b3:[0-9a-f-]{36}"));
+            require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")==0);
+            sql(db,"BEGIN ISOLATION LEVEL REPEATABLE READ");sql(db,"SET LOCAL lock_timeout='3s'");
+            require(scalar(db,"SELECT pg_try_advisory_lock(170017,2)::int")==1);
+            for(String table:tables(db))sql(db,"LOCK TABLE "+qualified(table)+" IN SHARE MODE NOWAIT");
+            safeJobs(db);histories(db);var before=snapshot(db);var files=knowledgeFiles(db);
+            require(files.size()<=1000);
+            for(var entry:files){Path file=resolveKnowledge(knowledgeRoot,entry.path);privatePath(file,false);pins.add(pin(file));}
+            verifyKnowledge(db,knowledgeRoot,files);
+            String exported=value(db,"SELECT pg_export_snapshot()");
+            zip.putNextEntry(new ZipEntry("database.dump"));
+            var archive=streamDump(source,exported,zip);zip.closeEntry();
+            byte[] buffer=new byte[65536];
+            try {
+                for(int i=0;i<files.size();i++) {
+                    var entry=files.get(i);zip.putNextEntry(new ZipEntry("knowledge/"+entry.path));
+                    var input=pins.get(i);input.position(0);var hash=sha256();long count=0;
+                    var bytes=ByteBuffer.wrap(buffer);int n;
+                    while((n=input.read(bytes))!=-1) {
+                        require(!Thread.currentThread().isInterrupted());count=Math.addExact(count,n);require(count<=entry.bytes);
+                        hash.update(buffer,0,n);zip.write(buffer,0,n);bytes.clear();
+                    }
+                    require(count==entry.bytes&&HexFormat.of().formatHex(hash.digest()).equals(entry.sha256));zip.closeEntry();
+                }
+            }finally{Arrays.fill(buffer,(byte)0);}
+            verifyKnowledge(db,knowledgeRoot,files);require(before.equals(snapshot(db)));
+            try(var check=source.dataSource().getConnection()){session(check);require(before.equals(snapshot(check)));}
+            var manifest=new Manifest(STREAM_FORMAT,2,"OPENPGP_CONTAINER_REQUIRED","BACKUP_COMPLETE",Instant.now().toString(),
+                source.database,value(db,"SHOW server_version"),major(db),dumpVersion,restoreVersion,List.of("public","workspace"),
+                versions(db,"public"),versions(db,"workspace"),before,archive,files,"postgresql-token-bm25-1",true,
+                List.of("Windows tokens and ACL identity","LocalFinanceProfile trusted binding",
+                    "Ollama weights, model configuration and caches","historical SQLite backups and lexical.db","PostgreSQL global roles, credentials and grants"));
+            byte[] json=JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest);require(json.length<=4*1024*1024);
+            zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("BACKUP_COMPLETE"));zip.write(HexFormat.of().formatHex(sha256().digest(json)).getBytes(StandardCharsets.US_ASCII));zip.closeEntry();
+            sql(db,"ROLLBACK");return manifest;
+        }finally{
+            IOException closeFailure=null;
+            for(var pin:pins)try{pin.close();}catch(IOException failure){if(closeFailure==null)closeFailure=failure;}
+            if(closeFailure!=null)throw closeFailure;
+        }
+    }
+    private FileEntry streamDump(Endpoint source,String snapshot,OutputStream output) throws Exception {
+        Process process=startTool("pg_dump",source,List.of("--format=custom","--no-owner","--no-privileges","--snapshot="+snapshot),true);
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(120),count=0;var hash=sha256();byte[] buffer=new byte[65536],signature=new byte[5];
+        try(var input=process.getInputStream()) {
+            process.getOutputStream().close();
+            // available + timed wait keeps cancellation responsive without an unbounded worker/queue.
+            // The OS pipe and synchronous ZIP writes provide bounded backpressure.
+            while(true) {
+                require(!Thread.currentThread().isInterrupted()&&System.nanoTime()<deadline);
+                int available=input.available();
+                if(available==0&&process.isAlive()){process.waitFor(20,TimeUnit.MILLISECONDS);continue;}
+                int n=input.read(buffer,0,available==0?buffer.length:Math.min(buffer.length,available));if(n==-1)break;require(n>0);
+                for(int i=0;i<n&&count+i<signature.length;i++)signature[(int)count+i]=buffer[i];
+                count=Math.addExact(count,n);require(count<=PortableEncryptedBackup.MAX_BYTES-16777216);
+                hash.update(buffer,0,n);output.write(buffer,0,n);
+            }
+            require(process.exitValue()==0&&count>=5&&Arrays.equals(signature,"PGDMP".getBytes(StandardCharsets.US_ASCII)));
+            return new FileEntry("database.dump",count,HexFormat.of().formatHex(hash.digest()),null);
+        }catch(InterruptedException cancelled){Thread.currentThread().interrupt();throw cancelled;}
+        finally{Arrays.fill(buffer,(byte)0);stopTool(process);}
+    }
+
     /** Integrity is accidental-damage detection, NOT authenticity. Caller must trust the local source.
      * All bytes are checked before opening any target connection. Backups remain pinned through restore.
      */
-    public Manifest validate(Path backup) throws IOException {
+    public Manifest validate(Path backup) throws IOException {return validate(backup,false);}
+    Manifest validate(Path backup,boolean authenticatedContainer) throws IOException {
         try {
             backup=backup.toAbsolutePath().normalize();privatePath(backup,true);
             var manifestFile=backup.resolve("manifest.json");privatePath(manifestFile,false);require(Files.size(manifestFile)<=4*1024*1024);
             var manifest=JSON.readValue(Files.readAllBytes(manifestFile),Manifest.class);
             privatePath(backup.resolve("BACKUP_COMPLETE"),false);
             require(Files.readString(backup.resolve("BACKUP_COMPLETE")).equals(digest(manifestFile)));
-            validateContents(backup,manifest);return manifest;
+            validateContents(backup,manifest,authenticatedContainer);return manifest;
         }catch(Exception failure){throw stopped("BACKUP_VALIDATION",failure);}
     }
     private void validateContents(Path backup,Manifest m) throws Exception {
-        require(FORMAT.equals(m.format)&&m.formatVersion==1&&"BACKUP_COMPLETE".equals(m.status)&&"UNENCRYPTED_SYNTHETIC_ONLY".equals(m.protection));
+        validateContents(backup,m,false);
+    }
+    private void validateContents(Path backup,Manifest m,boolean authenticatedContainer) throws Exception {
+        require("BACKUP_COMPLETE".equals(m.status));
+        require((FORMAT.equals(m.format)&&m.formatVersion==1&&"UNENCRYPTED_SYNTHETIC_ONLY".equals(m.protection))||
+            (authenticatedContainer&&STREAM_FORMAT.equals(m.format)&&m.formatVersion==2&&"OPENPGP_CONTAINER_REQUIRED".equals(m.protection)));
         Instant.parse(m.createdAt);require(m.postgresqlMajor==17&&syntheticDatabase(m.databaseLogicalIdentity));
         require(m.schemas.equals(List.of("public","workspace"))&&m.financeVersions.equals(expectedVersions(21))&&m.workspaceVersions.equals(expectedVersions(2)));
         require(m.rebuildRequired&&m.indexEngine.equals("postgresql-token-bm25-1"));
@@ -187,12 +271,15 @@ public final class UnifiedPostgresqlBackup {
      * receipt. No DROP, clean, truncate, retry over an existing restore, or activation is performed.
      */
     public Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate) throws IOException {
+        return restore(backup,owner,app,ownershipReceipt,candidate,false);
+    }
+    Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,boolean authenticatedContainer) throws IOException {
         String stage="BACKUP_VALIDATION";List<FileChannel> pins=new ArrayList<>();
         try {
-            backup=backup.toAbsolutePath().normalize();Manifest m=validate(backup);
+            backup=backup.toAbsolutePath().normalize();Manifest m=validate(backup,authenticatedContainer);
             pins.add(pin(backup.resolve("manifest.json")));pins.add(pin(backup.resolve("BACKUP_COMPLETE")));pins.add(pin(backup.resolve("database.dump")));
             for(var file:m.knowledgeFiles)pins.add(pin(resolveKnowledge(backup.resolve("knowledge"),file.path)));
-            require(m.equals(validate(backup)));
+            require(m.equals(validate(backup,authenticatedContainer)));
             stage="TARGET_ADMISSION";
             require(owner.database.matches("personal_ai_workspace_b3_[0-9a-f]{12}")&&owner.database.equals(app.database));
             require(ownershipReceipt.matches("workspace-b3:[0-9a-f-]{36}"));
@@ -383,7 +470,7 @@ public final class UnifiedPostgresqlBackup {
     static long scalar(Connection db,String query) throws SQLException {return Long.parseLong(value(db,query));}
     static String value(Connection db,String query) throws SQLException {try(var s=db.createStatement();var r=s.executeQuery(query)){if(!r.next())throw new SQLException();return r.getString(1);}}
     static void sql(Connection db,String query) throws SQLException {try(var s=db.createStatement()){s.execute(query);}}
-    private String tool(String name,Endpoint endpoint,List<String> arguments) throws Exception {
+    private Process startTool(String name,Endpoint endpoint,List<String> arguments,boolean stream) throws Exception {
         String suffix=System.getProperty("os.name","").startsWith("Windows")?".exe":"";Path binary=tools.resolve(name+suffix);noLinks(binary);require(Files.isRegularFile(binary));
         List<String> command=new ArrayList<>();command.add(binary.toString());
         if(endpoint!=null)command.addAll(List.of("--no-password","--host=127.0.0.1","--port=5432","--username="+endpoint.username,"--dbname="+endpoint.database));command.addAll(arguments);
@@ -392,12 +479,28 @@ public final class UnifiedPostgresqlBackup {
         if(endpoint!=null)builder.environment().put("PGPASSWORD",endpoint.password);
         // Child diagnostics can contain private SQL/paths. Never echo them; emit stage and SQLSTATE only.
         builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-        if(endpoint!=null)builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        Process process=builder.start();builder.environment().remove("PGPASSWORD");
+        if(endpoint!=null&&!stream)builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        try{return builder.start();}finally{builder.environment().remove("PGPASSWORD");}
+    }
+    private String tool(String name,Endpoint endpoint,List<String> arguments) throws Exception {
+        Process process=startTool(name,endpoint,arguments,false);
         try {
             require(process.waitFor(120,TimeUnit.SECONDS));require(process.exitValue()==0);
             return endpoint==null?new String(process.getInputStream().readNBytes(1024),StandardCharsets.UTF_8).strip():"";
-        }finally{if(process.isAlive()){process.destroyForcibly();process.waitFor();}process.getInputStream().close();process.getOutputStream().close();process.getErrorStream().close();}
+        }catch(InterruptedException cancelled){Thread.currentThread().interrupt();throw cancelled;}
+        finally{stopTool(process);}
+    }
+    private static void stopTool(Process process) throws IOException {
+        boolean interrupted=Thread.interrupted();
+        try {
+            if(process.isAlive())process.destroyForcibly();
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+            while(process.isAlive()&&System.nanoTime()<deadline)try{process.waitFor(20,TimeUnit.MILLISECONDS);}catch(InterruptedException e){interrupted=true;}
+            require(!process.isAlive());
+        }finally{
+            try{process.getInputStream().close();process.getOutputStream().close();process.getErrorStream().close();}
+            finally{if(interrupted)Thread.currentThread().interrupt();}
+        }
     }
     private static IOException stopped(String stage,Exception failure) {
         String state=failure instanceof SQLException s&&s.getSQLState()!=null?s.getSQLState():"UNAVAILABLE";
