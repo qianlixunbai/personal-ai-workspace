@@ -1,8 +1,8 @@
 # Personal AI Workspace — Current Status
 
-## Current G3 — PostgreSQL source published / B4A integration candidate
+## Current G3 — PostgreSQL source published / B4A2 configuration candidate
 
-2026-10-18（Asia/Shanghai）。G3 已将 A2、B1、B2、B3、B3E、B3F 源码 fast-forward 发布至 GitHub main `b35a1ac`，普通 push 后再次 fetch 核验一致。B4A 为未提交产品集成候选；源码发布不构成 Windows Runtime 或 Production GO。
+2026-10-18（Asia/Shanghai）。G3 已将 A2、B1、B2、B3、B3E、B3F 源码 fast-forward 发布至 GitHub main `b35a1ac`，普通 push 后再次 fetch 核验一致。B4A 已本地提交 `8eab41c`，B4A2 为未提交配置/启动诊断候选；源码发布不构成 Windows Runtime 或 Production GO。
 **V1 Vision Code-only Source Review — 限定范围 GO**；不是 Vision Runtime、GPU、Windows 或 Production GO。
 **MMF-3 Profile Gate — PENDING**；现有 Windows 正式 launcher 限制未解除，Runtime / Database / Production GO 均未授予。
 
@@ -20,7 +20,9 @@ Finance 原仓库已冻结，只读保留；后续源码集成与兼容修改在
 | F2.3-B3 Unified Backup / Restore | 数据库与合成 Knowledge 文件真实备份／隔离恢复／Store／索引验证通过；认证加密、Windows 准入和身份重绑未完成，整体 PARTIAL |
 | F2.3-B3E Portable Encrypted Backup | 标准 OpenPGP 加密／完整认证解密／新库合成恢复 VERIFIED；明文暂存、Windows 准入和身份重绑未完成，产品整体 PARTIAL |
 | F2.3-B3F Secure Backup Pipeline | 直接加密／两遍认证解密／非空隔离恢复 VERIFIED（合成）；临时明文清理通过，正式卷保护与 Windows 生命周期未验收，产品 PARTIAL |
-| F2.3-B4A Desktop PostgreSQL Integration | Runtime 只读状态／真实隔离连接、React／Bridge 契约 VERIFIED；正式配置注入与完整 Windows Runtime PENDING，成果未提交 |
+| F2.3-B4A Desktop PostgreSQL Integration | Runtime 只读状态／真实隔离连接、React／Bridge 契约 VERIFIED；正式配置注入与完整 Windows Runtime PENDING，本地提交 `8eab41c` |
+
+B4A2 已装配 Gate 后固定 DPAPI 配置源与 Spring 初始化器，补充 WPF 启动观察/React 分层查询；聚焦合同通过，实际 Native preflight 仍 `STOP / PRIVATE_ACE`，原生写入交互与完整 Windows E2E PENDING。见 [Trusted Windows Configuration Report](engineering/F2.3-B4A2-TRUSTED-WINDOWS-CONFIGURATION-REPORT.md)。B4A2 未提交，未进入 B4B。
 
 Finance 默认关闭；A2 已在独立测试库完成真实数据库验证，尚未交付 Windows 绑定文件发布／日常首次确认。
 实际执行、替代边界及后续条件见 [F2.3-A2 Report](engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。

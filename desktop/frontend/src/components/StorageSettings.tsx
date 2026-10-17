@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
-import type { StorageStatus } from '../bridge/storage'
+import type { StorageStatus, StorageStartupStatus } from '../bridge/storage'
 
 const labels: Record<string, string> = {
   NOT_CONFIGURED: '未配置', CONFIGURATION_INVALID: '配置无效', CONNECTED: '可连接', CONNECTION_FAILED: '连接失败', AUTHENTICATION_FAILED: '认证失败',
@@ -10,22 +10,32 @@ const labels: Record<string, string> = {
   EXPLICIT_APPROVAL_REQUIRED: '需要用户独立确认', MAINTENANCE_ONLY: '仅受控维护可用；正式产品入口未开放', BLOCKED_SECURITY_REQUIREMENTS: '当前安全条件不允许正式恢复',
   WINDOWS_PROFILE_APPROVAL_REQUIRED: 'Windows / MMF-3 受信 Profile', VOLUME_PROTECTION_REQUIRED: '明文暂存卷保护',
   FINANCE_IDENTITY_CONFIRMATION_REQUIRED: 'Finance 历史身份确认与重新绑定', CROSS_DEVICE_VERIFICATION_REQUIRED: '真实跨设备恢复',
+  TRUSTED_LOCAL: '本机私有配置与凭据已校验',
+  STARTUP_CAUSE_UNAVAILABLE: '无法确认 Runtime 已启动；具体原因尚无受信证据',
+  NATIVE_AUTHENTICATION_UNAVAILABLE: 'Runtime 健康检查可达，原生认证尚未通过',
 }
 export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; enabled: boolean }) {
   const [snapshot, setSnapshot] = useState<StorageStatus | null>(null)
+  const [startup, setStartup] = useState<StorageStartupStatus | null>(null)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const generation = useRef(0), inFlight = useRef(false)
   useEffect(() => {
-    const reset = () => { generation.current++; inFlight.current = false; setSnapshot(null); setWorking(false); setError('') }
+    const reset = () => { generation.current++; inFlight.current = false; setSnapshot(null); setStartup(null); setWorking(false); setError('') }
+    reset()
     const unsubscribe = bridge.onSession(reset)
     return () => { generation.current++; unsubscribe() }
   }, [bridge])
-  useEffect(() => { if (!enabled) { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null) } }, [enabled])
+  useEffect(() => { if (!enabled) { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setStartup(null); setError('') } }, [enabled])
   const inspect = async () => {
     if (!enabled || inFlight.current) return
-    inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setError('')
-    try { const next = await bridge.storageStatus(); if (current === generation.current) setSnapshot(next) }
+    inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setStartup(null); setError('')
+    try {
+      const host = await bridge.storageStartupStatus()
+      if (current !== generation.current) return
+      setStartup(host)
+      if (host.canQueryStorage) { const next = await bridge.storageStatus(); if (current === generation.current) setSnapshot(next) }
+    }
     catch (problem) { if (current === generation.current) setError(problem instanceof Error ? problem.message : '存储状态暂时不可用。') }
     finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
@@ -33,7 +43,9 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
   return <section className="card" aria-labelledby="storage-title" aria-busy={working}>
     <div className="card-heading"><h2 id="storage-title">本地数据与存储</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void inspect() }}>重新检查存储</button></div>
     <dl className="status-list">
+      <div><dt>Runtime 启动观察（WPF）</dt><dd>{startup ? startup.failure === 'NONE' ? '已响应并通过原生认证' : labels[startup.failure] : '尚未检查'}</dd></div>
       <div><dt>当前持久化引擎</dt><dd>{snapshot ? snapshot.backend === 'SQLITE' ? 'SQLite' : snapshot.backend === 'POSTGRESQL' ? 'PostgreSQL' : '配置不受支持' : '等待受控查询'}</dd></div>
+      <div><dt>配置可信状态（Runtime）</dt><dd>{snapshot ? labels[snapshot.configurationTrust] : '未由 Runtime 验证'}</dd></div>
       <div><dt>PostgreSQL 配置</dt><dd>{snapshot ? snapshot.postgresqlConfigured ? '连接字段已提供' : '尚未完整配置' : '尚未检查'}</dd></div>
       <div><dt>本机 PostgreSQL 连接</dt><dd>{value('connection')}</dd></div>
       <div><dt>Workspace migration</dt><dd>{value('workspaceSchema')}</dd></div>
@@ -46,12 +58,13 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
       <div><dt>检查结果</dt><dd>{working ? '正在只读检查…' : snapshot ? value('errorCode') : '等待检查'}</dd></div>
     </dl>
     {error && <p role="alert" className="error">{error}</p>}
-    <p className="hint" role="status">{working ? '正在通过原生受控通道检查配置、连接与 schema。' : '检查不会初始化数据库、执行迁移或切换当前存储。连接失败不会回退或修改 SQLite。'}</p>
+    <p className="hint" role="status">{working ? '先检查 WPF 启动观察；仅在原生认证通过后查询数据库。' : 'WPF 启动观察不执行 PostgreSQL SQL。数据库结果仅来自已运行 Runtime 的受控查询；检查不会初始化、迁移或切换存储。'}</p>
     <div className="maintenance-list">
+      <article className="maintenance-row"><div><h3>本机 PostgreSQL 配置</h3><p>下一步需要受信 Windows 原生上下文与用户确认；当前入口禁用。密码仅允许原生安全输入，不进入网页。新设备须重新配置凭据并独立确认 Finance 身份。</p></div><button className="secondary" disabled>原生配置尚未开放</button></article>
       <article className="maintenance-row"><div><h3>数据迁移准备</h3><p>需要用户独立确认源数据、备份与回退方案；本页不检查或迁移正式个人数据。</p></div><button className="secondary" disabled>迁移与切换未开放</button></article>
       <article className="maintenance-row"><div><h3>加密备份与恢复</h3><p>直接加密与认证恢复已具备合成维护能力。正式备份与恢复尚未开放，不能以现有明文导出替代。</p></div><button className="secondary" disabled>正式备份与恢复未开放</button></article>
     </div>
     <p className="hint">{snapshot ? `尚需完成：${snapshot.securityRequirements.map(item => labels[item]).join('；')}。` : '安全条件尚未查询；正式操作保持禁用。'}</p>
-    <p className="hint">连接检查只反映本次配置与数据库结构，不证明 Knowledge 私有文件生命周期或 Finance 身份绑定通过。正式桌面凭据配置入口仍受现有启动安全边界限制；本页不接收数据库密码。</p>
+    <p className="hint">Runtime 无法响应时，WPF 尚无可信启动错误回传通道，不能推断为数据库服务、密码或 schema 故障。连接检查不证明 Knowledge 私有文件生命周期或 Finance 身份绑定通过。</p>
   </section>
 }

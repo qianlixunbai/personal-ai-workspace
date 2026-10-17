@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace PersonalAiWorkspace.Core;
 
-public sealed record StorageStatus(string CheckedAt,string Backend,bool PostgresqlConfigured,string Connection,
+public sealed record StorageStatus(string CheckedAt,string Backend,string ConfigurationTrust,bool PostgresqlConfigured,string Connection,
     string WorkspaceSchema,string KnowledgeSchema,bool FinanceEnabled,string FinanceSchema,string Migration,
     string EncryptedBackup,string Restore,string[] SecurityRequirements,string ErrorCode);
 
@@ -14,12 +14,14 @@ public sealed partial class RuntimeClient
         using var body=await SendAsync(HttpMethod.Get,"/api/v1/storage/status",null,true,HttpStatusCode.OK,token,
             maximumResponse:8192,requestTimeout:TimeSpan.FromSeconds(20));
         var r=body.RootElement;
-        MemoryFields(r,"checkedAt","backend","postgresqlConfigured","connection","workspaceSchema","knowledgeSchema",
+        MemoryFields(r,"checkedAt","backend","configurationTrust","postgresqlConfigured","connection","workspaceSchema","knowledgeSchema",
             "financeEnabled","financeSchema","migration","encryptedBackup","restore","securityRequirements","errorCode");
         string Choice(string field,params string[] allowed) {string value=String(r,field);if(!allowed.Contains(value,StringComparer.Ordinal))throw Invalid();return value;}
         bool Flag(string field) {var value=Property(r,field);if(value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw Invalid();return value.GetBoolean();}
         string time=String(r,"checkedAt");if(!DateTimeOffset.TryParse(time,System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.RoundtripKind,out _))throw Invalid();
         string backend=Choice("backend","SQLITE","POSTGRESQL","UNSUPPORTED");
+        string trust=Choice("configurationTrust","TRUSTED_LOCAL","NOT_CHECKED");
+        if(trust=="TRUSTED_LOCAL"&&(backend!="POSTGRESQL"||!Flag("postgresqlConfigured")))throw Invalid();
         string connection=Choice("connection","NOT_CONFIGURED","CONFIGURATION_INVALID","CONNECTED","CONNECTION_FAILED","AUTHENTICATION_FAILED","ACCESS_DENIED","ROLE_REJECTED");
         string workspace=Choice("workspaceSchema","NOT_CHECKED","INITIALIZATION_REQUIRED","INCOMPATIBLE","ACCESS_DENIED","V1_READY","V1_V2_READY");
         string knowledge=Choice("knowledgeSchema","NOT_CHECKED","INITIALIZATION_REQUIRED","INCOMPATIBLE","ACCESS_DENIED","READY");
@@ -31,6 +33,6 @@ public sealed partial class RuntimeClient
         if(requirements.ValueKind!=JsonValueKind.Array||requirements.GetArrayLength()!=expected.Length)throw Invalid();
         var values=requirements.EnumerateArray().Select(x=>x.ValueKind==JsonValueKind.String?x.GetString()!:throw Invalid()).ToArray();
         if(!values.SequenceEqual(expected,StringComparer.Ordinal)||knowledge=="READY"&&workspace!="V1_V2_READY"||!Flag("financeEnabled")&&finance!="DISABLED")throw Invalid();
-        return new(time,backend,Flag("postgresqlConfigured"),connection,workspace,knowledge,Flag("financeEnabled"),finance,migration,backup,restore,values,error);
+        return new(time,backend,trust,Flag("postgresqlConfigured"),connection,workspace,knowledge,Flag("financeEnabled"),finance,migration,backup,restore,values,error);
     }
 }

@@ -8,31 +8,49 @@ import { StorageSettings } from './StorageSettings'
 afterEach(cleanup)
 it('checks through the bridge, distinguishes prepared from active, clears failures and discards stale session results', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
-  const snapshot: StorageStatus = { checkedAt: '2026-10-18T00:00:00Z', backend: 'SQLITE', postgresqlConfigured: false,
+  const snapshot: StorageStatus = { checkedAt: '2026-10-18T00:00:00Z', backend: 'SQLITE', configurationTrust: 'NOT_CHECKED', postgresqlConfigured: false,
     connection: 'NOT_CONFIGURED', workspaceSchema: 'NOT_CHECKED', knowledgeSchema: 'NOT_CHECKED', financeEnabled: false,
     financeSchema: 'DISABLED', migration: 'EXPLICIT_APPROVAL_REQUIRED', encryptedBackup: 'MAINTENANCE_ONLY', restore: 'BLOCKED_SECURITY_REQUIREMENTS',
     securityRequirements: [...storageRequirements], errorCode: 'NONE' }
   render(<StorageSettings bridge={bridge} enabled />)
   const check = screen.getByRole('button', { name: '重新检查存储' })
+  const host = { runtime: 'AVAILABLE', failure: 'NONE', configurationTrust: 'NOT_CHECKED', canQueryStorage: true,
+    configurationAction: 'TRUSTED_CONTEXT_REQUIRED', confirmationRequired: true }
+  expect((screen.getByText('原生配置尚未开放') as HTMLButtonElement).disabled).toBe(true)
   expect((screen.getByText('迁移与切换未开放') as HTMLButtonElement).disabled).toBe(true)
   expect((screen.getByText('正式备份与恢复未开放') as HTMLButtonElement).disabled).toBe(true)
   expect(port.sent).toHaveLength(0)
-  fireEvent.click(check); expect(port.sent[0]).toMatchObject({ method: 'storage.status', payload: {} })
+  fireEvent.click(check); expect(port.sent[0]).toMatchObject({ method: 'storage.startupStatus', payload: {} })
   expect((check as HTMLButtonElement).disabled).toBe(true)
-  await act(async () => { port.reply(0, snapshot) })
+  await act(async () => { port.reply(0, { ...host, runtime: 'UNAVAILABLE', failure: 'STARTUP_CAUSE_UNAVAILABLE', canQueryStorage: false }) })
+  expect(screen.getByText('无法确认 Runtime 已启动；具体原因尚无受信证据')).toBeTruthy()
+  expect(port.sent).toHaveLength(1); expect(screen.queryByText('SQLite')).toBeNull()
+  fireEvent.click(check)
+  await act(async () => { port.reply(1, host) })
+  expect(port.sent[2]).toMatchObject({ method: 'storage.status', payload: {} })
+  await act(async () => { port.reply(2, snapshot) })
   expect(screen.getByText('SQLite')).toBeTruthy(); expect(screen.getByText('未配置')).toBeTruthy()
   fireEvent.click(check)
+  await act(async () => { port.reply(3, host) })
   const prepared = { ...snapshot, postgresqlConfigured: true, connection: 'CONNECTED', workspaceSchema: 'V1_V2_READY', knowledgeSchema: 'READY' }
-  await act(async () => { port.reply(1, prepared) })
+  await act(async () => { port.reply(4, prepared) })
   expect(screen.getByText('数据库结构已准备；当前尚未启用')).toBeTruthy()
   expect(screen.getByText('SQLite')).toBeTruthy()
   fireEvent.click(check)
-  await act(async () => { port.emit({ version: 1, sessionId: port.sent[2]!.sessionId, requestId: port.sent[2]!.requestId,
+  await act(async () => { port.reply(5, host) })
+  await act(async () => { port.emit({ version: 1, sessionId: port.sent[6]!.sessionId, requestId: port.sent[6]!.requestId,
     ok: false, error: { code: 'RuntimeUnavailable', message: 'Runtime 暂时不可用。' } }) })
   expect(screen.getByRole('alert').textContent).toContain('Runtime 暂时不可用')
   expect(screen.queryByText('可连接')).toBeNull()
   fireEvent.click(check)
-  await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(3, prepared) })
+  await act(async () => { port.reply(7, host) })
+  await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(8, prepared) })
   expect(screen.queryByText('可连接')).toBeNull(); expect(screen.queryByRole('alert')).toBeNull()
-  expect(port.sent).toHaveLength(4); bridge.dispose()
+  expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
+  fireEvent.click(check)
+  await act(async () => { port.session('33333333-3333-4333-8333-333333333333'); port.reply(9, host) })
+  expect(port.sent).toHaveLength(10); expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
+  const pending = bridge.storageStartupStatus(); const rejected = expect(pending).rejects.toMatchObject({ code: 'InvalidResponse' })
+  port.reply(10, { ...host, password: 'synthetic-secret' }); await rejected
+  bridge.dispose()
 })

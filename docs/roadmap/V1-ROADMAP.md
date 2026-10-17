@@ -2,7 +2,7 @@
 
 ## Current G3 — published PostgreSQL baseline / B4A desktop integration
 
-2026-10-18（Asia/Shanghai）。G3 已将 A2–B3F fast-forward 发布至 main `b35a1ac`；B4A 为未提交产品集成候选，不执行 B4B。
+2026-10-18（Asia/Shanghai）。G3 已将 A2–B3F fast-forward 发布至 main `b35a1ac`；B4A 已本地提交 `8eab41c`，B4A2 配置/诊断候选未提交，不执行 B4B。
 **V1 Vision Code-only Source Review — 限定范围 GO**；不是 Vision Runtime、GPU、Windows 或 Production GO。
 **MMF-3 Profile Gate — PENDING**，Windows 正式 launcher 限制未解除；Runtime / Database / Production GO 均未授予。
 
@@ -15,7 +15,8 @@ F2.3-B2 Knowledge PostgreSQL — **PARTIAL**：真实 PostgreSQL V2、合成迁�
 F2.3-B3 Unified Backup / Restore — **PARTIAL / DATABASE AND SYNTHETIC FILE RESTORE VERIFIED**：同库完整 archive、Knowledge 文件与 Manifest、非空隔离恢复及真实 Store/索引验证通过；该阶段缺口见 [B3 报告](../engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。B3 已本地提交。
 F2.3-B3E Portable Encrypted Backup — **ENCRYPTION / AUTHENTICATED DECRYPTION / SYNTHETIC RESTORE VERIFIED，PRODUCT PARTIAL**：阶段证据见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。已本地提交为 `d4e60ec`。
 F2.3-B3F Secure Backup Pipeline — **DIRECT ENCRYPTED BACKUP / AUTHENTICATED DECRYPTION / ISOLATED RESTORE VERIFIED（合成），PRODUCT PARTIAL**：阶段证据见 [B3F 报告](../engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。已提交并随 G3 发布。
-F2.3-B4A Desktop PostgreSQL Integration — **BACKEND / REACT / BRIDGE INTEGRATION VERIFIED（聚焦模块），FULL WINDOWS RUNTIME PENDING**：只读存储状态服务与设置页接线完成；正式配置注入、Windows 生命周期和身份条件未完成，见 [B4A 报告](../engineering/F2.3-B4A-DESKTOP-POSTGRESQL-INTEGRATION-REPORT.md)。B4A 未提交，正式数据切换与 B4B 未执行。
+F2.3-B4A Desktop PostgreSQL Integration — **BACKEND / REACT / BRIDGE INTEGRATION VERIFIED（聚焦模块），FULL WINDOWS RUNTIME PENDING**：只读存储状态服务与设置页接线完成；正式配置注入、Windows 生命周期和身份条件未完成，见 [B4A 报告](../engineering/F2.3-B4A-DESKTOP-POSTGRESQL-INTEGRATION-REPORT.md)。B4A 已本地提交 `8eab41c`，正式数据切换与 B4B 未执行。
+F2.3-B4A2 Trusted Windows Configuration — **SOURCE / FOCUSED CONTRACTS VERIFIED，PRODUCT PARTIAL**：固定 DPAPI 提供层/Spring 时序、WPF 独立观察与 React 分层刷新已装配；实际 Native preflight PRIVATE_ACE，受信 Runtime E2E、正式配置写入与故障回传仍 PENDING，见 [B4A2 报告](../engineering/F2.3-B4A2-TRUSTED-WINDOWS-CONFIGURATION-REPORT.md)。变更未提交。
 当前状态以 [STATUS](../STATUS.md) 为准；以下 2026-10-11 及更早章节保留历史计划与裁定，不作为当前进度。
 
 ## Historical MMF-3 closing / V1 Vision scope preparation（2026-10-11）

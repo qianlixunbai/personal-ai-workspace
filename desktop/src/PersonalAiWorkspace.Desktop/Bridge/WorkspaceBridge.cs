@@ -27,6 +27,7 @@ internal interface IWorkspaceNativeActions
     WorkspaceVision? Vision => null;
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task<StorageStatus> StorageStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
 
@@ -155,6 +156,7 @@ internal sealed class WorkspaceBridge : IDisposable
                 };
             }
             else if (method == "storage.status") result = await native.StorageStatusAsync(cancellation);
+            else if (method == "storage.startupStatus") result = await native.StorageStartupStatusAsync(cancellation);
             else if (ModelMethods.Contains(method))
             {
                 if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
@@ -319,7 +321,7 @@ internal sealed class WorkspaceBridge : IDisposable
         if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
-        if (method is "shell.bootstrap" or "shell.refreshStatus" or "storage.status" || NativeMethods.ContainsKey(method)
+        if (method is "shell.bootstrap" or "shell.refreshStatus" or "storage.status" or "storage.startupStatus" || NativeMethods.ContainsKey(method)
             || method == "assistant.selectMemories") return Fields(payload);
         if (method is "operations.get" or "operations.cancel" or "operations.copyResult")
             return Fields(payload, "operationId") && Text(payload, "operationId", 36, out var id) && CanonicalId(id);

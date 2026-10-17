@@ -18,7 +18,7 @@ public final class StorageStatusService {
     public StorageStatusService(Environment environment,@Qualifier("financeDataSource") ObjectProvider<DataSource> finance) {
         this.environment=environment;this.finance=finance;
     }
-    public record Status(String checkedAt,String backend,boolean postgresqlConfigured,String connection,
+    public record Status(String checkedAt,String backend,String configurationTrust,boolean postgresqlConfigured,String connection,
         String workspaceSchema,String knowledgeSchema,boolean financeEnabled,String financeSchema,
         String migration,String encryptedBackup,String restore,List<String> securityRequirements,String errorCode) {}
     private record Check(String connection,String workspace,String knowledge,String error) {}
@@ -56,7 +56,7 @@ public final class StorageStatusService {
             check=new Check("CONFIGURATION_INVALID","NOT_CHECKED","NOT_CHECKED","CONFIGURATION_INVALID");
             if(financeEnabled)financeSchema="NOT_CHECKED";
         }
-        return new Status(Instant.now().toString(),backend,configured,check.connection,check.workspace,check.knowledge,
+        return new Status(Instant.now().toString(),backend,TrustedDatabaseConfiguration.trusted(environment)?"TRUSTED_LOCAL":"NOT_CHECKED",configured,check.connection,check.workspace,check.knowledge,
             financeEnabled,financeSchema,"EXPLICIT_APPROVAL_REQUIRED","MAINTENANCE_ONLY","BLOCKED_SECURITY_REQUIREMENTS",
             List.of("WINDOWS_PROFILE_APPROVAL_REQUIRED","VOLUME_PROTECTION_REQUIRED","FINANCE_IDENTITY_CONFIRMATION_REQUIRED","CROSS_DEVICE_VERIFICATION_REQUIRED"),check.error);
     }

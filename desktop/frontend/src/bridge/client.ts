@@ -11,8 +11,8 @@ import { modelMethods, isModelRequest, isModelSnapshot, isModelOutcome } from '.
 import { visionMethods, isVisionReadiness, isVisionPick, isVisionTask, isVisionValidation } from './vision'
 import type { VisionReadiness, VisionPick, VisionTask, VisionValidation } from './vision'
 import type { ModelSnapshot, ModelOutcome, ModelRequest } from './models'
-import { isStorageStatus } from './storage'
-import type { StorageStatus } from './storage'
+import { isStorageStatus, isStorageStartupStatus } from './storage'
+import type { StorageStatus, StorageStartupStatus } from './storage'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -41,6 +41,7 @@ export class WorkspaceClient {
   bootstrap() { return this.request('shell.bootstrap') as Promise<ShellStatus> }
   refreshStatus() { return this.request('shell.refreshStatus') as Promise<ShellStatus> }
   storageStatus() { return this.request('storage.status') as Promise<StorageStatus> }
+  storageStartupStatus() { return this.request('storage.startupStatus') as Promise<StorageStartupStatus> }
   visionReadiness() { return this.request('vision.readiness') as Promise<VisionReadiness> }
   pickVision() { return this.request('vision.pick') as Promise<VisionPick> }
   validateVision() { return this.request('vision.validate') as Promise<VisionValidation> }
@@ -102,7 +103,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -110,7 +111,7 @@ export class WorkspaceClient {
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method === 'storage.status' ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(typeof payload.taskId === 'string' ? { taskId: payload.taskId } : {}),
         ...(typeof payload.documentId === 'string' ? { documentId: payload.documentId } : {}),
@@ -155,6 +156,7 @@ export class WorkspaceClient {
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
         : pending.method === 'storage.status' ? isStorageStatus(data.result)
+        : pending.method === 'storage.startupStatus' ? isStorageStartupStatus(data.result)
         : pending.method === 'vision.readiness' ? isVisionReadiness(data.result)
         : pending.method === 'vision.pick' ? isVisionPick(data.result)
         : pending.method === 'vision.validate' ? isVisionValidation(data.result)

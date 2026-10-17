@@ -16,7 +16,11 @@ internal static class Program
 #if MMF3_ACCEPTANCE && DEBUG
         Mmf3AcceptanceLaunch acceptance;
         try { acceptance = Mmf3AcceptanceLaunch.Parse(args); }
-        catch (Exception) { return 2; }
+        catch (Exception)
+        {
+            MessageBox.Show("受信 Windows 启动上下文校验未通过。工作区未启动，数据库凭据未读取；请保留现有 Profile 权限并检查受控准入证据。", "Personal AI Workspace");
+            return 2;
+        }
 #else
         if (args.Length != 0) return 2;
 #endif
