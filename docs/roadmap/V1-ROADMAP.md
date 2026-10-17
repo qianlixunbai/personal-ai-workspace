@@ -11,7 +11,8 @@ F2.1 Finance Foundation — READY；F2.2-A Finance Infrastructure — READY；F2
 F2.3-A1 PostgreSQL Environment — READY，仅为操作系统本地环境，不属于 Workspace Git 源码安装内容。
 F2.3-A2 Finance Real SQL Verification — **PARTIAL**；真实 schema、Account SQL、数据库身份、BigDecimal、隔离和事务验证已完成，Windows 绑定文件发布仍受阻，见 [报告](../engineering/F2.3-A2-FINANCE-POSTGRESQL-INTEGRATION-REPORT.md)。
 Workspace SQLite → PostgreSQL migration — **F2.3-B1 MEMORY/CONVERSATION POSTGRESQL VERIFIED；整体 PARTIAL**；Memory/Conversation 真实合成数据导入与 Store 读写通过，见 [B1 报告](../engineering/F2.3-B1-UNIFIED-POSTGRESQL-MIGRATION-REPORT.md)；Knowledge 当前进度见下列 B2。正式数据切换与产品发布未执行；W1 后续开发继续 PAUSED。
-F2.3-B2 Knowledge PostgreSQL — **PARTIAL**：真实 PostgreSQL V2、合成迁移、Store 读写、事务并发和检索通过；受信 Windows 文件发布与删除恢复未验收，见 [B2 报告](../engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B3 未开始。
+F2.3-B2 Knowledge PostgreSQL — **PARTIAL**：真实 PostgreSQL V2、合成迁移、Store 读写、事务并发和检索通过；受信 Windows 文件发布与删除恢复未验收，见 [B2 报告](../engineering/F2.3-B2-KNOWLEDGE-POSTGRESQL-MIGRATION-REPORT.md)。B2 已本地提交。
+F2.3-B3 Unified Backup / Restore — **PARTIAL / DATABASE AND SYNTHETIC FILE RESTORE VERIFIED**：同库完整 archive、Knowledge 文件与 Manifest、非空隔离恢复及真实 Store/索引验证通过；认证加密、Windows 生命周期及身份重绑待完成，见 [B3 报告](../engineering/F2.3-B3-UNIFIED-BACKUP-RESTORE-REPORT.md)。B3 未提交，未进入 B4。
 当前状态以 [STATUS](../STATUS.md) 为准；以下 2026-10-11 及更早章节保留历史计划与裁定，不作为当前进度。
 
 ## Historical MMF-3 closing / V1 Vision scope preparation（2026-10-11）
