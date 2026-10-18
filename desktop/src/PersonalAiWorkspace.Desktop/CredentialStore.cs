@@ -53,7 +53,14 @@ internal sealed class CredentialStore(string? testTarget = null)
 
     internal void Import(string path)
     {
-        // Explicit file-picker action only. No ambient search, HTTP pairing endpoint or token arguments.
+        Save(ReadPrivateFile(path));
+    }
+
+    // Also used by the explicitly opted-in owner for its own fixed Profile token, in memory only.
+    internal static string ReadPrivateFile(string path, bool requireProtected = false)
+    {
+        // Import binds an explicit picker path; the opted-in owner binds its own fixed Profile token.
+        // No ambient search, HTTP pairing endpoint or token arguments.
         try
         {
             path = Path.GetFullPath(path);
@@ -66,6 +73,7 @@ internal sealed class CredentialStore(string? testTarget = null)
             using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var user = WindowsIdentity.GetCurrent().User!;
             var security = input.GetAccessControl();
+            if (requireProtected && !security.AreAccessRulesProtected) throw new DesktopException(DesktopError.CredentialInvalid);
             if (!user.Equals(security.GetOwner(typeof(SecurityIdentifier)))) throw new DesktopException(DesktopError.CredentialInvalid);
             foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
                 if (rule.AccessControlType == AccessControlType.Allow && !user.Equals(rule.IdentityReference)
@@ -78,7 +86,7 @@ internal sealed class CredentialStore(string? testTarget = null)
             if (count > 128) throw new DesktopException(DesktopError.CredentialInvalid);
             var token = Encoding.ASCII.GetString(bytes, 0, count).Trim();
             if (!CredentialFormat.Valid(token)) throw new DesktopException(DesktopError.CredentialInvalid);
-            Save(token);
+            return token;
         }
         catch (DesktopException) { throw; }
         catch (Exception) { throw new DesktopException(DesktopError.CredentialInvalid); }

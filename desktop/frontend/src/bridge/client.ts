@@ -33,11 +33,13 @@ export class WorkspaceClient {
   private pending = new Map<string, Pending>()
   private listeners = new Set<() => void>()
   private visionListeners = new Set<(handle: string) => void>()
+  private storageListeners = new Set<(status: StorageStartupStatus) => void>()
   constructor(private port: WebViewPort | undefined) { port?.addEventListener('message', this.receive) }
   get available() { return !!this.port }
   get ready() { return this.session !== null }
   onSession(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   onVisionClear(listener: (handle: string) => void) { this.visionListeners.add(listener); return () => { this.visionListeners.delete(listener) } }
+  onStorageStartup(listener: (status: StorageStartupStatus) => void) { this.storageListeners.add(listener); return () => { this.storageListeners.delete(listener) } }
   bootstrap() { return this.request('shell.bootstrap') as Promise<ShellStatus> }
   refreshStatus() { return this.request('shell.refreshStatus') as Promise<ShellStatus> }
   storageStatus() { return this.request('storage.status') as Promise<StorageStatus> }
@@ -135,6 +137,11 @@ export class WorkspaceClient {
     if (!isObject(data)) return
     const bytes = new TextEncoder().encode(JSON.stringify(data)).length
     if (bytes > conversationResponseBytes) return
+    if (data.type === 'storage.lifecycle') {
+      if (bytes <= 64 * 1024 && exactFields(data, ['type', 'version', 'sessionId', 'result']) && data.version === 1 && this.session !== null
+        && data.sessionId === this.session && isStorageStartupStatus(data.result)) this.storageListeners.forEach(listener => listener(data.result as StorageStartupStatus))
+      return
+    }
     if (data.type === 'vision.cleared') {
       if (bytes <= 64 * 1024 && exactFields(data, ['type', 'version', 'sessionId', 'handle']) && data.version === 1 && data.sessionId === this.session && isId(data.handle))
         this.visionListeners.forEach(listener => listener(data.handle as string))
@@ -211,6 +218,6 @@ export class WorkspaceClient {
   }
   dispose() {
     this.port?.removeEventListener('message', this.receive)
-    this.rejectPending('工作区已关闭。'); this.listeners.clear(); this.visionListeners.clear(); this.session = null
+    this.rejectPending('工作区已关闭。'); this.listeners.clear(); this.visionListeners.clear(); this.storageListeners.clear(); this.session = null
   }
 }

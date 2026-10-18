@@ -18,6 +18,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('正在连接工作区…')
   const generation = useRef(0)
+  const statusRequest = useRef(0)
   const heading = useRef<HTMLHeadingElement>(null)
   const pageRef = useRef(page); pageRef.current = page
   const leaveMemory = useRef<MemoryLeaveGuard>(leave => leave())
@@ -31,16 +32,26 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     let disposed = false
     const bootstrap = () => {
       const current = ++generation.current
+      const request = ++statusRequest.current
       setStatus(null); setBusy(true); setError(''); setNotice('正在检查本机状态…')
-      void bridge.bootstrap().then(result => { if (!disposed && current === generation.current) { setStatus(result); setNotice('工作区已连接') } })
+      void bridge.bootstrap().then(result => { if (!disposed && current === generation.current && request === statusRequest.current) { setStatus(result); setNotice('工作区已连接') } })
         .catch(() => { if (!disposed && current === generation.current) { setError('工作区连接失败。请从原生窗口关闭后重新打开。'); setNotice('') } })
         .finally(() => { if (!disposed && current === generation.current) setBusy(false) })
     }
     const unsubscribe = bridge.onSession(bootstrap)
+    const unsubscribeLifecycle = bridge.onStorageStartup(() => {
+      const current = generation.current, request = ++statusRequest.current
+      void bridge.refreshStatus().then(result => {
+        if (!disposed && current === generation.current && request === statusRequest.current) setStatus(result)
+      }).catch(() => {
+        if (!disposed && current === generation.current && request === statusRequest.current)
+          setStatus(previous => previous ? { ...previous, runtime: 'Unavailable', credential: 'Unavailable' } : previous)
+      })
+    })
     if (bridge.ready) bootstrap()
     const timer = setTimeout(() => { if (!disposed && !bridge.ready) { setBusy(false); setError('无法连接工作区，请从托盘打开 Quick Assistant，或关闭后重新打开工作区。'); setNotice('') } }, 12_000)
     if (!bridge.available) { setBusy(false); setError('请通过桌面 Main Workspace 打开此页面。'); setNotice('') }
-    return () => { disposed = true; generation.current++; unsubscribe(); clearTimeout(timer) }
+    return () => { disposed = true; generation.current++; unsubscribe(); unsubscribeLifecycle(); clearTimeout(timer) }
   }, [bridge])
   useEffect(() => {
     const route = () => {
@@ -55,10 +66,11 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
   const run = async (method?: NativeMethod) => {
     const current = generation.current
+    const request = method ? statusRequest.current : ++statusRequest.current
     setBusy(true); setError(''); setNotice(method ? '请在原生窗口中继续。' : '正在刷新本机状态…')
     try {
       if (method) await bridge.open(method)
-      else { const result = await bridge.refreshStatus(); if (current === generation.current) setStatus(result) }
+      else { const result = await bridge.refreshStatus(); if (current === generation.current && request === statusRequest.current) setStatus(result) }
       if (current === generation.current) setNotice(method ? '原生入口已打开' : '状态已刷新')
     } catch (problem) { if (current === generation.current) { setError(problem instanceof Error ? problem.message : '操作暂时不可用。'); setNotice('') } }
     finally { if (current === generation.current) { setBusy(false); if (method) heading.current?.focus({ preventScroll: true }) } }

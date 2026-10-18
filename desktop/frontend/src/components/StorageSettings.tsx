@@ -13,6 +13,11 @@ const labels: Record<string, string> = {
   TRUSTED_LOCAL: '本机私有配置与凭据已校验',
   STARTUP_CAUSE_UNAVAILABLE: '无法确认 Runtime 已启动；具体原因尚无受信证据',
   NATIVE_AUTHENTICATION_UNAVAILABLE: 'Runtime 健康检查可达，原生认证尚未通过',
+  STARTING: '正在启动受控开发 Runtime', ADMISSION_DENIED: '受信开发准入或构建来源检查未通过',
+  CONFIGURATION_UNTRUSTED: '本机配置未通过可信校验', CREDENTIAL_UNAVAILABLE: '所需本机凭据不可用',
+  DATABASE_CONNECTION_FAILED: '数据库连接失败', DATABASE_AUTHENTICATION_FAILED: '数据库认证失败',
+  SCHEMA_NOT_READY: '数据库结构或应用角色未满足准入条件', STARTUP_TIMEOUT: 'Runtime 启动超时',
+  PROCESS_EXITED: '本次受控 Runtime 已退出', STARTUP_CANCELLED: 'Runtime 启动已取消',
 }
 export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; enabled: boolean }) {
   const [snapshot, setSnapshot] = useState<StorageStatus | null>(null)
@@ -27,6 +32,15 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
     return () => { generation.current++; unsubscribe() }
   }, [bridge])
   useEffect(() => { if (!enabled) { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setStartup(null); setError('') } }, [enabled])
+  useEffect(() => {
+    if (!enabled) return
+    return bridge.onStorageStartup(host => {
+      setStartup(host)
+      if (!host.canQueryStorage) {
+        generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setError('')
+      }
+    })
+  }, [bridge, enabled])
   const inspect = async () => {
     if (!enabled || inFlight.current) return
     inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setStartup(null); setError('')
@@ -65,6 +79,6 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
       <article className="maintenance-row"><div><h3>加密备份与恢复</h3><p>直接加密与认证恢复已具备合成维护能力。正式备份与恢复尚未开放，不能以现有明文导出替代。</p></div><button className="secondary" disabled>正式备份与恢复未开放</button></article>
     </div>
     <p className="hint">{snapshot ? `尚需完成：${snapshot.securityRequirements.map(item => labels[item]).join('；')}。` : '安全条件尚未查询；正式操作保持禁用。'}</p>
-    <p className="hint">Runtime 无法响应时，WPF 尚无可信启动错误回传通道，不能推断为数据库服务、密码或 schema 故障。连接检查不证明 Knowledge 私有文件生命周期或 Finance 身份绑定通过。</p>
+    <p className="hint">受控开发进程仅报告固定安全启动码；其他启动路径或未知输出保持原因未知。连接检查不证明 Knowledge 私有文件生命周期或 Finance 身份绑定通过。</p>
   </section>
 }

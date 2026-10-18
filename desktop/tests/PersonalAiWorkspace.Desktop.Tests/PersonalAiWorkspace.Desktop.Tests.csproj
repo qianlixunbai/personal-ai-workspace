@@ -3,6 +3,9 @@
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <UseWPF>true</UseWPF>
+    <OutputType Condition="'$(RuntimeLifecycleProbe)' == 'true'">Exe</OutputType>
+    <StartupObject Condition="'$(RuntimeLifecycleProbe)' == 'true'">PersonalAiWorkspace.Desktop.Tests.RuntimeLifecycleProbe</StartupObject>
+    <DefineConstants Condition="'$(RuntimeLifecycleProbe)' == 'true'">$(DefineConstants);RUNTIME_LIFECYCLE_PROBE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

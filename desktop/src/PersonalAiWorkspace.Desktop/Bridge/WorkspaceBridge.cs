@@ -28,6 +28,7 @@ internal interface IWorkspaceNativeActions
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task<StorageStatus> StorageStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    event Action<StorageStartupStatus>? StorageStartupChanged { add { } remove { } }
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
 }
 
@@ -53,6 +54,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private readonly WorkspaceWebFetch? webFetch;
     private readonly WorkspaceModels? models;
     private readonly Action<string,string> visionCleared;
+    private readonly Action<StorageStartupStatus> storageChanged;
     internal bool EditorDirty { get; private set; }
     private readonly Action<string> send;
     private readonly HashSet<string> requests = new(StringComparer.Ordinal);
@@ -76,6 +78,18 @@ internal sealed class WorkspaceBridge : IDisposable
         this.policy = policy; this.native = native; operations = native.Operations; conversations = native.Conversations; memory = native.Memory; knowledge=native.Knowledge; webFetch = native.WebFetch; models = native.Models; this.send = send;
         visionCleared=(session,handle)=>{if(ready&&session==SessionId)Send(new {type="vision.cleared",version=Version,sessionId=session,handle});};
         if(native.Vision is {} vision)vision.Cleared+=visionCleared;
+        var context = SynchronizationContext.Current;
+        storageChanged = status =>
+        {
+            string session = SessionId;
+            void Publish()
+            {
+                if (ready && session == SessionId) Send(new { type="storage.lifecycle",version=Version,sessionId=session,result=status });
+            }
+            try { if (context is null) Publish(); else context.Post(_ => Publish(), null); }
+            catch (InvalidOperationException) { /* Desktop dispatcher is closing; never retain raw output. */ }
+        };
+        native.StorageStartupChanged += storageChanged;
     }
 
     internal void BeginDocument(string address)
@@ -450,5 +464,5 @@ internal sealed class WorkspaceBridge : IDisposable
         foreach (var field in value.EnumerateObject()) if (!remaining.Remove(field.Name)) return false;
         return remaining.Count == 0;
     }
-    public void Dispose() { Invalidate();if(native.Vision is {} vision)vision.Cleared-=visionCleared; sessionLifetime.Dispose(); }
+    public void Dispose() { Invalidate();if(native.Vision is {} vision)vision.Cleared-=visionCleared;native.StorageStartupChanged-=storageChanged; sessionLifetime.Dispose(); }
 }

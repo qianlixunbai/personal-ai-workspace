@@ -44,6 +44,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     internal bool TrayVisible => tray?.Visible == true;
 #if MMF3_ACCEPTANCE && DEBUG
     private readonly Mmf3AcceptanceLaunch? acceptance;
+#if MMF3_PROFILE_ACCEPTANCE
+    private readonly DevelopmentRuntimeOwner? runtimeOwner;
+#endif
 #endif
     internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null
 #if MMF3_ACCEPTANCE && DEBUG
@@ -60,6 +63,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             if (testCredentials is not null) throw new InvalidOperationException("Conflicting MMF3 credentials.");
             credentials = new CredentialStore(acceptance.CredentialTarget);
             runtime = RuntimeClient.CreateMmf3Acceptance(ReadCredential);
+#if MMF3_PROFILE_ACCEPTANCE
+            runtimeOwner = new DevelopmentRuntimeOwner(acceptance, runtime);
+#endif
         }
         else
 #endif
@@ -87,6 +93,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        StartDevelopmentRuntime();
+#endif
         window = new AssistantWindow(this, runtime);
 #if MMF3_ACCEPTANCE && DEBUG
         if (acceptance is not null) window.Title += " · " + Mmf3AcceptanceLaunch.Label;
@@ -155,11 +164,48 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (workspace.WindowState == WindowState.Minimized) workspace.WindowState = WindowState.Normal;
         workspace.Activate();
     }
-    Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation) =>
-        new WorkspaceStatusProbe(runtime, ReadCredential).ReadAsync(cancellation);
-    Task<StorageStatus> IWorkspaceNativeActions.StorageStatusAsync(CancellationToken cancellation) => runtime.GetStorageStatusAsync(cancellation);
-    Task<StorageStartupStatus> IWorkspaceNativeActions.StorageStartupStatusAsync(CancellationToken cancellation) =>
-        StorageStartupProbe.ReadAsync(new WorkspaceStatusProbe(runtime, ReadCredential), cancellation);
+    async Task<ShellStatus> IWorkspaceNativeActions.StatusAsync(CancellationToken cancellation)
+    {
+        var status = await new WorkspaceStatusProbe(runtime, ReadCredential).ReadAsync(cancellation);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null && !(await runtimeOwner.ReadAsync(cancellation)).CanQueryStorage)
+            return status with { Runtime=ShellRuntimeState.Unavailable, Credential=ShellCredentialState.Unavailable };
+#endif
+        return status;
+    }
+    async Task<StorageStatus> IWorkspaceNativeActions.StorageStatusAsync(CancellationToken cancellation)
+    {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null && !(await runtimeOwner.ReadAsync(cancellation)).CanQueryStorage)
+            throw new DesktopException(DesktopError.RuntimeUnavailable);
+#endif
+        var status = await runtime.GetStorageStatusAsync(cancellation);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null && !runtimeOwner.Snapshot().CanQueryStorage)
+            throw new DesktopException(DesktopError.RuntimeUnavailable);
+#endif
+        return status;
+    }
+    Task<StorageStartupStatus> IWorkspaceNativeActions.StorageStartupStatusAsync(CancellationToken cancellation)
+    {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null) return runtimeOwner.ReadAsync(cancellation);
+#endif
+        return StorageStartupProbe.ReadAsync(new WorkspaceStatusProbe(runtime, ReadCredential), cancellation);
+    }
+    event Action<StorageStartupStatus>? IWorkspaceNativeActions.StorageStartupChanged
+    {
+        add {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            if (runtimeOwner is not null) runtimeOwner.Changed += value;
+#endif
+        }
+        remove {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            if (runtimeOwner is not null) runtimeOwner.Changed -= value;
+#endif
+        }
+    }
     WorkspaceOperations IWorkspaceNativeActions.Operations => workspaceOperations;
     WorkspaceConversations IWorkspaceNativeActions.Conversations => workspaceConversations;
     WorkspaceMemory IWorkspaceNativeActions.Memory => workspaceMemory;
@@ -311,17 +357,27 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     private string? ReadCredential()
     {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null) return runtimeOwner.ReadCredential();
+#endif
 #if MMF3_ACCEPTANCE && DEBUG
         acceptance?.Validate();
 #endif
         return credentials.Load();
     }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    internal DevelopmentRuntimeOwner? DevelopmentRuntime => runtimeOwner;
+    internal void StartDevelopmentRuntime() => runtimeOwner?.Start(lifetime.Token);
+#endif
     private bool RefreshCredentialStatus()
     {
         try
         {
             bool ready = ReadCredential() is not null;
             window.CredentialText.Text = ready ? "凭据已保存在 Windows Credential Manager · 同一本机信任域" : ErrorText.For(DesktopError.CredentialMissing);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            if (runtimeOwner is not null && ready) window.CredentialText.Text = "本次受控开发 Runtime 的会话凭据已就绪";
+#endif
             return ready;
         }
         catch (DesktopException error) { window.CredentialText.Text = error.Message; return false; }
@@ -376,6 +432,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         operation?.RequestCancel();
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
         lifetime.Cancel();
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null) await runtimeOwner.StopAsync();
+#endif
         if (activeCapture is not null) await Task.WhenAny(activeCapture, Task.Delay(3000));
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(2500));
         Exiting = true;
@@ -399,6 +458,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         window?.CloseMemorySelector();
         single.StopListening();
         lifetime.Cancel();
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        runtimeOwner?.Dispose();
+#endif
         hotkey?.Dispose();
         messages?.RemoveHook(WindowMessage);
         messages?.Dispose();

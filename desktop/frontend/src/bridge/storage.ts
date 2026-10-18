@@ -29,16 +29,20 @@ export function isStorageStatus(value: unknown): value is StorageStatus {
 }
 
 export interface StorageStartupStatus {
-  runtime: 'AVAILABLE' | 'UNAVAILABLE'; failure: 'NONE' | 'STARTUP_CAUSE_UNAVAILABLE' | 'NATIVE_AUTHENTICATION_UNAVAILABLE'
+  runtime: 'AVAILABLE' | 'UNAVAILABLE' | 'STARTING'; failure: 'NONE' | 'STARTUP_CAUSE_UNAVAILABLE' | 'NATIVE_AUTHENTICATION_UNAVAILABLE'
+    | 'STARTING' | 'ADMISSION_DENIED' | 'CONFIGURATION_UNTRUSTED' | 'CREDENTIAL_UNAVAILABLE' | 'DATABASE_CONNECTION_FAILED'
+    | 'DATABASE_AUTHENTICATION_FAILED' | 'SCHEMA_NOT_READY' | 'STARTUP_TIMEOUT' | 'PROCESS_EXITED' | 'STARTUP_CANCELLED'
   configurationTrust: 'NOT_CHECKED'; canQueryStorage: boolean
   configurationAction: 'TRUSTED_CONTEXT_REQUIRED'; confirmationRequired: true
 }
 export function isStorageStartupStatus(value: unknown): value is StorageStartupStatus {
   return isObject(value) && exactFields(value, ['runtime', 'failure', 'configurationTrust', 'canQueryStorage', 'configurationAction', 'confirmationRequired'])
-    && ['AVAILABLE', 'UNAVAILABLE'].includes(String(value.runtime))
-    && ['NONE', 'STARTUP_CAUSE_UNAVAILABLE', 'NATIVE_AUTHENTICATION_UNAVAILABLE'].includes(String(value.failure))
+    && ['AVAILABLE', 'UNAVAILABLE', 'STARTING'].includes(String(value.runtime))
+    && ['NONE', 'STARTUP_CAUSE_UNAVAILABLE', 'NATIVE_AUTHENTICATION_UNAVAILABLE', 'STARTING', 'ADMISSION_DENIED', 'CONFIGURATION_UNTRUSTED',
+      'CREDENTIAL_UNAVAILABLE', 'DATABASE_CONNECTION_FAILED', 'DATABASE_AUTHENTICATION_FAILED', 'SCHEMA_NOT_READY', 'STARTUP_TIMEOUT', 'PROCESS_EXITED', 'STARTUP_CANCELLED'].includes(String(value.failure))
     && value.configurationTrust === 'NOT_CHECKED' && typeof value.canQueryStorage === 'boolean'
     && value.configurationAction === 'TRUSTED_CONTEXT_REQUIRED' && value.confirmationRequired === true
-    && (value.runtime === 'UNAVAILABLE' ? value.failure === 'STARTUP_CAUSE_UNAVAILABLE' && !value.canQueryStorage
+    && (value.runtime === 'STARTING' ? value.failure === 'STARTING' && !value.canQueryStorage
+      : value.runtime === 'UNAVAILABLE' ? value.failure !== 'NONE' && value.failure !== 'STARTING' && !value.canQueryStorage
       : value.canQueryStorage ? value.failure === 'NONE' : value.failure === 'NATIVE_AUTHENTICATION_UNAVAILABLE')
 }
