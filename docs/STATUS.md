@@ -1,5 +1,14 @@
 # Personal AI Workspace — Current Status
 
+## Current Windows native security modernization（2026-10-19）
+
+Development-only 已改为系统 Known Folder + .NET Windows 身份/访问控制及生命周期目录句柄，日常入口不再依赖旧 MMF-3 精确单 ACE 或旧测试根。
+最终新 ZIP、WPF 权限/凭据聚焦验证、真实 Java/Spring/SQLite/Native Bearer 与 owner 清理通过；正式 launcher 继续拒绝，Production GO PENDING。
+实际 EXE 已打开 WPF 并启动 Java，但 WebView2/React 未 Ready，完整 GUI/普通双击与重启状态综合验收 PENDING。
+Java 综合 ACL 回归在深层备份 staging 受 SQLite 长路径限制而未通过，不计作 PASS；未修改备份实现或真实数据。
+旧 Profile/ACL、receipt、备份、旧包与八个未追踪 B4A6 文件保留。
+详见 [Windows Native Security Modernization Report](engineering/WINDOWS-NATIVE-SECURITY-MODERNIZATION-REPORT.md)。以下章节保留历史状态。
+
 ## Current Same-user Windows runtime compatibility（2026-10-19）
 
 原共享 Profile parent 的额外只读 ACE 已由本轮原 Gate 只读检查确认，继续 `STOP / PRIVATE_ACE`。

@@ -1,5 +1,15 @@
 # Personal AI Workspace — Current Architecture
 
+## Current Development-only Windows security（2026-10-19）
+
+新版开发 Profile 使用 `FOLDERID_LocalAppData/PersonalAIWorkspace.Development/Profiles/<id>`，WPF/helper 共享 .NET 身份与权限策略。
+私有 DACL 允许当前用户、SYSTEM、Administrators，拒绝外部数据读取/写入/替换；不要求精确单 ACE，不授信 CodexSandboxUsers。
+OS Known Folder 实际映射由目录句柄绑定；Desktop/Java 生命周期目录链 pin 与使用时私有边界复验替代旧上层目录精确权限前提。
+Java 使用既有 JNA 类型化 ACL/ACE，保留来源 pin、JNA 加载身份、精确启动参数、Native Bearer、Job/owner 清理和原 DPAPI 格式。
+这仍是 Windows 账户边界，不能隔离同 SID 恶意进程；不自动迁移旧 Profile 或改变生产发布信任。
+真实 Java/SQLite/认证与清理通过；WebView2/React 初始化、普通双击综合验收及 Production GO PENDING。
+源码差异、组件版本/许可证、实际证据和长路径限制见 [重构报告](../engineering/WINDOWS-NATIVE-SECURITY-MODERNIZATION-REPORT.md)。下方为此前架构快照。
+
 ## Current G3 — PostgreSQL source baseline published, runtime gates pending
 
 2026-10-18（Asia/Shanghai）。G3 已发布 PostgreSQL A2–B3F 源码至 main `b35a1ac`；B4A 已本地提交 `8eab41c`，B4A2 配置/诊断候选未提交。当前源码包含 Workspace Runtime、Model Management、V1 Vision 候选、Native Bootstrap/JNA/Gate、Windows Desktop/WPF、React/WebView2 Bridge 与 Finance 模块。
