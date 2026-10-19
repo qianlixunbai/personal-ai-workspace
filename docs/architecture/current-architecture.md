@@ -24,6 +24,11 @@ Java main 新增固定 `--native-database-setup` 分派，在原 Gate/完整固�
 WPF 在该直接子进程准入后经 stdin 发送有界配置，Java 复用原只读 preflight、DPAPI CREATE_NEW 和重读校验，stdout 只回固定枚举。
 Profile 创建复用原 Prepare / Provision / Verify，已有目录不修复；开发来源 manifest v2 增加原 JNA JAR 的构建时 pin，不改变数据库格式。
 无新 Gate、数据库迁移器或远程管理接口。新版真实 Windows E2E 仍被 PRIVATE_ACE 阻断；见 [桌面简化报告](../engineering/DESKTOP-SIMPLIFICATION-REPORT.md)。
+2026-10-19 distribution foundation：同一开发构建脚本可生成自包含 Desktop + 随包 Java/JAR/JNA 的开发目录及 ZIP。
+仅 Profile Debug 内嵌 manifest v3 将固定 runtime 相对路径解析到应用目录；v2 本机绝对来源保留。
+期望哈希不从侧边清单或启动参数读取，原 Native Gate/helper 字节与 Profile 根不变。NativeBootstrap 仍依赖系统 .NET 10，
+React 仍依赖 WebView2 Evergreen；无 installer/updater/生产信任授权，真实 E2E 与 Production GO PENDING。
+详见 [分发基础报告](../engineering/DESKTOP-RUNTIME-DISTRIBUTION-REPORT.md)。
 现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
 以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
 

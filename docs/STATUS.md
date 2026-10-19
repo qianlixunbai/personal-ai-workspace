@@ -1,5 +1,15 @@
 # Personal AI Workspace — Current Status
 
+## Current Desktop runtime / distribution foundation（2026-10-19）
+
+新增原构建入口的 Development-only 目录 / ZIP 模式：自包含 WPF Desktop、随包 Java 21/JAR/JNA、
+嵌入式相对来源 pin、原 NativeBootstrap 固定字节和生产前端。原 Profile / Native Gate / DPAPI 合同保留。
+打包合同和 Release 编译通过；这不是已安装客户端或真实 Windows E2E。
+新版 Windows / WPF 配置 / PostgreSQL E2E、Finance Binding、可信安装与 Production GO 仍 **PENDING**。
+NativeBootstrap 仍需系统 .NET 10 x64；React 仍需 WebView2 Evergreen Runtime。未生成 Setup/MSI/MSIX、未启用更新。
+详见 [Runtime Distribution Report](engineering/DESKTOP-RUNTIME-DISTRIBUTION-REPORT.md)。
+以下章节为此前状态快照。
+
 ## Current Desktop setup simplification（2026-10-19）
 
 Development-only Profile Desktop 已实现原生 Profile 选择/创建、Settings 配置入口、Gate 后私有管道只读检查、
