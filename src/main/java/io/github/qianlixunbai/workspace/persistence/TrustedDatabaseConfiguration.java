@@ -67,7 +67,7 @@ public final class TrustedDatabaseConfiguration {
         }
     }
 
-    /** Internal provisioning only; no CLI, HTTP or WebView entry. Never overwrite or repair existing state. */
+    /** Native provisioning only; no HTTP or WebView configuration payload. Never overwrite or repair existing state. */
     public static void create(byte[] utf8Configuration) throws IOException {
         Path root = WindowsNativeGate.profileRoot();
         byte[] encrypted = null;

@@ -7,6 +7,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class PersonalAiWorkspaceApplication {
 
 	public static void main(String[] args) {
+		if (args.length > 0 && args[0].equals("--native-database-setup")) {
+			System.exit(io.github.qianlixunbai.workspace.persistence.NativeDatabaseSetup.run(
+				java.util.Arrays.copyOfRange(args, 1, args.length), System.in, System.out));
+			return;
+		}
 		String stage = "NATIVE_ADMISSION_REJECTED";
 		try {
 			io.github.qianlixunbai.workspace.security.WindowsNativeGate.admit();

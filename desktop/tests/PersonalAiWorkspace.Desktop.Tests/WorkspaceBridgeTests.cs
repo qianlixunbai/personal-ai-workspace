@@ -87,8 +87,9 @@ public sealed class WorkspaceBridgeTests
     [Fact] public async Task PayloadMustBeExactlyEmptyAndNoArbitraryUrlPathOrExecutableIsAccepted()
     {
         using var f = new Fixture();
-        foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, "{}", new object[0] })
-            await f.Receive(f.Request("native.openCredentialFlow", payload: value));
+        foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, "{}", new object[0] })
+            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings" })
+                await f.Receive(f.Request(method, payload: value));
         Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
     }
     [Fact] public async Task MalformedUnknownDuplicateAndMissingFieldsAreRejected()
@@ -132,6 +133,7 @@ public sealed class WorkspaceBridgeTests
     [InlineData("native.openCredentialFlow")][InlineData("native.openBrowserPairing")]
     [InlineData("native.openMemoryBackup")][InlineData("native.openWorkspaceBackup")]
     [InlineData("native.openKnowledgeBackup")]
+    [InlineData("native.openDatabaseSettings")]
     public async Task MaintenanceEntriesStillRequireTrustedOriginAndCurrentSession(string method)
     {
         using var f = new Fixture();

@@ -26,6 +26,55 @@ class TrustedDatabaseConfigurationTest {
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private void directories() throws IOException { Files.createDirectory(root.resolve("data")); Files.createDirectory(root.resolve("credentials")); }
 
+    @Test void nativePipeAdmitsBeforeReadingAndOnlySavesAfterReadOnlyPreflightWithoutOverwriting() throws Exception {
+        directories();
+        var output = new java.io.ByteArrayOutputStream();
+        var reply = new java.io.PrintStream(output, true, StandardCharsets.UTF_8);
+        var input = new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG));
+        Path file = root.resolve("data/database.dpapi");
+        try (var gate = mockStatic(WindowsNativeGate.class); var acl = mockStatic(WindowsPrivateAcl.class);
+             var dpapi = mockStatic(Protection.class); var identities = mockStatic(Identity.class)) {
+            gate.when(WindowsNativeGate::admit).thenThrow(new IOException("synthetic-private-detail"));
+            assertEquals(10, NativeDatabaseSetup.run(new String[0], input, reply));
+            assertEquals(bytes("SAVE!\n" + CONFIG).length, input.available());
+            assertEquals("WORKSPACE_DATABASE_V1\tADMISSION_DENIED" + System.lineSeparator(), output.toString(StandardCharsets.UTF_8));
+            assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
+            gate.reset(); gate.when(WindowsNativeGate::profileRoot).thenReturn(root);
+            identities.when(() -> Identity.read(any(), anyBoolean())).thenAnswer(call -> call.getArgument(0).toString());
+            dpapi.when(() -> Protection.protect(any())).thenReturn(new byte[]{1,2,3});
+            dpapi.when(() -> Protection.unprotect(any())).thenAnswer(call -> bytes(CONFIG));
+            acl.when(() -> WindowsPrivateAcl.createFile(file)).thenAnswer(call -> { Files.createFile(file); return null; });
+            var ready = new StorageStatusService.Status("2026-10-19T00:00:00Z", "POSTGRESQL", "TRUSTED_LOCAL", true,
+                "CONNECTED", "V1_V2_READY", "READY", false, "DISABLED", "EXPLICIT_APPROVAL_REQUIRED", "MAINTENANCE_ONLY",
+                "BLOCKED_SECURITY_REQUIREMENTS", List.of(), "NONE");
+            var incomplete = new StorageStatusService.Status(ready.checkedAt(), ready.backend(), ready.configurationTrust(), true,
+                "CONNECTED", "INITIALIZATION_REQUIRED", "INITIALIZATION_REQUIRED", false, "DISABLED", ready.migration(), ready.encryptedBackup(), ready.restore(), List.of(), "NONE");
+            try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(incomplete))) {
+                output.reset();
+                assertEquals(10, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG)), reply));
+                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tSCHEMA_INITIALIZATION_REQUIRED"));
+                assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
+            }
+            try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(ready))) {
+                output.reset();
+                assertEquals(0, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("CHECK\n" + CONFIG)), reply));
+                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tREADY"));
+                assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
+                output.reset();
+                assertEquals(0, NativeDatabaseSetup.run(new String[0], input, reply));
+                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tSAVED"));
+                assertArrayEquals(new byte[]{1,2,3}, Files.readAllBytes(file));
+                output.reset();
+                assertEquals(0, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG)), reply));
+                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tALREADY_CONFIGURED"));
+                assertArrayEquals(new byte[]{1,2,3}, Files.readAllBytes(file));
+            }
+            output.reset();
+            assertEquals(10, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("CHECK\n" + CONFIG.replace("127.0.0.1", "remote.invalid"))), reply));
+            assertFalse(output.toString(StandardCharsets.UTF_8).contains("synthetic-secret"));
+        }
+    }
+
     @Test void admissionAndAclFailuresNeverReachCredentialsAndReadPinsRejectReplacement() throws Exception {
         directories(); Path file = root.resolve("data/database.dpapi"); Files.write(file, new byte[]{1,2,3});
         try (var gate = mockStatic(WindowsNativeGate.class); var acl = mockStatic(WindowsPrivateAcl.class);

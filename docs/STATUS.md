@@ -1,5 +1,18 @@
 # Personal AI Workspace — Current Status
 
+## Current Desktop setup simplification（2026-10-19）
+
+Development-only Profile Desktop 已实现原生 Profile 选择/创建、Settings 配置入口、Gate 后私有管道只读检查、
+原 DPAPI CurrentUser / CREATE_NEW 保存和用户明确确认的 Runtime 重启。复用原 DataSource/Store，无 Flyway、正式切换或 Finance 绑定。
+另集成 MIT `react-error-boundary 6.1.6`，渲染失败显示固定恢复提示，不回显异常内容或自动重发任务。
+Java / Desktop Bridge / React 聚焦验证与 Profile 构建通过。新版 WPF / Java / PostgreSQL 真实 E2E **PENDING**：
+本轮原 helper 只读复核现有 B4A6 Profile，返回 `STOP / PRIVATE_ACE`；没有修改 ACL 或运行数据库。
+B4A5 的历史 SQLite 真实运行证据不等同于新版验收。Production Launcher / Finance Binding / 正式迁移仍 PENDING。
+原 8 个 B4A6 未追踪文件和 receipt 原样保留，receipt 仍 `NATIVE_VERIFIED`，Compile 未通过。
+交付分支 `codex/desktop-setup-simplification`；基线 `2d161b4b1b95cb021385cc3e17d9f52611874f49`，本轮无 push/merge。
+详见 [报告 A](engineering/DESKTOP-SIMPLIFICATION-REPORT.md) 与 [报告 B](engineering/GITHUB-OPEN-SOURCE-EVALUATION.md)。
+以下较早 Current 章节作为历史快照保留，不覆盖本节。
+
 ## Current G3 — PostgreSQL source published / B4A2 configuration candidate
 
 2026-10-18（Asia/Shanghai）。G3 已将 A2、B1、B2、B3、B3E、B3F 源码 fast-forward 发布至 GitHub main `b35a1ac`，普通 push 后再次 fetch 核验一致。B4A 已本地提交 `8eab41c`，B4A2 为未提交配置/启动诊断候选；源码发布不构成 Windows Runtime 或 Production GO。

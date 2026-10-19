@@ -1,5 +1,17 @@
 # Personal AI Workspace
 
+## 当前开发版桌面配置（2026-10-19）
+
+`codex/desktop-setup-simplification` 已接入受信开发 Profile 选择/创建、Windows 原生数据库设置、安全保存和显式 Runtime 重启。
+构建后直接打开 `desktop/src/PersonalAiWorkspace.Desktop/bin/Debug/net10.0-windows/PersonalAiWorkspace.Desktop.exe`，
+选择开发 Profile → Settings → 重新检查存储 → 打开原生数据库设置。密码只在原生窗口输入；不自动初始化数据库或迁移 SQLite。
+一次工程构建仍使用 `scripts/verification/build-trusted-development-runtime.ps1 -JavaHome <已审查的本机 JDK21>`。
+已有 B4A6 菜单/脚本保留为历史维护工具，日常开发路径不依赖其 receipt 或 helper Compile 阶段。
+
+**源码/聚焦合同及构建通过；当前环境原 helper 返回 `PRIVATE_ACE`，新版真实 Windows E2E / Production GO 仍 PENDING。**
+正式 launcher 限制保持不变，不修复现有 ACL。详见 [桌面简化报告](docs/engineering/DESKTOP-SIMPLIFICATION-REPORT.md)
+和 [GitHub 开源评估及 Roadmap](docs/engineering/GITHUB-OPEN-SOURCE-EVALUATION.md)。下方章节保留各阶段历史语境。
+
 ## 当前工程验证入口
 
 T0 CLOSING REVIEW — APPROVED — GO；T0 — CLOSED — GO。

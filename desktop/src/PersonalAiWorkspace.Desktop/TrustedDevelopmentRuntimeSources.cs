@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -13,10 +14,11 @@ namespace PersonalAiWorkspace.Desktop;
 internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
 {
     internal sealed record Source(string Path, string Sha256);
-    internal sealed record Manifest(int Format, string JavaHome, string RuntimeJar, Source[] Files);
+    internal sealed record Manifest(int Format, string JavaHome, string RuntimeJar, string JnaJar, Source[] Files);
     private readonly List<FileStream> pins = new();
     internal string Java { get; private set; } = "";
     internal string Jar { get; private set; } = "";
+    internal string JnaJar { get; private set; } = "";
     internal static TrustedDevelopmentRuntimeSources Open()
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
@@ -28,9 +30,10 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
             if (resource.Length > 131072) throw new IOException();
             var manifest = JsonSerializer.Deserialize<Manifest>(resource, new JsonSerializerOptions
                 { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow }) ?? throw new IOException();
-            if (manifest.Format != 1 || manifest.Files.Length is < 4 or > 2048) throw new IOException();
-            result.Java = Path.Combine(manifest.JavaHome, "bin", "java.exe"); result.Jar = manifest.RuntimeJar;
+            if (manifest.Format != 2 || manifest.Files.Length is < 5 or > 2048) throw new IOException();
+            result.Java = Path.Combine(manifest.JavaHome, "bin", "java.exe"); result.Jar = manifest.RuntimeJar; result.JnaJar = manifest.JnaJar;
             if (!manifest.Files.Any(f => f.Path == result.Java) || !manifest.Files.Any(f => f.Path == result.Jar)
+                || !manifest.Files.Any(f => f.Path == result.JnaJar) || Path.GetFileName(result.JnaJar) != "jna-5.17.0.jar"
                 || !manifest.Files.Any(f => f.Path == Path.Combine(manifest.JavaHome, "lib", "modules"))
                 || !manifest.Files.Any(f => f.Path == Path.Combine(manifest.JavaHome, "release"))
                 || !manifest.Files.Any(f => f.Path == Path.Combine(manifest.JavaHome, "bin", "server", "jvm.dll"))
@@ -40,7 +43,7 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
             {
                 if (!Path.IsPathFullyQualified(source.Path) || source.Path.StartsWith("\\\\", StringComparison.Ordinal)
                     || Path.GetFullPath(source.Path) != source.Path || source.Sha256.Length != 64
-                    || source.Path != result.Jar && !source.Path.StartsWith(manifest.JavaHome + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new IOException();
+                    || source.Path != result.Jar && source.Path != result.JnaJar && !source.Path.StartsWith(manifest.JavaHome + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new IOException();
                 for (string? part = source.Path; part is not null; part = Path.GetDirectoryName(part))
                     if ((File.GetAttributes(part) & FileAttributes.ReparsePoint) != 0) throw new IOException();
                 var pin = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -56,5 +59,31 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         throw new IOException("Development-only runtime owner unavailable");
 #endif
     }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    internal ProcessStartInfo StartInfo(Mmf3AcceptanceLaunch profile, bool databaseSetup = false)
+    {
+        profile.Validate(); Mmf3ProfileNative.Verify(profile);
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            string key = ((string)entry.Key).ToUpperInvariant();
+            if (key is "JAVA_TOOL_OPTIONS" or "_JAVA_OPTIONS" or "JDK_JAVA_OPTIONS"
+                || new[] { "DOTNET_", "COREHOST_", "COMPLUS_", "COR_", "SPRING_", "WORKSPACE_", "SERVER_" }.Any(key.StartsWith))
+                throw new IOException();
+        }
+        var start = new ProcessStartInfo(Java) { UseShellExecute = false, CreateNoWindow = true,
+            WorkingDirectory = profile.Root, RedirectStandardOutput = true, RedirectStandardError = true,
+            RedirectStandardInput = databaseSetup };
+        string native = Path.Combine(profile.Root, "jna-5.17.0-win32-x86-64"), evidence = Path.Combine(profile.Root, "evidence");
+        foreach (string option in new[] { "-Dworkspace.native.development-profile=" + profile.RunId,
+            "-Dworkspace.native.bootstrap=" + Mmf3ProfileNative.Helper, "-Djna.boot.library.path=" + native,
+            "-Djna.boot.library.name=jnidispatch", "-Djna.nosys=true", "-Djna.noclasspath=true", "-Djna.nounpack=true",
+            "-Djava.io.tmpdir=" + evidence, "-Djna.tmpdir=" + evidence, "-jar", Jar }) start.ArgumentList.Add(option);
+        if (databaseSetup) start.ArgumentList.Add("--native-database-setup");
+        foreach (string option in new[] { "--server.address=127.0.0.1", "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
+            "--workspace.data-directory=" + Path.Combine(profile.Root, "data"), "--workspace.model-state-directory=" + Path.Combine(profile.Root, "model-state") })
+            start.ArgumentList.Add(option);
+        return start;
+    }
+#endif
     public void Dispose() { foreach (var pin in pins) pin.Dispose(); pins.Clear(); }
 }

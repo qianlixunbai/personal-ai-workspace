@@ -11,15 +11,15 @@ using PersonalAiWorkspace.Desktop.Bridge;
 
 namespace PersonalAiWorkspace.Desktop;
 
-// Desktop lifetime owns one direct child. Bridge requests can observe it, never start another one.
+// Desktop lifetime owns one runtime child. Only native confirmation can restart it.
 internal sealed class DevelopmentRuntimeOwner : IDisposable
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     private readonly Mmf3AcceptanceLaunch profile;
     private readonly RuntimeClient runtime;
-    private readonly CancellationTokenSource stop = new();
+    private CancellationTokenSource stop = new();
     private readonly object sync = new();
-    private readonly RuntimeStartupDiagnostic diagnostic = new();
+    private RuntimeStartupDiagnostic diagnostic = new();
     private Task? running;
     private Process? child;
     private string state = "STARTING";
@@ -38,14 +38,20 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     }
     internal string? ReadCredential()
     {
-        lock (sync) if (child is null || child.HasExited || disposed) return null;
+        Process observed;
+        lock (sync) { if (disposed || child is null || child.HasExited) return null; observed = child; }
         try
         {
             profile.Validate();
             if (!File.Exists(profile.TokenFile)) return null;
-            return CredentialStore.ReadPrivateFile(profile.ValidateTokenImport(profile.TokenFile), requireProtected: true);
+            string token = CredentialStore.ReadPrivateFile(profile.ValidateTokenImport(profile.TokenFile), requireProtected: true);
+            lock (sync) return !disposed && child == observed && !observed.HasExited ? token : null;
         }
-        catch (IOException) { State("ADMISSION_DENIED"); stop.Cancel(); return null; }
+        catch (IOException)
+        {
+            lock (sync) if (child == observed && !disposed) { State("ADMISSION_DENIED"); stop.Cancel(); }
+            return null;
+        }
     }
     private void State(string value)
     {
@@ -62,13 +68,15 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         {
             string current = state == "READY" && (child is null || child.HasExited) ? "PROCESS_EXITED" : state;
             return new(current == "READY" ? "AVAILABLE" : current == "STARTING" ? "STARTING" : "UNAVAILABLE",
-                current == "READY" ? "NONE" : current, "NOT_CHECKED", current == "READY", "TRUSTED_CONTEXT_REQUIRED", true);
+                current == "READY" ? "NONE" : current, "NOT_CHECKED", current == "READY", "NATIVE_SETUP_AVAILABLE", true);
         }
     }
     internal async Task<StorageStartupStatus> ReadAsync(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        if (Snapshot().CanQueryStorage)
+        Task? observed;
+        lock (sync) observed = Snapshot().CanQueryStorage ? running : null;
+        if (observed is not null)
         {
             try
             {
@@ -77,10 +85,16 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             }
             catch (DesktopException error)
             {
-                if (Snapshot().Failure != "ADMISSION_DENIED") State(error.Error is DesktopError.Unauthorized or DesktopError.CredentialInvalid
-                    ? "NATIVE_AUTHENTICATION_UNAVAILABLE" : error.Error == DesktopError.CredentialMissing
-                    ? "CREDENTIAL_UNAVAILABLE" : "STARTUP_CAUSE_UNAVAILABLE");
-                stop.Cancel();
+                lock (sync)
+                {
+                    if (observed == running)
+                    {
+                        if (Snapshot().Failure != "ADMISSION_DENIED") State(error.Error is DesktopError.Unauthorized or DesktopError.CredentialInvalid
+                            ? "NATIVE_AUTHENTICATION_UNAVAILABLE" : error.Error == DesktopError.CredentialMissing
+                            ? "CREDENTIAL_UNAVAILABLE" : "STARTUP_CAUSE_UNAVAILABLE");
+                        stop.Cancel();
+                    }
+                }
             }
         }
         cancellation.ThrowIfCancellationRequested();
@@ -96,31 +110,10 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         try
         {
             lifetime.Token.ThrowIfCancellationRequested();
-            profile.Validate(); Mmf3ProfileNative.Verify(profile);
-            foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-            {
-                string key = ((string)entry.Key).ToUpperInvariant();
-                if (key is "JAVA_TOOL_OPTIONS" or "_JAVA_OPTIONS" or "JDK_JAVA_OPTIONS"
-                    || new[] { "DOTNET_", "COREHOST_", "COMPLUS_", "COR_", "SPRING_", "WORKSPACE_", "SERVER_" }.Any(key.StartsWith))
-                    throw new IOException();
-            }
             if (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == 18765)) throw new IOException();
             sources = TrustedDevelopmentRuntimeSources.Open();
             lifetime.Token.ThrowIfCancellationRequested();
-            var start = new ProcessStartInfo(sources.Java)
-            {
-                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = profile.Root,
-                RedirectStandardError = true, RedirectStandardOutput = true
-            };
-            string native = Path.Combine(profile.Root, "jna-5.17.0-win32-x86-64");
-            string evidence = Path.Combine(profile.Root, "evidence");
-            foreach (string option in new[] { "-Dworkspace.native.development-profile=" + profile.RunId,
-                "-Dworkspace.native.bootstrap=" + Mmf3ProfileNative.Helper, "-Djna.boot.library.path=" + native,
-                "-Djna.boot.library.name=jnidispatch", "-Djna.nosys=true", "-Djna.noclasspath=true", "-Djna.nounpack=true",
-                "-Djava.io.tmpdir=" + evidence, "-Djna.tmpdir=" + evidence, "-jar", sources.Jar,
-                "--server.address=127.0.0.1", "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
-                "--workspace.data-directory=" + Path.Combine(profile.Root, "data"), "--workspace.model-state-directory=" + Path.Combine(profile.Root, "model-state") })
-                start.ArgumentList.Add(option);
+            var start = sources.StartInfo(profile);
             job = RuntimeProcessJob.Create();
             var process = Process.Start(start) ?? throw new IOException();
             lock (sync) child = process; // Hold the actual Process handle before any further operation can fail.
@@ -214,6 +207,18 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     {
         stop.Cancel(); Task? work; lock (sync) work = running;
         if (work is not null) await work.ConfigureAwait(false);
+    }
+    internal async Task RestartAsync(CancellationToken applicationLifetime)
+    {
+        await StopAsync().ConfigureAwait(false);
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            applicationLifetime.ThrowIfCancellationRequested();
+            child?.Dispose(); child = null; running = null;
+            stop.Dispose(); stop = new(); diagnostic = new();
+            State("STARTING"); Start(applicationLifetime);
+        }
     }
     public void Dispose()
     {

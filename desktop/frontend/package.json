@@ -10,7 +10,7 @@
     "test": "vitest run",
     "build": "npm run check && vite build && node scripts/assets.mjs"
   },
-  "dependencies": { "react": "19.3.0", "react-dom": "19.3.0" },
+  "dependencies": { "react": "19.3.0", "react-dom": "19.3.0", "react-error-boundary": "6.1.6" },
   "devDependencies": {
     "@testing-library/react": "16.3.3",
     "@types/react": "19.3.0",

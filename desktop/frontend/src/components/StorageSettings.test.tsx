@@ -52,6 +52,16 @@ it('checks through the bridge, distinguishes prepared from active, clears failur
   expect(port.sent).toHaveLength(10); expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
   const pending = bridge.storageStartupStatus(); const rejected = expect(pending).rejects.toMatchObject({ code: 'InvalidResponse' })
   port.reply(10, { ...host, password: 'synthetic-secret' }); await rejected
+  fireEvent.click(check)
+  await act(async () => { port.reply(11, { ...host, configurationAction: 'NATIVE_SETUP_AVAILABLE' }) })
+  await act(async () => { port.reply(12, snapshot) })
+  fireEvent.click(screen.getByRole('button', { name: '打开原生数据库设置' }))
+  expect(port.sent[13]).toMatchObject({ method: 'native.openDatabaseSettings', payload: {} })
+  expect(screen.queryByLabelText('密码')).toBeNull()
+  await act(async () => { port.reply(13, { opened: true }) })
+  expect(port.sent[14]).toMatchObject({ method: 'storage.startupStatus', payload: {} })
+  await act(async () => { port.reply(14, host) })
+  await act(async () => { port.reply(15, snapshot) })
   bridge.dispose()
 })
 

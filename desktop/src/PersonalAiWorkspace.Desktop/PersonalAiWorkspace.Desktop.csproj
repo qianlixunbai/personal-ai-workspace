@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <Content Include="../../frontend/THIRD-PARTY-NOTICES.txt" Link="ThirdPartyNotices/react-error-boundary.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="BuildMainWorkspaceFrontend" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
     <Error Condition="'$(MainWorkspaceDev)' == 'true' and '$(Configuration)' != 'Debug'" Text="MainWorkspaceDev is Debug-only. Release requires bundled production assets." />

@@ -18,24 +18,7 @@ internal static class Mmf3ProfileNative
     {
         try
         {
-            foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-            {
-                string name = ((string)entry.Key).ToUpperInvariant();
-                if (name.StartsWith("DOTNET_", StringComparison.Ordinal) || name.StartsWith("COREHOST_", StringComparison.Ordinal)
-                    || name.StartsWith("COMPLUS_", StringComparison.Ordinal) || name.StartsWith("COR_", StringComparison.Ordinal))
-                    throw new IOException();
-            }
-            (string suffix, string hash)[] payload = [
-                (".exe", "60564539c207e7fa9e74c9bf390f2c6d13b4df89885b9ca149008a8c6ef4fba9"),
-                (".dll", "277d6e6cd1d2cf9673353e4f9110427d1527336640651d73fb759b5e94743ada"),
-                (".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"),
-                (".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6")];
-            foreach (var item in payload)
-            {
-                string file = Path.Combine(Path.GetDirectoryName(Helper)!, "PersonalAiWorkspace.NativeBootstrap" + item.suffix);
-                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || new FileInfo(file).Length > 8 * 1024 * 1024
-                    || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file))) != item.hash) throw new IOException();
-            }
+            ValidateHelper();
             var start = new ProcessStartInfo(Helper) { UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(Helper)! };
             start.ArgumentList.Add("VerifyProfileNative"); start.ArgumentList.Add(launch.RunId);
@@ -59,6 +42,40 @@ internal static class Mmf3ProfileNative
             finally { if (!process.HasExited) { process.Kill(); process.WaitForExit(5000); } }
         }
         catch (Exception) { throw new IOException("MMF3 native admission STOP (Development-only)."); }
+    }
+
+    internal static void Provision(string runId, string pinnedJnaJar)
+    {
+        Mmf3ProfileState.Verify(runId); ValidateHelper();
+        var start = new ProcessStartInfo(Helper) { UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(Helper)! };
+        start.ArgumentList.Add("ProvisionProfileNative"); start.ArgumentList.Add(runId); start.ArgumentList.Add(pinnedJnaJar);
+        using var child = Process.Start(start) ?? throw new IOException();
+        try { if (!child.WaitForExit(15000) || child.ExitCode != 0) throw new IOException(); }
+        finally { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } }
+        // Parse subsequently runs the original Verify and checks the exact returned identity.
+    }
+
+    private static void ValidateHelper()
+    {
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            string name = ((string)entry.Key).ToUpperInvariant();
+            if (name.StartsWith("DOTNET_", StringComparison.Ordinal) || name.StartsWith("COREHOST_", StringComparison.Ordinal)
+                || name.StartsWith("COMPLUS_", StringComparison.Ordinal) || name.StartsWith("COR_", StringComparison.Ordinal))
+                throw new IOException();
+        }
+        (string suffix, string hash)[] payload = [
+            (".exe", "60564539c207e7fa9e74c9bf390f2c6d13b4df89885b9ca149008a8c6ef4fba9"),
+            (".dll", "277d6e6cd1d2cf9673353e4f9110427d1527336640651d73fb759b5e94743ada"),
+            (".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"),
+            (".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6")];
+        foreach (var item in payload)
+        {
+            string file = Path.Combine(Path.GetDirectoryName(Helper)!, "PersonalAiWorkspace.NativeBootstrap" + item.suffix);
+            if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0 || new FileInfo(file).Length > 8 * 1024 * 1024
+                || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file))) != item.hash) throw new IOException();
+        }
     }
 }
 #endif

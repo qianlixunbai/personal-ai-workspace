@@ -46,6 +46,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private readonly Mmf3AcceptanceLaunch? acceptance;
 #if MMF3_PROFILE_ACCEPTANCE
     private readonly DevelopmentRuntimeOwner? runtimeOwner;
+    private bool databaseSettingsOpen;
 #endif
 #endif
     internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null
@@ -227,6 +228,21 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         cancellation.ThrowIfCancellationRequested();
         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
+        if (entry == NativeWorkspaceEntry.DatabaseSettings)
+        {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            if (acceptance is not null && runtimeOwner is not null && !databaseSettingsOpen && workspace is not null)
+            {
+                var dialog = new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
+                databaseSettingsOpen = true;
+                using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => dialog.Close()));
+                try { dialog.ShowDialog(); cancellation.ThrowIfCancellationRequested(); }
+                finally { databaseSettingsOpen = false; workspace?.ReturnFocus(); }
+                return Task.CompletedTask;
+            }
+#endif
+            throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "数据库配置需要受信开发版桌面上下文。");
+        }
         if(entry==NativeWorkspaceEntry.KnowledgeBackup){
             var maintenance=new KnowledgeBackupWindow(runtime){Owner=workspace??(Window)window};
             using var registration=cancellation.Register(()=>Dispatcher.BeginInvoke(()=>maintenance.Close()));

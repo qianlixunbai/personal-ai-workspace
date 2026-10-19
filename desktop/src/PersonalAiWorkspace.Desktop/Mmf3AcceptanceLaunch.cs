@@ -17,7 +17,7 @@ namespace PersonalAiWorkspace.Desktop;
 internal sealed class Mmf3AcceptanceLaunch
 {
 #if MMF3_PROFILE_ACCEPTANCE
-    internal const string Label = "MMF3 PROFILE TEST / 18765";
+    internal const string Label = "开发工作区 · Development-only";
     internal const string Argument = "--mmf3-profile-acceptance";
 #else
     internal const string Label = "MMF3 TEST / 18765";

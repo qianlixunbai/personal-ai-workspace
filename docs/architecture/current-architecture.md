@@ -17,7 +17,13 @@ F2.3-B3 增加显式离线 PostgreSQL custom archive + revision 文件维护模�
 F2.3-B3E 在原 B3 格式外封装标准 RFC 9580 OpenPGP（BC 1.86，Argon2id + AES-256-GCM），完整认证和内部校验后才读取目标配置及恢复；合成加解密/新库恢复已验证。明文暂存、Windows 生命周期及身份重绑仍待完成，产品整体 PARTIAL，见 [B3E 报告](../engineering/F2.3-B3E-PORTABLE-ENCRYPTED-BACKUP-REPORT.md)。
 F2.3-B3F 增加 v2 直接加密入口：同一 PostgreSQL 导出快照／锁定 revision → pg_dump stdout 与文件有界 ZIP → 原 OpenPGP 流；不落明文 dump／ZIP。恢复先认证到空输出，再从同一锁定密文解包，临时 backup 子树在失败或恢复结束后清理。默认要求祖先 ACL 与 BitLocker 验证；本机仅合成数据例外通过，正式数据入口仍受原合成库边界限制。未改 Runtime/Gate/身份合同，产品 PARTIAL，见 [B3F 报告](../engineering/F2.3-B3F-SECURE-BACKUP-PIPELINE-REPORT.md)。
 B4A 复用 Workspace PostgreSQL 配置工厂，增加 Native Bearer `/api/v1/storage/status`：只读查询连接、角色和 schema 元数据，不初始化／迁移／切换。React 设置页经会话 Bridge → WPF → 固定 loopback RuntimeClient 查询，严格限制响应字段，凭据和目录不进入 React。正式 Gate 仍拒绝新增配置注入，完整 Windows Runtime、Finance 绑定与正式数据切换未完成，见 [B4A 报告](../engineering/F2.3-B4A-DESKTOP-POSTGRESQL-INTEGRATION-REPORT.md)。
-B4A2 在原 Native Gate/固定参数成功后读取 Profile data/database.dpapi，Spring initializer 先校验配置与只读数据库状态再构建 DataSource；默认 SQLite、Finance disabled、显式 PostgreSQL fail-closed。新增空 payload storage.startupStatus 区分 WPF 健康/认证观察与 Runtime SQL 状态，缺少受信错误通道时原因保持未知。原生写入 UI 禁用，实际 preflight 仍 PRIVATE_ACE；见 [B4A2 报告](../engineering/F2.3-B4A2-TRUSTED-WINDOWS-CONFIGURATION-REPORT.md)。
+B4A2 在原 Native Gate/固定参数成功后读取 Profile data/database.dpapi，Spring initializer 先校验配置与只读数据库状态再构建 DataSource；默认 SQLite、Finance disabled、显式 PostgreSQL fail-closed。新增空 payload storage.startupStatus 区分 WPF 健康/认证观察与 Runtime SQL 状态，缺少受信错误通道时原因保持未知；该阶段原生写入 UI 禁用，实际 preflight 仍 PRIVATE_ACE；见 [B4A2 报告](../engineering/F2.3-B4A2-TRUSTED-WINDOWS-CONFIGURATION-REPORT.md)。
+2026-10-19 Desktop simplification：新增严格空 payload `native.openDatabaseSettings`，仅 Profile Debug Desktop 实际开放原生窗口；正常/Release 宿主拒绝配置调用。
+原 `DevelopmentRuntimeOwner` 管理 Runtime 和显式重启；`TrustedDevelopmentRuntimeSources` 复用同一固定参数构造与哈希 pin。
+Java main 新增固定 `--native-database-setup` 分派，在原 Gate/完整固定 Runtime 参数校验后才回应 ADMITTED；不启动 Spring/HTTP。
+WPF 在该直接子进程准入后经 stdin 发送有界配置，Java 复用原只读 preflight、DPAPI CREATE_NEW 和重读校验，stdout 只回固定枚举。
+Profile 创建复用原 Prepare / Provision / Verify，已有目录不修复；开发来源 manifest v2 增加原 JNA JAR 的构建时 pin，不改变数据库格式。
+无新 Gate、数据库迁移器或远程管理接口。新版真实 Windows E2E 仍被 PRIVATE_ACE 阻断；见 [桌面简化报告](../engineering/DESKTOP-SIMPLIFICATION-REPORT.md)。
 现有 SQLite、领域与权限边界保留；当前阶段状态及来源见 [STATUS](../STATUS.md) 和 [Finance Module](../../finance-domain/README.md)。
 以下 2026-10-11 及更早章节为历史快照，保留原验收记录，不覆盖本节当前源码与门禁状态。
 

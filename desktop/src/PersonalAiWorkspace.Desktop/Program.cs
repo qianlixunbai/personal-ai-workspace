@@ -15,7 +15,18 @@ internal static class Program
             return NativeCopyPort.RunWorker(args[0], args);
 #if MMF3_ACCEPTANCE && DEBUG
         Mmf3AcceptanceLaunch acceptance;
-        try { acceptance = Mmf3AcceptanceLaunch.Parse(args); }
+        try
+        {
+#if MMF3_PROFILE_ACCEPTANCE
+            if (args.Length == 0)
+            {
+                var selected = ChooseDevelopmentProfile();
+                if (selected is null) return 0;
+                args = [Mmf3AcceptanceLaunch.Argument, selected];
+            }
+#endif
+            acceptance = Mmf3AcceptanceLaunch.Parse(args);
+        }
         catch (Exception)
         {
             MessageBox.Show("受信 Windows 启动上下文校验未通过。工作区未启动，数据库凭据未读取；请保留现有 Profile 权限并检查受控准入证据。", "Personal AI Workspace");
@@ -50,4 +61,26 @@ internal static class Program
             return 1;
         }
     }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    private static string? ChooseDevelopmentProfile()
+    {
+        var choice = MessageBox.Show("仅开发版：使用经过本机审查的构建和工具链，正式发布准入尚未完成。\n\n是：创建独立开发工作区（仅为新目录设置私有权限；不修复已有 ACL）。\n否：选择已有开发工作区。\n取消：退出。",
+            "Personal AI Workspace · 开发工作区", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (choice == MessageBoxResult.Cancel) return null;
+        if (choice == MessageBoxResult.No)
+        {
+            var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择已有受信开发 Profile 文件夹" };
+            if (picker.ShowDialog() != true) return null;
+            string runId = System.IO.Path.GetFileName(picker.FolderName);
+            if (!string.Equals(System.IO.Path.GetFullPath(picker.FolderName), Mmf3ProfileState.Root(runId), StringComparison.OrdinalIgnoreCase))
+                throw new System.IO.IOException();
+            return runId;
+        }
+        using var sources = TrustedDevelopmentRuntimeSources.Open();
+        string fresh = Guid.NewGuid().ToString("N");
+        Mmf3ProfileState.Prepare(fresh); // Original CREATE_NEW contract; no history or receipt edits.
+        Mmf3ProfileNative.Provision(fresh, sources.JnaJar);
+        return fresh;
+    }
+#endif
 }

@@ -53,6 +53,16 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
     catch (problem) { if (current === generation.current) setError(problem instanceof Error ? problem.message : '存储状态暂时不可用。') }
     finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
+  const configure = async () => {
+    if (!enabled || inFlight.current) return
+    inFlight.current = true; const current = ++generation.current; setWorking(true); setError('')
+    try {
+      await bridge.open('native.openDatabaseSettings')
+      if (current === generation.current) { inFlight.current = false; await inspect() }
+    }
+    catch (problem) { if (current === generation.current) setError(problem instanceof Error ? problem.message : '原生数据库设置暂时不可用。') }
+    finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
+  }
   const value = (field: keyof StorageStatus) => snapshot ? labels[String(snapshot[field])] ?? '尚未检查' : '尚未检查'
   return <section className="card" aria-labelledby="storage-title" aria-busy={working}>
     <div className="card-heading"><h2 id="storage-title">本地数据与存储</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void inspect() }}>重新检查存储</button></div>
@@ -74,7 +84,7 @@ export function StorageSettings({ bridge, enabled }: { bridge: WorkspaceClient; 
     {error && <p role="alert" className="error">{error}</p>}
     <p className="hint" role="status">{working ? '先检查 WPF 启动观察；仅在原生认证通过后查询数据库。' : 'WPF 启动观察不执行 PostgreSQL SQL。数据库结果仅来自已运行 Runtime 的受控查询；检查不会初始化、迁移或切换存储。'}</p>
     <div className="maintenance-list">
-      <article className="maintenance-row"><div><h3>本机 PostgreSQL 配置</h3><p>下一步需要受信 Windows 原生上下文与用户确认；当前入口禁用。密码仅允许原生安全输入，不进入网页。新设备须重新配置凭据并独立确认 Finance 身份。</p></div><button className="secondary" disabled>原生配置尚未开放</button></article>
+      <article className="maintenance-row"><div><h3>本机 PostgreSQL 配置</h3><p>开发版可在 Windows 原生窗口检查连接、安全保存凭据并明确重启。密码不进入网页；不会自动初始化数据库或迁移 SQLite。新设备须重新配置凭据并独立确认 Finance 身份。</p></div><button className="secondary" disabled={!enabled || working || startup?.configurationAction !== 'NATIVE_SETUP_AVAILABLE'} onClick={() => { void configure() }}>{startup?.configurationAction === 'NATIVE_SETUP_AVAILABLE' ? '打开原生数据库设置' : '原生配置尚未开放'}</button></article>
       <article className="maintenance-row"><div><h3>数据迁移准备</h3><p>需要用户独立确认源数据、备份与回退方案；本页不检查或迁移正式个人数据。</p></div><button className="secondary" disabled>迁移与切换未开放</button></article>
       <article className="maintenance-row"><div><h3>加密备份与恢复</h3><p>直接加密与认证恢复已具备合成维护能力。正式备份与恢复尚未开放，不能以现有明文导出替代。</p></div><button className="secondary" disabled>正式备份与恢复未开放</button></article>
     </div>

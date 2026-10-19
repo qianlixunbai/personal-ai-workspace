@@ -3,7 +3,7 @@ import { webFetchCodes, webFetchMethods } from './webFetch'
 import { modelCodes, modelMethods } from './models'
 import { visionMethods } from './vision'
 export const nativeMethods = [
-  'native.openBrowserPairing', 'native.openMemoryBackup', 'native.openWorkspaceBackup', 'native.openCredentialFlow', 'native.openKnowledgeBackup',
+  'native.openBrowserPairing', 'native.openMemoryBackup', 'native.openWorkspaceBackup', 'native.openCredentialFlow', 'native.openKnowledgeBackup', 'native.openDatabaseSettings',
 ] as const
 export type NativeMethod = typeof nativeMethods[number]
 export const businessMethods = ['assistant.selectMemories', 'assistant.submit', 'translate.submit', 'operations.get', 'operations.cancel', 'operations.copyResult'] as const
