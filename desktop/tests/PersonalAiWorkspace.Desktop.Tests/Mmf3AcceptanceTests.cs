@@ -150,6 +150,37 @@ public sealed class Mmf3AcceptanceTests
     }
 
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    [Fact]
+    public void ReadOnlyForeignAceRemainsRejectedWithSafeStartupDiagnostic()
+    {
+        // Pure descriptor evaluation: no Profile creation, ACL edits, helper launch or GUI.
+        var sid = WindowsIdentity.GetCurrent().User!;
+        var policy = typeof(Mmf3ProfileState).GetMethod("ValidateDescriptor", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var program = typeof(AssistantApp).Assembly.GetType("PersonalAiWorkspace.Desktop.Program")!;
+        var message = program.GetMethod("ProfileStartupFailureMessage", BindingFlags.Static | BindingFlags.NonPublic)!;
+        string Describe(Exception error) => (string)message.Invoke(null, [error])!;
+        var descriptor = new RawSecurityDescriptor($"O:{sid.Value}D:P(A;OICI;FA;;;{sid.Value})");
+        policy.Invoke(null, [descriptor, sid, true]);
+        // A foreign read-only ACE is sufficient; replacement authority is a separate ancestor rule.
+        descriptor.DiscretionaryAcl!.InsertAce(1, new CommonAce(AceFlags.ContainerInherit | AceFlags.ObjectInherit,
+            AceQualifier.AccessAllowed, (int)(FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize),
+            new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), false, null));
+        var failure = Assert.IsType<IOException>(Assert.Throws<TargetInvocationException>(
+            () => policy.Invoke(null, [descriptor, sid, true])).InnerException);
+        Assert.Equal("MMF3 private ACE mismatch.", failure.Message);
+        Assert.Contains("PRIVATE_ACL", Describe(failure));
+        policy.Invoke(null, [descriptor, sid, false]);
+        descriptor.DiscretionaryAcl.InsertAce(2, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed,
+            (int)FileSystemRights.Delete, new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), false, null));
+        var ancestor = Assert.IsType<IOException>(Assert.Throws<TargetInvocationException>(
+            () => policy.Invoke(null, [descriptor, sid, false])).InnerException);
+        Assert.Contains("ANCESTOR_ACL", Describe(ancestor));
+        const string privateText = "synthetic-secret-path-and-credential";
+        string generic = Describe(new IOException(privateText));
+        Assert.DoesNotContain(privateText, generic);
+        Assert.Equal(generic, Describe(new InvalidOperationException(failure.Message)));
+    }
+
     private static void ProfileFixture(MethodInfo main)
     {
         // dotnet test supplies SDK host overrides. Model a clean apphost entry without relaxing

@@ -2,13 +2,16 @@ Personal AI Workspace - 本机构建的开发验收包
 
 DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
 此 ZIP 是离线开发目录原型，不是安装器，不提供发布者身份或正式来源信任。
-仅供本地审查后在独立普通 Windows x64 用户验收环境中使用，不对外分发。
+仅供本地审查后在符合原安全合同的普通 Windows x64 用户环境中使用，不对外分发。
+当前账户的目录兼容问题尚未解决；第二个 Windows 账户不是产品的最终使用方案。
 
 首次使用：完整解压到验收用户自己的应用目录，打开 PersonalAiWorkspace.Desktop.exe，
 选择“是”创建全新的合成 Workspace；SQLite 为默认存储。不要复制旧 Profile。
 首次创建只沿原有 Prepare / Provision 合同设置新目录私有权限，不修复已有目录。
 若原生准入失败，停止验收；不要删 CodexSandboxUsers ACE、提权或修改 ACL。
-关闭 Codex 不保证已有用户目录恢复合格，须使用环境管理方提供的独立普通用户环境。
+关闭 Codex 不保证已有用户目录恢复合格；换解压位置或新 run-id 也不能解决共享父目录的冲突。
+如出现 PRIVATE_ACL / PRIVATE_ACE 或祖先 ACL 拒绝，请保留现场，等待同账户目录兼容方案。
+新目录合同尚需单独批准；不要重复运行旧 B4A6 恢复工具或手工修复 ACL。
 
 Java 21、JAR、JNA、.NET Desktop 和 React 资产已打包；无需设置 JAVA_HOME、寻找 JAR
 或安装 Node。但原 Native Gate pin 的 NativeBootstrap 仍要求已安装 .NET 10 x64 Runtime

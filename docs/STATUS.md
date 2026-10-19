@@ -1,5 +1,15 @@
 # Personal AI Workspace — Current Status
 
+## Current Same-user Windows runtime compatibility（2026-10-19）
+
+原共享 Profile parent 的额外只读 ACE 已由本轮原 Gate 只读检查确认，继续 `STOP / PRIVATE_ACE`。
+AppData/Local ancestor descriptor 另被原权限谓词拒绝，不能简单改用 LocalAppData。
+已补 Profile Debug 固定中文启动诊断；聚焦权限/消息合同、Profile Debug 与普通 Release 编译通过。
+未启动真实 Desktop/Java/WebView2，未修 ACL 或创建 Profile；同账户共存、Windows E2E 与 Production GO 仍 PENDING。
+候选为 token-home 下新的唯一固定开发 Profile 根，需明确授权后实施；旧 Profile/receipt/备份与原 8 个未追踪文件保留。
+详见 [Same-user Runtime Compatibility Report](engineering/SAME-USER-RUNTIME-COMPATIBILITY-REPORT.md)。
+以下章节为此前状态快照。
+
 ## Current Desktop runtime / distribution foundation（2026-10-19）
 
 新增原构建入口的 Development-only 目录 / ZIP 模式：自包含 WPF Desktop、随包 Java 21/JAR/JNA、
