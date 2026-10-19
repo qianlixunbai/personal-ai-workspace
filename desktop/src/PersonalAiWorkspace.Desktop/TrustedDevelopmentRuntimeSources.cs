@@ -30,7 +30,22 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
             if (resource.Length > 131072) throw new IOException();
             var manifest = JsonSerializer.Deserialize<Manifest>(resource, new JsonSerializerOptions
                 { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow }) ?? throw new IOException();
-            if (manifest.Format != 2 || manifest.Files.Length is < 5 or > 2048) throw new IOException();
+            if (manifest.Format is not (2 or 3) || manifest.Files.Length is < 5 or > 2048) throw new IOException();
+            if (manifest.Format == 3)
+            {
+                // Only this opt-in Debug build accepts bundled sources. The expected hashes
+                // remain embedded in Desktop, never read from a sidecar or command line.
+                if (manifest.JavaHome != "runtime/java" || manifest.RuntimeJar != "runtime/personal-ai-workspace.jar"
+                    || manifest.JnaJar != "runtime/jna-5.17.0.jar") throw new IOException();
+                string Resolve(string path)
+                {
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(path, @"\Aruntime/[A-Za-z0-9_./+-]+\z")
+                        || path.Split('/').Any(p => p is "" or "." or "..")) throw new IOException();
+                    return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path.Replace('/', Path.DirectorySeparatorChar)));
+                }
+                manifest = manifest with { JavaHome = Resolve(manifest.JavaHome), RuntimeJar = Resolve(manifest.RuntimeJar),
+                    JnaJar = Resolve(manifest.JnaJar), Files = manifest.Files.Select(f => f with { Path = Resolve(f.Path) }).ToArray() };
+            }
             result.Java = Path.Combine(manifest.JavaHome, "bin", "java.exe"); result.Jar = manifest.RuntimeJar; result.JnaJar = manifest.JnaJar;
             if (!manifest.Files.Any(f => f.Path == result.Java) || !manifest.Files.Any(f => f.Path == result.Jar)
                 || !manifest.Files.Any(f => f.Path == result.JnaJar) || Path.GetFileName(result.JnaJar) != "jna-5.17.0.jar"

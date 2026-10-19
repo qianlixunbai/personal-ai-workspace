@@ -18,6 +18,17 @@ public static class RuntimeLifecycleProbe
     public static int Main(string[] args)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (args is ["--verify-package-sources"])
+        {
+            // Packaging contract only: no Profile, ACL, credential, JVM or WPF operation.
+            try
+            {
+                using var sources = TrustedDevelopmentRuntimeSources.Open();
+                Assert.Throws<IOException>(() => { using var write = File.OpenWrite(sources.Jar); });
+                Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_PASS"); return 0;
+            }
+            catch { Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_STOP"); return 10; }
+        }
         if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "configuration-failure" or "gui")) return 2;
         try
         {
