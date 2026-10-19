@@ -8,4 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/WindowsProfileSecurity.cs" Link="WindowsProfileSecurity.cs" />
+  </ItemGroup>
 </Project>

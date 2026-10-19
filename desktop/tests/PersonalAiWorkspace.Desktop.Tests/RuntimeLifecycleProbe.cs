@@ -33,6 +33,7 @@ public static class RuntimeLifecycleProbe
         try
         {
             var launch = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, args[0]]);
+            using var paths = Mmf3ProfileState.Pin(launch.RunId);
             using var single = new SingleInstance(launch.InstanceSuffix);
             Assert.True(single.IsPrimary);
             var app = new AssistantApp(single, acceptance: launch);

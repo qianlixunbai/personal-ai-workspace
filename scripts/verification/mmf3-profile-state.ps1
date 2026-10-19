@@ -8,6 +8,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+throw 'Historical MMF-3 preparation is retired for new builds. Use the Development Desktop Profile picker; old Profiles are not migrated.'
 if ($Mode -eq 'Prepare' -and !$OptIn) { throw 'Prepare requires explicit -OptIn; nothing created.' }
 if ($Mode -ne 'Prepare' -and $OptIn) { throw '-OptIn is only valid for Prepare.' }
 if (!$IsWindows) { throw 'MMF3 Profile state requires Windows.' }

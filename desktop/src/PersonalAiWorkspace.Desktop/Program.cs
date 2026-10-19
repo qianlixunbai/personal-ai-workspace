@@ -45,6 +45,10 @@ internal static class Program
 #endif
         try
         {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            using var profilePaths = Mmf3ProfileState.Pin(acceptance.RunId);
+            acceptance.Validate();
+#endif
 #if MMF3_ACCEPTANCE && DEBUG
             using var single = new SingleInstance(acceptance.InstanceSuffix);
 #else
@@ -76,12 +80,11 @@ internal static class Program
         string reason = error is System.IO.IOException ? error.Message : "";
         return reason switch
         {
-            "MMF3 private ACE mismatch." or "MMF3 private owner/protection mismatch." =>
+            "Development private ACL rejected." =>
                 "开发 Profile 私有目录权限不符合安全要求（PRIVATE_ACL）。\n\n" +
-                "固定位置：当前 Windows 用户主目录下 .personal-ai-workspace-mmf3-tests。" +
-                "该父目录、Profile 及必要子目录必须由当前用户拥有、禁用权限继承，并且仅包含当前用户的完全控制权限。额外只读权限也会被拒绝。\n\n" +
-                "工作区未启动，数据库凭据未读取。更换 ZIP 解压位置或创建新 Profile 无法绕过不合格的共享父目录。" +
-                "请保留现有目录和权限，等待同账户目录兼容方案；不要反复重试、提权或手工修复 ACL。",
+                "位置：Windows 每用户 LocalAppData 下 PersonalAIWorkspace.Development/Profiles。" +
+                "私有目录须由当前用户拥有，保护继承边界；允许当前用户、SYSTEM 和 Administrators。其他主体的数据读取、写入或替换权限会被拒绝。\n\n" +
+                "工作区未启动，数据库凭据未读取。请保留现场；不要提权或手工修复 ACL。",
             "MMF3 foreign ancestor replacement authority." or "MMF3 ancestor owner rejected." =>
                 "开发 Profile 祖先目录权限不符合安全要求（ANCESTOR_ACL）。\n\n" +
                 "工作区未启动，数据库凭据未读取。祖先目录的所有者或其他身份的写入、删除、权限修改能力不符合受信合同。" +

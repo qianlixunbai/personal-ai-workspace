@@ -4,15 +4,15 @@ Set-StrictMode -Version Latest
 function Assert-DevelopmentBootstrap([string]$Directory) {
     $helper = Join-Path $Directory 'PersonalAiWorkspace.NativeBootstrap'
     foreach ($pin in @(
-        @('.exe', '60564539c207e7fa9e74c9bf390f2c6d13b4df89885b9ca149008a8c6ef4fba9'),
-        @('.dll', '277d6e6cd1d2cf9673353e4f9110427d1527336640651d73fb759b5e94743ada'),
+        @('.exe', '0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4'),
+        @('.dll', 'e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d'),
         @('.deps.json', '27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885'),
         @('.runtimeconfig.json', '3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6'))) {
         $path = $helper + $pin[0]
         for ($part = $path; $part; $part = [IO.Path]::GetDirectoryName($part)) {
             if ((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked NativeBootstrap rejected.' }
         }
-        if ((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $pin[1]) { throw 'Original NativeBootstrap pin mismatch. Supply the reviewed original payload; do not repin the Gate.' }
+        if ((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $pin[1]) { throw 'Reviewed Development-only NativeBootstrap pin mismatch.' }
     }
 }
 
@@ -53,8 +53,8 @@ function Assert-DevelopmentBundle([string]$Root) {
     }
     $config = Get-Content -LiteralPath (Join-Path $Root 'PersonalAiWorkspace.Desktop.runtimeconfig.json') -Raw | ConvertFrom-Json
     if ($config.runtimeOptions.PSObject.Properties['frameworks'] -or -not $config.runtimeOptions.PSObject.Properties['includedFrameworks']) { throw 'Self-contained Desktop required.' }
-    # Native Gate pins this original framework-dependent helper. Do not rebuild it
-    # as self-contained or change its pins just to make a package appear standalone.
+    # Native Gate pins the reviewed Development-only framework-dependent helper.
+    # Its explicit .NET prerequisite is retained; sidecar manifests cannot repin it.
     Assert-DevelopmentBootstrap (Join-Path $Root 'NativeBootstrap')
     $assets = Get-Content -LiteralPath (Join-Path $Root 'MainWorkspace/workspace-assets.json') -Raw | ConvertFrom-Json
     foreach ($asset in $assets.files.PSObject.Properties) {

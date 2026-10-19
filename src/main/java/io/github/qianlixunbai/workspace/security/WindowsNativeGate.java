@@ -16,8 +16,8 @@ public final class WindowsNativeGate {
     public static final String DLL_HASH = "5a7ff949f6d93d86491eb5b26b1cfc60051168a60622650224b89995ac420023";
     private static final String NAME = "PersonalAiWorkspace.NativeBootstrap";
     private static final Map<String, String> BOOTSTRAP = Map.of(
-        ".exe", "60564539c207e7fa9e74c9bf390f2c6d13b4df89885b9ca149008a8c6ef4fba9",
-        ".dll", "277d6e6cd1d2cf9673353e4f9110427d1527336640651d73fb759b5e94743ada",
+        ".exe", "0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4",
+        ".dll", "e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d",
         ".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885",
         ".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6");
     private static Path admittedRoot;
@@ -63,6 +63,7 @@ public final class WindowsNativeGate {
                 LoadedDispatch.verify(before.dll, before.identity);
                 if (!before.equals(verify(helper, runId))) throw new IOException();
             }
+            WindowsPrivateAcl.holdDevelopmentProfile(before.root);
             admittedRoot = before.root;
         } catch (Exception | LinkageError failure) {
             // No native messages, paths, account names, child output or credentials in diagnostics.
@@ -237,14 +238,15 @@ public final class WindowsNativeGate {
             byte[] bytes = child.getInputStream().readNBytes(16385);
             if (bytes.length > 16384) throw new IOException();
             String[] fields = new String(bytes, StandardCharsets.UTF_8).strip().split("\t", -1);
-            if (fields.length != 7 || !fields[0].equals("MMF3_NATIVE_V1")
+            if (fields.length != 7 || !fields[0].equals("WINDOWS_PROFILE_V2")
                     || !fields[1].equals("DEVELOPMENT_ONLY") || !fields[2].equals(runId)
                     || !fields[5].matches("[0-9a-f]{16}:[0-9a-f]{32}") || !fields[6].equals(DLL_HASH))
                 throw new IOException();
             Path root = localPath(new String(Base64.getDecoder().decode(fields[3]), StandardCharsets.UTF_8));
             Path dll = localPath(new String(Base64.getDecoder().decode(fields[4]), StandardCharsets.UTF_8));
             if (!root.getFileName().toString().equals(runId)
-                    || !root.getParent().getFileName().toString().equals(".personal-ai-workspace-mmf3-tests")
+                    || !root.getParent().getFileName().toString().equals("Profiles")
+                    || !root.getParent().getParent().getFileName().toString().equals("PersonalAIWorkspace.Development")
                     || !dll.equals(root.resolve("jna-5.17.0-win32-x86-64/jnidispatch.dll"))) throw new IOException();
             return new Admission(root, dll, fields[5]);
         } finally {

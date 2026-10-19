@@ -2,6 +2,7 @@ using Microsoft.Win32.SafeHandles;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.NativeBootstrap;
 
@@ -19,7 +20,7 @@ internal static class TrustedNative
         int length, string sha256, string machine, string root, string dll, string runId)
     {
         // Bounded, fixed child-process protocol; never a reusable PASS ticket.
-        internal string JavaAdmission() => string.Join('\t', "MMF3_NATIVE_V1", "DEVELOPMENT_ONLY", runId,
+        internal string JavaAdmission() => string.Join('\t', "WINDOWS_PROFILE_V2", "DEVELOPMENT_ONLY", runId,
             Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(root)),
             Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(dll)), fileIdentity, sha256);
     }
@@ -34,24 +35,34 @@ internal static class TrustedNative
         if (profileMode && user.Elevated) throw new Rejected("ELEVATED_PROFILE");
         string profile = Win32.Profile(user.Token);
         Win32.ValidatePath(profile);
-        string parent = Path.Combine(profile, ".personal-ai-workspace-mmf3-tests");
+        string parent = profileMode ? WindowsProfileSecurity.Parent() : profile;
         string root = profileMode ? Path.Combine(parent, fixtureId) : Path.Combine(profile, FixturePrefix + fixtureId);
         string native = Path.Combine(root, NativeDirectory);
         string final = Path.Combine(native, "jnidispatch.dll");
         var pins = new List<SafeFileHandle>();
+        using var profilePins = profileMode ? WindowsProfileSecurity.HoldDirectories(root) : null;
+        void Private(SafeFileHandle handle, bool directory)
+        {
+            if (profileMode) WindowsProfileSecurity.ValidatePrivate(handle, user.Sid, directory);
+            else Win32.PrivateAcl(handle, user.Sid, directory);
+        }
         try
         {
+            if (profileMode) WindowsProfileSecurity.State(fixtureId, false);
             // Root-to-leaf identity/ACL checks; metadata directory handles are NOT rename pins.
             string part = Path.GetPathRoot(profile)!;
-            var ancestor = Win32.Open(part, true);
-            pins.Add(ancestor);
-            Win32.AncestorAcl(ancestor, user.Sid);
-            foreach (string name in profile[part.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
+            if (!profileMode)
             {
-                part = Path.Combine(part, name);
-                ancestor = Win32.Open(part, true);
+                var ancestor = Win32.Open(part, true);
                 pins.Add(ancestor);
                 Win32.AncestorAcl(ancestor, user.Sid);
+                foreach (string name in profile[part.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    part = Path.Combine(part, name);
+                    ancestor = Win32.Open(part, true);
+                    pins.Add(ancestor);
+                    Win32.AncestorAcl(ancestor, user.Sid);
+                }
             }
             bool provision = mode.StartsWith("Provision", StringComparison.Ordinal);
             if (profileMode)
@@ -61,13 +72,13 @@ internal static class TrustedNative
                 {
                     var handle = Win32.Open(directory, true);
                     pins.Add(handle);
-                    Win32.PrivateAcl(handle, user.Sid, true);
+                    WindowsProfileSecurity.ValidatePrivate(handle, user.Sid, directory: true);
                 }
                 foreach (string name in new[] { "credentials", "model-state", "data", "webview2-profile",
                     "chrome-profile", "browser-test-extension", "evidence", "logs" })
                 {
                     using var handle = Win32.Open(Path.Combine(root, name), true);
-                    Win32.PrivateAcl(handle, user.Sid, true);
+                    WindowsProfileSecurity.ValidatePrivate(handle, user.Sid, directory: true);
                 }
             }
             // Authenticate source bytes before creating anything. Hash is compiled from the approved request.
@@ -82,14 +93,15 @@ internal static class TrustedNative
                 }
                 handle = Win32.Open(directory, true);
                 pins.Add(handle);
-                Win32.PrivateAcl(handle, user.Sid, true);
+                if (profileMode) WindowsProfileSecurity.ValidatePrivate(handle, user.Sid, directory: true);
+                else Win32.PrivateAcl(handle, user.Sid, true);
             }
             string identity;
             if (provision)
             {
                 string staging = Path.Combine(native, ".staging-" + Guid.NewGuid().ToString("N") + ".dll");
                 using var stage = Win32.CreatePrivateFile(staging, user.Sid);
-                Win32.PrivateAcl(stage, user.Sid, false);
+                Private(stage, false);
                 string initial = Win32.Identity(stage, staging, false);
                 RandomAccess.Write(stage, bytes!, 0);
                 RandomAccess.FlushToDisk(stage);
@@ -98,13 +110,13 @@ internal static class TrustedNative
                 Win32.Publish(stage, final);
                 identity = Win32.Identity(stage, final, false);
                 if (identity != initial) throw new Rejected("PUBLISH_IDENTITY");
-                Win32.PrivateAcl(stage, user.Sid, false);
+                Private(stage, false);
                 ValidateDll(ReadDll(stage));
                 // A separate path reopen must address the very same published file.
                 using var reopened = Win32.Open(final, false, true);
                 if (Win32.Identity(reopened, final, false) != identity)
                     throw new Rejected("PUBLISH_IDENTITY");
-                Win32.PrivateAcl(reopened, user.Sid, false);
+                Private(reopened, false);
                 ValidateDll(ReadDll(reopened));
             }
             else
@@ -112,18 +124,20 @@ internal static class TrustedNative
                 // Read data/attributes/security only. No write sharing: a concurrent writer fails closed.
                 using var file = Win32.Open(final, false);
                 identity = Win32.Identity(file, final, false);
-                Win32.PrivateAcl(file, user.Sid, false);
+                Private(file, false);
                 ValidateDll(ReadDll(file));
                 if (Win32.Identity(file, final, false) != identity)
                     throw new Rejected("VERIFY_IDENTITY");
-                Win32.PrivateAcl(file, user.Sid, false);
+                Private(file, false);
             }
             // Recheck held ancestor and directory descriptors before declaring the operation complete.
             int privateStart = pins.Count - (profileMode ? 3 : 2);
             for (int i = 0; i < privateStart; i++) Win32.AncestorAcl(pins[i], user.Sid);
-            for (int i = privateStart; i < pins.Count; i++) Win32.PrivateAcl(pins[i], user.Sid, true);
+            for (int i = privateStart; i < pins.Count; i++)
+                if (profileMode) WindowsProfileSecurity.ValidatePrivate(pins[i], user.Sid, directory: true);
+                else Win32.PrivateAcl(pins[i], user.Sid, true);
             return new Result("PASS", mode, Program.Trust, user.Elevated, "CURRENT_EFFECTIVE_SID",
-                true, true, identity, DllLength, DllHash, "0x8664", root, final, fixtureId);
+                true, !profileMode, identity, DllLength, DllHash, "0x8664", root, final, fixtureId);
         }
         finally
         {

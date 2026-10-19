@@ -10,6 +10,7 @@
     <DefineConstants Condition="'$(MainWorkspaceDev)' == 'true' and '$(Configuration)' == 'Debug'">$(DefineConstants);WORKSPACE_DEV</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../bootstrap/Shared/WindowsProfileSecurity.cs" Link="WindowsProfileSecurity.cs" Condition="'$(Mmf3ProfileAcceptanceBuild)' == 'true' and '$(Configuration)' == 'Debug'" />
     <ProjectReference Include="../PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <Content Include="../../frontend/THIRD-PARTY-NOTICES.txt" Link="ThirdPartyNotices/react-error-boundary.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

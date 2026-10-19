@@ -73,12 +73,20 @@ internal sealed class CredentialStore(string? testTarget = null)
             using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var user = WindowsIdentity.GetCurrent().User!;
             var security = input.GetAccessControl();
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            if (requireProtected) PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.ValidatePrivate(security, user);
+            else
+            {
+#endif
             if (requireProtected && !security.AreAccessRulesProtected) throw new DesktopException(DesktopError.CredentialInvalid);
             if (!user.Equals(security.GetOwner(typeof(SecurityIdentifier)))) throw new DesktopException(DesktopError.CredentialInvalid);
             foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
                 if (rule.AccessControlType == AccessControlType.Allow && !user.Equals(rule.IdentityReference)
                     && (rule.FileSystemRights & (FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership)) != 0)
                     throw new DesktopException(DesktopError.CredentialInvalid);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            }
+#endif
             if (input.Length > 128) throw new DesktopException(DesktopError.CredentialInvalid);
             // Read bounded bytes; no file path/token gets logged on any error path.
             byte[] bytes = new byte[129];

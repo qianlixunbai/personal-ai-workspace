@@ -149,13 +149,13 @@ class WindowsPrivateAclTest {
         open.setAccessible(true);
         var handle = (WinNT.HANDLE) open.invoke(null, child, true, true);
         try {
-            var deletion = Kernel32.INSTANCE.CreateFile(child.toString(), 0x10000, 7, null, 3, 0x02200000, null);
+            var deletion = Kernel32.INSTANCE.CreateFile("\\\\?\\" + child, 0x10000, 7, null, 3, 0x02200000, null);
             if (!WinBase.INVALID_HANDLE_VALUE.equals(deletion)) {
                 Kernel32.INSTANCE.CloseHandle(deletion);
                 fail("Directory DELETE open was not blocked");
             }
             assertEquals(32, Kernel32.INSTANCE.GetLastError());
-            assertFalse(Kernel32.INSTANCE.MoveFile(child.toString(), unsafe.resolve("renamed").toString()));
+            assertFalse(Kernel32.INSTANCE.MoveFile("\\\\?\\" + child, "\\\\?\\" + unsafe.resolve("renamed")));
             assertEquals(32, Kernel32.INSTANCE.GetLastError());
         } finally { assertTrue(Kernel32.INSTANCE.CloseHandle(handle)); }
         Files.move(child, unsafe.resolve("renamed")); // Pin lifetime ends with CloseHandle.
@@ -182,8 +182,8 @@ class WindowsPrivateAclTest {
     // Independent binary SECURITY_DESCRIPTOR_RELATIVE readback, not Java getAcl equality.
     static byte[] descriptor(Path path) throws Exception {
         var kernel = Kernel32.INSTANCE;
-        var handle = kernel.CreateFile(path.toString(), 0x20000, 7, null, 3, 0x02200000, null);
-        assertNotEquals(WinBase.INVALID_HANDLE_VALUE, handle);
+        var handle = kernel.CreateFile("\\\\?\\" + path, 0x20000, 7, null, 3, 0x02200000, null);
+        assertNotEquals(WinBase.INVALID_HANDLE_VALUE, handle, () -> "Win32=" + kernel.GetLastError());
         PointerByReference sd = new PointerByReference();
         try {
             assertEquals(0, Advapi32.INSTANCE.GetSecurityInfo(handle, 1, 5, null, null, null, null, sd));
@@ -205,7 +205,7 @@ class WindowsPrivateAclTest {
     }
     static void protectFixtureDacl(Path path) throws Exception {
         var kernel = Kernel32.INSTANCE;
-        var handle = kernel.CreateFile(path.toString(), 0x60000, 7, null, 3, 0x02200000, null);
+        var handle = kernel.CreateFile("\\\\?\\" + path, 0x60000, 7, null, 3, 0x02200000, null);
         assertNotEquals(WinBase.INVALID_HANDLE_VALUE, handle);
         PointerByReference dacl = new PointerByReference(), sd = new PointerByReference();
         try {

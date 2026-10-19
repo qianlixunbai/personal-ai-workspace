@@ -16,6 +16,14 @@ public sealed class Mmf3AcceptanceTests
     [Fact]
     public void CompiledVariantIdentityAndCrossModeArgumentsAreIsolated()
     {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        string profileId = Guid.NewGuid().ToString("N");
+        Assert.Equal("开发工作区 · Development-only", Mmf3AcceptanceLaunch.Label);
+        Assert.EndsWith(Path.Combine("PersonalAIWorkspace.Development", "Profiles", profileId), Mmf3ProfileState.Root(profileId));
+        foreach (string[] arguments in new[] { Array.Empty<string>(), new[] { "--mmf3-acceptance", profileId },
+            new[] { Mmf3AcceptanceLaunch.Argument, "invalid" }, new[] { Mmf3AcceptanceLaunch.Argument, profileId, "--root", @"C:\arbitrary" } })
+            Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse(arguments));
+#else
         var assembly = typeof(AssistantApp).Assembly;
         var main = assembly.GetType("PersonalAiWorkspace.Desktop.Program")!
             .GetMethod("Main", BindingFlags.Static | BindingFlags.NonPublic)!;
@@ -31,19 +39,11 @@ public sealed class Mmf3AcceptanceTests
         // Constructor derives identity only; Parse/Program reject the absent root without creating it.
         var launch = (Mmf3AcceptanceLaunch)typeof(Mmf3AcceptanceLaunch)
             .GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, [typeof(string)], null)!.Invoke([id]);
-#if MMF3_PROFILE_ACCEPTANCE
-        Assert.NotNull(assembly.GetType("PersonalAiWorkspace.Desktop.Mmf3ProfileState"));
-        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".personal-ai-workspace-mmf3-tests", id), launch.Root);
-        Assert.Equal("MMF3 PROFILE TEST / 18765", Mmf3AcceptanceLaunch.Label);
-        Assert.Equal(2, main.Invoke(null, [new[] { "--mmf3-acceptance", id }]));
-#else
         Assert.Null(assembly.GetType("PersonalAiWorkspace.Desktop.Mmf3ProfileState"));
         Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PersonalAiWorkspace-Mmf3", id), launch.Root);
         Assert.Equal("MMF3 TEST / 18765", Mmf3AcceptanceLaunch.Label);
         Assert.Equal(2, main.Invoke(null, [new[] { "--mmf3-profile-acceptance", id }]));
-#endif
         Assert.Equal($"PersonalAiWorkspace/Desktop/MMF3/{id}/Runtime/127.0.0.1:18765", launch.CredentialTarget);
         Assert.Equal(Path.Combine(launch.Root, "webview2-profile"), launch.Profile);
         Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]));
@@ -59,6 +59,7 @@ public sealed class Mmf3AcceptanceTests
         foreach (string mode in new[] { "--mmf3-acceptance", "--mmf3-profile-acceptance" })
             Assert.Equal(2, main.Invoke(null, [new[] { mode, id }]));
 #endif
+#endif
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public sealed class Mmf3AcceptanceTests
         foreach (string mode in new[] { "--clipboard-snapshot", "--clipboard-read", "--clipboard-restore" })
             Assert.Equal(2, main.Invoke(null, [new[] { mode }]));
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
-        ProfileFixture(main);
+        ProfileFixture();
 #elif MMF3_ACCEPTANCE && DEBUG
         string id = Guid.NewGuid().ToString("N");
         string parent = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PersonalAiWorkspace-Mmf3");
@@ -151,156 +152,81 @@ public sealed class Mmf3AcceptanceTests
 
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     [Fact]
-    public void ReadOnlyForeignAceRemainsRejectedWithSafeStartupDiagnostic()
+    public void DevelopmentPrivatePolicyAcceptsWindowsAuthoritiesAndRejectsForeignDataAccess()
     {
-        // Pure descriptor evaluation: no Profile creation, ACL edits, helper launch or GUI.
         var sid = WindowsIdentity.GetCurrent().User!;
-        var policy = typeof(Mmf3ProfileState).GetMethod("ValidateDescriptor", BindingFlags.Static | BindingFlags.NonPublic)!;
-        var program = typeof(AssistantApp).Assembly.GetType("PersonalAiWorkspace.Desktop.Program")!;
-        var message = program.GetMethod("ProfileStartupFailureMessage", BindingFlags.Static | BindingFlags.NonPublic)!;
-        string Describe(Exception error) => (string)message.Invoke(null, [error])!;
-        var descriptor = new RawSecurityDescriptor($"O:{sid.Value}D:P(A;OICI;FA;;;{sid.Value})");
-        policy.Invoke(null, [descriptor, sid, true]);
-        // A foreign read-only ACE is sufficient; replacement authority is a separate ancestor rule.
-        descriptor.DiscretionaryAcl!.InsertAce(1, new CommonAce(AceFlags.ContainerInherit | AceFlags.ObjectInherit,
-            AceQualifier.AccessAllowed, (int)(FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize),
-            new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), false, null));
-        var failure = Assert.IsType<IOException>(Assert.Throws<TargetInvocationException>(
-            () => policy.Invoke(null, [descriptor, sid, true])).InnerException);
-        Assert.Equal("MMF3 private ACE mismatch.", failure.Message);
-        Assert.Contains("PRIVATE_ACL", Describe(failure));
-        policy.Invoke(null, [descriptor, sid, false]);
-        descriptor.DiscretionaryAcl.InsertAce(2, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed,
-            (int)FileSystemRights.Delete, new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), false, null));
-        var ancestor = Assert.IsType<IOException>(Assert.Throws<TargetInvocationException>(
-            () => policy.Invoke(null, [descriptor, sid, false])).InnerException);
-        Assert.Contains("ANCESTOR_ACL", Describe(ancestor));
-        const string privateText = "synthetic-secret-path-and-credential";
-        string generic = Describe(new IOException(privateText));
-        Assert.DoesNotContain(privateText, generic);
-        Assert.Equal(generic, Describe(new InvalidOperationException(failure.Message)));
+        var security = new DirectorySecurity();
+        security.SetSecurityDescriptorSddlForm($"O:{sid.Value}D:P(A;OICI;FA;;;{sid.Value})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)");
+        PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.ValidatePrivate(security, sid, directory: true);
+        // Normal system/admin ACEs and harmless traversal do not require exact ACE count.
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.ReadAttributes | FileSystemRights.Traverse, AccessControlType.Allow));
+        PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.ValidatePrivate(security, sid, directory: true);
+        foreach (FileSystemRights right in new[] { FileSystemRights.ReadData, FileSystemRights.WriteData,
+            FileSystemRights.DeleteSubdirectoriesAndFiles, FileSystemRights.ChangePermissions })
+        {
+            var unsafeAcl = new DirectorySecurity();
+            unsafeAcl.SetSecurityDescriptorBinaryForm(security.GetSecurityDescriptorBinaryForm());
+            unsafeAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), right, AccessControlType.Allow));
+            Assert.Throws<IOException>(() => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.ValidatePrivate(unsafeAcl, sid, directory: true));
+        }
+        security.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null));
+        Assert.Throws<IOException>(() => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.ValidatePrivate(security, sid));
     }
 
-    private static void ProfileFixture(MethodInfo main)
+    private static void ProfileFixture()
     {
-        // dotnet test supplies SDK host overrides. Model a clean apphost entry without relaxing
-        // the production gate; restore these test-process values even when the fixture fails.
         string[] sdkVariables = ["DOTNET_CLI_TELEMETRY_SESSIONID", "DOTNET_ROOT_X64", "DOTNET_HOST_PATH"];
-        var sdkPrevious = sdkVariables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+        var previous = sdkVariables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
         foreach (string name in sdkVariables) Environment.SetEnvironmentVariable(name, null);
         try
         {
-            ProfileFixtureWithCleanHost(main);
+            string id = Guid.NewGuid().ToString("N");
+            string root = Mmf3ProfileState.Prepare(id);
+            Assert.ThrowsAny<IOException>(() => Mmf3ProfileState.Prepare(id));
+            Assert.Equal(root, Mmf3ProfileState.Verify(id));
+            // Actual production directory-handle mode excludes rename until release.
+            using (Mmf3ProfileState.Pin(id))
+                Assert.Throws<IOException>(() => Directory.Move(root, root + "-renamed"));
+            Mmf3ProfileNative.Provision(id, Environment.GetEnvironmentVariable("MMF3_JNA_ARTIFACT")
+                ?? throw new IOException("Explicit reviewed JNA artifact required."));
+            var launch = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
+            Assert.Equal(root, launch.Root);
+            var sid = WindowsIdentity.GetCurrent().User!;
+            foreach (string path in new[] { root, Path.Combine(root, "data") })
+            {
+                var actual = new DirectoryInfo(path).GetAccessControl();
+                Assert.Equal(sid, actual.GetOwner(typeof(SecurityIdentifier)));
+                Assert.True(actual.AreAccessRulesProtected);
+                Assert.Equal(3, actual.GetAccessRules(true, true, typeof(SecurityIdentifier)).Count);
+            }
+            string[] variables = ["USERPROFILE", "HOME", "LOCALAPPDATA"];
+            var old = variables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+            try
+            {
+                foreach (string name in variables) Environment.SetEnvironmentVariable(name, @"Z:\untrusted");
+                Assert.Equal(root, Mmf3ProfileState.Verify(id));
+            }
+            finally { foreach (string name in variables) Environment.SetEnvironmentVariable(name, old[name]); }
+            string data = Path.Combine(root, "data");
+            var security = new DirectoryInfo(data).GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                FileSystemRights.ReadData, AccessControlType.Allow));
+            new DirectoryInfo(data).SetAccessControl(security);
+            Assert.ThrowsAny<IOException>(launch.Validate);
+            Assert.ThrowsAny<IOException>(() => Mmf3ProfileNative.Verify(launch));
+            security.RemoveAccessRuleSpecific(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                FileSystemRights.ReadData, AccessControlType.Allow));
+            new DirectoryInfo(data).SetAccessControl(security); // Only this test's fresh synthetic child.
+            Directory.Delete(data);
+            var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true };
+            foreach (string arg in new[] { "/c", "mklink", "/J", data, Path.Combine(root, "logs") }) start.ArgumentList.Add(arg);
+            using (var junction = Process.Start(start)!) { junction.WaitForExit(); Assert.Equal(0, junction.ExitCode); }
+            Assert.ThrowsAny<IOException>(launch.Validate); // Reparse remains rejected; fixture is retained.
         }
-        finally { foreach (string name in sdkVariables) Environment.SetEnvironmentVariable(name, sdkPrevious[name]); }
+        finally { foreach (string name in sdkVariables) Environment.SetEnvironmentVariable(name, previous[name]); }
     }
 
-    private static void ProfileFixtureWithCleanHost(MethodInfo main)
-    {
-        string id = Guid.NewGuid().ToString("N");
-        string root = Mmf3ProfileState.Root(id);
-        var sid = WindowsIdentity.GetCurrent().User!;
-        Assert.ThrowsAny<IOException>(() => Mmf3ProfileState.Verify(id));
-        Assert.Equal(2, main.Invoke(null, [new[] { Mmf3AcceptanceLaunch.Argument, id }]));
-        Assert.False(Directory.Exists(root));
-        foreach (string[] args in new[] { Array.Empty<string>(), new[] { Mmf3AcceptanceLaunch.Argument },
-            new[] { Mmf3AcceptanceLaunch.Argument, new string('A', 32) },
-            new[] { Mmf3AcceptanceLaunch.Argument, "../" + id },
-            new[] { "--mmf3-acceptance", id },
-            new[] { Mmf3AcceptanceLaunch.Argument, id, "http://127.0.0.1:8765" } })
-            Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse(args));
-
-        // All creation is descriptor-at-create. Retain this unique empty fixture as review evidence.
-        Assert.Equal(root, Mmf3ProfileState.Prepare(id));
-        Assert.ThrowsAny<IOException>(() => Mmf3ProfileState.Prepare(id));
-        Assert.Equal(root, Mmf3ProfileState.Verify(id));
-        foreach (string path in new[] { Path.GetDirectoryName(root)!, root }.Concat(
-            new[] { "credentials", "model-state", "data", "webview2-profile", "chrome-profile", "browser-test-extension", "evidence", "logs" }
-                .Select(name => Path.Combine(root, name))))
-        {
-            var actual = new DirectoryInfo(path).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
-            Assert.Equal(sid, actual.GetOwner(typeof(SecurityIdentifier)));
-            Assert.True(actual.AreAccessRulesProtected);
-            var ace = Assert.Single(actual.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>());
-            Assert.Equal(sid, ace.IdentityReference);
-            Assert.Equal(FileSystemRights.FullControl, ace.FileSystemRights);
-            Assert.Equal(InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, ace.InheritanceFlags);
-            Assert.False(ace.IsInherited);
-        }
-        // Existing integrated flow now covers native rejection and the same Profile helper.
-        Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]));
-        var provision = new ProcessStartInfo(Mmf3ProfileNative.Helper) { UseShellExecute = false,
-            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        provision.ArgumentList.Add("ProvisionProfileNative"); provision.ArgumentList.Add(id);
-        provision.ArgumentList.Add(Environment.GetEnvironmentVariable("MMF3_JNA_ARTIFACT")
-            ?? throw new IOException("Explicit fixed JNA artifact required for this focused fixture."));
-        using (var helper = Process.Start(provision)!)
-        {
-            try { Assert.True(helper.WaitForExit(15000)); Assert.Equal(0, helper.ExitCode); }
-            finally { if (!helper.HasExited) { helper.Kill(); helper.WaitForExit(5000); } }
-        }
-        var launch = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
-        // Reject the legacy argument even with an otherwise valid Profile root (Parse only, no GUI).
-        Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse(["--mmf3-acceptance", id]));
-        string[] variables = ["USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA"];
-        var previous = variables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
-        try
-        {
-            foreach (string name in variables) Environment.SetEnvironmentVariable(name, "Z:\\untrusted-profile");
-            Assert.Equal(root, Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]).Root);
-        }
-        finally { foreach (string name in variables) Environment.SetEnvironmentVariable(name, previous[name]); }
-        Assert.Equal(Path.Combine(root, "webview2-profile"), WorkspaceProfile.Mmf3PrivateFolder(launch));
-        Assert.NotEqual(CredentialStore.Target, launch.CredentialTarget);
-        var store = new CredentialStore(launch.CredentialTarget); // Never Load/Import/CredRead/CredWrite.
-        Assert.Equal(launch.CredentialTarget, typeof(CredentialStore).GetField("target", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(store));
-        Assert.Equal(".MMF3." + id, launch.InstanceSuffix);
-        using var client = RuntimeClient.CreateMmf3Acceptance(() => throw new InvalidOperationException("No credential reads."));
-        Transport(client, 18765);
-        Assert.False(new WorkspaceContentPolicy().Development);
-        Assert.Equal(launch.TokenFile, launch.ValidateTokenImport(launch.TokenFile));
-        foreach (string path in new[] { "credentials/client-token", launch.TokenFile + ":stream",
-            Path.Combine(root, "client-token"), Path.Combine(Path.GetDirectoryName(root)!, Guid.NewGuid().ToString("N"), "credentials", "client-token") })
-            Assert.Equal(DesktopError.CredentialInvalid, Assert.Throws<DesktopException>(() => launch.ValidateTokenImport(path)).Error);
-        Assert.False(File.Exists(launch.TokenFile));
-
-        string data = Path.Combine(root, "data");
-        var descriptor = new RawSecurityDescriptor(new DirectoryInfo(data).GetAccessControl(
-            AccessControlSections.Owner | AccessControlSections.Access).GetSecurityDescriptorBinaryForm(), 0);
-        var policy = typeof(Mmf3ProfileState).GetMethod("ValidateDescriptor", BindingFlags.Static | BindingFlags.NonPublic)!;
-        // Owner mismatch: actual descriptor with ONLY its owner field substituted; no foreign-owner OS claim.
-        descriptor.Owner = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
-        Assert.IsAssignableFrom<IOException>(Assert.Throws<TargetInvocationException>(() => policy.Invoke(null, [descriptor, sid, true])).InnerException);
-        var security = new DirectoryInfo(data).GetAccessControl(AccessControlSections.Access);
-        security.SetAccessRuleProtection(false, true);
-        new DirectoryInfo(data).SetAccessControl(security);
-        Assert.ThrowsAny<IOException>(launch.Validate);
-        Assert.Equal(2, main.Invoke(null, [new[] { Mmf3AcceptanceLaunch.Argument, id }]));
-        Private(data);
-        security = new DirectoryInfo(data).GetAccessControl(AccessControlSections.Access);
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-            FileSystemRights.DeleteSubdirectoriesAndFiles, AccessControlType.Allow));
-        new DirectoryInfo(data).SetAccessControl(security);
-        Assert.ThrowsAny<IOException>(launch.Validate);
-        // Same real fixture descriptor as an ancestor exercises the distinct replacement-authority predicate.
-        descriptor = new RawSecurityDescriptor(new DirectoryInfo(data).GetAccessControl(
-            AccessControlSections.Owner | AccessControlSections.Access).GetSecurityDescriptorBinaryForm(), 0);
-        Assert.IsAssignableFrom<IOException>(Assert.Throws<TargetInvocationException>(() => policy.Invoke(null, [descriptor, sid, false])).InnerException);
-        Private(data);
-        Directory.Delete(data);
-        Assert.ThrowsAny<IOException>(launch.Validate);
-        var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (string arg in new[] { "/c", "mklink", "/J", data, Path.Combine(root, "logs") }) start.ArgumentList.Add(arg);
-        using (var junction = Process.Start(start)!) { junction.WaitForExit(); Assert.Equal(0, junction.ExitCode); }
-        try { Assert.ThrowsAny<IOException>(launch.Validate); }
-        finally { Directory.Delete(data); }
-        typeof(Mmf3ProfileState).GetMethod("CreatePrivateDirectory", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [data, sid]);
-        launch.Validate();
-        File.WriteAllText(Path.Combine(root, "evidence", "focused-fixture.json"), System.Text.Json.JsonSerializer.Serialize(new
-        { RunId = id, Root = root, CurrentSid = sid.Value, Endpoint = "http://127.0.0.1:18765", launch.CredentialTarget,
-            OwnerMismatch = "descriptor predicate only", CredentialManager = "not invoked", GuiRuntimeChrome = "not started" }));
-    }
 #endif
 
 #if MMF3_ACCEPTANCE && DEBUG

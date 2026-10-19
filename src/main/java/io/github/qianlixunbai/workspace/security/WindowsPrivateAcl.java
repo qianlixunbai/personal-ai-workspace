@@ -20,8 +20,8 @@ public final class WindowsPrivateAcl {
     public static void createFile(Path path) throws IOException { operate(path, false, true); }
     public static void verify(Path path, boolean directory) throws IOException { operate(path, directory, false); }
 
-    /** SQLite creates these files by inheritance, not with our explicit protected descriptor.
-     * Only an owner-only inherited file under a protected private parent is admitted; never repaired. */
+    /** SQLite creates these files by inheritance. Only the named sidecars beneath a verified
+     * private parent may inherit the current-user/system/admin policy; never repaired. */
     public static void verifySqliteSidecar(Path path) throws IOException {
         if (path.getFileName() == null || !Set.of("memory.db-journal", "memory.db-wal", "memory.db-shm",
                 "knowledge.db-journal", "knowledge.db-wal", "knowledge.db-shm").contains(path.getFileName().toString()))
@@ -43,6 +43,10 @@ public final class WindowsPrivateAcl {
         }
     }
 
+    // Called only after the pinned native dispatch has actually loaded. Process lifetime pins
+    // replace exact ancestor ACE policy inside the OS Known Folder development boundary.
+    static void holdDevelopmentProfile(Path root) throws IOException { NativeAcl.holdDevelopmentProfile(root); }
+
     /** Only numeric Win32 codes may cross the credential diagnostic boundary. */
     static final class NativeFailure extends IOException {
         final int code;
@@ -56,8 +60,37 @@ public final class WindowsPrivateAcl {
         private static final ExtraSecurity DESCRIPTORS = Native.load("advapi32", ExtraSecurity.class);
         private static final int READ_CONTROL = 0x20000, READ_ATTRIBUTES = 0x80, LIST_DIRECTORY = 0x1;
         private static final int FULL_CONTROL = 0x1f01ff;
+        private static Pins profilePins;
+        private static Path developmentRoot;
+
+        static void holdDevelopmentProfile(Path root) throws IOException {
+            if (profilePins != null) throw new IOException("Development Profile already bound");
+            var pins = new Pins();
+            try {
+                Path part = root.getRoot();
+                pins.add(open(part, true, true));
+                for (Path name : root) {
+                    part = part.resolve(name);
+                    HANDLE handle = open(part, true, true);
+                    pins.add(handle);
+                    if (part.equals(root) || part.equals(root.getParent()) || part.equals(root.getParent().getParent()))
+                        privateAcl(handle, currentSid(), true, false);
+                }
+                developmentRoot = root; profilePins = pins;
+            } catch (IOException | RuntimeException | Error failure) { pins.close(); throw failure; }
+        }
+
+        private static boolean pinnedAncestor(Path part, Path target) {
+            return developmentRoot != null && target.startsWith(developmentRoot) && developmentRoot.startsWith(part);
+        }
+
+        private static void verifyAncestor(HANDLE handle, Path part, Path target, PSID user) throws IOException {
+            if (!pinnedAncestor(part, target)) ancestorAcl(handle, user);
+            else if (part.startsWith(developmentRoot.getParent().getParent()))
+                privateAcl(handle, user, true, false); // Recheck the private boundary after admission, too.
+        }
         // Ancestors may belong to OS/administrative identities, which are already outside the account boundary.
-        // Private objects themselves accept ONLY the current SID.
+        // Private objects use the current-user/system/admin policy below.
         private static final Set<String> SYSTEM_OWNERS = Set.of("S-1-5-18", "S-1-5-32-544",
                 "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"); // TrustedInstaller service SID
 
@@ -88,7 +121,7 @@ public final class WindowsPrivateAcl {
                 HANDLE root = open(part, true, true);
                 pins.add(root);
                 if (sidecar && part.equals(path.getParent())) privateAcl(root, user, true, false);
-                else ancestorAcl(root, user);
+                else verifyAncestor(root, part, path, user);
                 for (Path name : path) {
                     part = part.resolve(name);
                     boolean last = part.equals(path), isDirectory = !last || directory;
@@ -123,7 +156,7 @@ public final class WindowsPrivateAcl {
                     }
                     if (last) privateAcl(handle, user, directory, sidecar);
                     else if (sidecar && part.equals(path.getParent())) privateAcl(handle, user, true, false);
-                    else ancestorAcl(handle, user);
+                    else verifyAncestor(handle, part, path, user);
                 }
             }
         }
@@ -189,25 +222,21 @@ public final class WindowsPrivateAcl {
                 if ((control.getValue() & 4) == 0 || (!inheritedSidecar && (control.getValue() & 0x1000) == 0)
                         || dacl.getValue() == null)
                     throw new IOException("Windows private protection rejected");
-                ACL acl = new ACL(dacl.getValue());
-                int count = Short.toUnsignedInt(acl.AceCount);
-                if (count == 0 || inheritedSidecar && count != 1) throw new IOException("Windows private access unavailable");
+                // JNA's maintained typed ACL/ACE structures own descriptor decoding.
+                // Do not parse ACE offsets or require one exact owner-only ACE.
                 boolean full = false;
-                for (int i = 0; i < count; i++) {
-                    PointerByReference value = new PointerByReference();
-                    if (!SECURITY.GetAce(acl, i, value)) throw new NativeFailure(KERNEL.GetLastError());
-                    Pointer ace = value.getValue();
-                    int flags = Byte.toUnsignedInt(ace.getByte(1)), size = Short.toUnsignedInt(ace.getShort(2));
-                    // Sidecar exception requires the exact current-user inherited FullControl ACE.
-                    // All other private objects retain the explicit protected ACL contract.
-                    if (ace.getByte(0) != 0 || size < 16 || (inheritedSidecar ? flags != 16 : (flags & ~(directory ? 3 : 0)) != 0))
-                        throw new IOException("Windows private ACE rejected");
-                    PSID sid = new PSID(ace.share(8));
-                    if (!SECURITY.IsValidSid(sid) || !SECURITY.EqualSid(user, sid))
-                        throw new IOException("Windows private ACE rejected");
-                    int mask = ace.getInt(4);
-                    if ((mask & ~FULL_CONTROL) != 0) throw new IOException("Windows private rights rejected");
-                    if (mask == FULL_CONTROL && (!directory || flags == 3)) full = true;
+                for (ACE_HEADER entry : new ACL(dacl.getValue()).getACEs()) {
+                    if (entry instanceof ACCESS_DENIED_ACE) continue;
+                    if (!(entry instanceof ACCESS_ALLOWED_ACE allow)) throw new IOException("Windows private ACE rejected");
+                    PSID sid = allow.getSID();
+                    if (!SECURITY.IsValidSid(sid)) throw new IOException("Windows private SID rejected");
+                    boolean current = SECURITY.EqualSid(user, sid);
+                    String value = allow.getSidString();
+                    boolean trusted = current || value.equals("S-1-5-18") || value.equals("S-1-5-32-544");
+                    // Read attributes/ACL, synchronization and traversal disclose no file contents.
+                    int harmless = 0x120080 | (directory ? 0x20 : 0);
+                    if (!trusted && (allow.Mask & ~harmless) != 0) throw new IOException("Windows private access rejected");
+                    if (current && (allow.AceFlags & 8) == 0 && (allow.Mask & FULL_CONTROL) == FULL_CONTROL) full = true;
                 }
                 if (!full) throw new IOException("Windows private access unavailable");
             } finally { free(sd.getValue()); }
@@ -226,17 +255,10 @@ public final class WindowsPrivateAcl {
                 if (owner.getValue() == null || dacl.getValue() == null
                         || !trustedAncestorSid(new PSID(owner.getValue()), user))
                     throw new IOException("Windows ancestor authority rejected");
-                ACL acl = new ACL(dacl.getValue());
-                for (int i = 0; i < Short.toUnsignedInt(acl.AceCount); i++) {
-                    PointerByReference value = new PointerByReference();
-                    if (!SECURITY.GetAce(acl, i, value)) throw new NativeFailure(KERNEL.GetLastError());
-                    Pointer ace = value.getValue();
-                    int type = Byte.toUnsignedInt(ace.getByte(0)), flags = Byte.toUnsignedInt(ace.getByte(1));
-                    if (type == 1 || (flags & 8) != 0) continue; // Deny/inherit-only cannot widen ancestor authority.
-                    if (type != 0 || Short.toUnsignedInt(ace.getShort(2)) < 16)
-                        throw new IOException("Windows ancestor ACE unsupported");
-                    // Reject foreign replacement/ACL authority, including GENERIC_ALL/WRITE.
-                    if ((ace.getInt(4) & 0x500d0040) != 0 && !trustedAncestorSid(new PSID(ace.share(8)), user))
+                for (ACE_HEADER entry : new ACL(dacl.getValue()).getACEs()) {
+                    if (entry instanceof ACCESS_DENIED_ACE || (entry.AceFlags & 8) != 0) continue;
+                    if (!(entry instanceof ACCESS_ALLOWED_ACE allow)) throw new IOException("Windows ancestor ACE unsupported");
+                    if ((allow.Mask & 0x500d0040) != 0 && !trustedAncestorSid(allow.getSID(), user))
                         throw new IOException("Windows ancestor replacement authority rejected");
                 }
             } finally { free(sd.getValue()); }

@@ -20,41 +20,27 @@ internal static class Win32
         "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
     ];
 
-    internal sealed class User(SafeFileHandle token, SecurityIdentifier sid, bool elevated) : IDisposable
+    internal sealed class User(WindowsIdentity identity, bool elevated) : IDisposable
     {
-        internal SafeFileHandle Token { get; } = token;
-        internal SecurityIdentifier Sid { get; } = sid;
+        internal SafeAccessTokenHandle Token => identity.AccessToken;
+        internal SecurityIdentifier Sid => identity.User ?? throw new Rejected("TOKEN_SID");
         internal bool Elevated { get; } = elevated;
-        public void Dispose() => Token.Dispose();
+        public void Dispose() => identity.Dispose();
     }
 
     internal static User CurrentUser()
     {
-        if (!OpenThreadToken(GetCurrentThread(), 8, true, out var token))
-        {
-            int error = Marshal.GetLastPInvokeError();
-            token.Dispose();
-            if (error != 1008) throw new Rejected("EFFECTIVE_TOKEN", error);
-            Check(OpenProcessToken(GetCurrentProcess(), 8, out token), "PROCESS_TOKEN");
-        }
+        var identity = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
         try
         {
-            IntPtr buffer = Marshal.AllocHGlobal(1024);
-            try
-            {
-                Check(GetTokenInformation(token, 1, buffer, 1024, out _), "TOKEN_USER");
-                IntPtr pointer = Marshal.ReadIntPtr(buffer);
-                if (!IsValidSid(pointer)) throw new Rejected("TOKEN_SID");
-                var sid = new SecurityIdentifier(pointer);
-                Check(GetTokenInformation(token, 20, buffer, 4, out _), "TOKEN_ELEVATION");
-                return new User(token, sid, Marshal.ReadInt32(buffer) != 0);
-            }
-            finally { Marshal.FreeHGlobal(buffer); }
+            if (identity.IsAnonymous || identity.User is null) throw new Rejected("TOKEN_SID");
+            Check(GetTokenInformation(identity.AccessToken, 20, out int elevated, 4, out _), "TOKEN_ELEVATION");
+            return new User(identity, elevated != 0);
         }
-        catch { token.Dispose(); throw; }
+        catch { identity.Dispose(); throw; }
     }
 
-    internal static string Profile(SafeFileHandle token)
+    internal static string Profile(SafeAccessTokenHandle token)
     {
         uint capacity = 32768;
         var profile = new StringBuilder((int)capacity);
@@ -82,7 +68,7 @@ internal static class Win32
     internal static SafeFileHandle Open(string path, bool directory, bool reopenDuringPublish = false)
     {
         // Directories allow read/write sharing but no delete sharing. Files normally deny both writes and deletes.
-        var handle = CreateFileW(NativePath(path), ReadControl | ReadAttributes | (directory ? 0 : ReadData),
+        var handle = CreateFileW(NativePath(path), ReadControl | ReadAttributes | ReadData,
             reopenDuringPublish ? 7u : directory ? 3u : 1u, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
         if (handle.IsInvalid)
         {
@@ -238,13 +224,8 @@ internal static class Win32
         public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
     }
 
-    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentThread();
-    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
-    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool OpenThreadToken(IntPtr thread, uint access, bool openAsSelf, out SafeFileHandle token);
-    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool OpenProcessToken(IntPtr process, uint access, out SafeFileHandle token);
-    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool GetTokenInformation(SafeFileHandle token, int kind, IntPtr buffer, uint size, out uint used);
-    [DllImport("advapi32.dll")] private static extern bool IsValidSid(IntPtr sid);
-    [DllImport("userenv.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool GetUserProfileDirectoryW(SafeFileHandle token, StringBuilder path, ref uint size);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool GetTokenInformation(SafeAccessTokenHandle token, int kind, out int buffer, uint size, out uint used);
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool GetUserProfileDirectoryW(SafeAccessTokenHandle token, StringBuilder path, ref uint size);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr attributes, uint disposition, uint flags, IntPtr template);
     [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern SafeFileHandle CreateFilePrivateW(string path, uint access, uint share, ref SecurityAttributes attributes, uint disposition, uint flags, IntPtr template);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool CreateDirectoryW(string path, ref SecurityAttributes attributes);

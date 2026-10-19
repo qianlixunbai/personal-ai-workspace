@@ -1,35 +1,28 @@
-Personal AI Workspace - 本机构建的开发验收包
+Personal AI Workspace - Windows 原生安全开发包
 
 DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
-此 ZIP 是离线开发目录原型，不是安装器，不提供发布者身份或正式来源信任。
-仅供本地审查后在符合原安全合同的普通 Windows x64 用户环境中使用，不对外分发。
-当前账户的目录兼容问题尚未解决；第二个 Windows 账户不是产品的最终使用方案。
+此 ZIP 使用经本机审查的构建和工具链，不是安装器或正式发布。
 
-首次使用：完整解压到验收用户自己的应用目录，打开 PersonalAiWorkspace.Desktop.exe，
-选择“是”创建全新的合成 Workspace；SQLite 为默认存储。不要复制旧 Profile。
-首次创建只沿原有 Prepare / Provision 合同设置新目录私有权限，不修复已有目录。
-若原生准入失败，停止验收；不要删 CodexSandboxUsers ACE、提权或修改 ACL。
-关闭 Codex 不保证已有用户目录恢复合格；换解压位置或新 run-id 也不能解决共享父目录的冲突。
-如出现 PRIVATE_ACL / PRIVATE_ACE 或祖先 ACL 拒绝，请保留现场，等待同账户目录兼容方案。
-新目录合同尚需单独批准；不要重复运行旧 B4A6 恢复工具或手工修复 ACL。
+完整解压到当前 Windows 用户自己的应用目录，双击 PersonalAiWorkspace.Desktop.exe。
+选择“是”创建全新的合成 Workspace；默认 SQLite。不要复制旧 Profile、DPAPI 密文或真实数据库。
+创建只为新目录设置权限，不修复或迁移旧目录。无需第二账户、旧 B4A6 receipt 或 ACL 恢复脚本。
 
-Java 21、JAR、JNA、.NET Desktop 和 React 资产已打包；无需设置 JAVA_HOME、寻找 JAR
-或安装 Node。但原 Native Gate pin 的 NativeBootstrap 仍要求已安装 .NET 10 x64 Runtime
-（Microsoft.NETCore.App 10.0.x）；React 界面还要求已安装 Microsoft Edge WebView2
-Evergreen Runtime。WebView2Loader.dll 是 SDK loader，不是浏览器 Runtime。
-此原型不下载、不安装这些先决组件；缺少组件时停止验收。
+数据使用系统 Known Folder 的 LocalAppData/PersonalAIWorkspace.Development/Profiles/<id>。
+Windows 打包宿主可能将 AppData 写入重定向到宿主包的实际数据目录；应用绑定 OS 句柄返回的实际位置。
+从不同 Windows 打包上下文启动时数据位置可能不同；再次启动请选择同一上下文中的原 Profile。
+私有目录允许当前用户、SYSTEM、Administrators；其他主体的敏感读取或写入/替换权限被拒绝。
+不授予 CodexSandboxUsers 私人数据读取权限。ACL/DPAPI 不能隔离同用户身份下的恶意进程。
+准入失败时保留现场并停止；不要提权、修改旧 ACL 或反复运行历史恢复工具。
 
-验收用一个合成流程：创建/选择 Profile -> SQLite StorageStatus -> React 设置页 ->
-打开“原生数据库设置” -> 退出并确认本次 Java 子进程退出。
-PostgreSQL 检查/DPAPI 保存/显式重启只用于另行授权且 schema 已准备的独立合成数据库；
-此包不创建数据库、角色或 schema，不自动初始化、不接触 Finance 或个人数据。
+Java 21/JAR/JNA、.NET Desktop 和 React 资产随包提供。
+NativeBootstrap 仍要求本机 Microsoft.NETCore.App 10.0.x x64；界面要求 Microsoft Edge WebView2 Evergreen。
+此包不下载或安装先决组件，不提供更新、卸载、发布者签名或正式来源授信。
 
-程序与依赖放在解压目录。用户数据仍由原合同放在当前用户 Profile 的
-.personal-ai-workspace-mmf3-tests/<新 run-id>，不在包内。
-没有安装、更新、卸载逻辑。更换开发包使用新的目录，保留用户 Profile、DPAPI 配置与备份。
-不得将开发包的原地文件替换当作已验证的更新/回滚能力。
+用一次合成流程验收：创建 Profile -> 设置页“重新检查存储”显示 SQLite/原生认证 ->
+关闭并退出客户端 -> 确认该次 Java 子进程退出 -> 重启并选择原 Profile，核对状态保留。
+只关闭工作区窗口可能保留托盘；请从托盘选择“退出”。
+不启用 Finance、不自动执行 Flyway、不初始化 PostgreSQL。原生数据库设置仅用于另行准备并授权的合成环境。
+包中没有用户凭据或数据库；旧开发包、旧 Profile 和备份原样保留。
 
-来源错误：保留整个包并核对构建日志；损坏或缺失依赖必须重新取得完整本机构建包。
-包内 development-bundle.json/SHA-256 仅检查完整性，不能证明可信发布者。
-随包保留 Java LICENSE/legal 和其他依赖 notices；Java 厂商许可、版本安全审查、完整 SBOM
-与再分发权仍须在正式分发前完成。
+development-bundle.json/SHA-256 检查完整性；Runtime/helper 预期 pin 嵌入代码，侧边清单不能签发信任。
+随包 Java LICENSE/legal 和现有 notices 保留。正式再分发许可、签名、安装与更新仍待独立验收。

@@ -33,7 +33,7 @@ internal static class Mmf3ProfileNative
                 string[] fields = new string(buffer, 0, count).Trim().Split('\t');
                 string Decode(string value) => Encoding.UTF8.GetString(Convert.FromBase64String(value));
                 string dll = Path.Combine(launch.Root, "jna-5.17.0-win32-x86-64", "jnidispatch.dll");
-                if (fields.Length != 7 || fields[0] != "MMF3_NATIVE_V1" || fields[1] != "DEVELOPMENT_ONLY"
+                if (fields.Length != 7 || fields[0] != "WINDOWS_PROFILE_V2" || fields[1] != "DEVELOPMENT_ONLY"
                     || fields[2] != launch.RunId || Decode(fields[3]) != launch.Root || Decode(fields[4]) != dll
                     || !System.Text.RegularExpressions.Regex.IsMatch(fields[5], "\\A[0-9a-f]{16}:[0-9a-f]{32}\\z")
                     || fields[6] != DllHash || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(dll))) != DllHash)
@@ -66,8 +66,8 @@ internal static class Mmf3ProfileNative
                 throw new IOException();
         }
         (string suffix, string hash)[] payload = [
-            (".exe", "60564539c207e7fa9e74c9bf390f2c6d13b4df89885b9ca149008a8c6ef4fba9"),
-            (".dll", "277d6e6cd1d2cf9673353e4f9110427d1527336640651d73fb759b5e94743ada"),
+            (".exe", "0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4"),
+            (".dll", "e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d"),
             (".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"),
             (".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6")];
         foreach (var item in payload)
