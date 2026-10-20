@@ -4,6 +4,8 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($PSVersionTable.PSEdition -ne 'Desktop') { throw '请使用 Windows PowerShell 5.1。' }
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Management/Microsoft.PowerShell.Management.psd1') -ErrorAction Stop
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $directory = Join-Path $repo '.runtime\workspace'
 $file = Join-Path $directory 'b1-admin.dpapi'

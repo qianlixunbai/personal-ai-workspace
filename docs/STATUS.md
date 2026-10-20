@@ -1,5 +1,13 @@
 # Personal AI Workspace — Current Status
 
+## Current PostgreSQL Desktop continuation（2026-10-20）
+
+用户已完成本机安全输入；实际 PostgreSQL 管理员登录返回 `28P01`，数据库阶段现因认证失败停止，不能继续创建目标。
+安全输入脚本增加从 Windows PowerShell 自身目录显式加载模块，修复输入前 Get-Acl 模块加载失败，未降低执行策略或 ACL。
+本地仅预留 `paw_pgdesktop_4aa45f82abda` 与对应 owner/app 名称；尚未执行任何 SQL 查询、建库/建角色或迁移。临时管理员 DPAPI 暂存删除被自动审批以 `blocked by policy` 拒绝，仍保留私有密文，清理 PENDING。
+此前两处产品修复和 SQLite/Windows 聚焦 PASS 保留；PostgreSQL DPAPI 保存、三 Store、React PostgreSQL 与完整产品 EXE E2E 仍 PENDING，未生成 ZIP。
+详见 [PostgreSQL Desktop Integration Report](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)。以下为前次交付与历史状态。
+
 ## Current PostgreSQL Desktop Integration（2026-10-20）
 
 SOURCE READY / FOCUSED VERIFIED，完整 PostgreSQL REAL WINDOWS E2E PASS 尚未达成。

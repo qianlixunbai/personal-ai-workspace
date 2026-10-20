@@ -1,5 +1,21 @@
 # PostgreSQL Desktop Integration & Real Windows E2E
 
+## 续行当前事实：管理员认证被服务器拒绝（2026-10-20）
+
+用户随后授权打开本机安全输入窗口并完成输入；当前阻碍已从“缺少本机授权”变为 **`PG_DESKTOP_PREPARATION_STOP_ADMIN_LOGIN_SQLSTATE_28P01`（postgres 密码认证失败）**。以下原交付章节保留当时状态，数据库阶段仍 PENDING。
+
+首次可见窗口在密码输入前因 `Get-Acl` 无法自动加载 `Microsoft.PowerShell.Security` 而退出。对 `request-workspace-postgresql-test-access.ps1` 仅增加两条从 `$PSHOME` 绝对目录加载 Security/Management 的语句，复用现有 prepare-storage-status-test 的做法；未改执行策略、模块全局设置、ACL 或密码输入方式。保留窗口后，用户实际完成原 Read-Host 非回显输入和当前用户 DPAPI 授权文件创建。Windows PowerShell 5.1 无交互诊断已到达 Read-Host，并因禁止交互按预期停止；这不是数据库登录成功。
+
+本轮在忽略目录内保留一次性维护 helper 和 runner（`PostgresqlDesktopPreparation.java` / `postgresql-desktop-prepare.ps1`），只使用本轮已审计 Runtime JAR 中的固定依赖，没有新安装依赖。管理员密码仅从原私有 DPAPI 授权读取，经直接子进程匿名 stdin 供 JDBC 使用；新随机合成应用密码只保留为当前用户私有 DPAPI 的临时验收输入，未进入命令行、环境变量、HTTP、React、普通日志或 Git。这些是测试维护文件，不是第二套产品配置，尚未通过数据库准备验收，不能当作可直接重跑的成功工具。
+
+本地预留目标为 `paw_pgdesktop_4aa45f82abda`，候选角色 `paw_pgd_owner_4aa45f82abda` / `paw_pgd_app_4aa45f82abda`，标记 `PG_DESKTOP_SYNTHETIC_20261020_4aa45f82abda`。**只是本地 RESERVED：尚未创建数据库/角色，甚至尚未通过认证执行实例/名称只读查询。** 原先粗粒度 `INSTANCE_AND_NAMES` 失败后，增加固定阶段/SQLSTATE 诊断，再执行仅只读 preflight，定位为 ADMIN_LOGIN / 28P01；没有重试任何 DDL、Flyway 或业务写入。
+
+证据：`.verification/postgresql-desktop-preparation.log`、`postgresql-desktop-preflight.log` 和非秘密 `postgresql-desktop-target.json`。第一次失败后管理员暂存按 runner 原逻辑清理，用户第二次输入后完成上述只读诊断。随后删除 `.runtime/workspace/b1-admin.dpapi` 的收尾命令被自动审批以 `blocked by policy` 拒绝，进程未执行，未改用其他通道删除；该当前用户私有 DPAPI 密文仍保留，清理 PENDING。预留记录和仅含新随机合成凭据的 `.runtime/workspace/postgresql-desktop-input.dpapi` 也保留供后续审查，不自动覆盖或删除。
+
+需要用户在本机核对该实例 postgres 的现有密码，不能猜测、重设密码或使用 B4A6 角色代替。旧八文件/receipt/Profile/ZIP、Finance 和用户数据未改；没有生成新 ZIP。产品数据库 DPAPI 保存、PostgreSQL Store/GUI/E2E 仍全部 PENDING。
+
+---
+
 2026-10-20（Asia/Shanghai）。**PARTIAL：SOURCE READY / FOCUSED VERIFIED；PostgreSQL REAL WINDOWS E2E PASS 尚未达成，关键数据库阶段 PENDING。**
 
 本轮修复了原生数据库窗口回调重入和开发 Runtime 重启后旧 Bearer 仍可复用的问题，实际运行了普通交互式 Windows 中的 Java/SQLite、WPF/WebView2/React、原生配置窗口只读 STATE、重启及失败清理。没有可用的项目安全管理员授权，依照任务要求停止数据库准备；没有尝试未知数据库、复用 B4A6 凭据或生成新开发 ZIP。
