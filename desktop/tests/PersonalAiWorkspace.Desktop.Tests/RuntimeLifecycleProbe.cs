@@ -18,6 +18,19 @@ public static class RuntimeLifecycleProbe
     public static int Main(string[] args)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (args is ["--prepare-profile"])
+        {
+            try
+            {
+                using var sources = TrustedDevelopmentRuntimeSources.Open();
+                string id = Guid.NewGuid().ToString("N");
+                Mmf3ProfileState.Prepare(id);
+                Mmf3ProfileNative.Provision(id, sources.JnaJar);
+                Console.WriteLine("SYNTHETIC_PROFILE_CREATED_" + id);
+                return 0;
+            }
+            catch (Exception error) { Console.WriteLine($"SYNTHETIC_PROFILE_STOP hresult=0x{error.HResult:X8}"); return 10; }
+        }
         if (args is ["--verify-package-sources"])
         {
             // Packaging contract only: no Profile, ACL, credential, JVM or WPF operation.
@@ -29,41 +42,71 @@ public static class RuntimeLifecycleProbe
             }
             catch { Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_STOP"); return 10; }
         }
-        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "configuration-failure" or "gui")) return 2;
+        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "configuration-failure" or "gui" or "gui-close" or "gui-environment-failure" or "gui-ready-timeout")) return 2;
+        string phase = "PROFILE_PARSE";
         try
         {
             var launch = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, args[0]]);
+            phase = "PROFILE_PIN";
             using var paths = Mmf3ProfileState.Pin(launch.RunId);
             using var single = new SingleInstance(launch.InstanceSuffix);
             Assert.True(single.IsPrimary);
+            phase = "APP_CREATE";
             var app = new AssistantApp(single, acceptance: launch);
             try
             {
-                if (args.Length == 2 && args[1] == "gui") VerifyGui(app, launch);
+                phase = "GUI_OR_OWNER";
+                if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
                 else VerifyAsync(app, launch, args.Length == 2 ? args[1] : "authentication-failure").GetAwaiter().GetResult();
             }
             finally { app.Cleanup(); }
             Console.WriteLine("REAL_RUNTIME_LIFECYCLE_PROBE_PASS");
             return 0;
         }
-        catch { Console.WriteLine("REAL_RUNTIME_PROBE_STOP"); return 10; }
+        catch (Exception error)
+        {
+            string code = error.Message switch {
+                "Development private ACL rejected." => "PRIVATE_ACL",
+                "Development directory identity rejected." => "DIRECTORY_IDENTITY",
+                "MMF3 native admission STOP (Development-only)." => "NATIVE_ADMISSION",
+                _ => "UNKNOWN" };
+            Console.WriteLine($"REAL_RUNTIME_PROBE_STOP stage={phase} code={code} hresult=0x{error.HResult:X8}"); return 10;
+        }
 #else
         return 2;
 #endif
     }
 #endif
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
-    private static void VerifyGui(AssistantApp app, Mmf3AcceptanceLaunch launch)
+    private static void VerifyGui(AssistantApp app, Mmf3AcceptanceLaunch launch, string mode)
     {
         bool passed = false;
+        Process? owned = null;
         app.Startup += async (_, _) =>
         {
             try
             {
                 var clock = Stopwatch.StartNew();
-                while (app.Workspace?.Host.SessionId.Length is not > 0)
-                { Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60)); await Task.Delay(100); }
+                while (app.Workspace?.Host.IsReady is not true && app.Workspace?.Host.StartupFailureCode is null)
+                { Assert.True(clock.Elapsed < TimeSpan.FromSeconds(40)); await Task.Delay(100); }
+                if (app.DevelopmentRuntime!.OwnedProcessId is int pid) owned = Process.GetProcessById(pid);
+                if (mode is "gui-environment-failure" or "gui-ready-timeout")
+                {
+                    string expectedCode = mode == "gui-environment-failure" ? "INITIALIZATION_FAILED" : "STARTUP_TIMEOUT";
+                    string expectedStage = mode == "gui-ready-timeout" ? "NAVIGATION_COMPLETED" : "PROFILE_VALIDATED";
+                    Assert.Equal(expectedCode, app.Workspace!.Host.StartupFailureCode);
+                    Assert.Equal(expectedStage, app.Workspace.Host.StartupStage);
+                    Assert.False(app.Workspace.Host.IsReady);
+                    Assert.True(app.Workspace.FallbackVisible);
+                    Assert.Contains(expectedCode + " / " + expectedStage, app.Workspace.FallbackMessage.Text);
+                    Console.WriteLine("REAL_STARTUP_FAILURE_EXPLICIT_NATIVE_FALLBACK_PASS");
+                    passed = true; return;
+                }
+                Assert.True(app.Workspace!.Host.IsReady);
+                Assert.False(app.Workspace.FallbackVisible);
                 var core = app.Workspace.Browser.CoreWebView2;
+                Assert.Equal(WorkspaceContentPolicy.ProductionOrigin + "/index.html", core.Source);
+                Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('#root').childElementCount>0&&document.styleSheets.length>0&&!document.body.innerText.includes('工作区页面暂时无法显示')"));
                 async Task Wait(string expression)
                 {
                     var wait = Stopwatch.StartNew();
@@ -80,15 +123,33 @@ public static class RuntimeLifecycleProbe
                 await Wait(engine + "==='SQLite'&&document.body.innerText.includes('已响应并通过原生认证')");
                 await Wait("[...document.querySelectorAll('dt')].find(x=>x.textContent==='Credential')?.nextElementSibling?.textContent==='Ready'");
                 Console.WriteLine("REAL_WEBVIEW2_REACT_NATIVE_BEARER_SQLITE_DISPLAY_PASS");
-                using (var image = new FileStream(Path.Combine(launch.Root, "evidence", "runtime-storage-sqlite.png"), FileMode.CreateNew))
+                using (var image = new FileStream(Path.Combine(launch.Root, "evidence", $"runtime-storage-sqlite-{DateTime.UtcNow:yyyyMMddHHmmssfff}.png"), FileMode.CreateNew))
                     await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, image);
-                await app.DevelopmentRuntime.StopAsync();
-                await Wait(engine + "==='等待受控查询'&&document.body.innerText.includes('本次受控 Runtime 已退出')");
-                Console.WriteLine("REAL_WEBVIEW2_LIFECYCLE_PUSH_CLEARS_SQLITE_DISPLAY_PASS");
+                Assert.True(app.DevelopmentRuntime.Snapshot().CanQueryStorage);
+                Console.WriteLine("REAL_GUI_READY_BEFORE_NORMAL_EXIT");
+                if (mode == "gui")
+                {
+                    await app.DevelopmentRuntime.StopAsync();
+                    await Wait(engine + "==='等待受控查询'&&document.body.innerText.includes('本次受控 Runtime 已退出')");
+                    Console.WriteLine("REAL_WEBVIEW2_LIFECYCLE_PUSH_CLEARS_SQLITE_DISPLAY_PASS");
+                }
                 passed = true;
             }
             catch { Console.WriteLine("WEBVIEW2_GUI_PROBE_STOP"); }
-            finally { await app.ExitAsync(); }
+            finally
+            {
+                try
+                {
+                    await app.ExitAsync();
+                    if (owned is not null)
+                    {
+                        Assert.True(owned.WaitForExit(10000));
+                        Console.WriteLine("REAL_GUI_NORMAL_EXIT_OWNED_JAVA_CLEANUP_PASS");
+                    }
+                }
+                catch { passed = false; Console.WriteLine("REAL_GUI_NORMAL_EXIT_STOP"); app.Shutdown(10); }
+                finally { owned?.Dispose(); }
+            }
         };
         app.Run();
         Assert.True(passed);

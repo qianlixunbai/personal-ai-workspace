@@ -63,6 +63,7 @@ internal sealed class WorkspaceBridge : IDisposable
     private bool ready;
     private int pending;
     internal string SessionId { get; private set; } = "";
+    internal bool HasBootstrapped { get; private set; }
     internal static IReadOnlyDictionary<string, NativeWorkspaceEntry> NativeMethods { get; } =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, NativeWorkspaceEntry>(new Dictionary<string, NativeWorkspaceEntry>
         {
@@ -125,7 +126,7 @@ internal sealed class WorkspaceBridge : IDisposable
         conversations?.EndSession(SessionId);
         memory?.EndSession(SessionId);
         knowledge?.EndSession(SessionId);
-        ready = false; document = null; SessionId = ""; requests.Clear(); pending = 0;
+        ready = false; HasBootstrapped = false; document = null; SessionId = ""; requests.Clear(); pending = 0;
         sessionLifetime.Cancel(); sessionLifetime.Dispose(); sessionLifetime = new();
     }
 
@@ -155,6 +156,7 @@ internal sealed class WorkspaceBridge : IDisposable
         var cancellation = sessionLifetime.Token;
         pending++;
         object response;
+        bool bootstrapSucceeded = false;
         try
         {
             object result;
@@ -270,6 +272,7 @@ internal sealed class WorkspaceBridge : IDisposable
                 result = await native.StatusAsync(cancellation);
             }
             response = new { version = Version, sessionId = session, requestId, ok = true, result };
+            bootstrapSucceeded = method == "shell.bootstrap";
         }
         catch (OperationCanceledException) { return; }
         catch (DesktopException error)
@@ -288,7 +291,11 @@ internal sealed class WorkspaceBridge : IDisposable
                 error = new { code = "NATIVE_UNAVAILABLE", message = "原生操作暂时不可用，请从托盘打开 Assistant 后重试。" } };
         }
         finally { if (session == SessionId) pending--; }
-        if (ready && session == SessionId && !cancellation.IsCancellationRequested) Send(response, method, session, requestId);
+        if (ready && session == SessionId && !cancellation.IsCancellationRequested)
+        {
+            Send(response, method, session, requestId);
+            if (bootstrapSucceeded) HasBootstrapped = true;
+        }
     }
 
     private void Send(object value, string? method = null, string? session = null, string? requestId = null)

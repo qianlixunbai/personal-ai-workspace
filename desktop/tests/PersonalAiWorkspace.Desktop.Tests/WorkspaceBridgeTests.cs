@@ -54,7 +54,8 @@ public sealed class WorkspaceBridgeTests
     }
     [Fact] public async Task ExactOriginAndDocumentReturnOnlySafeStatus()
     {
-        using var f = new Fixture(); await f.Receive(f.Request());
+        using var f = new Fixture(); Assert.False(f.Bridge.HasBootstrapped); await f.Receive(f.Request());
+        Assert.True(f.Bridge.HasBootstrapped);
         var root = JsonDocument.Parse(Assert.Single(f.Sent)).RootElement;
         Assert.True(root.GetProperty("ok").GetBoolean());
         Assert.Equal("Ready", root.GetProperty("result").GetProperty("credential").GetString());
@@ -119,6 +120,7 @@ public sealed class WorkspaceBridgeTests
         Task pending = f.Receive(f.Request()); f.Bridge.BeginDocument(Document); f.Bridge.Ready(Document);
         Assert.NotEqual(old, f.Bridge.SessionId); f.Sent.Clear(); f.Native.Waiting.SetResult(Actions.Status()); await pending;
         await f.Receive(f.Request(session: old)); Assert.Empty(f.Sent);
+        Assert.False(f.Bridge.HasBootstrapped);
     }
     [Fact] public async Task PendingAndSessionRequestCountStayBounded()
     {
