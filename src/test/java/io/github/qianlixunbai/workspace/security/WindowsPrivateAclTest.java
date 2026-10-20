@@ -31,9 +31,19 @@ class WindowsPrivateAclTest {
         LocalClientToken.restrict(credentials, true);
         assertArrayEquals(before, descriptor(credentials)); // Existing descriptor is not rewritten.
         RuntimeProperties properties = new RuntimeProperties(new RuntimeProperties.Security(token), null, null, null, null, null);
-        new LocalClientToken(properties);
-        new LocalClientToken(properties); // Existing token admission on reinitialization.
+        var firstToken = new LocalClientToken(properties);
+        String previousBearer = "Bearer " + Files.readString(token);
+        assertTrue(firstToken.matches(previousBearer));
+        var nextToken = new LocalClientToken(properties);
+        assertEquals(System.getProperty("workspace.native.development-profile") == null, nextToken.matches(previousBearer));
+        assertTrue(nextToken.matches("Bearer " + Files.readString(token)));
         assertEquals(43, Files.size(token)); // No token contents in assertions/evidence.
+        byte[] validToken = Files.readAllBytes(token);
+        try {
+            Files.writeString(token, "invalid-synthetic-token");
+            assertThrows(IllegalStateException.class, () -> new LocalClientToken(properties));
+            assertEquals("invalid-synthetic-token", Files.readString(token));
+        } finally { Files.write(token, validToken); Arrays.fill(validToken, (byte) 0); }
         Path db = PrivateMemoryDirectory.prepare(data, token);
         Path knowledge = PrivateKnowledgeDirectory.prepare(data, token);
         Path temporary = knowledge.resolve("staging/synthetic.upload"), published = knowledge.resolve("sources/synthetic.source");

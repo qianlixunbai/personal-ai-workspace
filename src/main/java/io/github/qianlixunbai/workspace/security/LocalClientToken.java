@@ -27,7 +27,16 @@ public final class LocalClientToken {
             }
             stage = Stage.ACL_READ_OR_PROTECT;
             restrict(parent, true);
-            if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            boolean exists = Files.exists(file, LinkOption.NOFOLLOW_LINKS);
+            // The admitted development owner starts a new native session with each JVM.
+            // Other launch contracts retain their existing persistent credential behavior.
+            boolean renew = WindowsPrivateAcl.isWindows()
+                    && System.getProperty("workspace.native.development-profile") != null;
+            if (exists && renew) {
+                stage = Stage.FINAL_FILE_VERIFY;
+                readToken(file); // Reject unsafe/corrupt existing state rather than silently repairing it.
+            }
+            if (!exists || renew) {
                 byte[] random = new byte[32];
                 new SecureRandom().nextBytes(random);
                 String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
@@ -44,7 +53,8 @@ public final class LocalClientToken {
                     stage = Stage.TOKEN_WRITE;
                     Files.writeString(temporary, token, StandardCharsets.US_ASCII);
                     stage = Stage.ATOMIC_MOVE;
-                    Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
+                    if (exists) Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    else Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
                 } catch (java.io.IOException | RuntimeException failure) { primary = failure; throw failure; }
                 finally {
                     try { Files.deleteIfExists(temporary); }
@@ -55,12 +65,8 @@ public final class LocalClientToken {
                 }
             }
             stage = Stage.FINAL_FILE_VERIFY;
-            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 128)
-                throw new IllegalStateException("Invalid local client token file");
-            restrict(file, false);
             stage = Stage.TOKEN_READ;
-            String token = Files.readString(file, StandardCharsets.US_ASCII).strip();
-            if (!token.matches("[A-Za-z0-9_-]{43}")) throw new IllegalStateException("Invalid local client token format");
+            String token = readToken(file);
             expected = token.getBytes(StandardCharsets.US_ASCII);
         } catch (java.io.IOException | RuntimeException failure) {
             String category = failure instanceof WindowsPrivateAcl.NativeFailure nativeFailure
@@ -71,6 +77,15 @@ public final class LocalClientToken {
                     : failure instanceof java.io.IOException ? "IO_FAILURE" : "VALIDATION_FAILURE";
             throw new IllegalStateException("Cannot initialize private local client credentials: " + stage + "/" + category);
         }
+    }
+
+    private static String readToken(Path file) throws java.io.IOException {
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 128)
+            throw new IllegalStateException("Invalid local client token file");
+        restrict(file, false);
+        String token = Files.readString(file, StandardCharsets.US_ASCII).strip();
+        if (!token.matches("[A-Za-z0-9_-]{43}")) throw new IllegalStateException("Invalid local client token format");
+        return token;
     }
 
     static void restrict(Path path, boolean directory) throws java.io.IOException {

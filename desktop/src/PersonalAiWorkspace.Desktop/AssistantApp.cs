@@ -233,12 +233,20 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
             if (acceptance is not null && runtimeOwner is not null && !databaseSettingsOpen && workspace is not null)
             {
-                var dialog = new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
                 databaseSettingsOpen = true;
-                using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => dialog.Close()));
-                try { dialog.ShowDialog(); cancellation.ThrowIfCancellationRequested(); }
-                finally { databaseSettingsOpen = false; workspace?.ReturnFocus(); }
-                return Task.CompletedTask;
+                // Leave WebMessageReceived before entering a modal WPF message loop.
+                return Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
+                        var dialog = new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
+                        using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => dialog.Close()));
+                        dialog.ShowDialog(); cancellation.ThrowIfCancellationRequested();
+                    }
+                    finally { databaseSettingsOpen = false; workspace?.ReturnFocus(); }
+                }, System.Windows.Threading.DispatcherPriority.Background).Task;
             }
 #endif
             throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "数据库配置需要受信开发版桌面上下文。");

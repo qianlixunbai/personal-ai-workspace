@@ -42,7 +42,7 @@ public static class RuntimeLifecycleProbe
             }
             catch { Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_STOP"); return 10; }
         }
-        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "configuration-failure" or "gui" or "gui-close" or "gui-environment-failure" or "gui-ready-timeout")) return 2;
+        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout")) return 2;
         string phase = "PROFILE_PARSE";
         try
         {
@@ -56,7 +56,7 @@ public static class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
+                if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
                 else VerifyAsync(app, launch, args.Length == 2 ? args[1] : "authentication-failure").GetAwaiter().GetResult();
             }
             finally { app.Cleanup(); }
@@ -123,6 +123,26 @@ public static class RuntimeLifecycleProbe
                 await Wait(engine + "==='SQLite'&&document.body.innerText.includes('已响应并通过原生认证')");
                 await Wait("[...document.querySelectorAll('dt')].find(x=>x.textContent==='Credential')?.nextElementSibling?.textContent==='Ready'");
                 Console.WriteLine("REAL_WEBVIEW2_REACT_NATIVE_BEARER_SQLITE_DISPLAY_PASS");
+                if (mode == "gui-database")
+                {
+                    await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='打开原生数据库设置'&&!b.disabled).click()");
+                    DatabaseSettingsWindow? dialog = null;
+                    var nativeWait = Stopwatch.StartNew();
+                    while (dialog is null)
+                    {
+                        Assert.True(nativeWait.Elapsed < TimeSpan.FromSeconds(10));
+                        dialog = app.Windows.OfType<DatabaseSettingsWindow>().SingleOrDefault();
+                        await Task.Delay(100);
+                    }
+                    var panel = Assert.IsType<System.Windows.Controls.StackPanel>(dialog.Content);
+                    var password = Assert.Single(panel.Children.OfType<System.Windows.Controls.PasswordBox>());
+                    Assert.Empty(password.Password);
+                    while (!panel.Children.OfType<System.Windows.Controls.TextBlock>().Any(t => t.Text.Contains("尚未保存数据库配置；当前默认 SQLite。", StringComparison.Ordinal)))
+                    { Assert.True(nativeWait.Elapsed < TimeSpan.FromSeconds(50)); await Task.Delay(100); }
+                    dialog.Close();
+                    await Wait(engine + "==='SQLite'");
+                    Console.WriteLine("REAL_REACT_NATIVE_DATABASE_WINDOW_PASSWORDBOX_TRUSTED_STATE_AND_RETURN_PASS");
+                }
                 using (var image = new FileStream(Path.Combine(launch.Root, "evidence", $"runtime-storage-sqlite-{DateTime.UtcNow:yyyyMMddHHmmssfff}.png"), FileMode.CreateNew))
                     await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, image);
                 Assert.True(app.DevelopmentRuntime.Snapshot().CanQueryStorage);
@@ -204,6 +224,31 @@ public static class RuntimeLifecycleProbe
         sent.Clear(); string old = Request("storage.status"); bridge.BeginDocument(document); bridge.Ready(document); sent.Clear();
         await bridge.ReceiveAsync(document, document, old); Assert.Empty(sent);
         Console.WriteLine("OLD_BRIDGE_SESSION_REJECTED_PASS");
+        if (mode == "restart")
+        {
+            string oldToken = CredentialStore.ReadPrivateFile(launch.TokenFile, requireProtected: true);
+            using var staleClient = RuntimeClient.CreateMmf3Acceptance(() => oldToken);
+            await staleClient.CheckCredentialAsync(CancellationToken.None);
+            await app.DevelopmentRuntime.RestartAsync(CancellationToken.None);
+            Assert.True(owned.WaitForExit(10000));
+            clock.Restart();
+            while (!app.DevelopmentRuntime.Snapshot().CanQueryStorage)
+            {
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(75));
+                Assert.Equal("STARTING", app.DevelopmentRuntime.Snapshot().Runtime);
+                await Task.Delay(150);
+            }
+            Assert.NotEqual(pid, app.DevelopmentRuntime.OwnedProcessId);
+            var rejected = await Assert.ThrowsAsync<DesktopException>(() => staleClient.CheckCredentialAsync(CancellationToken.None));
+            Assert.Equal(DesktopError.Unauthorized, rejected.Error);
+            Assert.Equal("SQLITE", (await actions.StorageStatusAsync(CancellationToken.None)).Backend);
+            Assert.Contains(sent, json => json.Contains("storage.lifecycle", StringComparison.Ordinal) && json.Contains("STARTING", StringComparison.Ordinal));
+            using var restarted = Process.GetProcessById(app.DevelopmentRuntime.OwnedProcessId!.Value);
+            await app.DevelopmentRuntime.StopAsync();
+            Assert.True(restarted.WaitForExit(10000));
+            Console.WriteLine("REAL_RESTART_OLD_JAVA_EXIT_OLD_BEARER_DENIED_NEW_SESSION_SQLITE_AND_CLEANUP_PASS");
+            return;
+        }
         if (mode == "close")
         {
             app.Cleanup(); Assert.True(owned.WaitForExit(10000));
