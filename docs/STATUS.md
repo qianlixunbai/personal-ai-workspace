@@ -1,5 +1,14 @@
 # Personal AI Workspace — Current Status
 
+## Current PostgreSQL Desktop Integration（2026-10-20）
+
+SOURCE READY / FOCUSED VERIFIED，完整 PostgreSQL REAL WINDOWS E2E PASS 尚未达成。
+已修复开发 Runtime 重启后旧 Bearer 复用，以及原生数据库窗口在 WebView2 回调中同步 ShowDialog 的重入问题。
+普通交互式 Windows 的真实 owner 重启/旧 Bearer 401、新 SQLite Profile、React/Bridge/Settings、原生 PasswordBox/受信 STATE、同 Profile 重开与正常退出聚焦验证通过；没有执行本轮产品 EXE 的托盘/无参数 Explorer 人工验收。
+缺少项目既有安全管理员凭据，数据库准备在安全边界停止；未建本轮数据库/角色、执行 SQL/Flyway、保存 PostgreSQL DPAPI 或验证三个 Store 的 PostgreSQL Runtime 链路。这些保持 PENDING，未生成新 ZIP。
+Finance 实际状态仍 disabled；旧八文件/receipt/Profile/备份/ZIP 保留。SQLite 长路径恢复以前轮专项 PASS 为准，不继承下面较早的已知失败结论。
+详见 [PostgreSQL Desktop Integration Report](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)、[SQLite Long-Path Recovery Report](engineering/SQLITE-LONG-PATH-RECOVERY-REPORT.md) 和 [WebView2 Startup Recovery Report](engineering/WEBVIEW2-REACT-STARTUP-RECOVERY-REPORT.md)。以下保留历史阶段状态。
+
 ## Current Windows native security modernization（2026-10-19）
 
 Development-only 已改为系统 Known Folder + .NET Windows 身份/访问控制及生命周期目录句柄，日常入口不再依赖旧 MMF-3 精确单 ACE 或旧测试根。
