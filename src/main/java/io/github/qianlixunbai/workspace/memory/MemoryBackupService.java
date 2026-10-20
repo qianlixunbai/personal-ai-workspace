@@ -1,7 +1,10 @@
 package io.github.qianlixunbai.workspace.memory;
 
+import com.sun.jna.Native;
+import com.sun.jna.platform.win32.Kernel32;
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import static io.github.qianlixunbai.workspace.memory.MemoryLimits.error;
@@ -50,14 +53,14 @@ public final class MemoryBackupService {
             beforePublish.run();
             // Recheck after the potentially slow reconstruction. Unknown states are never replaced.
             PrivateMemoryDirectory.noLinks(target); emptyOrNew(target);
-            if (!Files.getFileStore(staging).equals(Files.getFileStore(parent))) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+            if (!sameVolume(staging, parent)) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
             if (existed != Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
             if (existed) {
                 var identityNow = Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
                 // The JDK Windows provider can return no fileKey. Retain creation-time checks on that provider.
                 if (!Objects.equals(directoryIdentity.fileKey(), identityNow.fileKey())
                         || !directoryIdentity.creationTime().equals(identityNow.creationTime())) throw error(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY);
-                if (!Files.getFileStore(staging).equals(Files.getFileStore(target))) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
+                if (!sameVolume(staging, target)) throw error(ErrorCode.MEMORY_RESTORE_FAILED);
                 // A same-volume, no-replace rename publishes one complete closed database. No rows can be partially visible.
                 // The user's empty directory itself is retained; never delete it to make room.
                 PrivateMemoryDirectory.protect(target, true);
@@ -84,6 +87,20 @@ public final class MemoryBackupService {
                 if (workspace && cleanupFailed) throw error(ErrorCode.WORKSPACE_RESTORE_FAILED);
             }
         }
+    }
+    private static boolean sameVolume(Path first, Path second) throws IOException {
+        if (!WindowsPrivateAcl.isWindows()) return Files.getFileStore(first).equals(Files.getFileStore(second));
+        // JDK 21 FileStore equality compares root spellings: C:\ and \\?\C:\ differ.
+        // Staging creation has already passed NativeGate and the private-directory checks.
+        return windowsVolume(first).equalsIgnoreCase(windowsVolume(second));
+    }
+    private static String windowsVolume(Path path) throws IOException {
+        char[] mount = new char[32768], volume = new char[64];
+        var kernel = Kernel32.INSTANCE;
+        if (!kernel.GetVolumePathName("\\\\?\\" + path, mount, mount.length)
+                || !kernel.GetVolumeNameForVolumeMountPoint(Native.toString(mount), volume, volume.length))
+            throw new IOException("Restore volume identity unavailable");
+        return Native.toString(volume);
     }
     private static void emptyOrNew(Path target) throws Exception {
         if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) return;

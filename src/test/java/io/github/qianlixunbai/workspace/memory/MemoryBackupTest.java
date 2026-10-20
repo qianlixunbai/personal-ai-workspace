@@ -3,6 +3,8 @@ package io.github.qianlixunbai.workspace.memory;
 import io.github.qianlixunbai.workspace.common.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import tools.jackson.databind.json.JsonMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -43,7 +45,7 @@ class MemoryBackupTest {
             var note = store.create(Type.PROJECT_NOTE, "secret project", "English recovery 中文搜索"); store.archive(note.id(), 1);
             var backup = MemoryBackup.export(store); var original = Files.readAllBytes(source().resolve("memory.db"));
             assertFalse(backup.toString().contains("secret"));
-            var empty = Files.createDirectory(temporary.resolve("empty"));
+            var empty = temporary.resolve("empty"); PrivateMemoryDirectory.directory(empty);
             for (Path target : List.of(temporary.resolve("new"), empty)) {
                 assertEquals(backup.metadata(), service().restore(MemoryBackup.read(backup.bytes()), target.toString()));
                 assertArrayEquals(original, Files.readAllBytes(source().resolve("memory.db")));
@@ -61,6 +63,59 @@ class MemoryBackupTest {
             }
         }
         noStaging();
+    }
+    @Test @EnabledOnOs(OS.WINDOWS)
+    void windowsLongPathsRestoreReopenAndFailWithoutPublishingOrResidue() throws Exception {
+        try (var store = open(source())) {
+            var first = store.create(Type.PREFERENCE, "Synthetic preference", "English recovery 中文搜索");
+            store.update(first.id(), 1, first.type(), first.title(), first.content());
+            var archived = store.create(Type.PROJECT_NOTE, "Synthetic archive", "English recovery 中文搜索");
+            store.archive(archived.id(), 1);
+            var backup = MemoryBackup.read(MemoryBackup.export(store).bytes());
+            byte[] original = Files.readAllBytes(store.databaseFile());
+            for (int length : List.of(240, 318, 1100)) {
+                Path parent = temporary.resolve("deep-" + length);
+                // Include URI-significant characters and Unicode; lengths are native UTF-16 units.
+                String leaf = "restored %23#&中文";
+                int padding = length - parent.resolve(leaf).resolve("memory.db").toString().length();
+                while (padding > 0) {
+                    int count = Math.min(80, padding - 1);
+                    parent = parent.resolve("x".repeat(count)); padding -= count + 1;
+                }
+                PrivateMemoryDirectory.directory(parent);
+                Path target = parent.resolve(leaf);
+                assertEquals(length, target.resolve("memory.db").toString().length());
+                for (boolean existing : List.of(false, true)) {
+                    if (existing) PrivateMemoryDirectory.directory(target);
+                    assertEquals(backup.metadata(), service().restore(backup, target.toString()));
+                    PrivateMemoryDirectory.protect(target, true);
+                    PrivateMemoryDirectory.protect(target.resolve("memory.db"), false);
+                    try (var restored = open(target)) {
+                        assertEquals(backup.items(), MemoryBackup.export(restored).items()); // Separate read snapshot.
+                        assertEquals(1, restored.list(Status.ARCHIVED, null, "中文搜索", 0, 20).total());
+                        assertEquals(1, restored.snapshotForAsk(List.of(new MemoryReference(first.id(), 2))).size());
+                        code(ErrorCode.MEMORY_SELECTION_STALE, () -> restored.snapshotForAsk(List.of(new MemoryReference(first.id(), 1))));
+                        try (var db = restored.openReadSnapshot(); var s = db.createStatement()) {
+                            try (var r = s.executeQuery("PRAGMA quick_check")) { assertTrue(r.next()); assertEquals("ok", r.getString(1)); assertFalse(r.next()); }
+                            try (var r = s.executeQuery("PRAGMA user_version")) { assertTrue(r.next()); assertEquals(1, r.getInt(1)); }
+                        }
+                    }
+                    byte[] published = Files.readAllBytes(target.resolve("memory.db"));
+                    code(ErrorCode.MEMORY_RESTORE_TARGET_NOT_EMPTY, () -> service().restore(backup, target.toString()));
+                    assertArrayEquals(published, Files.readAllBytes(target.resolve("memory.db")));
+                    // Remove only this test's known synthetic output to exercise the empty-directory branch.
+                    Files.delete(target.resolve("memory.db"));
+                    Files.delete(target);
+                }
+                Path failed = parent.resolve("failed");
+                var failing = new MemoryBackupService(source(), token(), () -> { throw new IllegalStateException(); });
+                code(ErrorCode.MEMORY_RESTORE_FAILED, () -> failing.restore(backup, failed.toString()));
+                assertFalse(Files.exists(failed));
+                try (var entries = Files.list(parent)) { assertEquals(0, entries.count()); }
+            }
+            assertArrayEquals(original, Files.readAllBytes(store.databaseFile()));
+            assertEquals(backup.items(), store.backupSnapshot());
+        }
     }
     @Test void strictFormatRejectsMalformedFieldsUnicodeKeysAndVersionsWithoutDisclosure() {
         try (var store = open(source())) {

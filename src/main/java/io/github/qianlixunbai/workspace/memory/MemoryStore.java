@@ -3,6 +3,7 @@ package io.github.qianlixunbai.workspace.memory;
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
 import io.github.qianlixunbai.workspace.persistence.PostgresqlWorkspace;
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 import javax.sql.DataSource;
 import java.nio.file.Path;
 import java.sql.*;
@@ -42,7 +43,7 @@ public final class MemoryStore implements AutoCloseable {
             Path file = PrivateMemoryDirectory.prepare(directory, tokenFile);
             dataDirectory = file.getParent();
             databaseFile = file;
-            connection = DriverManager.getConnection("jdbc:sqlite:" + file);
+            connection = DriverManager.getConnection(sqliteUrl(file));
             execute("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MS);
             execute("PRAGMA foreign_keys = ON");
             if (number("PRAGMA foreign_keys") != 1) throw new SQLException();
@@ -86,9 +87,17 @@ public final class MemoryStore implements AutoCloseable {
     public Path dataDirectory() { return dataDirectory; }
     public boolean postgresql() { return postgresql != null; }
 
+    private static String sqliteUrl(Path file) {
+        if (!WindowsPrivateAcl.isWindows()) return "jdbc:sqlite:" + file;
+        // The wide Win32 API needs the extended prefix; the default VFS still caps UTF-8
+        // paths at 1040 bytes. Encode '?' and filename characters before adding VFS options.
+        // win32-longpath retains ordinary Windows locking (never use its -none variant).
+        return "jdbc:sqlite:file:////%3F" + file.toUri().getRawPath() + "?vfs=win32-longpath";
+    }
+
     /** Caller owns this connection and must close it; exports share one consistent read snapshot. */
     public Connection openReadSnapshot() throws SQLException {
-        Connection db = postgresql == null ? DriverManager.getConnection("jdbc:sqlite:" + databaseFile) : postgresql.getConnection();
+        Connection db = postgresql == null ? DriverManager.getConnection(sqliteUrl(databaseFile)) : postgresql.getConnection();
         try {
             if (postgresql != null) { PostgresqlWorkspace.verify(db); PostgresqlWorkspace.begin(db, false); }
             else try (var s = db.createStatement()) {
