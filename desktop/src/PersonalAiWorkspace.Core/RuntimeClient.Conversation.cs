@@ -10,7 +10,8 @@ public sealed partial class RuntimeClient
     private Task<JsonDocument> SendConversationAsync(HttpMethod method, string path, object? body, HttpStatusCode expected,
         CancellationToken ct, Action<HttpResponseMessage, JsonDocument>? validate = null, bool aiAdmission = false) =>
         SendAsync(method, path, body is null ? null : JsonSerializer.SerializeToUtf8Bytes(body), true, expected, ct,
-            validate: validate, endpointErrorMap: (status, root) => ConversationError(status, root, aiAdmission));
+            validate: validate, endpointErrorMap: (status, root) => ConversationError(status, root, aiAdmission),
+            requestTimeout: aiAdmission ? TimeSpan.FromSeconds(155) : null);
     public async Task<Conversation> CreateConversationAsync(string? title, CancellationToken ct)
     {
         if (title is not null && !ConversationValidation.Title(title)) throw new DesktopException(DesktopError.ConversationInvalid);

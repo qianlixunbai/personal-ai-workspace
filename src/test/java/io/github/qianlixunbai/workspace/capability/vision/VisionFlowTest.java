@@ -37,7 +37,8 @@ class VisionFlowTest {
         AtomicBoolean liveDrift=new AtomicBoolean();AtomicInteger liveChecks=new AtomicInteger();
         Map<String,Object> details=Map.of("parent_model","","format","gguf","family","qwen35","families",List.of("qwen35","clip"),"parameter_size","4.7B","quantization_level","Q4_K_M","runner","llamacpp");
         Map<String,Object> tag=Map.of("name","qwen3.5:4b","model","qwen3.5:4b","size",3397830016L,"digest",CHILD,"details",details);
-        server.createContext("/api/version",e->respond(e,Map.of("version","0.40.1")));
+        AtomicReference<String> version=new AtomicReference<>("0.40.6");
+        server.createContext("/api/version",e->respond(e,Map.of("version",version.get())));
         server.createContext("/api/tags",e->respond(e,Map.of("models",List.of(tag))));
         server.createContext("/api/show",e->{e.getRequestBody().readAllBytes();respond(e,Map.of(
             "details",details,"requires","0.17.1","capabilities",List.of("completion","vision"),
@@ -75,9 +76,13 @@ class VisionFlowTest {
         };
         var tasks=new TaskManager(settings);
         try(var provider=new ProviderHandle(new OllamaProvider(settings,new ProviderPolicy(),trust));var models=new ActiveModelManager(new ProfileResolver(settings),provider.value,settings,store)) {
+            var preferred=provider.value.admitLocal("qwen3.5:4b",8192,new Cancellation());
+            assertEquals(CHILD,preferred.digest());assertEquals("llamacpp",preferred.runner());
             try(var text=models.reserve("translate.fast","translate-v1")) {assertEquals("llamacpp",text.model().runner());}
             assertTrue(models.visionReadiness().providerDeclaredVision());assertTrue(models.visionReadiness().runtimeValidatedText());assertFalse(models.visionReadiness().workspaceVisionExecutionValidated());
             assertThrows(WorkspaceException.class,()->models.reserveVision(1));assertEquals(0,images.get());
+            // Keep the existing image-flow evidence on its original reviewed version.
+            version.set("0.40.1");
             var slots=new VisionSlot();var controller=new VisionController(models,provider.value,tasks,slots);
             var intent=models.prepareVisionValidation(UUID.randomUUID());
             var validation=new MockHttpServletRequest("POST","/api/v1/vision/validation");validation.setContentType("application/json");validation.setContent(JSON.writeValueAsBytes(intent));

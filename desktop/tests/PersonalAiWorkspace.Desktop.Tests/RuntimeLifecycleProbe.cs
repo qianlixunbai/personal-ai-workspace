@@ -11,7 +11,7 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 // Build the existing WPF test project with RuntimeLifecycleProbe=true.
 // Run its apphost directly: dotnet-test's injected runtime overrides must not be silently removed.
 // The optional gui flow runs the real AssistantApp, bundled WebView and ordinary UI actions.
-public static class RuntimeLifecycleProbe
+public static partial class RuntimeLifecycleProbe
 {
 #if RUNTIME_LIFECYCLE_PROBE
     [STAThread]
@@ -20,16 +20,19 @@ public static class RuntimeLifecycleProbe
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         if (args is ["--prepare-profile"])
         {
+            string preparation = "SOURCES";
             try
             {
                 using var sources = TrustedDevelopmentRuntimeSources.Open();
                 string id = Guid.NewGuid().ToString("N");
+                preparation = "PRIVATE_PROFILE";
                 Mmf3ProfileState.Prepare(id);
+                preparation = "NATIVE_PROVISION";
                 Mmf3ProfileNative.Provision(id, sources.JnaJar);
                 Console.WriteLine("SYNTHETIC_PROFILE_CREATED_" + id);
                 return 0;
             }
-            catch (Exception error) { Console.WriteLine($"SYNTHETIC_PROFILE_STOP hresult=0x{error.HResult:X8}"); return 10; }
+            catch (Exception error) { Console.WriteLine($"SYNTHETIC_PROFILE_STOP stage={preparation} hresult=0x{error.HResult:X8}"); return 10; }
         }
         if (args is ["--verify-package-sources"])
         {
@@ -42,7 +45,9 @@ public static class RuntimeLifecycleProbe
             }
             catch { Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_STOP"); return 10; }
         }
-        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout")) return 2;
+        bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
+            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
+        if (!postgresql && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout"))) return 2;
         string phase = "PROFILE_PARSE";
         try
         {
@@ -56,7 +61,9 @@ public static class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
+                if (postgresql && args[1].StartsWith("gui-postgresql-conversation", StringComparison.Ordinal)) VerifyPostgresqlConversationGui(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].EndsWith("-recover", StringComparison.Ordinal));
+                else if (postgresql) VerifyPostgresqlGui(app, launch, args[2], args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].StartsWith("gui-postgresql-storage", StringComparison.Ordinal));
+                else if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
                 else VerifyAsync(app, launch, args.Length == 2 ? args[1] : "authentication-failure").GetAwaiter().GetResult();
             }
             finally { app.Cleanup(); }

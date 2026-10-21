@@ -28,7 +28,8 @@ final class OllamaVisionAdmission {
                 || d.has("embedding_length") && (!d.path("embedding_length").isIntegralNumber() || d.path("embedding_length").asLong(-1)!=2560)) reject();
     }
     static void verify(JsonNode before,JsonNode show,JsonNode after,String version,int context) {
-        if (!"0.40.1".equals(version) || context>8192 || !before.equals(after)
+        // Text execution compatibility only; image execution still needs independent token/payload proof.
+        if (!Set.of("0.40.1", "0.40.6").contains(version) || context>8192 || !before.equals(after)
                 || !CHILD.equals(OllamaModelAdmission.digest(before.path("digest")))) reject();
         fields(show,Set.of("thinking","license","modelfile","parameters","template","system","renderer","parser","details","messages",
                 "remote_model","remote_host","model_info","projector_info","tensors","capabilities","manifests","modified_at","requires"));

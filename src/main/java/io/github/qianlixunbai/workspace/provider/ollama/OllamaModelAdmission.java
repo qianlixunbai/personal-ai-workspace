@@ -8,7 +8,8 @@ import java.util.regex.*;
 
 /** Reviewed subset of v0.40.0/v0.40.1 api/types.go, server/routes.go and server/images.go. */
 final class OllamaModelAdmission {
-    static final Set<String> SUPPORTED_VERSIONS = Set.of("0.40.0", "0.40.1");
+    // 0.40.6 is restricted to the pinned multimodal child by OllamaProvider.
+    static final Set<String> SUPPORTED_VERSIONS = Set.of("0.40.0", "0.40.1", "0.40.6");
     private static final Set<String> ARCHITECTURES = Set.of("llama", "qwen2", "qwen3", "qwen35", "qwen35moe");
     private static final Set<String> SHOW_FIELDS = Set.of("thinking", "license", "modelfile", "parameters", "template",
             "system", "renderer", "parser", "details", "messages", "remote_model", "remote_host", "model_info",

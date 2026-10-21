@@ -263,10 +263,14 @@ public final class OllamaProvider implements Provider {
                 || !OllamaModelAdmission.SUPPORTED_VERSIONS.contains(version.path("version").asString()))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "MODEL_VERSION");
         JsonNode beforeTags = metadata("/api/tags", null, cancellation);
+        // 0.40.6 lists only the preferred child. Bootstrap still resolves the configured
+        // name uniquely; the exact child/component contract below must then approve it.
+        boolean preferredChildOnly = "0.40.6".equals(version.path("version").asString());
         JsonNode before = OllamaModelAdmission.installed(beforeTags, model,
-                runner == null && digest == null ? "ggml" : runner, digest);
+                runner == null && digest == null && !preferredChildOnly ? "ggml" : runner, digest);
         String selectedRunner = OllamaModelAdmission.runner(before.path("details"));
         boolean visionCandidate=OllamaVisionAdmission.candidate(model,selectedRunner,OllamaModelAdmission.digest(before.path("digest")));
+        if (preferredChildOnly && !visionCandidate) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "MODEL_RUNNER");
         if (isolated != null && !visionCandidate) throw new WorkspaceException(ErrorCode.POLICY_DENIED,"ISOLATED_MODEL");
         if (!"ggml".equals(selectedRunner) && !visionCandidate) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "MODEL_RUNNER");
         JsonNode show = metadata("/api/show", json.writeValueAsBytes(Map.of("model", model + ":local", "runner", selectedRunner, "verbose", false)), cancellation);

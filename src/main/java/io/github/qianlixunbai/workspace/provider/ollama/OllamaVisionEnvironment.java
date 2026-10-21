@@ -14,6 +14,10 @@ import java.util.*;
 final class OllamaVisionEnvironment {
     private static final Path ROOT=Path.of("D:\\Ollama\\moxing");
     private static final String SERVER_HASH="74462c0d7caa1aeb547f086ef1662f2b23d1cb573f70d21027e72250679e9112";
+    // Reviewed shared 0.40.6, valid Ollama Inc. Authenticode signature. This does not
+    // repin the isolated 0.40.1 distribution or add any image token/payload policy.
+    private static final Set<String> SHARED_SERVER_HASHES=Set.of(SERVER_HASH,
+            "71d2002d3ae572d5fa8c1d368ce9d1b9a39c7187cf169e8b330c55410bf6c58e");
     // cf2a313a298066d572c36812e5ad30a21c0db13b, external PROJECTOR: all 298 tensors, not file size.
     private static final long PROJECTOR_TENSOR_BYTES=675551232L;
     private static final Map<String,Long> BLOBS=Map.of(
@@ -612,7 +616,7 @@ final class OllamaVisionEnvironment {
             String command=before.info().command().orElseThrow();
             Path executable=Path.of(command);
             if(!executable.getFileName().toString().equalsIgnoreCase("ollama.exe")) throw new IOException();
-            digest(executable,Files.size(executable),SERVER_HASH,cancellation);
+            digest(executable,Files.size(executable),SHARED_SERVER_HASHES,cancellation);
             String[] args=arguments(before);
             if(!Arrays.asList(args).equals(List.of("serve"))) throw new IOException();
             // Full pinned manifests bind every allowed layer, including license/params, and disallow extras.
@@ -824,6 +828,9 @@ final class OllamaVisionEnvironment {
         try(var read=new com.sun.jna.Memory(8)) {if(!nativeRead.ReadProcessMemory(process,address,output,bytes,read) || read.getLong(0)!=bytes)throw new IOException();}
     }
     private static void digest(Path path,long size,String expected,Cancellation cancellation) throws Exception {
+        digest(path,size,Set.of(expected),cancellation);
+    }
+    private static void digest(Path path,long size,Set<String> expected,Cancellation cancellation) throws Exception {
         for(Path p=path;p!=null;p=p.getParent()) {
             int attributes=com.sun.jna.platform.win32.Kernel32.INSTANCE.GetFileAttributes(p.toString());
             if(attributes==-1 || (attributes&0x400)!=0 || Files.isSymbolicLink(p) || !p.equals(p.toRealPath())) throw new IOException();
@@ -831,7 +838,7 @@ final class OllamaVisionEnvironment {
         if(!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) || Files.size(path)!=size) throw new IOException();
         var hash=MessageDigest.getInstance("SHA-256");
         try(var stream=Files.newInputStream(path,LinkOption.NOFOLLOW_LINKS)) { byte[] buffer=new byte[65536]; int count; while((count=stream.read(buffer))!=-1) { cancellation.check(); hash.update(buffer,0,count); } }
-        if(!HexFormat.of().formatHex(hash.digest()).equals(expected)) throw new IOException();
+        if(!expected.contains(HexFormat.of().formatHex(hash.digest()))) throw new IOException();
     }
     private static ProcessHandle listener(int port) throws IOException {
         com.sun.jna.ptr.IntByReference size=new com.sun.jna.ptr.IntByReference();

@@ -63,6 +63,19 @@ class WindowsPrivateAclTest {
         }
         try (var reopened = new BrowserClients(credentials.resolve("browser-clients.json"), Clock.systemUTC())) { }
         Path model = root.resolve("model-state");
+        WindowsPrivateAcl.directory(model);
+        // WPF-created Profile directories include the trusted OS administrative identities.
+        var modelAcl = Files.getFileAttributeView(model, AclFileAttributeView.class);
+        var modelRules = new ArrayList<>(modelAcl.getAcl());
+        for (String sid : List.of("S-1-5-18", "S-1-5-32-544")) {
+            var principal = model.getFileSystem().getUserPrincipalLookupService()
+                    .lookupPrincipalByName(Advapi32Util.getAccountBySid(sid).fqn);
+            modelRules.add(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(principal)
+                    .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+                    .setFlags(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT).build());
+        }
+        modelAcl.setAcl(modelRules); protectFixtureDacl(model);
+        byte[] modelBefore = descriptor(model);
         try (var state = new ModelStateStore(model, token, data)) {
             state.commit(0, "synthetic:latest", "a".repeat(64)); // Store only, no provider/model operation.
             state.armGuard();
@@ -73,6 +86,7 @@ class WindowsPrivateAclTest {
             assertEquals(1, state.selection().selectionRevision());
             assertThrows(java.io.IOException.class, state::clearGuard); // Restart does not invent trusted completion.
         }
+        assertArrayEquals(modelBefore, descriptor(model));
         for (Path path : List.of(credentials, token, credentials.resolve("browser-clients.lock"),
                 credentials.resolve("browser-clients.json"), data, db, knowledge, knowledgeLock,
                 knowledge.resolve("sources"), knowledge.resolve("staging"), published, model,

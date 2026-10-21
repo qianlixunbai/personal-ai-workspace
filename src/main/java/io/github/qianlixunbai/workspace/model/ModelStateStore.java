@@ -391,7 +391,7 @@ public final class ModelStateStore implements AutoCloseable {
         if (posix != null) {
             if (!posix.readAttributes().permissions().equals(PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------")))
                 throw new IOException("Model state permissions are not private");
-        } else {
+        } else if (!windows) {
             var acl = Files.getFileAttributeView(path, AclFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
             if (acl == null) throw new IOException("Private model state permissions unavailable");
             boolean allowed = false;

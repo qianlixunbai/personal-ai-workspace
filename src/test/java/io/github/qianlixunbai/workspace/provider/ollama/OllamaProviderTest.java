@@ -245,6 +245,10 @@ class OllamaProviderTest {
         assertEquals(ErrorCode.POLICY_DENIED, assertThrows(WorkspaceException.class,
                 () -> provider.admitLocal("qwen3.5:4b", 8192, new Cancellation())).error().code());
         show.set(json.writeValueAsString(fixture.path("show")));
+        version.set("{\"version\":\"0.40.6\"}");
+        // A reviewed server alone cannot grant arbitrary GGML/text or multimodal children.
+        assertEquals(ErrorCode.POLICY_DENIED, assertThrows(WorkspaceException.class,
+                () -> provider.admitLocal("qwen3.5:4b", 8192, new Cancellation())).error().code());
         for (String rejectedVersion : java.util.List.of("{\"version\":\"0.40.2\"}", "{\"version\":\"0.41.0\"}",
                 "{\"version\":\"0.40.1-rc1\"}", "{\"version\":\"0.40.1+build\"}",
                 "{\"version\":null}", "{\"version\":401}", "{\"version\":\"0.40.1\",\"unknown\":true}")) {
