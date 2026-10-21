@@ -1,5 +1,26 @@
 # Personal AI Workspace — Current Status
 
+## Current Ollama compatibility / PostgreSQL closing（2026-10-21）
+
+**Development-only 自动消息级 E2E PASS；Explorer 无参数双击/物理托盘人工验收 PENDING。** 续用原 PostgreSQL 数据库和 Profile；未重建、重输管理员密码或重复原配置阶段。
+0.40.6 的 tags 首选 child 变化已按官方源码审查；仅固定 4b/llamacpp、完整本地组件及已验签服务器 hash 的文本执行准入。9b 仍拒绝，Vision 图片独立门禁未开放，共享 Ollama/Active selection 未改。
+真实 Conversation USER/AI `SUCCEEDED`、输出边界 `FAILED`、`CANCELLED`、归档冲突、显式 Memory 关联、重启/重开消息与三 Store 持久化、旧 Bearer 401 和既有旧 Bridge session 聚焦测试本次 PASS。修复 Desktop Conversation AI admission 的 8 秒冷启动超时，沿用模型管理 155 秒预算。
+新 `PersonalAiWorkspace-postgresql-ollama0406-development-20261021.zip` 已生成；包来源/搬迁/篡改合同，以及实际产品 EXE 的 PostgreSQL/相同 Profile 重开/SQLite 三 Store 隔离/Finance disabled/自动菜单正常退出与 Java 清理 PASS。人工 Explorer/物理托盘仍须单独确认。
+实际凭据扫描无匹配；原 pattern audit 唯一 FAIL 是旧文档明确的公开 TLS 测试私钥，复核结果与原 FAIL 均保留，产品包不含该 fixture。无全量测试/完整打包矩阵。
+代码及包基线 `e2a64d9`，报告随后本地提交；尚未 Push。原八个 B4A6 未追踪文件和旧数据/包保留；技术退役准备具备，人工关卡前不正式退役。
+详见 [最新收尾结论与实际证据](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)。下方 Current/暂停/PENDING 段落均为历史快照。
+
+## Current PostgreSQL Desktop autonomous execution（2026-10-20）
+
+**PARTIAL：真实 PostgreSQL 原生配置、Memory/Knowledge 和 Conversation 元数据已通过；消息/终态因模型安全准入阻断。**
+已新建独立合成库 `paw_pgdesktop_5e3ccc3d5b17` 及专用 owner/app，执行原 Workspace V1/V2。真实 WPF CHECK / DPAPI CurrentUser 保存 / 防覆盖 / 显式重启 / 旧 Bearer 401 / React PostgreSQL、Memory revision 保护、Knowledge 双 revision/文件/检索/来源定位、同 Profile 重开和独立 SQLite 均实际 PASS，Finance disabled。
+仅修复 ModelStateStore 重复旧 ACL 检查误拒绝合法 SYSTEM/Administrators 的一处条件；既有 WindowsPrivateAclTest 聚焦综合流程 PASS。
+完整 Conversation 流程仍实际 `PolicyDenied`：本机 Ollama 0.40.6 / llamacpp 不属于现有普通文本 0.40.0/0.40.1 / ggml 安全合同。未放宽白名单、修改共享 Ollama 或伪造终态。
+临时合成凭据密文已清理，产品 Profile 配置/数据和全部旧资产保留；无新 ZIP、Commit 或 Push。独立产品 EXE / Explorer / 物理托盘及完整消息级 E2E PENDING。
+详见 [本轮执行证据与剩余阻碍](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)。以下暂停及旧 Current 段落均为历史快照。
+
+2026-10-20：用户要求暂停 PostgreSQL Desktop 工作。已停止窗口启动、数据库操作和后续实施；执行问题、未完成项及暂存密文清理状态见 [暂停复盘报告](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)。
+
 ## Current PostgreSQL Desktop continuation（2026-10-20）
 
 用户已完成本机安全输入；实际 PostgreSQL 管理员登录返回 `28P01`，数据库阶段现因认证失败停止，不能继续创建目标。
