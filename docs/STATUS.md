@@ -1,5 +1,15 @@
 # Personal AI Workspace — Current Status
 
+## Current PostgreSQL Desktop development closing（2026-10-22）
+
+**开发源码收尾；final 无参数自动进入 PostgreSQL 已获用户人工确认；同一 final 的完整物理托盘退出/重新启动人工流程仍 PENDING。Production GO 未授予。**
+用户本轮确认 final Settings 可连接、V1/V2 Ready、历史 Conversations 可见；不能用既有自动菜单退出证据或旧版本人工操作替代剩余人工关卡。
+已完成 Profile 选择/托盘切换、只保存非秘密 ID 的成功工作区记忆、完整 Native Gate 重校验、失效记录安全恢复及显式 Runtime 重启后的记忆更新。源码提交 `6857ca8`；Ollama/ACL/超时与 PostgreSQL 集成已在原 `e2a64d9` 提交，不重复提交。
+交付目标为 GitHub `codex/postgresql-desktop-integration`，正常 Push 后独立核验远端 HEAD/关键文件；不 Merge main、Force Push、Tag 或 Release。GitHub 实际交付 SHA 以本轮最终远端核验结果为准。
+本轮只做必要静态/聚焦构建：Desktop/Core DLL 与既有 final 包逐字节一致，复用已有 Windows/数据库/AI/聚焦测试证据；没有重跑数据库、推理、全量套件或重打 ZIP。final 包继续记录 `38c8448 / sourceDirty=true`，不得冒充从新 Git HEAD 重建。
+B4A6 技术退役准备具备，八个原未追踪文件、历史数据库/角色/receipt/Profile/备份保留；未执行退役或清理。Finance 仓库按用户指令冻结只读，下一轮先做身份绑定和只读账户纵向切片，不迁移 Finance 数据。
+详见 [开发 Closing 与 B4A6 结论](engineering/POSTGRESQL-DESKTOP-CLOSING.md)、[最新集成报告](engineering/POSTGRESQL-DESKTOP-INTEGRATION-REPORT.md)、[Finance 技术交接](engineering/FINANCE-INTEGRATION-HANDOFF.md)。以下 Current 段落均为历史快照。
+
 ## Current Ollama compatibility / PostgreSQL closing（2026-10-21）
 
 **Development-only 自动消息级 E2E PASS；Explorer 无参数双击/物理托盘人工验收 PENDING。** 续用原 PostgreSQL 数据库和 Profile；未重建、重输管理员密码或重复原配置阶段。

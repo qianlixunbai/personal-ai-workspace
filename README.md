@@ -1,5 +1,10 @@
 # Personal AI Workspace
 
+## PostgreSQL Desktop 开发收尾（2026-10-22）
+
+开发源码交付分支 `codex/postgresql-desktop-integration` 已整理成功工作区记忆与托盘切换。用户已确认 final 无参数进入 PostgreSQL、V1/V2 Ready 与历史会话可见；同一 final 的完整物理托盘退出/重开人工关卡仍 PENDING，Production GO 未授予。
+既有 final Development-only ZIP 保留 `38c8448 / sourceDirty=true` 构建来源，不因源码 Commit/文档变化重打包。GitHub 交付、B4A6 退役准备与下一轮 Finance 切入点见 [Closing](docs/engineering/POSTGRESQL-DESKTOP-CLOSING.md) 和 [技术交接](docs/engineering/FINANCE-INTEGRATION-HANDOFF.md)。下方较早状态保留其历史语境。
+
 ## 当前开发版桌面配置（2026-10-19）
 
 `codex/desktop-setup-simplification` 已接入受信开发 Profile 选择/创建、Windows 原生数据库设置、安全保存和显式 Runtime 重启。

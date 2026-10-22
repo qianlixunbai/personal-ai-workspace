@@ -1,5 +1,103 @@
 # PostgreSQL Desktop Integration & Real Windows E2E
 
+## 开发收尾与 GitHub 交付（2026-10-22）
+
+**开发源码进入 Closing；不是 Production GO，也不是完整物理生命周期人工 PASS。** 用户已明确确认：在 Explorer 双击当前 **final** EXE，无手动选择 Profile 即进入 PostgreSQL；Settings 连接正常、V1/V2 Ready、历史 Conversations 可见。当前 final 的完整物理托盘退出 → 重新启动 → 同一 Profile/历史数据仍缺独立明确人工确认，保留 PENDING，不把自动化或旧版本人工操作改写为该项 PASS。
+
+本轮实际起始分支/HEAD 为 `codex/postgresql-desktop-integration` / `38c84484f0dfb9490dbe8a4a4edeef37a91a8661`。Fetch 成功，起始远端无同名开发分支。`e2a64d9` 等已包含 PostgreSQL/Ollama、ModelStateStore ACL、Conversation admission 超时和维护入口，本轮不重做。已将此前选择/托盘/工作区记忆与 Runtime 重启代次代码（含原未追踪生产类）整理为 `6857ca8e0f4da1fa773e68047bab803baaaad6f4`；Closing/STATUS/交接文档另作提交。用户本轮明确授权 Commit 与开发分支 Push，取代下方历史章节“等待人工后才 Commit/Push”的限制；人工缺口本身不被清除。
+
+沿原 final 的源 manifest/构建参数做一次聚焦 Desktop 编译，Desktop/Core DLL 均与 final 包 SHA-256 相同。无必要生产修复、无新长期测试；复用此前实际测试与 Windows 证据，不重跑数据库/Flyway、Ollama推理或全量矩阵，不重打 ZIP。final 包继续原 `38c8448 / sourceDirty=true` 来源，不声称直接构建于本轮新提交。本轮不启动/退出用户产品进程，不做数据、密码、Profile 或备份操作。
+
+GitHub 目标为 [同名开发分支](https://github.com/qianlixunbai/personal-ai-workspace/tree/codex/postgresql-desktop-integration)，只普通 Push；实际成功结果和远端 SHA 在本轮最终交付时另行核验，不提前声明。详细保留范围、B4A6 Retirement Readiness、包一致性与最小人工步骤见 [Closing](POSTGRESQL-DESKTOP-CLOSING.md)；下一阶段只读梳理见 [Finance 交接](FINANCE-INTEGRATION-HANDOFF.md)。以下历史事实、失败记录与证据均保留。
+
+## 记住上次成功工作区（2026-10-21）
+
+**本轮新版真实 Explorer 自动恢复/切换/安全恢复验证 PASS；本轮人工验收 PENDING。** 用户已人工确认原 PostgreSQL Profile 的 V1/V2、Memory、Knowledge、Conversation 数据正常，上一轮托盘切换有效；这些确认不替代本轮记忆功能的人工验收。以下为最新行为，后续历史章节的“每次显示选择器”不再适用于本轮新包。
+
+### 已定位的启动来源与实现
+
+起始运行的是上一轮 `PersonalAiWorkspace-profile-switch-development-20261021` EXE，无启动参数，Desktop DLL 与包清单一致。所持 Runtime 实际使用新建 SQLite Profile `1b37edb646284ed1bbdc8f81c2ecc8aa`：进程于本机 22:43:14 启动，目录于 22:43:16 创建；不是恢复原 SQLite Profile `07d7769638964926a12d1d1cb182d904`。原代码没有上次选择记录，无参数必进选择器，仅“是/创建”分支调用新 Profile Prepare。由当前源码与目录/进程证据可确认走了新建路径，但没有记录用户当时的实际点击，不猜测具体鼠标操作。正常托盘退出后 Desktop/所持 Java/18765 清理成功，不是通过杀进程掩盖残留问题。证据：`.verification/workspace-memory-initial.json`。
+
+- 新 `DevelopmentWorkspaceSelection.cs` 只在现有系统 Known Folder 解析的私有应用目录保存 `last-workspace`，内容为严格 32 字符小写十六进制 Profile ID；无路径、密码、Bearer、数据库字段或第二套 Profile 配置。
+- 目录链 pin 与 ACL 策略复用 `WindowsProfileSecurity`；记录文件拒绝目录、reparse、错误所有者、外部敏感授权与无效/超长内容。导航记录允许继承其已 pin/验证的私有父目录权限，验证所有实际授权，不修改磁盘 ACL，也不放宽原 Profile、Native Gate、DPAPI 或凭据文件策略。同账户恶意进程仍不在隔离承诺内。
+- `Program` 无参数读取 ID 后仍执行原 `Mmf3AcceptanceLaunch.Parse` / Native Verify / Profile pin；首次没有记录才显示原选择器。记录损坏、指向已删除/移动/不可用 Profile 时提示原因并提供明确重新选择/取消，不调用 Prepare 修复已有目录或自动回退 SQLite。
+- `AssistantApp` 在所持 Runtime 完成原生认证后再做只读存储检查，成功才 flush 临时文件并在同一目录原子替换记录。取消选择、退出前未就绪或启动/存储失败均不覆盖上次成功 ID。写记录失败单独提示，不破坏已打开工作区或数据库配置。
+- 最终复核补齐已有原生 Settings 显式 Runtime 重启：每个新启动代次可重新记录成功，旧代次的晚到存储检查不覆盖新状态；没有修改 Runtime owner 或配置保存行为。
+- 托盘切换复用正常退出、草稿确认与原选择器，以开发版专用 `--choose-development-workspace` 显式重新选择；此参数不传入 Java，也不携带 Profile ID。普通 Release 不开放此入口。新建 Profile 仍按原产品策略默认 SQLite；Java/React 生产代码、数据库格式与迁移逻辑未改。
+
+### 本轮实际验证与证据
+
+| 实际执行 | 结果 |
+| --- | --- |
+| 首次真实 Explorer 双击无参数新 EXE，原生选择 PostgreSQL，认证/存储就绪后记录 ID | PASS；父进程确为 `explorer.exe`，命令行仅 EXE；记录恰为 32 bytes，无秘密/路径 |
+| 真实托盘正常退出，再次 Explorer 无参数双击 | PASS；直接回到 PostgreSQL，不弹选择器，原成功 AI 回复逐字一致 |
+| 托盘切至原 SQLite，退出后再次 Explorer 无参数双击 | PASS；记录更新为 SQLite 并自动恢复，PostgreSQL Conversation ID 隔离、Finance disabled |
+| 托盘再切回原 PostgreSQL | PASS；原 Memory revision、Knowledge ready revision、原成功回复保持 |
+| 记录指向不存在的合成 ID，真实无参数启动并重新选择 | PASS；没有 Runtime 监听、没有自动创建目录、没有数据库回退；显式选择成功后才更新记录 |
+| 记录含非法路径内容，取消错误恢复；随后重新选择原 Profile | PASS；不把记录解释为路径，取消正常退出且保留错误记录，显式选择成功后恢复 |
+| 仅对本轮新增非秘密记录注入外部读取 ACE，真实无参数启动 | PASS；拒绝且不自动修复 ACL、不启动 Runtime。测试仅恢复自己注入的记录 ACE，未改任何 Profile/凭据 ACL |
+| 最后自动恢复 PostgreSQL，实际 React Settings 与 Conversation 页面 | PASS；PostgreSQL、原 `SUCCEEDED` 回复可见，两张截图已实际查看；正常退出后仍记住 PostgreSQL，所持 Java 与 18765 清理 |
+
+上述完整流程在 v2 实际执行，结构化结果为 `.verification/workspace-memory-product.result.json`（PASS）。真实流程日志：`workspace-memory-product-v2.log`、`workspace-memory-product-resume.log`、`workspace-memory-ui.log`；截图：`workspace-memory-settings.png` / `workspace-memory-conversation.png`。没有用传入 Profile ID 的测试 apphost 代替这些 Explorer 流程。
+
+最终交付的 **final** 包仅再补充上述启动代次处理，选择/读取记录/Native Gate/错误恢复代码与 v2 一致，因此复用 v2 的 SQLite 往返与无效记录证据，不机械重跑完整流程。final 实际另外执行：Explorer 无参数自动恢复 PostgreSQL → 原生数据库设置仅执行 STATE / 明确确认重启 Runtime（无 SAVE）→ 旧 Java 退出、新 Runtime 成功后重新记录当前 Profile → 托盘正常退出 → 再次真实 Explorer 自动恢复 PostgreSQL → 原 Memory/Knowledge revision、实际 React Settings 和成功回复核对 → 正常退出。该代次检查仅临时修改本轮非秘密选择记录来区分新旧成功，不改任何数据库配置/凭据。**final 聚焦产品流程 PASS**：`.verification/workspace-memory-final.result.json`；`workspace-memory-final.log` / `workspace-memory-final-resume.log` / `workspace-memory-final-ui.log`，截图为 `workspace-memory-final-settings.png` / `workspace-memory-final-conversation.png`，已实际查看。
+
+聚焦执行原有 `CompiledVariantIdentityAndCrossModeArgumentsAreIsolated` 与 `StartupDiagnosticsUseOnlyExactBoundedProtocol`，PASS；Profile Debug、普通 Release 编译与 Development-only publish/完整性验证实际成功。未新增或修改长期测试，临时验证脚本仅在忽略目录复用原 Explorer/托盘自动化。没有全量 Java/Desktop/Frontend、Browser/IME、压力或完整打包矩阵。Runtime/React 为打包需要实际构建，不冒充测试执行。认证失败的原生诊断与新恢复分支完成源码核对；没有篡改原数据库口令、DPAPI 或 Bearer 做真实认证故障注入，不声称执行了该故障场景。
+
+失败证据保留：第一份 `remember-workspace-development-20261021` 包未通过记录落盘检查，不是交付候选。隔离检查定位 FileStream 句柄设置 DACL 的权限失败，并实际复现本环境 Windows rename 重新应用父目录继承；改用已有私有父目录边界、校验完整有效授权，UI 异步回调显式封装 `Action`。修复后隔离记录创建/替换/读取及真实产品恢复均通过。v2 损坏记录阶段因 Explorer 未取得前台焦点安全停止，未发送输入；仅修正临时 harness 选择当前 Explorer 窗口并续跑未完成部分，没有重跑已绿流程或修改生产行为迎合 harness。日志分别保留于 `workspace-memory-product.log`、`workspace-memory-product-v2.log` 与 resume 日志。
+
+final 聚焦 harness 亦保留了原生 Settings 为 UIA 嵌套窗口、Explorer 重复窗口抢焦点、刷新按钮尚未启用而未执行查询的失败/暂停。仅修正对应窗口定位、复用已有 Explorer 窗口以及等待按钮启用，随后继续未完成的检查；没有修改生产 UI/安全逻辑、降低断言或重新跑完整业务流。
+
+### 数据保留、交付与人工步骤
+
+继续原 PostgreSQL Profile `55be9b5e4c414064bdfa817f5e4d8b8a` / 数据库 `paw_pgdesktop_5e3ccc3d5b17`，未建库、迁移、配置 SAVE、覆盖 `database.dpapi` 或提交新推理。原 SQLite Profile `07d7769638964926a12d1d1cb182d904` 和用户本次新建的 `1b37edb646284ed1bbdc8f81c2ecc8aa`，前后只读业务表/Knowledge 逻辑摘要相同且完整性 ok；SQLite 启动的派生 FTS 重建可能改变文件字节，不声称字节不变。原八个未追踪 B4A6 文件、原 PostgreSQL `database.dpapi` 与上一轮 ZIP 的 SHA-256 均一致；未操作 Finance、旧 Profile 迁移或历史备份。
+
+交付 **`artifacts/PersonalAiWorkspace-remember-workspace-development-20261021-final.zip`**（375656904 bytes），同名目录已可运行。SHA-256：`13a1df658814018a1314cf80db54056478284900d191941c8a618232cce6ae7f`。实际 ZIP 的 EXE/DLL/README/manifest 与已运行目录一致，不包含 last-workspace、database.dpapi 或 client-token。DEVELOPMENT_ONLY、Production GO=false；manifest 为基线 `38c84484f0dfb9490dbe8a4a4edeef37a91a8661` / sourceDirty=true。各包均未覆盖旧包；首个失败候选及已验证 v2 保留，只交付 final。
+
+人工只需：打开 **final** 目录双击 EXE，确认自动进入 PostgreSQL 及原成功回复；物理托盘“退出”后再次双击，应仍直接进入 PostgreSQL。托盘切换仍可主动选择已有 SQLite/PostgreSQL。当前记录已通过成功产品启动保存为 PostgreSQL；不同 Windows 启动上下文仍分别使用其系统解析的私有目录，不自动扫描/迁移其他上下文。
+
+分支 `codex/postgresql-desktop-integration`，HEAD 仍为 `38c84484f0dfb9490dbe8a4a4edeef37a91a8661`；本轮与上一轮修复均未提交，新选择记录类仍是本轮待提交文件，原 B4A6 未追踪文件不变，无 staged diff。**等待本轮人工验收后，再整理最终 Commit 与 GitHub 开发分支 Push；未 Commit/Push/Merge/Tag/Release。**
+
+## Explorer 无参数选择与托盘切换修复（2026-10-21）
+
+**新版实际产品自动化流程 PASS；用户最终人工验收 PENDING。** 以下为本轮结果，旧包及旧验收记录保留，不宣称正式发布或最终验收完成。
+
+### 排查结论与最小修改
+
+- 原 `Program.Main` 在无参数时先调用 `ChooseDevelopmentProfile`，选择并校验 Profile 后才检查单实例；没有“最近 Profile”恢复配置，也没有在该入口自动选择 SQLite。每个 Profile 使用自己的 instance suffix；重复选择相同 Profile 才会激活已有实例。
+- 起始确有一个旧包无参数 Desktop 进程及其 Java 子进程。通过真实托盘菜单自动化正常退出后，旧包以无参数 Shell 启动显示了选择器；经原生文件夹窗口选择原 PostgreSQL Profile，实际读到 PostgreSQL 和原成功回复，再次正常退出、清理 Runtime。旧包 Desktop DLL 哈希与原清单一致，包含当前选择器代码。
+- **未复现或确定用户此前那次未观察到选择器的原因**；不能将其归因于自动恢复、旧包缺代码或残留进程。已确认的操作问题是文件夹选择器会停在无关历史目录，进入 Workspace 后也没有 Profile 切换入口。
+- `Program.cs` 复用原选择器，仅增加 Profiles 父目录作为初始目录，原路径、身份、Native Gate、ACL 与 DPAPI 校验不变。
+- `AssistantApp.cs` 在 Development-only 托盘显示当前 Profile，并增加“切换开发工作区…”；复用正常退出及未保存 Memory 确认，完成 Runtime/窗口清理、释放 mutex/目录句柄后，由 `Program` 无参数重开同一 EXE。拒绝丢弃时不请求切换；重开失败会明确提示用户再次双击。未新增最近 Profile 状态或重写存储配置。
+- 普通 Release 不显示切换入口；Java、React、数据库格式与配置、安全策略、Finance 和旧 B4A6 未修改。更新了包内操作说明，没有新增长期测试。
+
+### 本轮实际验证
+
+| 实际执行 | 结果 |
+| --- | --- |
+| 原有 `SingleInstanceSignalsPrimaryAndReleasesMutexOnShutdown` 聚焦测试 | PASS；使用已有 `RuntimeLifecycleProbe=true` Profile 构建模式 |
+| 普通 Release Desktop 编译；新版 Development-only 构建、publish、包完整性 | PASS；Release 只编译，未做正式发布 |
+| **真实 Explorer 窗口双击新 EXE，无任何启动参数** | PASS；记录父进程为 `explorer.exe`、命令行仅含 EXE；显示选择器，原生文件夹窗口默认列出两个原 Profile |
+| 原生选择 PostgreSQL → 托盘切换到原 SQLite → 托盘切回 PostgreSQL | PASS；每次 Runtime 在选择前未启动，切换先正常退出旧 Runtime，新进程仍无参数 |
+| 正常退出后再从真实 Explorer 双击、再次选择同一 PostgreSQL Profile | PASS；原成功 AI 回复逐字一致，无新推理/重发 |
+| 实际 React Settings 与 Conversation 页面 | PASS；显示 PostgreSQL，原 `SUCCEEDED` AI 回复可见；已查看两张窗口截图 |
+| SQLite backend、PostgreSQL Conversation ID 隔离、Finance disabled | PASS；SQLite 没有新增 `database.dpapi`；只读 `integrity_check=ok`、schema=3 |
+| 最后真实托盘菜单自动化退出 | PASS；Desktop 与所持 Java 已退出，18765 无监听；不冒充用户物理托盘操作 |
+
+证据：`.verification/profile-selection-product.result.json`（最终 PASS）、`profile-selection-product-ui.log`、`profile-selection-settings.png`、`profile-selection-conversation.png`、`profile-selection-focused-test-probe-mode.log`、`profile-selection-release-build.log`、`profile-selection-bundle-build.log`。
+
+保留失败证据：初次 Profile 测试未加 `RuntimeLifecycleProbe=true`，既有 Conversation probe 条件编译引用缺失导致编译失败；使用正确现有模式后聚焦测试通过，没有改测试代码。临时 UI harness 先后遇到 COM 启动父级仍为 PowerShell、Explorer 列表虚拟化、文件夹列表与按钮重用 AutomationId、未保留进程句柄等问题；均仅在忽略目录的验证脚本修正，没有据此修改正确的生产行为。完整流程成功后的外层壳因未设置的 `$LASTEXITCODE` 报错，不能称该外壳退出成功；最终独立 UI/正常退出检查实际成功，并写出上述最终 PASS。没有全量 Java/Desktop/Frontend、IME、Browser、压力或完整打包矩阵。
+
+### 保留与交付
+
+继续使用原库 `paw_pgdesktop_5e3ccc3d5b17`、PostgreSQL Profile `55be9b5e4c414064bdfa817f5e4d8b8a` 和 SQLite Profile `07d7769638964926a12d1d1cb182d904`。未执行建库、迁移、配置 SAVE 或凭据覆盖。PostgreSQL `database.dpapi`、两个 Profile 的 Knowledge 文件、原八个未追踪 B4A6 文件的前后 SHA-256 均一致；旧 ZIP 哈希也一致。SQLite `memory.db` 字节哈希发生变化：原 `MemoryStore` 每次打开即重建派生 FTS/trigger，不能宣称数据库字节未改变；本次只读完整性为 ok，四张权威业务表均为空，没有通过测试提交写入或删除业务内容。未操作 Finance 或历史备份。
+
+新包：`artifacts/PersonalAiWorkspace-profile-switch-development-20261021.zip`；同名目录可直接运行。SHA-256：`63c29d69de63b54d20672296efbd7f4f8b18ce847fb49e7e147a1afe34ff7623`。DEVELOPMENT_ONLY、Production GO=false；manifest 如实记录基线 `38c84484f0dfb9490dbe8a4a4edeef37a91a8661`、sourceDirty=true，修复未提交，不伪装为干净正式包。
+
+分支仍为 `codex/postgresql-desktop-integration`，HEAD 未变。工作区有本轮两处生产文件、包说明及本报告的修改，另有原八个未追踪 B4A6 文件；无 staged diff。未 Commit、Push、Merge、Tag 或 Release。
+
+用户操作：完整解压新包，双击 `PersonalAiWorkspace.Desktop.exe` → **否** → 选择 `55be9b5e4c414064bdfa817f5e4d8b8a` 文件夹 → Settings 核对 PostgreSQL → Conversations 打开 `Synthetic PostgreSQL inference`，查看成功回复。如果已在 SQLite，直接从托盘“切换开发工作区…”返回同一选择器。最后物理托盘退出，再次双击并选择同一 Profile；此人工关卡仍待用户确认。
+
 ## Ollama 兼容与 PostgreSQL 消息级验收收尾（2026-10-21）
 
 **开发版自动验收 PASS；Explorer 无参数双击及物理托盘人工验收 PENDING。** 本节取代下方历史快照的当前状态。已续用原库 `paw_pgdesktop_5e3ccc3d5b17`、原 PostgreSQL Profile `55be9b5e4c414064bdfa817f5e4d8b8a` 和 SQLite Profile `07d7769638964926a12d1d1cb182d904`，没有再次准备数据库、索取管理员密码、迁移或删除旧数据。
