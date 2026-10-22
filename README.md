@@ -4,7 +4,8 @@
 
 `codex/desktop-setup-simplification` 已接入受信开发 Profile 选择/创建、Windows 原生数据库设置、安全保存和显式 Runtime 重启。
 构建后直接打开 `desktop/src/PersonalAiWorkspace.Desktop/bin/Debug/net10.0-windows/PersonalAiWorkspace.Desktop.exe`，
-选择开发 Profile → Settings → 重新检查存储 → 打开原生数据库设置。密码只在原生窗口输入；不自动初始化数据库或迁移 SQLite。
+首次选择开发 Profile → Settings → 重新检查存储 → 打开原生数据库设置。后续无参数启动恢复上次通过原生认证与存储检查的 Profile，托盘可切换；失效时提供重新选择入口，不自动回退 SQLite。
+密码只在原生窗口输入；不自动初始化数据库或迁移 SQLite。
 一次工程构建仍使用 `scripts/verification/build-trusted-development-runtime.ps1 -JavaHome <已审查的本机 JDK21>`。
 已有 B4A6 菜单/脚本保留为历史维护工具，日常开发路径不依赖其 receipt 或 helper Compile 阶段。
 

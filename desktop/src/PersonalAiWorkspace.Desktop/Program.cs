@@ -18,14 +18,12 @@ internal static class Program
         try
         {
 #if MMF3_PROFILE_ACCEPTANCE
-            if (args.Length == 0)
-            {
-                var selected = ChooseDevelopmentProfile();
-                if (selected is null) return 0;
-                args = [Mmf3AcceptanceLaunch.Argument, selected];
-            }
-#endif
+            var selected = ResolveDevelopmentProfile(args);
+            if (selected is null) return 0;
+            acceptance = selected;
+#else
             acceptance = Mmf3AcceptanceLaunch.Parse(args);
+#endif
         }
 #if MMF3_PROFILE_ACCEPTANCE
         catch (Exception error)
@@ -42,6 +40,10 @@ internal static class Program
         }
 #else
         if (args.Length != 0) return 2;
+#endif
+        int result;
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        bool switchDevelopmentProfile;
 #endif
         try
         {
@@ -64,16 +66,62 @@ internal static class Program
 #else
             var app = new AssistantApp(single);
 #endif
-            try { return app.Run(); }
+            try { result = app.Run(); }
             finally { app.Cleanup(); }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+            switchDevelopmentProfile = app.SwitchDevelopmentProfileRequested;
+#endif
         }
         catch (Exception)
         {
             MessageBox.Show("Assistant 启动失败。请检查 Windows 用户会话与桌面权限后重试。", "Personal AI Workspace");
             return 1;
         }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        // The previous app, owned Runtime and instance mutex are released before selecting again.
+        if (result == 0 && switchDevelopmentProfile)
+        {
+            try
+            {
+                var start = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!)
+                { UseShellExecute = true, WorkingDirectory = AppContext.BaseDirectory };
+                start.ArgumentList.Add(DevelopmentWorkspaceSelection.ChooseArgument);
+                System.Diagnostics.Process.Start(start);
+            }
+            catch (Exception)
+            {
+                MessageBox.Show("工作区已正常退出，但无法重新打开选择器。请使用 PersonalAiWorkspace.Desktop.exe --choose-development-workspace 重新选择。", "Personal AI Workspace");
+                return 1;
+            }
+        }
+#endif
+        return result;
     }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    private static Mmf3AcceptanceLaunch? ResolveDevelopmentProfile(string[] args)
+    {
+        bool choose = args is [DevelopmentWorkspaceSelection.ChooseArgument];
+        if (args.Length != 0 && !choose) return Mmf3AcceptanceLaunch.Parse(args);
+        while (true)
+        {
+            try
+            {
+                string? id = choose ? null : DevelopmentWorkspaceSelection.Read();
+                id ??= ChooseDevelopmentProfile();
+                if (id is null) return null;
+                return Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
+            }
+            catch (Exception error)
+            {
+                if (MessageBox.Show("无法打开上次记录或所选的开发工作区。它可能已删除、移动、损坏或未通过安全校验。\n\n" +
+                    ProfileStartupFailureMessage(error) + "\n\n不会自动创建工作区、修复权限或切换数据库。是否重新选择工作区？",
+                    "Personal AI Workspace · 工作区不可用", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+                    return null;
+                choose = true;
+            }
+        }
+    }
+
     internal static string ProfileStartupFailureMessage(Exception error)
     {
         // Fixed messages only. Never display exception text, paths, account names or helper output.
@@ -100,7 +148,11 @@ internal static class Program
         if (choice == MessageBoxResult.Cancel) return null;
         if (choice == MessageBoxResult.No)
         {
-            var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择已有受信开发 Profile 文件夹" };
+            var picker = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "选择已有受信开发 Profile 文件夹",
+                InitialDirectory = PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.Parent()
+            };
             if (picker.ShowDialog() != true) return null;
             string runId = System.IO.Path.GetFileName(picker.FolderName);
             if (!string.Equals(System.IO.Path.GetFullPath(picker.FolderName), Mmf3ProfileState.Root(runId), StringComparison.OrdinalIgnoreCase))

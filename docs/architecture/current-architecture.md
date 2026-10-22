@@ -7,6 +7,10 @@
 OS Known Folder 实际映射由目录句柄绑定；Desktop/Java 生命周期目录链 pin 与使用时私有边界复验替代旧上层目录精确权限前提。
 Java 使用既有 JNA 类型化 ACL/ACE，保留来源 pin、JNA 加载身份、精确启动参数、Native Bearer、Job/owner 清理和原 DPAPI 格式。
 这仍是 Windows 账户边界，不能隔离同 SID 恶意进程；不自动迁移旧 Profile 或改变生产发布信任。
+2026-10-21 Development-only Desktop 在同一私有应用目录 `last-workspace` 中仅保存上次成功的 32 字符 Profile ID。
+无参数启动恢复该 ID，但仍完整执行原 Profile/ACL/Native Gate 校验；Runtime 原生认证与只读存储检查成功后才原子更新记录。
+记录继承已验证并持有句柄的私有应用目录权限，读取时校验所有有效授权；不改动 Profile/凭据的既有受保护 ACL 要求。
+托盘切换通过开发版专用选择参数复用原选择器；记录/准入/启动失败提供错误与选择入口，不自动新建、修复或回退 SQLite。
 真实 Java/SQLite/认证与清理通过；WebView2/React 初始化、普通双击综合验收及 Production GO PENDING。
 源码差异、组件版本/许可证、实际证据和长路径限制见 [重构报告](../engineering/WINDOWS-NATIVE-SECURITY-MODERNIZATION-REPORT.md)。下方为此前架构快照。
 

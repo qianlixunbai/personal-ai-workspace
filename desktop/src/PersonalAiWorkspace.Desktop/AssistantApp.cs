@@ -47,6 +47,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
 #if MMF3_PROFILE_ACCEPTANCE
     private readonly DevelopmentRuntimeOwner? runtimeOwner;
     private bool databaseSettingsOpen;
+    private bool developmentStartupHandled;
+    private int developmentStartupGeneration;
+    internal bool SwitchDevelopmentProfileRequested { get; private set; }
 #endif
 #endif
     internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null
@@ -66,6 +69,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             runtime = RuntimeClient.CreateMmf3Acceptance(ReadCredential);
 #if MMF3_PROFILE_ACCEPTANCE
             runtimeOwner = new DevelopmentRuntimeOwner(acceptance, runtime);
+            runtimeOwner.Changed += ObserveDevelopmentStartup;
 #endif
         }
         else
@@ -116,6 +120,17 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         trayMenu.Items.Add("Open Personal AI Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
         trayMenu.Items.Add("Quick Assistant / Quick Translate", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
         trayMenu.Items.Add("检查 Runtime", null, async (_, _) => await CheckHealthAsync());
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (acceptance is not null)
+        {
+            trayMenu.Items.Add("当前开发 Profile：" + acceptance.RunId).Enabled = false;
+            trayMenu.Items.Add("切换开发工作区…", null, async (_, _) =>
+            {
+                if (exitRequested) return;
+                await ExitAsync(switchDevelopmentProfile: true);
+            });
+        }
+#endif
         trayMenu.Items.Add("退出", null, async (_, _) => await ExitAsync());
         tray = new Forms.NotifyIcon { Icon = SystemIcons.Application, Text = "Personal AI Workspace · Local Only", ContextMenuStrip = trayMenu, Visible = true };
 #if MMF3_ACCEPTANCE && DEBUG
@@ -392,6 +407,59 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     internal DevelopmentRuntimeOwner? DevelopmentRuntime => runtimeOwner;
     internal void StartDevelopmentRuntime() => runtimeOwner?.Start(lifetime.Token);
+    private void ObserveDevelopmentStartup(StorageStartupStatus status)
+    {
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (exitRequested) return;
+            if (status.Failure == "STARTING")
+            {
+                developmentStartupGeneration++;
+                developmentStartupHandled = false;
+                return;
+            }
+            if (developmentStartupHandled) return;
+            developmentStartupHandled = true;
+            int generation = developmentStartupGeneration;
+            string? failure = status.CanQueryStorage ? null : status.Failure;
+            if (failure is null)
+            {
+                try
+                {
+                    var storage = await runtime.GetStorageStatusAsync(lifetime.Token);
+                    if (storage.ErrorCode != "NONE") failure = storage.ErrorCode;
+                }
+                catch (OperationCanceledException) when (exitRequested) { return; }
+                catch (Exception) { failure = "STORAGE_UNAVAILABLE"; }
+            }
+            if (exitRequested || generation != developmentStartupGeneration) return;
+            if (failure is not null)
+            {
+                string reason = failure switch
+                {
+                    "DATABASE_AUTHENTICATION_FAILED" or "NATIVE_AUTHENTICATION_UNAVAILABLE" or "AUTHENTICATION_FAILED" => "工作区认证失败。",
+                    "CREDENTIAL_UNAVAILABLE" => "工作区所需凭据不可用。",
+                    "DATABASE_CONNECTION_FAILED" or "CONNECTION_FAILED" => "无法连接工作区数据库。",
+                    "SCHEMA_NOT_READY" => "工作区数据库结构尚未就绪。",
+                    _ => "工作区未通过启动或存储校验。"
+                };
+                if (MessageBox.Show(workspace ?? (Window)window, reason + "\n\n保留上次成功的工作区记录，不会自动修复、重建或切换到 SQLite。是否重新选择工作区？\n也可稍后从托盘选择“切换开发工作区…”。",
+                    "Personal AI Workspace · 工作区不可用", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
+                    await ExitAsync(switchDevelopmentProfile: true);
+                return;
+            }
+            try
+            {
+                acceptance!.Validate();
+                DevelopmentWorkspaceSelection.Save(acceptance.RunId);
+            }
+            catch (Exception)
+            {
+                MessageBox.Show(workspace ?? (Window)window, "工作区已打开，但无法保存上次使用的工作区记录。下次启动可能需要重新选择；现有工作区和数据库配置未改写。",
+                    "Personal AI Workspace · 无法记住工作区", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }));
+    }
 #endif
     private bool RefreshCredentialStatus()
     {
@@ -440,12 +508,15 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         }
         catch (DesktopException error) { window.CredentialText.Text = error.Message; }
     }
-    internal async Task ExitAsync()
+    internal async Task ExitAsync(bool switchDevelopmentProfile = false)
     {
         if (exitRequested) return;
         if (workspace is not null && !workspace.TryDiscardEditor()) return;
         if (!window.CloseMemory()) return;
         exitRequested = true;
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        SwitchDevelopmentProfileRequested = switchDevelopmentProfile;
+#endif
         workspaceSelector?.Close();
         if (workspace is not null) await workspace.ShutdownAsync();
         await workspaceOperations.ShutdownAsync();
