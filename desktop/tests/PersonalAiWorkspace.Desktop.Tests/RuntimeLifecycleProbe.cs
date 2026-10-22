@@ -47,7 +47,7 @@ public static partial class RuntimeLifecycleProbe
         }
         bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
             && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        if (!postgresql && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout"))) return 2;
+        if (!postgresql && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation"))) return 2;
         string phase = "PROFILE_PARSE";
         try
         {
@@ -61,7 +61,8 @@ public static partial class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (postgresql && args[1].StartsWith("gui-postgresql-conversation", StringComparison.Ordinal)) VerifyPostgresqlConversationGui(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].EndsWith("-recover", StringComparison.Ordinal));
+                if (args.Length == 2 && args[1].StartsWith("gui-finance", StringComparison.Ordinal)) VerifyFinanceGui(app, launch, args[1]);
+                else if (postgresql && args[1].StartsWith("gui-postgresql-conversation", StringComparison.Ordinal)) VerifyPostgresqlConversationGui(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].EndsWith("-recover", StringComparison.Ordinal));
                 else if (postgresql) VerifyPostgresqlGui(app, launch, args[2], args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].StartsWith("gui-postgresql-storage", StringComparison.Ordinal));
                 else if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
                 else VerifyAsync(app, launch, args.Length == 2 ? args[1] : "authentication-failure").GetAwaiter().GetResult();

@@ -4,6 +4,8 @@ import io.github.qianlixunbai.workspace.common.ErrorCode;
 import io.github.qianlixunbai.workspace.common.WorkspaceException;
 import io.github.qianlixunbai.workspace.memory.PrivateMemoryDirectory;
 import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
+import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration;
+import com.sun.nio.file.ExtendedOpenOption;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -55,21 +57,25 @@ public final class LocalFinanceProfile {
             PrivateMemoryDirectory.protect(file, false);
             var attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             if (!attributes.isRegularFile()) throw new IOException();
-            Object before = attributes.fileKey();
+            Object before = fileIdentity(file);
             ByteBuffer buffer = ByteBuffer.allocate(LIMIT + 1);
-            try (var channel = FileChannel.open(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            Set<OpenOption> options = new java.util.HashSet<>(Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS));
+            if (WindowsPrivateAcl.isWindows()) options.addAll(Set.of(ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE));
+            try (var channel = FileChannel.open(file, options)) {
                 while (buffer.hasRemaining() && channel.read(buffer) != -1) { }
+                PrivateMemoryDirectory.noLinks(file);
+                PrivateMemoryDirectory.protect(file, false);
+                if (before == null || !Objects.equals(before, fileIdentity(file))) throw new IOException();
+                return parse(Arrays.copyOf(buffer.array(), buffer.position()));
             }
-            PrivateMemoryDirectory.noLinks(file);
-            PrivateMemoryDirectory.protect(file, false);
-            if (before == null || !Objects.equals(before,
-                    Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).fileKey())) {
-                throw new IOException();
-            }
-            return parse(Arrays.copyOf(buffer.array(), buffer.position()));
         } catch (IOException | IllegalArgumentException failure) {
             throw failure(ErrorCode.FINANCE_BINDING_INVALID);
         }
+    }
+
+    private static Object fileIdentity(Path file) throws IOException {
+        return WindowsPrivateAcl.isWindows() ? TrustedDatabaseConfiguration.Identity.read(file, false)
+                : Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).fileKey();
     }
 
     /** Internal provisioning only, after an explicitly confirmed database/user proof is rechecked. */

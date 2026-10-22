@@ -88,8 +88,8 @@ public sealed class WorkspaceBridgeTests
     [Fact] public async Task PayloadMustBeExactlyEmptyAndNoArbitraryUrlPathOrExecutableIsAccepted()
     {
         using var f = new Fixture();
-        foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, "{}", new object[0] })
-            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings" })
+        foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, new { userId = 2 }, new { confirmed = true }, "{}", new object[0] })
+            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "finance.overview" })
                 await f.Receive(f.Request(method, payload: value));
         Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
     }

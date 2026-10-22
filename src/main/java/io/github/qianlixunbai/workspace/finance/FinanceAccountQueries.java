@@ -41,6 +41,29 @@ public final class FinanceAccountQueries {
         @Override public String toString() { return "FinanceAccount[private]"; }
     }
 
+    public record Overview(String state, AccountView account, CnyBalance cnyBalance) {
+        @Override public String toString() { return "FinanceOverview[private]"; }
+    }
+
+    public Overview overview() {
+        return query(userId -> {
+            Long id = identities.firstCnyAccountId(userId);
+            Account account = id == null ? null : accounts.findAccessibleAccount(userId, id);
+            if (id != null && (account == null || !Long.valueOf(userId).equals(account.getUserId()) || !"CNY".equals(account.getCurrency())))
+                throw failure(ErrorCode.FINANCE_BINDING_INVALID);
+            return new Overview("READY", account == null ? null : new AccountView(account.getId().toString(), account.getName(),
+                    account.getType(), account.getCurrency(), account.getBalance().toPlainString(), account.getStatus()),
+                    new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()));
+        });
+    }
+
+    FinanceIdentityRepository.Review reviewHistoricalBinding() {
+        requireNative();
+        try { profile.requireBinding(); throw failure(ErrorCode.FINANCE_BINDING_INVALID); }
+        catch (WorkspaceException absent) { if (absent.error().code() != ErrorCode.FINANCE_NOT_BOUND) throw absent; }
+        return reads.execute(status -> identities.review());
+    }
+
     public CnyBalance cnyBalance() {
         return query(userId -> new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()));
     }
@@ -72,7 +95,7 @@ public final class FinanceAccountQueries {
         }
     }
 
-    /** Internal-only first confirmation. No HTTP/Bridge/AI route exposes this operation. */
+    /** Native pipe only. Rechecks the exact server-owned review before CREATE_NEW; no HTTP/AI confirmation. */
     LocalFinanceProfile.Binding confirmHistoricalBinding(FinanceIdentityRepository.Identity reviewed) {
         requireNative();
         if (reviewed == null || reviewed.userId() < 1) throw failure(ErrorCode.FINANCE_BINDING_INVALID);

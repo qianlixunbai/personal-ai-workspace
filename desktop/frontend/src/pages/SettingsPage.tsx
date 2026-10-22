@@ -2,6 +2,7 @@ import type { NativeMethod, ShellStatus } from '../bridge/contracts'
 import { StatusPanel } from '../components/StatusPanel'
 import { StorageSettings } from '../components/StorageSettings'
 import { useEffect, useRef, useState } from 'react'
+import { FinanceAccounts } from '../components/FinanceAccounts'
 import type { WorkspaceClient } from '../bridge/client'
 import type { ModelAction, ModelFact, ModelSnapshot } from '../bridge/models'
 const maintenance: { method: NativeMethod; title: string; description: string }[] = [
@@ -18,6 +19,7 @@ export function SettingsPage({ bridge, status, busy, open, refresh }: {
     <StatusPanel status={status} /><dl className="status-list"><div><dt>Application version</dt><dd>{status?.applicationVersion ?? '等待检查'}</dd></div><div><dt>Credential</dt><dd>{status?.credential ?? '等待检查'}</dd></div><div><dt>WebView</dt><dd>{status?.webView ?? '等待检查'}</dd></div></dl>
     <p className="hint">Runtime 可连接与凭据状态不代表所有模型或能力就绪。模型可用性会在具体操作中确认。</p></section>
     <StorageSettings bridge={bridge} enabled={!!status && !busy} />
+    <FinanceAccounts bridge={bridge} enabled={!!status && !busy} />
     <ModelManagement bridge={bridge} enabled={!!status && !busy} />
     <section aria-labelledby="maintenance-title"><h2 id="maintenance-title" className="section-title">原生维护入口</h2><div className="maintenance-list">{maintenance.map(entry => <article className="maintenance-row" key={entry.method}>
       <div><h3>{entry.title}</h3><p>{entry.description}</p></div><button className="secondary" onClick={() => open(entry.method)} disabled={busy || !status?.nativeEntries.includes(entry.method)}>打开<span className="sr-only"> {entry.title}</span></button>

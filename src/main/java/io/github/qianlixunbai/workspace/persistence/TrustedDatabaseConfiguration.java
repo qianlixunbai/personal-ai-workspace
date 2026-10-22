@@ -35,14 +35,20 @@ public final class TrustedDatabaseConfiguration {
 
     /** Admission must succeed before examining even the existence of the configuration file. */
     public static PropertySource<?> load() throws IOException {
+        return load(false);
+    }
+
+    public static PropertySource<?> loadFinance() throws IOException { return load(true); }
+
+    private static PropertySource<?> load(boolean finance) throws IOException {
         Path root = WindowsNativeGate.profileRoot();
-        Path data = root.resolve("data"), file = data.resolve("database.dpapi");
+        Path data = root.resolve("data"), file = data.resolve(finance ? "finance.dpapi" : "database.dpapi");
         byte[] encrypted = null, plaintext = null;
         try {
             verifyDirectory(root); verifyDirectory(data);
             PrivateMemoryDirectory.validateLocation(data, root.resolve("credentials/client-token"));
             Object rootKey = key(root, true), dataKey = key(data, true);
-            if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS)) return new Source(null);
+            if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS)) return new Source(null, finance);
             PrivateMemoryDirectory.noLinks(file);
             Object fileKey = key(file, false);
             ByteBuffer buffer = ByteBuffer.allocate(LIMIT + 1);
@@ -57,7 +63,7 @@ public final class TrustedDatabaseConfiguration {
                         || !fileKey.equals(key(file, false))) throw new IOException();
                 encrypted = Arrays.copyOf(buffer.array(), buffer.position());
                 plaintext = Protection.unprotect(encrypted);
-                return parse(plaintext);
+                return parse(plaintext, finance);
             } finally { Arrays.fill(buffer.array(), (byte) 0); }
         } catch (Failure controlled) { throw controlled; }
         catch (IOException | RuntimeException | LinkageError rejected) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
@@ -69,11 +75,17 @@ public final class TrustedDatabaseConfiguration {
 
     /** Native provisioning only; no HTTP or WebView configuration payload. Never overwrite or repair existing state. */
     public static void create(byte[] utf8Configuration) throws IOException {
+        create(utf8Configuration, false);
+    }
+
+    public static void createFinance(byte[] utf8Configuration) throws IOException { create(utf8Configuration, true); }
+
+    private static void create(byte[] utf8Configuration, boolean finance) throws IOException {
         Path root = WindowsNativeGate.profileRoot();
         byte[] encrypted = null;
         try {
-            parse(utf8Configuration); // Reject unsupported fields before protecting or writing.
-            Path data = root.resolve("data"), file = data.resolve("database.dpapi");
+            parse(utf8Configuration, finance); // Reject unsupported fields before protecting or writing.
+            Path data = root.resolve("data"), file = data.resolve(finance ? "finance.dpapi" : "database.dpapi");
             verifyDirectory(root); verifyDirectory(data);
             PrivateMemoryDirectory.validateLocation(data, root.resolve("credentials/client-token"));
             Object rootKey = key(root, true), dataKey = key(data, true);
@@ -110,7 +122,11 @@ public final class TrustedDatabaseConfiguration {
         return Identity.read(path, directory);
     }
 
-    static PropertySource<?> parse(byte[] bytes) throws Failure {
+    static PropertySource<?> parse(byte[] bytes) throws Failure { return parse(bytes, false); }
+
+    public static PropertySource<?> parseFinance(byte[] bytes) throws Failure { return parse(bytes, true); }
+
+    private static PropertySource<?> parse(byte[] bytes, boolean finance) throws Failure {
         try {
             if (bytes == null || bytes.length < 1 || bytes.length > LIMIT
                     || bytes.length >= 3 && bytes[0] == (byte) 0xef && bytes[1] == (byte) 0xbb && bytes[2] == (byte) 0xbf)
@@ -135,7 +151,7 @@ public final class TrustedDatabaseConfiguration {
                 throw new Failure(Reason.CREDENTIAL_UNAVAILABLE);
             String password = node.path("password").asString();
             if (password.length() > 1024 || password.chars().anyMatch(c -> c == 0 || c == '\r' || c == '\n')) throw new IOException();
-            return new Source(new Values("jdbc:postgresql://127.0.0.1:" + node.path("port").intValue() + "/" + database, username, password));
+            return new Source(new Values("jdbc:postgresql://127.0.0.1:" + node.path("port").intValue() + "/" + database, username, password), finance);
         } catch (Failure controlled) { throw controlled; }
         catch (IOException | RuntimeException invalid) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
     }
@@ -147,7 +163,7 @@ public final class TrustedDatabaseConfiguration {
 
     /** Called by an initializer before bean definitions / conditional DataSources are evaluated. */
     public static void install(ConfigurableEnvironment environment, PropertySource<?> source) throws Failure {
-        if (!(source instanceof Source)) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        if (!(source instanceof Source local) || local.finance) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
         environment.getPropertySources().addFirst(source);
         if (!trusted(environment))
             for (String field : List.of("url", "username", "password"))
@@ -170,6 +186,15 @@ public final class TrustedDatabaseConfiguration {
         }
     }
 
+    public static void installFinance(ConfigurableEnvironment environment, PropertySource<?> source) throws Failure {
+        if (!(source instanceof Source local) || !local.finance) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        // Native startup owns the switch. No file means disabled, regardless of ambient Spring properties.
+        if (local.getSource().values != null && Objects.equals(local.getSource().values.url,
+                environment.getProperty("workspace.persistence.postgresql.url")))
+            throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        environment.getPropertySources().addFirst(source);
+    }
+
     private record Values(String url, String username, String password) {
         @Override public String toString() { return "DatabaseConfiguration[private]"; }
     }
@@ -179,8 +204,21 @@ public final class TrustedDatabaseConfiguration {
         @Override public String toString() { return "DatabaseConfiguration[private]"; }
     }
     private static final class Source extends PropertySource<State> {
-        Source(Values values) { super(NAME, new State(values)); }
+        final boolean finance;
+        Source(Values values) { this(values, false); }
+        Source(Values values, boolean finance) { super(finance ? "trustedWindowsFinance" : NAME, new State(values)); this.finance = finance; }
         @Override public Object getProperty(String name) {
+            if (finance) {
+                if (name.equals("workspace.finance.enabled")) return source.values != null;
+                if (name.equals("workspace.finance.flyway.enabled")) return false;
+                if (source.values == null) return null;
+                return switch (name) {
+                    case "workspace.finance.datasource.url" -> source.values.url;
+                    case "workspace.finance.datasource.username" -> source.values.username;
+                    case "workspace.finance.datasource.password" -> source.values.password;
+                    default -> null;
+                };
+            }
             if (source.values == null) return null;
             return switch (name) {
                 case "workspace.persistence.backend" -> "postgresql";
@@ -205,11 +243,11 @@ public final class TrustedDatabaseConfiguration {
         }
     }
 
-    static final class Identity {
+    public static final class Identity {
         interface Paths extends com.sun.jna.win32.StdCallLibrary {
             int GetFinalPathNameByHandleW(com.sun.jna.platform.win32.WinNT.HANDLE file, char[] path, int length, int flags);
         }
-        static String read(Path path, boolean directory) throws IOException {
+        public static String read(Path path, boolean directory) throws IOException {
             var kernel = com.sun.jna.platform.win32.Kernel32.INSTANCE;
             var handle = kernel.CreateFile("\\\\?\\" + path, 0x80, 3, null, 3, 0x02200000, null);
             if (com.sun.jna.platform.win32.WinBase.INVALID_HANDLE_VALUE.equals(handle)) throw new IOException();

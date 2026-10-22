@@ -7,6 +7,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class PersonalAiWorkspaceApplication {
 
 	public static void main(String[] args) {
+		if (args.length > 0 && args[0].equals("--native-finance-setup")) {
+			System.exit(io.github.qianlixunbai.workspace.finance.NativeFinanceSetup.run(
+				java.util.Arrays.copyOfRange(args, 1, args.length), System.in, System.out));
+			return;
+		}
 		if (args.length > 0 && args[0].equals("--native-database-setup")) {
 			System.exit(io.github.qianlixunbai.workspace.persistence.NativeDatabaseSetup.run(
 				java.util.Arrays.copyOfRange(args, 1, args.length), System.in, System.out));
@@ -20,8 +25,12 @@ public class PersonalAiWorkspaceApplication {
 			var app = new SpringApplication(PersonalAiWorkspaceApplication.class);
 			if (java.nio.file.FileSystems.getDefault().getClass().getName().equals("sun.nio.fs.WindowsFileSystem")) {
 				var source = io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.load();
+				var finance = io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.loadFinance();
 				app.addInitializers(context -> {
-					try { io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.install(context.getEnvironment(), source); }
+					try {
+						io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.install(context.getEnvironment(), source);
+						io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.installFinance(context.getEnvironment(), finance);
+					}
 					catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
 				});
 			}

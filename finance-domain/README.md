@@ -1,4 +1,9 @@
-# Finance Module — F2.3-A2 PARTIAL
+# Finance Module — F-next-1 Read-only Slice
+
+2026-10-22：已实现 WPF 原生服务端身份核对/首次绑定，以及 typed bridge → Runtime → 独立 PostgreSQL 的 CNY 账户只读切片。
+合成环境中的真实 WPF/WebView2 集成流、进程重开与 SQLite Profile 隔离已通过；独立产品 EXE 最终人工关卡 PENDING，非 Production GO。
+Windows 绑定发布改为复用 Win32 文件身份，保留 CREATE_NEW / 不静默重绑；Finance 默认关闭，普通启动不迁移。
+详见 [F-next-1 实现与验收报告](../docs/engineering/FINANCE-F-NEXT-1-REPORT.md)。以下 F2.3-A2 等内容保留为历史证据，不代表本轮重新执行。
 
 ## F2.3-A2 当前结果（2026-10-17）
 

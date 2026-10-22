@@ -202,6 +202,14 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
 #endif
         return status;
     }
+    async Task<FinanceOverview> IWorkspaceNativeActions.FinanceOverviewAsync(CancellationToken cancellation)
+    {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null && !(await runtimeOwner.ReadAsync(cancellation)).CanQueryStorage)
+            throw new DesktopException(DesktopError.RuntimeUnavailable);
+#endif
+        return await runtime.GetFinanceOverviewAsync(cancellation);
+    }
     Task<StorageStartupStatus> IWorkspaceNativeActions.StorageStartupStatusAsync(CancellationToken cancellation)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
@@ -243,7 +251,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         cancellation.ThrowIfCancellationRequested();
         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
-        if (entry == NativeWorkspaceEntry.DatabaseSettings)
+        if (entry is NativeWorkspaceEntry.DatabaseSettings or NativeWorkspaceEntry.FinanceBinding)
         {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
             if (acceptance is not null && runtimeOwner is not null && !databaseSettingsOpen && workspace is not null)
@@ -256,7 +264,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                     {
                         cancellation.ThrowIfCancellationRequested();
                         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
-                        var dialog = new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
+                        Window dialog = entry == NativeWorkspaceEntry.FinanceBinding
+                            ? new FinanceBindingWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace }
+                            : new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
                         using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => dialog.Close()));
                         dialog.ShowDialog(); cancellation.ThrowIfCancellationRequested();
                     }

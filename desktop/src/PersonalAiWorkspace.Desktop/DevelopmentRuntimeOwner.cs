@@ -211,6 +211,12 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     internal async Task RestartAsync(CancellationToken applicationLifetime)
     {
         await StopAsync().ConfigureAwait(false);
+        // Windows can still report the exited child's listener briefly after WaitForExit.
+        // Wait only during an explicit restart; never contact/reuse a listener or stop an unrelated process.
+        var release = Stopwatch.StartNew();
+        while (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == 18765)
+            && release.Elapsed < TimeSpan.FromSeconds(5))
+            await Task.Delay(100, applicationLifetime).ConfigureAwait(false);
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
