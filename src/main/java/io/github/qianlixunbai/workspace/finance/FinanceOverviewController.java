@@ -15,7 +15,7 @@ public final class FinanceOverviewController {
     public FinanceAccountQueries.Overview overview(HttpServletRequest request) {
         if (request.getQueryString() != null) throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "FINANCE");
         var service = queries.getIfAvailable();
-        if (service == null) return new FinanceAccountQueries.Overview("DISABLED", null, null);
+        if (service == null) return new FinanceAccountQueries.Overview("DISABLED", null, null, null, null);
         try { return service.overview(); }
         catch (WorkspaceException rejected) {
             String state = switch (rejected.error().code()) {
@@ -24,7 +24,7 @@ public final class FinanceOverviewController {
                 case FINANCE_UNAVAILABLE -> "UNAVAILABLE";
                 default -> throw rejected;
             };
-            return new FinanceAccountQueries.Overview(state, null, null);
+            return new FinanceAccountQueries.Overview(state, null, null, null, null);
         }
     }
 }

@@ -14,6 +14,16 @@ public final class FinanceAccountController {
 
     public FinanceAccountController(FinanceAccountQueries queries) { this.queries = queries; }
 
+    @GetMapping
+    public FinanceAccountQueries.AccountPage list(@RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(defaultValue = "ID_ASC") String sort, HttpServletRequest request) {
+        if (request.getParameterMap().entrySet().stream().anyMatch(entry ->
+                !java.util.Set.of("page", "size", "status", "sort").contains(entry.getKey()) || entry.getValue().length != 1))
+            throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "FINANCE");
+        return queries.list(page, size, status, sort);
+    }
+
     @GetMapping("/balance")
     public FinanceAccountQueries.CnyBalance balance(HttpServletRequest request) {
         noParameters(request);

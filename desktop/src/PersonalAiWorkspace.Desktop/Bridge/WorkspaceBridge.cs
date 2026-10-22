@@ -28,6 +28,8 @@ internal interface IWorkspaceNativeActions
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task<StorageStatus> StorageStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceOverview> FinanceOverviewAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceAccountPage> FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceAccount> FinanceAccountAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     event Action<StorageStartupStatus>? StorageStartupChanged { add { } remove { } }
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
@@ -177,6 +179,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "storage.status") result = await native.StorageStatusAsync(cancellation);
             else if (method == "storage.startupStatus") result = await native.StorageStartupStatusAsync(cancellation);
             else if (method == "finance.overview") result = await native.FinanceOverviewAsync(cancellation);
+            else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
+            else if (method == "finance.get") result = await native.FinanceAccountAsync(payload.GetProperty("accountId").GetString()!, cancellation);
             else if (ModelMethods.Contains(method))
             {
                 if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
@@ -346,6 +350,12 @@ internal sealed class WorkspaceBridge : IDisposable
         if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
+        if (method == "finance.get") return Fields(payload, "accountId") && Text(payload, "accountId", 19, out var accountId) && RuntimeClient.ValidFinanceId(accountId);
+        if (method == "finance.list") return Fields(payload, "page", "size", "status", "sort")
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out int financePage)
+            && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out int financeSize)
+            && Text(payload, "status", 8, out var financeStatus) && Text(payload, "sort", 8, out var financeSort)
+            && RuntimeClient.ValidFinanceQuery(financePage, financeSize, financeStatus, financeSort);
         if (method is "shell.bootstrap" or "shell.refreshStatus" or "storage.status" or "storage.startupStatus" or "finance.overview" || NativeMethods.ContainsKey(method)
             || method == "assistant.selectMemories") return Fields(payload);
         if (method is "operations.get" or "operations.cancel" or "operations.copyResult")

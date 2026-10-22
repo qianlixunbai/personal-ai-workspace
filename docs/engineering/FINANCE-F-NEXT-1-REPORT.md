@@ -2,6 +2,10 @@
 
 2026-10-22（Asia/Shanghai）。**功能已实现；真实 WPF/WebView2 集成流、重开与 SQLite Profile 隔离 PASS。独立产品 EXE 的最终人工显示/物理退出验收 PENDING；不是 Production GO。**
 
+## 后续人工验收反馈（F-next-2 同步）
+
+用户已在本机打开 F-next-1 合成开发客户端，在 Settings 刷新并确认账户，从物理系统托盘退出后重新打开，确认账户数据仍正常。记录为 **F-next-1 Development Human Acceptance PASS（用户人工反馈）**。这是本轮收到的人工反馈，以下原执行记录中的 PENDING 保留其历史含义；不代表 Production GO，也不替代未执行的完整测试矩阵。
+
 ## 范围与基线
 
 - 从 `codex/postgresql-desktop-integration @ 24fa3817caeb93430c14fdab091f71528eb1b63b` 新建 `codex/finance-f-next-1`；没有 merge main。

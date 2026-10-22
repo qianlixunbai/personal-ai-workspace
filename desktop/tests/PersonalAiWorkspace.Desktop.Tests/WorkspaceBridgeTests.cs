@@ -91,6 +91,12 @@ public sealed class WorkspaceBridgeTests
         foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, new { userId = 2 }, new { confirmed = true }, "{}", new object[0] })
             foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "finance.overview" })
                 await f.Receive(f.Request(method, payload: value));
+        foreach (object value in new object[] { new { accountId = "1", userId = 2 }, new { accountId = "../3" }, new { accountId = "9223372036854775808" }, new { accountId = 1 } })
+            await f.Receive(f.Request("finance.get", payload: value));
+        foreach (object value in new object[] { new { page = 0, size = 21, status = "ALL", sort = "ID_ASC" },
+            new { page = -1, size = 10, status = "ALL", sort = "ID_ASC" }, new { page = 0, size = 10, status = "ALL", sort = "id;--" },
+            new { page = 0, size = 10, status = "ALL", sort = "ID_ASC", userId = 2 } })
+            await f.Receive(f.Request("finance.list", payload: value));
         Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
     }
     [Fact] public async Task MalformedUnknownDuplicateAndMissingFieldsAreRejected()
@@ -174,7 +180,8 @@ public sealed class WorkspaceBridgeTests
     [Fact] public void ProductionNavigationResourcesFramesPopupsPermissionsAndDownloadsFailClosed()
     {
         var policy = new WorkspaceContentPolicy(["assets/shell.js"]);
-        Assert.True(policy.Document(Document)); Assert.True(policy.Document(Document + "#/memory")); Assert.True(policy.Document(Document + "#/knowledge"));
+        Assert.True(policy.Document(Document)); Assert.True(policy.Document(Document + "#/memory")); Assert.True(policy.Document(Document + "#/knowledge")); Assert.True(policy.Document(Document + "#/finance"));
+        Assert.False(policy.Document(Document + "#/finance/3"));
         foreach (string uri in new[] { "file:///C:/private", "http://127.0.0.1:8765", "https://external.invalid", Document + "#/unknown", Document + "?url=x" }) Assert.False(policy.Document(uri));
         Assert.True(policy.Resource(WorkspaceContentPolicy.ProductionOrigin + "/assets/shell.js", "GET", "Script"));
         Assert.False(policy.Resource(WorkspaceContentPolicy.ProductionOrigin + "/assets/secret.js", "GET", "Script"));

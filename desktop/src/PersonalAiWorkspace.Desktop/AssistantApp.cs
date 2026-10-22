@@ -202,13 +202,25 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
 #endif
         return status;
     }
-    async Task<FinanceOverview> IWorkspaceNativeActions.FinanceOverviewAsync(CancellationToken cancellation)
+    Task<FinanceOverview> IWorkspaceNativeActions.FinanceOverviewAsync(CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.GetFinanceOverviewAsync(cancellation), cancellation);
+    Task<FinanceAccountPage> IWorkspaceNativeActions.FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.ListFinanceAccountsAsync(page, size, status, sort, cancellation), cancellation);
+    Task<FinanceAccount> IWorkspaceNativeActions.FinanceAccountAsync(string id, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.GetFinanceAccountAsync(id, cancellation), cancellation);
+    private async Task<T> ReadFinanceAsync<T>(Func<Task<T>> read, CancellationToken cancellation)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         if (runtimeOwner is not null && !(await runtimeOwner.ReadAsync(cancellation)).CanQueryStorage)
             throw new DesktopException(DesktopError.RuntimeUnavailable);
+        var process = runtimeOwner?.OwnedProcessId;
 #endif
-        return await runtime.GetFinanceOverviewAsync(cancellation);
+        var result = await read();
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (runtimeOwner is not null && (!runtimeOwner.Snapshot().CanQueryStorage || process != runtimeOwner.OwnedProcessId))
+            throw new DesktopException(DesktopError.RuntimeUnavailable);
+#endif
+        return result;
     }
     Task<StorageStartupStatus> IWorkspaceNativeActions.StorageStartupStatusAsync(CancellationToken cancellation)
     {

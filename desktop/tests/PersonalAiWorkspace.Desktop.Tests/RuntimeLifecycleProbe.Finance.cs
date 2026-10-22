@@ -51,12 +51,12 @@ public static partial class RuntimeLifecycleProbe
                 }
                 async Task Display(string expected)
                 {
-                    await core.ExecuteScriptAsync("location.hash='#/settings'");
-                    const string refresh = "[...document.querySelectorAll('button')].find(b=>b.textContent==='只读刷新账户'&&!b.disabled)";
+                    await core.ExecuteScriptAsync("location.hash='#/finance'");
+                    const string refresh = "[...document.querySelectorAll('button')].find(b=>b.textContent==='刷新 Finance'&&!b.disabled)";
                     await Wait(async () => await core.ExecuteScriptAsync("Boolean(" + refresh + ")") == "true");
                     await core.ExecuteScriptAsync(refresh + ".click()");
-                    await Wait(async () => await core.ExecuteScriptAsync("document.querySelector('.finance-accounts')?.innerText.includes(" + JsonSerializer.Serialize(expected) + ")") == "true");
-                    await core.ExecuteScriptAsync("document.querySelector('.finance-accounts').scrollIntoView({block:'center'})");
+                    await Wait(async () => await core.ExecuteScriptAsync("document.querySelector('.finance-page')?.innerText.includes(" + JsonSerializer.Serialize(expected) + ")") == "true");
+                    await core.ExecuteScriptAsync("document.querySelector('.finance-page').scrollIntoView({block:'center'})");
                 }
                 string binding = Path.Combine(launch.Root, "data", "finance-identity", "binding.json");
                 string evidencePath = Path.Combine(launch.Root, "evidence", "finance-stores.json");
@@ -148,7 +148,7 @@ public static partial class RuntimeLifecycleProbe
                     Assert.Equal("READY", overview.State); Assert.Equal("9007199254740993.30", overview.CnyBalance!.Balance);
                     Assert.Equal("9007199254740993.10", overview.Account!.Balance); Assert.Equal("ACTIVE", overview.Account.Status);
                     await Display("9007199254740993.10 CNY");
-                    Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('.finance-accounts').innerText.includes('9007199254740993.30 CNY')"));
+                    Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('.finance-page').innerText.includes('9007199254740993.30 CNY')"));
                     Console.WriteLine("FINANCE_REAL_REACT_TYPED_BRIDGE_RUNTIME_POSTGRESQL_EXACT_CNY_PASS");
                     if (mode == "gui-finance")
                     {

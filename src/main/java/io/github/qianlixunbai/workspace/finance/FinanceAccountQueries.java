@@ -19,13 +19,15 @@ public final class FinanceAccountQueries {
     private final LocalFinanceProfile profile;
     private final FinanceIdentityRepository identities;
     private final AccountQueryService accounts;
+    private final FinanceAccountListing listing;
     private final TransactionTemplate reads;
 
     FinanceAccountQueries(LocalFinanceProfile profile, FinanceIdentityRepository identities,
-                          AccountQueryService accounts, PlatformTransactionManager financeTransactions) {
+                          AccountQueryService accounts, FinanceAccountListing listing, PlatformTransactionManager financeTransactions) {
         this.profile = profile;
         this.identities = identities;
         this.accounts = accounts;
+        this.listing = listing;
         reads = new TransactionTemplate(financeTransactions);
         reads.setReadOnly(true);
         reads.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -41,7 +43,7 @@ public final class FinanceAccountQueries {
         @Override public String toString() { return "FinanceAccount[private]"; }
     }
 
-    public record Overview(String state, AccountView account, CnyBalance cnyBalance) {
+    public record Overview(String state, AccountView account, CnyBalance cnyBalance, String username, String accountCount) {
         @Override public String toString() { return "FinanceOverview[private]"; }
     }
 
@@ -53,8 +55,20 @@ public final class FinanceAccountQueries {
                 throw failure(ErrorCode.FINANCE_BINDING_INVALID);
             return new Overview("READY", account == null ? null : new AccountView(account.getId().toString(), account.getName(),
                     account.getType(), account.getCurrency(), account.getBalance().toPlainString(), account.getStatus()),
-                    new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()));
+                    new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()),
+                    identities.username(userId), Long.toString(listing.count(userId, "ALL")));
         });
+    }
+
+    public record AccountPage(java.util.List<AccountView> items, int page, int size, String total, String status, String sort) { }
+
+    public AccountPage list(int page, int size, String status, String sort) {
+        if (page < 0 || page > 100000 || size < 1 || size > 20
+                || status == null || !java.util.Set.of("ALL", "ACTIVE", "INACTIVE").contains(status)
+                || sort == null || !java.util.Set.of("ID_ASC", "ID_DESC", "NAME_ASC").contains(sort))
+            throw failure(ErrorCode.INVALID_REQUEST);
+        return query(userId -> new AccountPage(listing.page(userId, page, size, status, sort), page, size,
+                Long.toString(listing.count(userId, status)), status, sort));
     }
 
     FinanceIdentityRepository.Review reviewHistoricalBinding() {

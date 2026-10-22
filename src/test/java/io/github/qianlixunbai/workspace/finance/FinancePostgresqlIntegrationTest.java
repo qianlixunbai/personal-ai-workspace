@@ -168,7 +168,7 @@ class FinancePostgresqlIntegrationTest {
                 observedConnection.set(DataSourceUtils.getConnection(app));
                 return call.callRealMethod();
             }).when(accounts).sumBalanceByUser(anyLong());
-            var queries = new FinanceAccountQueries(profile, identities, accounts, manager);
+            var queries = new FinanceAccountQueries(profile, identities, accounts, new FinanceAccountListing(app), manager);
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                     ClientIdentity.NATIVE, null, List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
             assertEquals("9007199254740993.30", queries.cnyBalance().balance());
@@ -236,7 +236,7 @@ class FinancePostgresqlIntegrationTest {
             Path temporary = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".finance-a2-");
             try {
                 var real = new LocalFinanceProfile(temporary.resolve("data"), temporary.resolve("credentials/token"));
-                var realQueries = new FinanceAccountQueries(real, identities, accounts, manager);
+                var realQueries = new FinanceAccountQueries(real, identities, accounts, new FinanceAccountListing(app), manager);
                 code(ErrorCode.FINANCE_NOT_BOUND, realQueries::cnyBalance);
                 try {
                     realQueries.confirmHistoricalBinding(identities.activeIdentity(first));

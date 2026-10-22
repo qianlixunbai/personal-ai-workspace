@@ -52,3 +52,26 @@ textarea:focus-visible,select:focus-visible{outline:3px solid var(--focus);outli
 .knowledge-search li { padding-block: .75rem; overflow-wrap: anywhere; }
 .knowledge-snippet { white-space: pre-wrap; overflow-wrap: anywhere; }
 .knowledge-search mark { color: inherit; background: var(--accent-soft, #f7da76); }
+
+/* Finance uses the existing workspace surfaces; wide account data scrolls locally. */
+.finance-page, .finance-page .card { min-width: 0; }
+.finance-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin: 24px 0; }
+.finance-summary dt { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.finance-summary dd { margin: 0; overflow-wrap: anywhere; }
+.finance-total { grid-column: 1 / -1; padding-top: 18px; border-top: 1px solid var(--border); }
+.finance-total dd { font-size: clamp(19px, 2.4vw, 28px); color: var(--accent); font-weight: 600; }
+.finance-amount { font-variant-numeric: tabular-nums; text-align: right; }
+.finance-summary .finance-amount { text-align: left; }
+.finance-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 0; }
+.finance-toolbar label { display: grid; gap: 6px; font-size: 13px; }
+.finance-toolbar select { max-width: 100%; padding: 8px; }
+.finance-table-scroll { max-height: 440px; max-width: 100%; overflow: auto; margin-top: 20px; }
+.finance-table-scroll table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.finance-table-scroll th, .finance-table-scroll td { border-bottom: 1px solid var(--border); padding: 14px 10px; text-align: left; }
+.finance-table-scroll th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+.finance-table-scroll .finance-amount { text-align: right; white-space: nowrap; }
+.finance-table-scroll small { display: block; color: var(--muted); margin-top: 6px; }
+.finance-account-link { padding: 0; border: 0; border-radius: 0; text-align: left; color: var(--accent); background: none; text-decoration: underline; max-width: 260px; overflow-wrap: anywhere; }
+.finance-page .card-heading { flex-wrap: wrap; }
+.finance-detail h2 { overflow-wrap: anywhere; }
+@media(max-width:850px) { .finance-summary { grid-template-columns: minmax(0, 1fr); } }

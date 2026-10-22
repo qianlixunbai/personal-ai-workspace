@@ -67,6 +67,10 @@ final class FinanceIdentityRepository {
         return ids.isEmpty() ? null : ids.getFirst();
     }
 
+    String username(long userId) {
+        return jdbc.queryForObject("SELECT username FROM public.users WHERE id=?", String.class, userId);
+    }
+
     static String digest(String... parts) {
         try {
             MessageDigest hash = MessageDigest.getInstance("SHA-256");
