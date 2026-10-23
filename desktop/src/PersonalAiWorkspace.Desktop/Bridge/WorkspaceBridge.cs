@@ -30,6 +30,8 @@ internal interface IWorkspaceNativeActions
     Task<FinanceOverview> FinanceOverviewAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceAccountPage> FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceAccount> FinanceAccountAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceTransactionPage> FinanceTransactionsAsync(FinanceTransactionQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceTransaction> FinanceTransactionAsync(string kind, string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     event Action<StorageStartupStatus>? StorageStartupChanged { add { } remove { } }
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
@@ -181,6 +183,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.overview") result = await native.FinanceOverviewAsync(cancellation);
             else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
             else if (method == "finance.get") result = await native.FinanceAccountAsync(payload.GetProperty("accountId").GetString()!, cancellation);
+            else if (method == "finance.transactions") result = await native.FinanceTransactionsAsync(TransactionQuery(payload), cancellation);
+            else if (method == "finance.transaction") result = await native.FinanceTransactionAsync(payload.GetProperty("kind").GetString()!, payload.GetProperty("id").GetString()!, cancellation);
             else if (ModelMethods.Contains(method))
             {
                 if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
@@ -328,6 +332,10 @@ internal sealed class WorkspaceBridge : IDisposable
     { "memory.list", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
     private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
+    private static FinanceTransactionQuery TransactionQuery(JsonElement payload) => new(payload.GetProperty("page").GetInt32(),
+        payload.GetProperty("size").GetInt32(), payload.GetProperty("accountId").GetString()!, payload.GetProperty("startDate").GetString()!,
+        payload.GetProperty("endDate").GetString()!, payload.GetProperty("type").GetString()!);
+
     private static bool ValidPayload(string method, JsonElement payload)
     {
         if(VisionMethods.Contains(method)) return method switch {
@@ -351,6 +359,13 @@ internal sealed class WorkspaceBridge : IDisposable
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method == "finance.get") return Fields(payload, "accountId") && Text(payload, "accountId", 19, out var accountId) && RuntimeClient.ValidFinanceId(accountId);
+        if (method == "finance.transaction") return Fields(payload, "kind", "id") && Text(payload, "kind", 11, out var kind)
+            && kind is "TRANSACTION" or "TRANSFER" && Text(payload, "id", 19, out var transactionId) && RuntimeClient.ValidFinanceId(transactionId);
+        if (method == "finance.transactions") return Fields(payload, "page", "size", "accountId", "startDate", "endDate", "type")
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out _)
+            && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out _)
+            && new[] { "accountId", "startDate", "endDate", "type" }.All(key => payload.GetProperty(key).ValueKind == JsonValueKind.String)
+            && RuntimeClient.ValidFinanceTransactionQuery(TransactionQuery(payload));
         if (method == "finance.list") return Fields(payload, "page", "size", "status", "sort")
             && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out int financePage)
             && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out int financeSize)

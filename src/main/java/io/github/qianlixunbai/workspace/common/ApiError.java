@@ -7,6 +7,7 @@ public record ApiError(ErrorCode code, String message, String phase) {
             case FINANCE_BINDING_INVALID -> "Finance identity binding is unavailable or no longer matches.";
             case FINANCE_UNAVAILABLE -> "Finance database is unavailable.";
             case FINANCE_ACCOUNT_NOT_FOUND -> "Finance account does not exist or is inaccessible.";
+            case FINANCE_TRANSACTION_NOT_FOUND -> "Finance transaction does not exist or is inaccessible.";
             case VISION_UNVERIFIED -> "The active model has no valid Vision execution proof.";
             case VISION_TOO_LARGE -> "Vision input exceeds its size budget.";
             case DUPLICATE_TASK_ID -> "This task ID has already been accepted.";

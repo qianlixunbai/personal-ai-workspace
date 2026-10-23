@@ -85,8 +85,24 @@ public final class FinanceNextPreparation {
             try (var db = source(finance).getConnection()) {
                 sql(db, "INSERT INTO users(id,username,email,password_hash) VALUES(1,'Synthetic Alice','alice@example.invalid','not-a-login'),(2,'Synthetic Bob','bob@example.invalid','not-a-login')");
                 sql(db, "INSERT INTO accounts(id,user_id,name,type,currency,balance,status) VALUES(1,1,'合成 CNY 账户','BANK','CNY',9007199254740993.10,'ACTIVE'),(2,1,'合成零钱','CASH','CNY',0.20,'INACTIVE'),(3,2,'Bob private','BANK','CNY',88.88,'ACTIVE'),(4,1,'USD excluded','BANK','USD',999.99,'ACTIVE')");
+                if (config.path("transactions").asBoolean(false))
+                    sql(db, "INSERT INTO accounts(id,user_id,name,type,currency,balance,status) VALUES(5,2,'Bob private destination','CASH','CNY',0.00,'ACTIVE')");
                 sql(db, "REVOKE ALL ON SCHEMA public FROM PUBLIC"); sql(db, "GRANT USAGE ON SCHEMA public TO " + reader);
                 sql(db, "GRANT SELECT ON public.users,public.accounts,public.flyway_schema_history TO " + reader);
+                if (config.path("transactions").asBoolean(false)) {
+                    sql(db, "INSERT INTO categories(id,name,type,is_system) VALUES(1,'F-next-3 synthetic','INCOME',true)");
+                    sql(db, "INSERT INTO transactions(id,user_id,account_id,category_id,type,amount,currency,description,transacted_at) VALUES "
+                            + "(1,1,1,1,'INCOME',9007199254740993.10,'CNY','F-next-3 exact income','2026-10-23 12:00:00'),"
+                            + "(2,1,1,1,'EXPENSE',0.20,'CNY','F-next-3 expense','2026-10-23 12:00:00'),"
+                            + "(3,2,3,1,'INCOME',88.88,'CNY','Bob private transaction','2026-10-23 12:00:00'),"
+                            + "(4,1,1,1,'ADJUSTMENT',-0.10,'CNY',NULL,'2026-10-22 23:59:59.999999'),"
+                            + "(5,1,4,1,'REFUND',12.34,'USD','Historical refund','2026-10-21 08:00:00'),"
+                            + "(6,1,1,1,'TRANSFER',5.00,'CNY','Legacy transfer without destination','2026-10-20 08:00:00')");
+                    sql(db, "INSERT INTO transfers(id,user_id,from_account_id,to_account_id,amount,currency,description,transacted_at) VALUES "
+                            + "(1,1,1,2,0.10,'CNY','F-next-3 transfer','2026-10-23 12:00:00'),"
+                            + "(2,2,3,5,1.00,'CNY','Bob private transfer','2026-10-23 12:00:00')");
+                    sql(db, "GRANT SELECT ON public.transactions,public.transfers TO " + reader);
+                }
                 sql(db, "GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO " + reader);
             }
             stage = "WORKSPACE_V1_V2";

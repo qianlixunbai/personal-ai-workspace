@@ -1,11 +1,12 @@
 #Requires -Version 7.4
 [CmdletBinding()]
-param([string]$DistributionName = 'PersonalAiWorkspace-finance-fnext2-recovery-development-20261023')
+param([string]$DistributionName = 'PersonalAiWorkspace-finance-fnext2-recovery-development-20261023',
+    [string]$RuntimeJar = '', [string]$FixtureReceipt = '', [string]$Profile = '')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $baseline = Join-Path $repo 'artifacts/PersonalAiWorkspace-finance-fnext2-development-20261023'
-if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-fnext2-recovery-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
+if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-(fnext2-recovery|fnext3)-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
 $destination = Join-Path $repo ('artifacts/' + $DistributionName)
 if (Test-Path -LiteralPath $destination) { throw 'NEW_OUTPUT_REQUIRED' }
 . (Join-Path $PSScriptRoot 'synthetic-postgresql.ps1')
@@ -17,9 +18,17 @@ try {
     foreach ($entry in $old.files) {
         if ((Get-SyntheticHash ($pins.Source((Join-Path $baseline $entry.path)))) -cne $entry.sha256) { throw 'BASELINE_PAYLOAD_MISMATCH' }
     }
-    $root = 'D:\PersonalAiWorkspace-Fnext1\939355624cdf'; $data = Join-Path $root 'pgdata'
-    $trust = [ordered]@{ Format='FNEXT2_SYNTHETIC_START_V1'; Suffix='939355624cdf'; Root=$root; Data=$data; Port=55423;
-        Bin='D:\PostgreSQL\bin'; Profile='86705e85cb5b4a22869dd34849e0c07b';
+    $suffix = '939355624cdf'; $port = 55423
+    if ($FixtureReceipt) {
+        $selected = Get-Content -LiteralPath $FixtureReceipt -Raw | ConvertFrom-Json
+        if ($selected.suffix -cnotmatch '^[a-f0-9]{12}$' -or $selected.port -lt 55000 -or $selected.port -gt 55999 -or
+            $selected.root -cne (Join-Path 'D:\PersonalAiWorkspace-Fnext1' $selected.suffix) -or $Profile -cnotmatch '^[a-f0-9]{32}$') { throw 'ISOLATED_FIXTURE_REQUIRED' }
+        $suffix = $selected.suffix; $port = $selected.port
+    } elseif ($Profile) { throw 'EXPLICIT_FIXTURE_REQUIRED' }
+    if (!$Profile) { $Profile = '86705e85cb5b4a22869dd34849e0c07b' }
+    $root = Join-Path 'D:\PersonalAiWorkspace-Fnext1' $suffix; $data = Join-Path $root 'pgdata'
+    $trust = [ordered]@{ Format='FNEXT2_SYNTHETIC_START_V1'; Suffix=$suffix; Root=$root; Data=$data; Port=$port;
+        Bin='D:\PostgreSQL\bin'; Profile=$Profile;
         SeparateServicePath='"D:\PostgreSQL\bin\pg_ctl.exe" runservice -N "postgresql-x64-17" -D "D:\PostgreSQL\data" -w';
         UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;
         RootIdentity=$pins.Directory($root,$true); DataIdentity=$pins.Directory($data);
@@ -54,7 +63,7 @@ try {
     $fixture = Read-SyntheticSecret $pins (Join-Path $root 'fixture.dpapi')
     if ($fixture.suffix -cne $trust.Suffix -or $fixture.port -ne $trust.Port) { throw 'FIXTURE_REVIEW_FAILED' }
     $actual = Get-SyntheticDatabaseIdentity ([pscustomobject]$trust) $fixture.adminPassword
-    foreach ($name in @('fnext1_finance_939355624cdf','fnext1_workspace_939355624cdf')) { $trust.Databases[$name] = $actual.databases.$name.oid }
+    foreach ($name in @("fnext1_finance_$suffix","fnext1_workspace_$suffix")) { $trust.Databases[$name] = $actual.databases.$name.oid }
     $trustObject = $trust | ConvertTo-Json -Depth 8 -Compress | ConvertFrom-Json
     Assert-SyntheticDatabaseIdentity $trustObject $actual
     Assert-SyntheticProcess $trustObject @(Get-SyntheticListeners $trust.Port)
@@ -66,7 +75,7 @@ try {
     $binding = Read-SyntheticText ($pins.Source((Join-Path $profileRoot 'data/finance-identity/binding.json'))) | ConvertFrom-Json
     $digest = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
     try {
-        foreach ($part in @($trust.SystemId,$trust.Databases['fnext1_finance_939355624cdf'],'fnext1_finance_939355624cdf')) {
+        foreach ($part in @($trust.SystemId,$trust.Databases["fnext1_finance_$suffix"],"fnext1_finance_$suffix")) {
             $bytes=[Text.Encoding]::UTF8.GetBytes($part); $length=[BitConverter]::GetBytes([int]$bytes.Length)
             if ([BitConverter]::IsLittleEndian) { [Array]::Reverse($length) }
             $digest.AppendData($length); $digest.AppendData($bytes)
@@ -81,15 +90,18 @@ try {
         [IO.File]::Copy((Join-Path $baseline $entry.path),$output,$false)
     }
     [IO.Directory]::CreateDirectory((Join-Path $destination 'runtime')) | Out-Null
-    [IO.File]::Copy((Join-Path $baseline 'runtime/personal-ai-workspace.jar'),(Join-Path $destination 'runtime/personal-ai-workspace.jar'),$false)
+    $jarSource = if ($RuntimeJar) { [IO.Path]::GetFullPath($RuntimeJar) } else { Join-Path $baseline 'runtime/personal-ai-workspace.jar' }
+    $pins.Source($jarSource) | Out-Null
+    [IO.File]::Copy($jarSource,(Join-Path $destination 'runtime/personal-ai-workspace.jar'),$false)
     $manifest = Get-Content -LiteralPath (Join-Path $repo '.verification/fnext2-package-sources.local.json') -Raw | ConvertFrom-Json
     if ((Get-FileHash -LiteralPath (Join-Path $repo '.verification/fnext2-package-sources.local.json')).Hash.ToLowerInvariant() -cne $old.runtimeManifestSha256) { throw 'BASELINE_MANIFEST_MISMATCH' }
     $previousJar = $manifest.RuntimeJar
     $manifest.RuntimeJar = Join-Path $destination 'runtime/personal-ai-workspace.jar'
     ($manifest.Files | Where-Object Path -ceq $previousJar).Path = $manifest.RuntimeJar
-    $manifestPath = Join-Path $repo '.verification/fnext2-recovery-sources.local.json'
+    ($manifest.Files | Where-Object Path -ceq $manifest.RuntimeJar).Sha256 = (Get-FileHash -LiteralPath $manifest.RuntimeJar).Hash.ToLowerInvariant()
+    $manifestPath = Join-Path $repo ('.verification/' + $DistributionName + '-sources.local.json')
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
-    # Only the Desktop embedded absolute source path changes. Runtime/frontend/helper bytes are reused.
+    # Re-embed the pinned independent JAR path; publish the current Desktop and bundled frontend.
     & dotnet publish (Join-Path $repo 'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj') -c Debug -r win-x64 --self-contained false `
         '-p:Mmf3ProfileAcceptanceBuild=true' '-p:Mmf3AcceptanceBuild=false' '-p:FrontendSkipBuild=true' "-p:TrustedDevelopmentManifest=$manifestPath" -o $destination -v minimal
     if ($LASTEXITCODE) { throw 'DESKTOP_PUBLISH_FAILED' }
@@ -146,7 +158,7 @@ try {
 "$pwsh" -NoLogo -NoProfile -File "%~dp0Open-Synthetic-Finance.ps1"
 if errorlevel 1 pause
 "@ | Set-Content -LiteralPath (Join-Path $destination 'Open-Synthetic-Finance.cmd') -Encoding ascii
-    @'
+    $readme = @'
 Development-only F-next-2 database startup recovery, same Windows user and existing Profile.
 Double-click Open-Synthetic-Finance.cmd. Requires the existing PowerShell 7.4+, .NET 10, JDK 21 and WebView2.
 The launcher validates the pinned synthetic cluster at 127.0.0.1:55423, starts it only if safely stopped,
@@ -157,9 +169,13 @@ Do not move this directory or replace pinned binaries/configuration. A STOP requ
 After the next real Windows reboot: double-click the CMD, open Finance, verify Synthetic Alice,
 3 accounts and CNY 9007199254740993.30; check existing Memory/Knowledge/Conversation, tray exit and reopen.
 Real reboot acceptance is PENDING until the user performs it. This is not a production distribution.
-'@ | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8NoBOM
-    [ordered]@{format='FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT';productionGo=$false;baseline=$old.commit;
+'@
+    if ($RuntimeJar) { $readme = $readme.Replace('F-next-2 database startup recovery','F-next-3 read-only transactions and database startup recovery') }
+    if ($FixtureReceipt) { $readme += "`nThis package uses a NEW isolated synthetic cluster and Profile; prior accepted Profiles/databases are unchanged.`nOpen Finance -> Transactions for the six synthetic records. Account filters use the system ID from Accounts.`n" }
+    $readme.Replace('127.0.0.1:55423', ('127.0.0.1:' + $port)) | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8NoBOM
+    [ordered]@{format=$(if ($RuntimeJar) { 'FINANCE_F_NEXT_3_DEVELOPMENT' } else { 'FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT' });productionGo=$false;baseline=$old.commit;
         branch=(& git -C $repo branch --show-current).Trim();sourceCommit=(& git -C $repo rev-parse HEAD).Trim();
+        sourceDirty=[bool]((& git -C $repo diff --name-only) | Out-String).Trim();
         runtimeManifestSha256=(Get-FileHash $manifestPath).Hash.ToLowerInvariant();
         runtimeManifest=$manifest; realWindowsReboot='PENDING'; profileAndSecretsIncluded=$false;
         files=@(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {

@@ -73,7 +73,7 @@ public static partial class RuntimeLifecycleProbe
                 }
                 else
                 {
-                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", "fnext1-target.json")));
+                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
                     string fixtureRoot = target.RootElement.GetProperty("root").GetString()!;
                     Assert.StartsWith(@"D:\PersonalAiWorkspace-Fnext1\", fixtureRoot, StringComparison.Ordinal);
                     byte[] Fixture(string name) => ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(fixtureRoot, name)), null, DataProtectionScope.CurrentUser);
@@ -94,7 +94,7 @@ public static partial class RuntimeLifecycleProbe
                         }
                         finally { CryptographicOperations.ZeroMemory(input); }
                     }
-                    if (mode == "gui-finance" && !File.Exists(binding))
+                    if (mode is "gui-finance" or "gui-finance-next3" && !File.Exists(binding))
                     {
                         Assert.Equal("DISABLED", (await client.GetFinanceOverviewAsync(CancellationToken.None)).State);
                         phase = "NATIVE_WORKSPACE_CONFIGURATION";
@@ -150,14 +150,16 @@ public static partial class RuntimeLifecycleProbe
                     await Display("9007199254740993.10 CNY");
                     Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('.finance-page').innerText.includes('9007199254740993.30 CNY')"));
                     Console.WriteLine("FINANCE_REAL_REACT_TYPED_BRIDGE_RUNTIME_POSTGRESQL_EXACT_CNY_PASS");
-                    if (mode == "gui-finance")
+                    if (mode is "gui-finance" or "gui-finance-next3")
                     {
+                        byte[] original = await File.ReadAllBytesAsync(binding);
+                        if (mode == "gui-finance")
+                        {
                         phase = "IDENTITY_SECURITY";
                         using (var response = await Request("/api/v1/finance/accounts/3")) Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
                         foreach (string path in new[] { "/api/v1/finance/bind", "/api/v1/finance/confirmHistoricalBinding" })
                             using (var response = await Request(path, true)) Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
                         using (var response = await Request("/api/v1/finance/overview?userId=2")) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-                        byte[] original = await File.ReadAllBytesAsync(binding);
                         // Owned synthetic fixture mutations; restore exact original bytes and never touch another Profile.
                         string held = binding + ".synthetic-held"; File.Move(binding, held);
                         try { Assert.Equal("NOT_BOUND", (await client.GetFinanceOverviewAsync(CancellationToken.None)).State); }
@@ -181,6 +183,7 @@ public static partial class RuntimeLifecycleProbe
                             await Assert.ThrowsAsync<IOException>(() => rejected.ReadAsync(launch, null));
                         Assert.Equal(original, await File.ReadAllBytesAsync(binding));
                         Console.WriteLine("FINANCE_UNBOUND_OTHER_USER_HTTP_BYPASS_INVALID_FILE_HISTORY_DATASET_EMPTY_OUTAGE_RECOVERY_NO_REBIND_PASS");
+                        }
                         phase = "WORKSPACE_REGRESSION";
                         var memory = await client.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, "F-next-1 synthetic", SyntheticMemory), CancellationToken.None);
                         var conversation = await client.CreateConversationAsync("F-next-1 synthetic", CancellationToken.None);
@@ -219,6 +222,7 @@ public static partial class RuntimeLifecycleProbe
                         await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, image);
                     Console.WriteLine("FINANCE_BOUND_PROFILE_AND_THREE_WORKSPACE_STORES_DURABLE_PASS");
                 }
+                if (mode == "gui-finance-next3") { phase = "TRANSACTIONS"; await VerifyFinanceTransactions(app, client); }
                 passed = true;
             }
             catch (Exception error) { Console.WriteLine("FINANCE_GUI_STOP_" + phase + "_" + (error is DesktopException desktop ? desktop.Error.ToString() : error.GetType().Name) + "_" + app.DevelopmentRuntime!.Snapshot().Failure); }

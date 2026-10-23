@@ -38,6 +38,12 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceTransactionQueries financeTransactionQueries(FinanceAccountQueries identity,
+                @Qualifier("financeDataSource") DataSource dataSource) {
+            return new FinanceTransactionQueries(identity, dataSource);
+        }
+
+        @Bean
         FinanceAccountQueries financeAccountQueries(LocalFinanceProfile profile, FinanceIdentityRepository identities,
                 AccountQueryService accounts, FinanceAccountListing listing,
                 @Qualifier("financeTransactionManager") PlatformTransactionManager transactions) {

@@ -125,6 +125,9 @@ class FinanceAccountQueriesTest {
         fixture.cluster = "another-cluster"; // Same numeric users.id in a different database is insufficient.
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::cnyBalance);
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.list(0, 2, "ALL", "ID_ASC"));
+        var ledger = new FinanceTransactionQueries(queries, fixture.database);
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.list(0, 2, "", "", "", "ALL"));
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.transaction("TRANSFER", 1));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.confirmHistoricalBinding(identity));
         fixture.cluster = "cluster-one";
         fixture.status = "DISABLED";

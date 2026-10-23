@@ -15,6 +15,8 @@ import { isStorageStatus, isStorageStartupStatus } from './storage'
 import type { StorageStatus, StorageStartupStatus } from './storage'
 import { isFinanceOverview, isFinanceAccount, isFinanceAccountPage, isFinanceQuery, financeId } from './finance'
 import type { FinanceOverview, FinanceAccount, FinanceAccountPage, FinanceQuery } from './finance'
+import { isFinanceTransaction, isFinanceTransactionPage, isFinanceTransactionQuery } from './financeTransactions'
+import type { FinanceTransaction, FinanceTransactionPage, FinanceTransactionQuery } from './financeTransactions'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -29,7 +31,7 @@ const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.ar
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -54,6 +56,14 @@ export class WorkspaceClient {
   financeAccount(accountId: string) {
     if (!financeId(accountId)) return Promise.reject(new BridgeError('InvalidRequest', '账户标识无效。'))
     return this.request('finance.get', { accountId }) as Promise<FinanceAccount>
+  }
+  financeTransactions(query: FinanceTransactionQuery) {
+    if (!isFinanceTransactionQuery(query)) return Promise.reject(new BridgeError('InvalidRequest', '交易筛选参数无效，请核对账户 ID 和日期范围。'))
+    return this.request('finance.transactions', query) as Promise<FinanceTransactionPage>
+  }
+  financeTransaction(kind: FinanceTransaction['kind'], id: string) {
+    if (!['TRANSACTION', 'TRANSFER'].includes(kind) || !financeId(id)) return Promise.reject(new BridgeError('InvalidRequest', '交易标识无效。'))
+    return this.request('finance.transaction', { kind, id }) as Promise<FinanceTransaction>
   }
   visionReadiness() { return this.request('vision.readiness') as Promise<VisionReadiness> }
   pickVision() { return this.request('vision.pick') as Promise<VisionPick> }
@@ -116,7 +126,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.list', 'finance.get', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -126,6 +136,9 @@ export class WorkspaceClient {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
         : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
+        ...(method === 'finance.transactions' ? { transactionQuery: payload as unknown as FinanceTransactionQuery } : {}),
+        ...(typeof payload.kind === 'string' ? { kind: payload.kind } : {}),
+        ...(typeof payload.id === 'string' ? { id: payload.id } : {}),
         ...(typeof payload.accountId === 'string' ? { accountId: payload.accountId } : {}),
         ...(typeof payload.size === 'number' ? { size: payload.size } : {}),
         ...(typeof payload.sort === 'string' ? { sort: payload.sort } : {}),
@@ -179,6 +192,8 @@ export class WorkspaceClient {
         : pending.method === 'finance.overview' ? isFinanceOverview(data.result)
         : pending.method === 'finance.get' ? isFinanceAccount(data.result) && data.result.id === pending.accountId
         : pending.method === 'finance.list' ? isFinanceAccountPage(data.result) && data.result.page === pending.page && data.result.size === pending.size && data.result.sort === pending.sort && data.result.status === pending.status
+        : pending.method === 'finance.transaction' ? isFinanceTransaction(data.result) && data.result.kind === pending.kind && data.result.id === pending.id
+        : pending.method === 'finance.transactions' ? isFinanceTransactionPage(data.result) && data.result.page === pending.transactionQuery?.page && data.result.size === pending.transactionQuery?.size && data.result.accountId === pending.transactionQuery?.accountId && data.result.startDate === pending.transactionQuery?.startDate && data.result.endDate === pending.transactionQuery?.endDate && data.result.type === pending.transactionQuery?.type
         : pending.method === 'storage.status' ? isStorageStatus(data.result)
         : pending.method === 'storage.startupStatus' ? isStorageStartupStatus(data.result)
         : pending.method === 'vision.readiness' ? isVisionReadiness(data.result)

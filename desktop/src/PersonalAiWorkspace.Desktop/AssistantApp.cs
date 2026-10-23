@@ -208,6 +208,10 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         => ReadFinanceAsync(() => runtime.ListFinanceAccountsAsync(page, size, status, sort, cancellation), cancellation);
     Task<FinanceAccount> IWorkspaceNativeActions.FinanceAccountAsync(string id, CancellationToken cancellation)
         => ReadFinanceAsync(() => runtime.GetFinanceAccountAsync(id, cancellation), cancellation);
+    Task<FinanceTransactionPage> IWorkspaceNativeActions.FinanceTransactionsAsync(FinanceTransactionQuery query, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.ListFinanceTransactionsAsync(query, cancellation), cancellation);
+    Task<FinanceTransaction> IWorkspaceNativeActions.FinanceTransactionAsync(string kind, string id, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.GetFinanceTransactionAsync(kind, id, cancellation), cancellation);
     private async Task<T> ReadFinanceAsync<T>(Func<Task<T>> read, CancellationToken cancellation)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG

@@ -65,9 +65,9 @@ public sealed partial class RuntimeClient
 
     private Task<JsonDocument> FinanceJson(string path, CancellationToken token) => SendAsync(HttpMethod.Get, "/api/v1/finance" + path,
         null, true, HttpStatusCode.OK, token, endpointErrorMap: FinanceError, maximumResponse: 60 * 1024, requestTimeout: TimeSpan.FromSeconds(35));
-    private static string FinanceAmount(JsonElement value)
+    private static string FinanceAmount(JsonElement value, string key = "balance")
     {
-        string text = String(value, "balance");
+        string text = String(value, key);
         if (!Regex.IsMatch(text, @"\A-?[0-9]{1,30}(?:\.[0-9]{1,8})?\z")) throw Invalid();
         return text;
     }
@@ -95,6 +95,7 @@ public sealed partial class RuntimeClient
             (403, "FINANCE_NOT_BOUND") => DesktopError.FinanceNotBound,
             (403, "FINANCE_BINDING_INVALID") => DesktopError.FinanceBindingInvalid,
             (404, "FINANCE_ACCOUNT_NOT_FOUND") => DesktopError.FinanceAccountNotFound,
+            (404, "FINANCE_TRANSACTION_NOT_FOUND") => DesktopError.FinanceTransactionNotFound,
             (503, "FINANCE_UNAVAILABLE") => DesktopError.FinanceUnavailable,
             (403, "POLICY_DENIED") => DesktopError.PolicyDenied,
             (500, "INTERNAL_ERROR") => DesktopError.InternalError,

@@ -1,6 +1,6 @@
 #Requires -Version 7.4
 [CmdletBinding()]
-param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422)
+param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422, [switch]$Transactions)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -24,7 +24,7 @@ try {
     & (Join-Path $PostgresqlBin 'initdb.exe') -D (Join-Path $root 'pgdata') -U fnext_admin --encoding=UTF8 --locale=C --auth=scram-sha-256 --pwfile=$passwordFile > (Join-Path $root 'initdb.log') 2>&1
     if ($LASTEXITCODE) { throw 'ISOLATED_INITDB_FAILED' }
 } finally { Remove-Item -LiteralPath $passwordFile }
-$options = "-D `"$(Join-Path $root 'pgdata')`" -l `"$(Join-Path $root 'postgres.log')`" -o `"-p $Port -h 127.0.0.1`" -w start"
+$options = "-D `"$(Join-Path $root 'pgdata')`" -l `"$(Join-Path $root 'postgres.log')`" -o `"-h 127.0.0.1 -p $Port`" -w start"
 $server = Start-Process -FilePath (Join-Path $PostgresqlBin 'pg_ctl.exe') -ArgumentList $options -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $root 'start.log') -RedirectStandardError (Join-Path $root 'start.stderr')
 if (!$server.WaitForExit(30000) -or $server.ExitCode) { throw 'ISOLATED_CLUSTER_START_FAILED' }
 $tools = Join-Path $root 'tooling'; [IO.Directory]::CreateDirectory($tools) | Out-Null
@@ -42,7 +42,7 @@ try {
 $classpath = (Join-Path $tools 'classes') + ';' + (Join-Path $tools 'lib/*')
 & (Join-Path $JavaHome 'bin/javac.exe') -encoding UTF-8 -cp $classpath -d (Join-Path $tools 'classes') (Join-Path $repo 'bootstrap/tests/FinanceNextPreparation.java')
 if ($LASTEXITCODE) { throw 'FIXTURE_COMPILATION_FAILED' }
-$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer}
+$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer;transactions=[bool]$Transactions}
 function Protect-Json([string]$Name,$Value) {
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Compress))
     try { [IO.File]::WriteAllBytes((Join-Path $root $Name),[Security.Cryptography.ProtectedData]::Protect($bytes,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)) }
@@ -59,5 +59,6 @@ $process.StandardInput.Write(($fixture | ConvertTo-Json -Compress)); $process.St
 $response = $process.StandardOutput.ReadToEnd(); $errors = $process.StandardError.ReadToEnd(); $process.WaitForExit()
 if ($process.ExitCode -ne 0 -or $response.Trim() -ne 'FNEXT_FIXTURE_PASS_prepare') { throw $response.Trim() }
 $receipt = @{suffix=$suffix;port=$Port;root=$root;finance="fnext1_finance_$suffix";workspace="fnext1_workspace_$suffix";financeMigrations='V1-V21';workspaceMigrations='V1-V2';productionGo=$false}
-$receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repo '.verification/fnext1-target.json') -Encoding utf8NoBOM
+$receiptName = if ($Transactions) { '.verification/fnext3-target.json' } else { '.verification/fnext1-target.json' }
+$receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repo $receiptName) -Encoding utf8NoBOM
 $receipt | ConvertTo-Json

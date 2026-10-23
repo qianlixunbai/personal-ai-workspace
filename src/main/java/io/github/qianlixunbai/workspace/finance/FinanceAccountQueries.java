@@ -93,7 +93,7 @@ public final class FinanceAccountQueries {
         });
     }
 
-    private <T> T query(Function<Long, T> operation) {
+    <T> T query(Function<Long, T> operation) {
         requireNative();
         LocalFinanceProfile.Binding binding = profile.requireBinding(); // Deny before any database access.
         try {
