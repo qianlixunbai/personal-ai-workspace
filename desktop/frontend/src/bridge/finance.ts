@@ -1,5 +1,10 @@
 import { isObject as object, exactFields as fields } from './contracts'
 
+export interface FinanceBudgetAvailability { state: 'UNSUPPORTED' | 'DISABLED' | 'NOT_BOUND' | 'BINDING_INVALID' | 'UNAVAILABLE' }
+export function isFinanceBudgetAvailability(value: unknown): value is FinanceBudgetAvailability {
+  return object(value) && fields(value, ['state']) && ['UNSUPPORTED', 'DISABLED', 'NOT_BOUND', 'BINDING_INVALID', 'UNAVAILABLE'].includes(value.state as string)
+}
+
 export interface FinanceAccount { id: string; name: string; type: string; currency: string; balance: string; status: 'ACTIVE' | 'INACTIVE' }
 export interface FinanceOverview { state: 'READY' | 'DISABLED' | 'NOT_BOUND' | 'BINDING_INVALID' | 'UNAVAILABLE'; account: FinanceAccount | null; cnyBalance: { currency: 'CNY'; balance: string } | null; username: string | null; accountCount: string | null }
 export interface FinanceQuery { page: number; size: number; status: 'ALL' | 'ACTIVE' | 'INACTIVE'; sort: 'ID_ASC' | 'ID_DESC' | 'NAME_ASC' }

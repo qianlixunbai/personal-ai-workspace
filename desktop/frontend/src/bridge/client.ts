@@ -13,8 +13,8 @@ import type { VisionReadiness, VisionPick, VisionTask, VisionValidation } from '
 import type { ModelSnapshot, ModelOutcome, ModelRequest } from './models'
 import { isStorageStatus, isStorageStartupStatus } from './storage'
 import type { StorageStatus, StorageStartupStatus } from './storage'
-import { isFinanceOverview, isFinanceAccount, isFinanceAccountPage, isFinanceQuery, financeId } from './finance'
-import type { FinanceOverview, FinanceAccount, FinanceAccountPage, FinanceQuery } from './finance'
+import { isFinanceOverview, isFinanceAccount, isFinanceAccountPage, isFinanceQuery, financeId, isFinanceBudgetAvailability } from './finance'
+import type { FinanceOverview, FinanceAccount, FinanceAccountPage, FinanceQuery, FinanceBudgetAvailability } from './finance'
 import { isFinanceTransaction, isFinanceTransactionPage, isFinanceTransactionQuery } from './financeTransactions'
 import type { FinanceTransaction, FinanceTransactionPage, FinanceTransactionQuery } from './financeTransactions'
 import { isMemoryItem, isMemoryList } from './memory'
@@ -49,6 +49,7 @@ export class WorkspaceClient {
   storageStatus() { return this.request('storage.status') as Promise<StorageStatus> }
   storageStartupStatus() { return this.request('storage.startupStatus') as Promise<StorageStartupStatus> }
   financeOverview() { return this.request('finance.overview') as Promise<FinanceOverview> }
+  financeBudgets() { return this.request('finance.budgets') as Promise<FinanceBudgetAvailability> }
   financeAccounts(query: FinanceQuery) {
     if (!isFinanceQuery(query)) return Promise.reject(new BridgeError('InvalidRequest', '账户分页参数无效。'))
     return this.request('finance.list', query) as Promise<FinanceAccountPage>
@@ -126,7 +127,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.budgets', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -189,6 +190,7 @@ export class WorkspaceClient {
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
+        : pending.method === 'finance.budgets' ? isFinanceBudgetAvailability(data.result)
         : pending.method === 'finance.overview' ? isFinanceOverview(data.result)
         : pending.method === 'finance.get' ? isFinanceAccount(data.result) && data.result.id === pending.accountId
         : pending.method === 'finance.list' ? isFinanceAccountPage(data.result) && data.result.page === pending.page && data.result.size === pending.size && data.result.sort === pending.sort && data.result.status === pending.status

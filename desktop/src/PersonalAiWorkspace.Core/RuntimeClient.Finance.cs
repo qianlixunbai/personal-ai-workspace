@@ -9,9 +9,19 @@ public sealed record FinanceAccount(string Id, string Name, string Type, string 
 public sealed record FinanceBalance(string Currency, string Balance);
 public sealed record FinanceOverview(string State, FinanceAccount? Account, FinanceBalance? CnyBalance, string? Username, string? AccountCount);
 public sealed record FinanceAccountPage(FinanceAccount[] Items, int Page, int Size, string Total, string Status, string Sort);
+public sealed record FinanceBudgetAvailability(string State);
 
 public sealed partial class RuntimeClient
 {
+    public async Task<FinanceBudgetAvailability> GetFinanceBudgetsAsync(CancellationToken token)
+    {
+        using var body = await FinanceJson("/budgets", token);
+        MemoryFields(body.RootElement, "state");
+        string state = String(body.RootElement, "state");
+        if (state is not ("UNSUPPORTED" or "DISABLED" or "NOT_BOUND" or "BINDING_INVALID" or "UNAVAILABLE")) throw Invalid();
+        return new(state);
+    }
+
     public async Task<FinanceOverview> GetFinanceOverviewAsync(CancellationToken token)
     {
         using var body = await FinanceJson("/overview", token);

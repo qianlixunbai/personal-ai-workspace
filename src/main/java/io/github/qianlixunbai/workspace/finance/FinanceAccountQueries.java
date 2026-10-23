@@ -82,6 +82,12 @@ public final class FinanceAccountQueries {
         return query(userId -> new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()));
     }
 
+    public record BudgetAvailability(String state) { }
+
+    public BudgetAvailability budgetAvailability() {
+        return query(userId -> new BudgetAvailability("UNSUPPORTED"));
+    }
+
     public AccountView account(long accountId) {
         return query(userId -> {
             if (accountId < 1) throw failure(ErrorCode.INVALID_REQUEST);

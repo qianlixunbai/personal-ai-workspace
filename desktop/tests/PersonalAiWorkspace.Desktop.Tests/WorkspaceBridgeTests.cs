@@ -89,7 +89,7 @@ public sealed class WorkspaceBridgeTests
     {
         using var f = new Fixture();
         foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, new { userId = 2 }, new { confirmed = true }, "{}", new object[0] })
-            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "finance.overview" })
+            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "finance.overview", "finance.budgets" })
                 await f.Receive(f.Request(method, payload: value));
         foreach (object value in new object[] { new { accountId = "1", userId = 2 }, new { accountId = "../3" }, new { accountId = "9223372036854775808" }, new { accountId = 1 } })
             await f.Receive(f.Request("finance.get", payload: value));

@@ -93,13 +93,29 @@ public static partial class RuntimeLifecycleProbe
                 Assert.Equal(DesktopError.FinanceAccountNotFound, denied.Error);
                 Console.WriteLine("FNEXT2_REAL_HTTP_USER_SCOPE_PARAMETER_LIMITS_AND_EMPTY_PAGE_PASS");
 
+                phase = "BUDGET_AVAILABILITY";
+                await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Budgets · 预算').click()");
+                await Contains("这不表示当前用户没有预算");
+                Assert.Equal("UNSUPPORTED", (await client.GetFinanceBudgetsAsync(CancellationToken.None)).State);
+                foreach (string suffix in new[] { "?userId=2", "?page=0", "?period=MONTHLY", "?categoryId=1" })
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:18765/api/v1/finance/budgets" + suffix);
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", app.DevelopmentRuntime.ReadCredential());
+                    using var response = await http.SendAsync(request);
+                    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode); Assert.True(response.Headers.CacheControl?.NoStore);
+                }
+                using (var response = await http.GetAsync("http://127.0.0.1:18765/api/v1/finance/budgets"))
+                    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+                Assert.Equal("true", await core.ExecuteScriptAsync("!document.querySelector('.finance-page table')&&!document.querySelector('.finance-page .finance-amount')"));
+                Console.WriteLine("FNEXT4_REAL_BUDGET_UNSUPPORTED_DISTINCT_FROM_EMPTY_NO_INVENTED_FINANCIAL_FACTS_AND_NO_CLIENT_USERID_PASS");
+
                 phase = "LAYOUT";
                 foreach (int width in new[] { 1280, 800 })
                 {
                     app.Workspace.Width = width; app.Workspace.Height = 850;
                     await Task.Delay(250);
                     Assert.Equal("true", await core.ExecuteScriptAsync("document.documentElement.scrollWidth<=document.documentElement.clientWidth"));
-                    using var image = new FileStream(Path.Combine(Environment.CurrentDirectory, ".verification", $"fnext2-{width}.png"), FileMode.Create);
+                    using var image = new FileStream(Path.Combine(Environment.CurrentDirectory, ".verification", $"fnext4-{width}.png"), FileMode.Create);
                     await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, image);
                 }
                 phase = "RESTART_AND_EXISTING_STORES";
@@ -107,7 +123,16 @@ public static partial class RuntimeLifecycleProbe
                 await app.DevelopmentRuntime.RestartAsync(CancellationToken.None);
                 await Wait(() => Task.FromResult(app.DevelopmentRuntime.Snapshot().CanQueryStorage && app.DevelopmentRuntime.OwnedProcessId != old.Id));
                 Assert.True(old.WaitForExit(10000));
-                await Click("刷新 Finance"); await Contains("9007199254740993.30 CNY");
+                await Click("刷新预算"); await Contains("这不表示当前用户没有预算");
+                Assert.Equal("UNSUPPORTED", (await client.GetFinanceBudgetsAsync(CancellationToken.None)).State);
+                Console.WriteLine("FNEXT4_BUDGET_QUERY_AFTER_REAL_RUNTIME_RESTART_PASS");
+                await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Transactions · 交易流水').click()");
+                await Contains("9007199254740993.10 CNY");
+                await Click("2026-10-23 12:00"); await Contains("F-next-3 expense");
+                Assert.Equal("9007199254740993.10", (await client.GetFinanceTransactionAsync("TRANSACTION", "1", CancellationToken.None)).Amount);
+                var hidden = await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceTransactionAsync("TRANSACTION", "3", CancellationToken.None));
+                Assert.Equal(DesktopError.FinanceTransactionNotFound, hidden.Error);
+                Console.WriteLine("FNEXT4_EXISTING_TRANSACTION_LIST_DETAIL_PRECISION_AND_OTHER_USER_DENIAL_PASS");
                 var saved = JsonSerializer.Deserialize<FinanceStoreEvidence>(await File.ReadAllTextAsync(Path.Combine(launch.Root, "evidence", "finance-stores.json")))!;
                 Assert.Equal(saved.BindingHash, hash);
                 Assert.Equal(hash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(binding))));

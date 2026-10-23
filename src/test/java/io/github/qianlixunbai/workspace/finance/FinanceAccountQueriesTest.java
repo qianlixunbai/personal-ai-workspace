@@ -71,15 +71,19 @@ class FinanceAccountQueriesTest {
         var database = mock(DataSource.class);
         var transactions = mock(PlatformTransactionManager.class);
         var accounts = mock(AccountQueryService.class);
-        var queries = new FinanceAccountQueries(profile, new FinanceIdentityRepository(database), accounts, new FinanceAccountListing(database), transactions);
+        var listing = mock(FinanceAccountListing.class);
+        var queries = new FinanceAccountQueries(profile, new FinanceIdentityRepository(database), accounts, listing, transactions);
         assertCode(ErrorCode.POLICY_DENIED, queries::cnyBalance); // No implicit Native fallback.
+        assertCode(ErrorCode.POLICY_DENIED, queries::budgetAvailability);
         authenticate(new ClientIdentity("fixture", "browser", "fixture", null, Instant.EPOCH, Set.of("translate")));
         assertCode(ErrorCode.POLICY_DENIED, queries::cnyBalance);
-        verifyNoInteractions(profile, database, accounts, new FinanceAccountListing(database), transactions);
+        assertCode(ErrorCode.POLICY_DENIED, queries::budgetAvailability);
+        verifyNoInteractions(profile, database, accounts, listing, transactions);
         authenticate(ClientIdentity.NATIVE);
         when(profile.requireBinding()).thenThrow(new WorkspaceException(ErrorCode.FINANCE_NOT_BOUND, "FINANCE"));
         assertCode(ErrorCode.FINANCE_NOT_BOUND, queries::cnyBalance);
-        verifyNoInteractions(database, accounts, new FinanceAccountListing(database), transactions);
+        assertCode(ErrorCode.FINANCE_NOT_BOUND, queries::budgetAvailability);
+        verifyNoInteractions(database, accounts, listing, transactions);
     }
 
     @Test
@@ -121,9 +125,11 @@ class FinanceAccountQueriesTest {
         assertCode(ErrorCode.INVALID_REQUEST, () -> controller.balance(request));
 
         assertEquals(binding, queries.confirmHistoricalBinding(identity));
+        assertEquals("UNSUPPORTED", queries.budgetAvailability().state());
         int readsBeforeMismatch = fixture.accountReads.get();
         fixture.cluster = "another-cluster"; // Same numeric users.id in a different database is insufficient.
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::cnyBalance);
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::budgetAvailability);
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.list(0, 2, "ALL", "ID_ASC"));
         var ledger = new FinanceTransactionQueries(queries, fixture.database);
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.list(0, 2, "", "", "", "ALL"));
@@ -132,6 +138,7 @@ class FinanceAccountQueriesTest {
         fixture.cluster = "cluster-one";
         fixture.status = "DISABLED";
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::cnyBalance);
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::budgetAvailability);
         fixture.status = "ACTIVE";
         fixture.userExists = false;
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::cnyBalance);

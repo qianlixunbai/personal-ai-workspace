@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $baseline = Join-Path $repo 'artifacts/PersonalAiWorkspace-finance-fnext2-development-20261023'
-if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-(fnext2-recovery|fnext3)-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
+if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-(fnext2-recovery|fnext3|fnext4)-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
 $destination = Join-Path $repo ('artifacts/' + $DistributionName)
 if (Test-Path -LiteralPath $destination) { throw 'NEW_OUTPUT_REQUIRED' }
 . (Join-Path $PSScriptRoot 'synthetic-postgresql.ps1')
@@ -171,9 +171,14 @@ After the next real Windows reboot: double-click the CMD, open Finance, verify S
 Real reboot acceptance is PENDING until the user performs it. This is not a production distribution.
 '@
     if ($RuntimeJar) { $readme = $readme.Replace('F-next-2 database startup recovery','F-next-3 read-only transactions and database startup recovery') }
-    if ($FixtureReceipt) { $readme += "`nThis package uses a NEW isolated synthetic cluster and Profile; prior accepted Profiles/databases are unchanged.`nOpen Finance -> Transactions for the six synthetic records. Account filters use the system ID from Accounts.`n" }
+    if ($FixtureReceipt) { $readme += "`nThis package uses the explicitly selected isolated synthetic cluster and Profile; accepted identity files are preserved.`nOpen Finance -> Transactions for the six synthetic records. Account filters use the system ID from Accounts.`n" }
+    $budgets = $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext4-', [StringComparison]::Ordinal)
+    if ($budgets) {
+        $readme = $readme.Replace('F-next-3 read-only transactions', 'F-next-4 read-only budget availability')
+        $readme += "`nFinance -> Budgets reports UNSUPPORTED after server identity verification. The frozen Finance source has no budget model or statistics rules; no budget list, detail, amounts or overspending status is fabricated.`n"
+    }
     $readme.Replace('127.0.0.1:55423', ('127.0.0.1:' + $port)) | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8NoBOM
-    [ordered]@{format=$(if ($RuntimeJar) { 'FINANCE_F_NEXT_3_DEVELOPMENT' } else { 'FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT' });productionGo=$false;baseline=$old.commit;
+    [ordered]@{format=$(if ($budgets) { 'FINANCE_F_NEXT_4_DEVELOPMENT' } elseif ($RuntimeJar) { 'FINANCE_F_NEXT_3_DEVELOPMENT' } else { 'FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT' });productionGo=$false;baseline=$old.commit;
         branch=(& git -C $repo branch --show-current).Trim();sourceCommit=(& git -C $repo rev-parse HEAD).Trim();
         sourceDirty=[bool]((& git -C $repo diff --name-only) | Out-String).Trim();
         runtimeManifestSha256=(Get-FileHash $manifestPath).Hash.ToLowerInvariant();

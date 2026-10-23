@@ -1,4 +1,6 @@
-# Finance Module — F-next-1 Read-only Slice
+# Finance Module — Read-only Integration
+
+2026-10-24：F-next-4 增加 Budgets 只读入口与服务端能力状态。冻结 Finance 来源无预算模型、预算表或统计规则，因此经原绑定与数据集校验后明确显示 UNSUPPORTED，不生成预算列表、详情、金额或超支判定。账户总览、Accounts 与 Transactions 保留。见 [F-next-4 报告](../docs/engineering/FINANCE-F-NEXT-4-REPORT.md)。仅 Development-only。
 
 2026-10-22：已实现 WPF 原生服务端身份核对/首次绑定，以及 typed bridge → Runtime → 独立 PostgreSQL 的 CNY 账户只读切片。
 合成环境中的真实 WPF/WebView2 集成流、进程重开与 SQLite Profile 隔离已通过；独立产品 EXE 最终人工关卡 PENDING，非 Production GO。
