@@ -9,7 +9,7 @@ export type NativeMethod = typeof nativeMethods[number]
 export const businessMethods = ['assistant.selectMemories', 'assistant.submit', 'translate.submit', 'operations.get', 'operations.cancel', 'operations.copyResult'] as const
 export const conversationMethods = ['conversations.list', 'conversations.get', 'conversations.create', 'conversations.rename', 'conversations.archive', 'conversations.unarchive', 'conversations.delete', 'conversations.selectMemories', 'conversations.clearMemories', 'conversations.send', 'conversations.cancelPending'] as const
 export const memoryMethods = ['memory.list', 'memory.get', 'memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete', 'memory.editorState'] as const
-export type Method = 'shell.bootstrap' | 'shell.refreshStatus' | 'storage.status' | 'storage.startupStatus' | 'finance.overview' | 'finance.budgets' | 'finance.list' | 'finance.get' | 'finance.transactions' | 'finance.transaction' | NativeMethod | typeof businessMethods[number] | typeof conversationMethods[number] | typeof memoryMethods[number] | typeof knowledgeMethods[number] | typeof webFetchMethods[number] | typeof modelMethods[number] | typeof visionMethods[number]
+export type Method = 'shell.bootstrap' | 'shell.refreshStatus' | 'storage.status' | 'storage.startupStatus' | 'finance.overview' | 'finance.budgets' | 'finance.list' | 'finance.get' | 'finance.transactions' | 'finance.transaction' | 'finance.assets' | 'finance.asset' | NativeMethod | typeof businessMethods[number] | typeof conversationMethods[number] | typeof memoryMethods[number] | typeof knowledgeMethods[number] | typeof webFetchMethods[number] | typeof modelMethods[number] | typeof visionMethods[number]
 export interface MemoryRef { memoryId: string; revision: string; position: number }
 export interface SelectedMemory extends MemoryRef { title: string }
 export interface MemoryChoice { changed: boolean; selectedMemoryRefs: SelectedMemory[] }
@@ -21,7 +21,7 @@ export const safeCodes = [
   ...knowledgeCodes,
   ...webFetchCodes,
   ...modelCodes,
-  'FinanceNotBound', 'FinanceBindingInvalid', 'FinanceUnavailable', 'FinanceAccountNotFound', 'FinanceTransactionNotFound',
+  'FinanceNotBound', 'FinanceBindingInvalid', 'FinanceUnavailable', 'FinanceAccountNotFound', 'FinanceTransactionNotFound', 'FinanceAssetNotFound',
   'NATIVE_UNAVAILABLE', 'OPERATION_NOT_FOUND', 'OPERATION_CAPACITY', 'MEMORY_SELECTION_REQUIRED', 'CLIPBOARD_UNAVAILABLE',
   'RuntimeUnavailable', 'Unauthorized', 'CredentialMissing', 'CredentialInvalid', 'CredentialStorage', 'QueueFull',
   'ProviderUnavailable', 'ModelUnavailable', 'PolicyDenied', 'InvalidRequest', 'InvalidResponse', 'TaskNotFound',

@@ -3,6 +3,7 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceAccount, FinanceAccountPage, FinanceOverview, FinanceQuery } from '../bridge/finance'
 import { FinanceTransactions } from '../components/FinanceTransactions'
 import { FinanceBudgets } from '../components/FinanceBudgets'
+import { FinanceAssets } from '../components/FinanceAssets'
 
 const initialQuery: FinanceQuery = { page: 0, size: 10, status: 'ALL', sort: 'ID_ASC' }
 const states = {
@@ -16,15 +17,17 @@ const statusLabel = (status: string) => status === 'ACTIVE' ? '使用中 · ACTI
 const typeLabel = (type: string) => ({ BANK: '银行账户', CASH: '现金', CREDIT_CARD: '信用卡', INVESTMENT: '投资账户', OTHER: '其他' }[type] ?? type)
 
 export function FinancePage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
-  const [view, setView] = useState<'accounts' | 'transactions' | 'budgets'>('accounts')
+  const [view, setView] = useState<'accounts' | 'transactions' | 'budgets' | 'assets'>('accounts')
   return <>
     <nav className="finance-toolbar" aria-label="Finance 视图">
       <button className="secondary" aria-pressed={view === 'accounts'} onClick={() => setView('accounts')}>Accounts · 账户</button>
       <button className="secondary" aria-pressed={view === 'transactions'} onClick={() => setView('transactions')}>Transactions · 交易流水</button>
       <button className="secondary" aria-pressed={view === 'budgets'} onClick={() => setView('budgets')}>Budgets · 预算</button>
+      <button className="secondary" aria-pressed={view === 'assets'} onClick={() => setView('assets')}>Assets · 资产</button>
     </nav>
     {view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} />
+      : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : <FinanceBudgets bridge={bridge} enabled={enabled} openSettings={openSettings} />}
   </>
 }

@@ -103,6 +103,11 @@ public sealed class WorkspaceBridgeTests
             new { page = 0, size = 2, accountId = "../3", startDate = "", endDate = "", type = "ALL" },
             new { page = 0, size = 2, accountId = "", startDate = "2026-02-30", endDate = "", type = "ALL" } })
             await f.Receive(f.Request("finance.transactions", payload: value));
+        foreach (object value in new object[] { new { id = "1", userId = 2 }, new { id = "../6" }, new { id = "9223372036854775808" } })
+            await f.Receive(f.Request("finance.asset", payload: value));
+        foreach (object value in new object[] { new { page = 0, size = 2, type = "ALL", sort = "ID_ASC", userId = 2 },
+            new { page = 0, size = 21, type = "STOCK", sort = "CREATED_DESC" }, new { page = 0, size = 2, type = "ALL", sort = "price;--" } })
+            await f.Receive(f.Request("finance.assets", payload: value));
         Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
     }
     [Fact] public async Task MalformedUnknownDuplicateAndMissingFieldsAreRejected()

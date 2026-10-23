@@ -132,6 +132,11 @@ class FinanceAccountQueriesTest {
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, queries::budgetAvailability);
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.list(0, 2, "ALL", "ID_ASC"));
         var ledger = new FinanceTransactionQueries(queries, fixture.database);
+        var assets = new FinanceAssetQueries(queries, fixture.database,
+                mock(com.financeos.module.asset.marketdata.service.MarketQuoteQueryService.class),
+                mock(com.financeos.module.asset.valuation.service.ReferenceValuationService.class));
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> assets.list(0, 2, "ALL", "CREATED_DESC"));
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> assets.asset(1));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.list(0, 2, "", "", "", "ALL"));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.transaction("TRANSFER", 1));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.confirmHistoricalBinding(identity));

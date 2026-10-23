@@ -33,6 +33,8 @@ internal interface IWorkspaceNativeActions
     Task<FinanceAccount> FinanceAccountAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceTransactionPage> FinanceTransactionsAsync(FinanceTransactionQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceTransaction> FinanceTransactionAsync(string kind, string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceAssetPage> FinanceAssetsAsync(FinanceAssetQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceAsset> FinanceAssetAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     event Action<StorageStartupStatus>? StorageStartupChanged { add { } remove { } }
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
@@ -187,6 +189,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.get") result = await native.FinanceAccountAsync(payload.GetProperty("accountId").GetString()!, cancellation);
             else if (method == "finance.transactions") result = await native.FinanceTransactionsAsync(TransactionQuery(payload), cancellation);
             else if (method == "finance.transaction") result = await native.FinanceTransactionAsync(payload.GetProperty("kind").GetString()!, payload.GetProperty("id").GetString()!, cancellation);
+            else if (method == "finance.assets") result = await native.FinanceAssetsAsync(AssetQuery(payload), cancellation);
+            else if (method == "finance.asset") result = await native.FinanceAssetAsync(payload.GetProperty("id").GetString()!, cancellation);
             else if (ModelMethods.Contains(method))
             {
                 if (models is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "模型管理暂时不可用。");
@@ -361,6 +365,12 @@ internal sealed class WorkspaceBridge : IDisposable
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method == "finance.get") return Fields(payload, "accountId") && Text(payload, "accountId", 19, out var accountId) && RuntimeClient.ValidFinanceId(accountId);
+        if (method == "finance.asset") return Fields(payload, "id") && Text(payload, "id", 19, out var assetId) && RuntimeClient.ValidFinanceId(assetId);
+        if (method == "finance.assets") return Fields(payload, "page", "size", "type", "sort")
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out _)
+            && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out _)
+            && new[] { "type", "sort" }.All(key => payload.GetProperty(key).ValueKind == JsonValueKind.String)
+            && RuntimeClient.ValidFinanceAssetQuery(AssetQuery(payload));
         if (method == "finance.transaction") return Fields(payload, "kind", "id") && Text(payload, "kind", 11, out var kind)
             && kind is "TRANSACTION" or "TRANSFER" && Text(payload, "id", 19, out var transactionId) && RuntimeClient.ValidFinanceId(transactionId);
         if (method == "finance.transactions") return Fields(payload, "page", "size", "accountId", "startDate", "endDate", "type")
@@ -386,6 +396,7 @@ internal sealed class WorkspaceBridge : IDisposable
         return ValidReferences(payload, mode == "Summarize");
     }
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
+    private static FinanceAssetQuery AssetQuery(JsonElement p) => new(p.GetProperty("page").GetInt32(), p.GetProperty("size").GetInt32(), p.GetProperty("type").GetString()!, p.GetProperty("sort").GetString()!);
     internal static readonly IReadOnlySet<string> WebFetchMethods = new HashSet<string>(StringComparer.Ordinal)
     { "web.fetchSubmit", "web.fetchGet", "web.fetchCancel" };
     internal static readonly IReadOnlySet<string> VisionMethods=new HashSet<string>(StringComparer.Ordinal)

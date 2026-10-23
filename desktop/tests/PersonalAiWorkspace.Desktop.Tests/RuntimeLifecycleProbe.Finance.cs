@@ -73,7 +73,7 @@ public static partial class RuntimeLifecycleProbe
                 }
                 else
                 {
-                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
+                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode == "gui-finance-next5" ? "fnext5-target.json" : mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
                     string fixtureRoot = target.RootElement.GetProperty("root").GetString()!;
                     Assert.StartsWith(@"D:\PersonalAiWorkspace-Fnext1\", fixtureRoot, StringComparison.Ordinal);
                     byte[] Fixture(string name) => ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(fixtureRoot, name)), null, DataProtectionScope.CurrentUser);
@@ -94,7 +94,7 @@ public static partial class RuntimeLifecycleProbe
                         }
                         finally { CryptographicOperations.ZeroMemory(input); }
                     }
-                    if (mode is "gui-finance" or "gui-finance-next3" && !File.Exists(binding))
+                    if (mode is "gui-finance" or "gui-finance-next3" or "gui-finance-next5" && !File.Exists(binding))
                     {
                         Assert.Equal("DISABLED", (await client.GetFinanceOverviewAsync(CancellationToken.None)).State);
                         phase = "NATIVE_WORKSPACE_CONFIGURATION";
@@ -210,6 +210,7 @@ public static partial class RuntimeLifecycleProbe
                         Console.WriteLine("FINANCE_DISABLED_MEMORY_KNOWLEDGE_CONVERSATION_REGRESSION_AND_RESTART_PASS");
                     }
                     phase = "DURABLE_REOPEN";
+                    if (mode != "gui-finance-next5") {
                     var saved = JsonSerializer.Deserialize<FinanceStoreEvidence>(await File.ReadAllTextAsync(evidencePath))!;
                     Assert.Equal(saved.BindingHash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(binding))));
                     Assert.Equal(SyntheticMemory, (await client.GetMemoryAsync(saved.Memory, CancellationToken.None)).Content);
@@ -221,8 +222,10 @@ public static partial class RuntimeLifecycleProbe
                     using (var image = new FileStream(Path.Combine(launch.Root, "evidence", mode + "-" + Guid.NewGuid().ToString("N") + ".png"), FileMode.CreateNew))
                         await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, image);
                     Console.WriteLine("FINANCE_BOUND_PROFILE_AND_THREE_WORKSPACE_STORES_DURABLE_PASS");
+                    }
                 }
                 if (mode == "gui-finance-next3") { phase = "TRANSACTIONS"; await VerifyFinanceTransactions(app, client); }
+                if (mode == "gui-finance-next5") { phase = "ASSETS"; await VerifyFinanceAssets(app, client, launch); }
                 passed = true;
             }
             catch (Exception error) { Console.WriteLine("FINANCE_GUI_STOP_" + phase + "_" + (error is DesktopException desktop ? desktop.Error.ToString() : error.GetType().Name) + "_" + app.DevelopmentRuntime!.Snapshot().Failure); }

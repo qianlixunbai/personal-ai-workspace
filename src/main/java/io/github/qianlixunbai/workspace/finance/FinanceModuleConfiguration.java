@@ -38,6 +38,22 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceAssetQueries financeAssetQueries(FinanceAccountQueries identity,
+                @Qualifier("financeDataSource") DataSource dataSource,
+                com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper quoteMapper,
+                com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper rateMapper) {
+            var clock = java.time.Clock.systemUTC();
+            var quotes = new com.financeos.module.asset.marketdata.service.MarketQuoteQueryService(
+                    quoteMapper,
+                    new com.financeos.module.asset.marketdata.config.MarketDataProperties(), clock);
+            var rates = new com.financeos.module.asset.marketdata.fx.service.ExchangeRateQueryService(
+                    rateMapper,
+                    new com.financeos.module.asset.marketdata.fx.config.FxDataProperties(), clock);
+            return new FinanceAssetQueries(identity, dataSource, quotes,
+                    new com.financeos.module.asset.valuation.service.ReferenceValuationService(rates, clock));
+        }
+
+        @Bean
         FinanceTransactionQueries financeTransactionQueries(FinanceAccountQueries identity,
                 @Qualifier("financeDataSource") DataSource dataSource) {
             return new FinanceTransactionQueries(identity, dataSource);

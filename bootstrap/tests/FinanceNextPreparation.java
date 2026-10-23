@@ -104,6 +104,23 @@ public final class FinanceNextPreparation {
                     sql(db, "GRANT SELECT ON public.transactions,public.transfers TO " + reader);
                 }
                 sql(db, "GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO " + reader);
+                if (config.path("assets").asBoolean(false)) {
+                    // NEW opt-in fixture only. All quotes are labelled synthetic fixed snapshots, never live data.
+                    sql(db, "INSERT INTO assets(id,user_id,name,symbol,type,market,currency,quantity,avg_cost,current_price,market_value,created_at) VALUES "
+                            + "(1,1,'合成精确资产','SYNUSD','STOCK','US','CNY',9007199254740993.10,0.10,1.0000,123.45,'2026-10-24 08:00:00'),"
+                            + "(2,1,'合成缺汇率资产','SYNJPY','ETF','US','CNY',0.12345678,2.34567890,NULL,NULL,'2026-10-24 08:00:00'),"
+                            + "(3,1,'合成未知价格基金',NULL,'FUND','CN','CNY',2.00000000,1.00000000,NULL,NULL,'2026-10-24 08:00:00'),"
+                            + "(4,1,'合成无行情资产',NULL,'STOCK','US','CNY',10.00000000,1.00000000,0.0000,0.00,'2026-10-24 08:00:00'),"
+                            + "(5,1,'合成 CNY 参考资产','SYNCNY','ETF','US','CNY',0.12345678,0.10000000,1.0000,0.12,'2026-10-24 08:00:00'),"
+                            + "(6,2,'Bob private asset','SYNUSD','STOCK','US','CNY',999.00000000,1.00000000,2.0000,1998.00,'2026-10-24 08:00:00')");
+                    sql(db, "INSERT INTO market_quotes(market,symbol,currency,price,quote_time,fetched_at,provider,created_at,updated_at) VALUES "
+                            + "('US','SYNUSD','USD',0.10000000,'2026-10-01 08:00:00Z','2026-10-01 08:01:00Z','SYNTHETIC_FIXED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),"
+                            + "('US','SYNJPY','JPY',1.23456789,'2026-10-01 08:00:00Z','2026-10-01 08:01:00Z','SYNTHETIC_FIXED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),"
+                            + "('US','SYNCNY','CNY',0.12345678,'2026-10-01 08:00:00Z',CURRENT_TIMESTAMP,'SYNTHETIC_FIXED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
+                    sql(db, "INSERT INTO exchange_rates(base_currency,quote_currency,rate,rate_time,fetched_at,provider) VALUES "
+                            + "('USD','CNY',7.000000000000,'2026-10-01 08:00:00Z','2026-10-01 08:01:00Z','SYNTHETIC_FIXED')");
+                    sql(db, "GRANT SELECT ON public.assets,public.market_quotes,public.exchange_rates TO " + reader);
+                }
             }
             stage = "WORKSPACE_V1_V2";
             try (var db = source(workspace).getConnection()) {

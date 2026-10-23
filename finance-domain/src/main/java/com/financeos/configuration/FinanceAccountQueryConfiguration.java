@@ -22,7 +22,9 @@ import javax.sql.DataSource;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "workspace.finance.enabled", havingValue = "true", matchIfMissing = false)
 @Import(AccountQueryService.class)
-@MapperScan(basePackageClasses = AccountMapper.class, annotationClass = Mapper.class,
+@MapperScan(basePackageClasses = {AccountMapper.class,
+        com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper.class,
+        com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper.class}, annotationClass = Mapper.class,
         sqlSessionTemplateRef = "financeSqlSessionTemplate")
 public class FinanceAccountQueryConfiguration {
 

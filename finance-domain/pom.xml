@@ -12,6 +12,10 @@
     <artifactId>finance-domain</artifactId>
     <packaging>jar</packaging>
     <dependencies>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
         <!-- Explicit wiring only: no JDBC/MyBatis Starter or auto-configuration. -->
         <dependency>
             <groupId>com.baomidou</groupId>

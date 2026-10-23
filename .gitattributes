@@ -8,3 +8,5 @@
 *.properties text eol=lf
 # Preserve the frozen Finance migration bytes and recorded SHA-256 across checkouts.
 /finance-domain/src/main/resources/db/finance/migration/*.sql -text
+# Preserve one-time frozen asset source copies and their provenance hashes.
+/finance-domain/src/main/java/com/financeos/module/asset/**/*.java -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

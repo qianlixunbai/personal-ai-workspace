@@ -1,0 +1,133 @@
+{
+  "sourceRepository": "personal-finance-OS",
+  "sourceCommit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
+  "policy": "One-time read-only source copy. No provider/refresh wiring; queries use original default TTLs. No build dependency on frozen repository.",
+  "files": [
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/entity/Asset.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/entity/Asset.java",
+      "sourceSha256": "e722e8d83817641cc8cb3a46e523b46beefb79f09c637d397436577dc0cac7db",
+      "workspaceSha256": "e722e8d83817641cc8cb3a46e523b46beefb79f09c637d397436577dc0cac7db",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/service/ReferenceValuationService.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/valuation/service/ReferenceValuationService.java",
+      "sourceSha256": "0aad2f451f34142e1394f4dacf134c91074dbbb8c38d9f12bb81ef98d66dbe8f",
+      "workspaceSha256": "0aad2f451f34142e1394f4dacf134c91074dbbb8c38d9f12bb81ef98d66dbe8f",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationResponse.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationResponse.java",
+      "sourceSha256": "2a4da0b995b1abaa8afd901648d5597fb9b964793fb1b13599eae4dabb733d08",
+      "workspaceSha256": "2a4da0b995b1abaa8afd901648d5597fb9b964793fb1b13599eae4dabb733d08",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationFreshness.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationFreshness.java",
+      "sourceSha256": "4ddf12e5a56f1e998c9f2491e9fb510f583630989eb96bcc295504df49ef201d",
+      "workspaceSha256": "4ddf12e5a56f1e998c9f2491e9fb510f583630989eb96bcc295504df49ef201d",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationWarning.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationWarning.java",
+      "sourceSha256": "afa3fa63dfe34092bf83fdac9164be60bc3a0d3bc2c6fdee79fcbb00f5248fc9",
+      "workspaceSha256": "afa3fa63dfe34092bf83fdac9164be60bc3a0d3bc2c6fdee79fcbb00f5248fc9",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/service/MarketQuoteQueryService.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/service/MarketQuoteQueryService.java",
+      "sourceSha256": "3ac7f0a7717fc5a2a9bf9bcddcbb15798e778c1b0964b77433a7757fa7cfd230",
+      "workspaceSha256": "3ac7f0a7717fc5a2a9bf9bcddcbb15798e778c1b0964b77433a7757fa7cfd230",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteFreshness.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteFreshness.java",
+      "sourceSha256": "d5346c79d02522e1a2ef067b93d59858c1d3226d039ad75b588677bc10c5c97b",
+      "workspaceSha256": "d5346c79d02522e1a2ef067b93d59858c1d3226d039ad75b588677bc10c5c97b",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteSnapshotResponse.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteSnapshotResponse.java",
+      "sourceSha256": "9554f438e0758ac2ff414aafc0c975ea5a96deed9e6ac938d40c90531728b649",
+      "workspaceSha256": "9554f438e0758ac2ff414aafc0c975ea5a96deed9e6ac938d40c90531728b649",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteResponse.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteResponse.java",
+      "sourceSha256": "8a126cfb602d5038ab3e9772148481cbefb61eb77656c02f14e47cbf2bbf4bbc",
+      "workspaceSha256": "8a126cfb602d5038ab3e9772148481cbefb61eb77656c02f14e47cbf2bbf4bbc",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteRefreshResult.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/dto/MarketQuoteRefreshResult.java",
+      "sourceSha256": "f622b85c73dc7b954726d4d20a6aed97c46d530dc335e0634f613a504ddad27b",
+      "workspaceSha256": "f622b85c73dc7b954726d4d20a6aed97c46d530dc335e0634f613a504ddad27b",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/entity/MarketQuote.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/entity/MarketQuote.java",
+      "sourceSha256": "dc1e2d6eee34cff079af410187315c045a2351a913d1843261550125d62671ee",
+      "workspaceSha256": "dc1e2d6eee34cff079af410187315c045a2351a913d1843261550125d62671ee",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/mapper/MarketQuoteMapper.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/mapper/MarketQuoteMapper.java",
+      "sourceSha256": "e88e57ac8c30f394fc0b251613e981c49a49b3f4912a8ec022e5f5263890753a",
+      "workspaceSha256": "e88e57ac8c30f394fc0b251613e981c49a49b3f4912a8ec022e5f5263890753a",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/config/MarketDataProperties.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/config/MarketDataProperties.java",
+      "sourceSha256": "00eebce283f84fbce0d99f7219275f9b349561adebac94b20aff379e0c127f0f",
+      "workspaceSha256": "00eebce283f84fbce0d99f7219275f9b349561adebac94b20aff379e0c127f0f",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/fx/entity/ExchangeRate.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/fx/entity/ExchangeRate.java",
+      "sourceSha256": "91a95cdf699f69c5fef84a950a27011606df3249ab93ff5c99d0695a9107f190",
+      "workspaceSha256": "91a95cdf699f69c5fef84a950a27011606df3249ab93ff5c99d0695a9107f190",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/fx/mapper/ExchangeRateMapper.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/fx/mapper/ExchangeRateMapper.java",
+      "sourceSha256": "477cb6e19ab78f6ae3d53b3a91a5876ed1d5a15fdc01ddf1aec1399ece7ad5ad",
+      "workspaceSha256": "477cb6e19ab78f6ae3d53b3a91a5876ed1d5a15fdc01ddf1aec1399ece7ad5ad",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/fx/service/ExchangeRateQueryService.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/fx/service/ExchangeRateQueryService.java",
+      "sourceSha256": "746816a40d3286a8dce45a7188bb11f7a8bfa4052f34f607d50888d58e644653",
+      "workspaceSha256": "746816a40d3286a8dce45a7188bb11f7a8bfa4052f34f607d50888d58e644653",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/fx/service/ExchangeRateFreshness.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/fx/service/ExchangeRateFreshness.java",
+      "sourceSha256": "86135eba0d18eb1d4fc92d3e44d120e7403d1d93cd3fd8ae1265f05c194b1e86",
+      "workspaceSha256": "86135eba0d18eb1d4fc92d3e44d120e7403d1d93cd3fd8ae1265f05c194b1e86",
+      "adaptation": "none; byte-for-byte copy"
+    },
+    {
+      "sourcePath": "backend/src/main/java/com/financeos/module/asset/marketdata/fx/config/FxDataProperties.java",
+      "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/marketdata/fx/config/FxDataProperties.java",
+      "sourceSha256": "38d95399633b291c5163cf1ced7651f110b9e52fdb22bf64e9adfd8ca722226f",
+      "workspaceSha256": "38d95399633b291c5163cf1ced7651f110b9e52fdb22bf64e9adfd8ca722226f",
+      "adaptation": "none; byte-for-byte copy"
+    }
+  ]
+}
