@@ -24,7 +24,8 @@ import javax.sql.DataSource;
 @Import(AccountQueryService.class)
 @MapperScan(basePackageClasses = {AccountMapper.class,
         com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper.class,
-        com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper.class}, annotationClass = Mapper.class,
+        com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper.class,
+        com.financeos.module.investment.read.mapper.InvestmentReadMapper.class}, annotationClass = Mapper.class,
         sqlSessionTemplateRef = "financeSqlSessionTemplate")
 public class FinanceAccountQueryConfiguration {
 

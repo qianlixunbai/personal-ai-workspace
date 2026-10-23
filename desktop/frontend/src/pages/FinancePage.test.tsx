@@ -86,6 +86,52 @@ it('discards financial snapshots and late detail responses across runtime change
     await reply(28, { state: 'BINDING_INVALID', account: null, cnyBalance: null, username: null, accountCount: null })
     expect(screen.queryByText('9007199254740993.10')).toBeNull()
     expect(screen.getByText(/资产读取已拒绝/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Investment Positions · 投资持仓' }))
+    const position = { positionId: '11', positionMode: 'TRANSACTION_DRIVEN', account: { id: '6', displayName: 'Alice brokerage', type: 'BROKERAGE', status: 'ACTIVE' },
+      instrument: { id: '11', symbol: 'SYNUSD', name: 'Alice position', market: 'US', assetClass: 'STOCK', quoteCurrency: 'USD', status: 'ACTIVE' }, status: 'OPEN',
+      quantity: '9007199254740993.12345678', averageCost: '1.00000000', totalCost: '9007199254740993.12', cumulativeRealizedProfitLoss: '1.00',
+      referenceValuation: { baseCurrency: 'CNY', value: null, freshness: 'UNAVAILABLE', warnings: [{ code: 'QUOTE_MISSING', component: 'QUOTE' }] } }
+    const positions = { records: [position], nextCursor: 'opaque_from_server', hasMore: true, size: 10 }
+    const fullPage = { ...positions, records: Array.from({ length: 10 }, (_, n) => ({ ...position, positionId: String(11 + n) })) }
+    await reply(29, overview); await reply(30, fullPage)
+    expect(screen.getAllByText('9007199254740993.12345678').length).toBe(10)
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+    await reply(31, overview)
+    expect(port.sent[32]).toMatchObject({ method: 'finance.positions', payload: { status: 'OPEN', cursor: 'opaque_from_server' } })
+    await reply(32, { records: [], nextCursor: null, hasMore: false, size: 10 })
+    fireEvent.change(screen.getByLabelText('持仓状态'), { target: { value: 'ALL' } })
+    await reply(33, overview)
+    expect(port.sent[34]).toMatchObject({ method: 'finance.positions', payload: { status: 'ALL', cursor: '' } })
+    const finalPage = { records: [position], nextCursor: null, hasMore: false, size: 10 }
+    await reply(34, finalPage)
+    expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Alice position · #11' }))
+    await reply(35, overview); await reply(36, finalPage)
+    expect(port.sent[37]).toMatchObject({ method: 'finance.position', payload: { id: '11' } })
+    const detail = { ...position, manualReference: { currentPrice: null, marketValue: null }, referenceValuation: {
+      accountingTruth: false, quotePrice: null, quoteCurrency: null, quoteTime: null, quoteFetchedAt: null, quoteProvider: null,
+      fxRate: null, fxBaseCurrency: null, fxQuoteCurrency: null, fxRateTime: null, fxFetchedAt: null, fxProvider: null,
+      baseCurrency: 'CNY', baseCurrencyValue: null, freshness: 'UNAVAILABLE', warnings: [{ code: 'QUOTE_MISSING', component: 'QUOTE' }] } }
+    await act(async () => { port.session('55555555-5555-4555-8555-555555555555') })
+    await reply(37, detail)
+    expect(screen.queryByText('9007199254740993.12345678')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新持仓' }))
+    await reply(38, overview); await reply(39, finalPage)
+    fireEvent.click(screen.getByRole('button', { name: 'Alice position · #11' }))
+    await reply(40, overview); await reply(41, finalPage); await reply(42, detail)
+    expect(screen.getAllByText('9007199254740993.12 CNY').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('未知 / 未提供').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '刷新持仓' }))
+    await reply(43, { state: 'BINDING_INVALID', account: null, cnyBalance: null, username: null, accountCount: null })
+    expect(screen.queryByText('9007199254740993.12345678')).toBeNull()
+    expect(screen.getByText(/持仓读取已拒绝/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新持仓' }))
+    await reply(44, overview); await reply(45, { ...finalPage, records: [{ ...position, quantity: 9007199254740992 }] })
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(screen.queryByText('9007199254740993.12345678')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await reply(46, overview); await reply(47, finalPage)
+    expect(screen.getByText('9007199254740993.12345678')).toBeTruthy()
     view.unmount()
   } finally { bridge.dispose() }
 })

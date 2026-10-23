@@ -48,10 +48,11 @@ class FinanceAccountQueriesTest {
     @Test
     void applicationBoundaryIsConditionalAndUsesTheDedicatedFinanceComponents() {
         var runner = new ApplicationContextRunner()
-                .withUserConfiguration(FinanceModuleConfiguration.class, FinanceAccountController.class);
+                .withUserConfiguration(FinanceModuleConfiguration.class, FinanceAccountController.class, FinanceInvestmentController.class);
         runner.run(context -> assertThat(context).hasNotFailed()
                 .doesNotHaveBean(LocalFinanceProfile.class).doesNotHaveBean(FinanceAccountQueries.class)
-                .doesNotHaveBean(FinanceAccountController.class));
+                .doesNotHaveBean(FinanceAccountController.class).doesNotHaveBean(FinanceInvestmentQueries.class)
+                .doesNotHaveBean(FinanceInvestmentController.class));
         runner.withPropertyValues("workspace.finance.enabled=true",
                 "workspace.finance.datasource.url=jdbc:postgresql://127.0.0.1:1/unused",
                 "workspace.finance.datasource.username=configuration-test",
@@ -60,7 +61,8 @@ class FinanceAccountQueriesTest {
                         () -> mock(PlatformTransactionManager.class))
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(FinanceAccountQueries.class)
-                            .hasSingleBean(FinanceAccountController.class);
+                            .hasSingleBean(FinanceAccountController.class).hasSingleBean(FinanceInvestmentQueries.class)
+                            .hasSingleBean(FinanceInvestmentController.class);
                     assertEquals("public", context.getBean("financeDataSource", PGSimpleDataSource.class).getCurrentSchema());
                 });
     }
@@ -137,6 +139,11 @@ class FinanceAccountQueriesTest {
                 mock(com.financeos.module.asset.valuation.service.ReferenceValuationService.class));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> assets.list(0, 2, "ALL", "CREATED_DESC"));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> assets.asset(1));
+        var positions = new FinanceInvestmentQueries(queries,
+                mock(com.financeos.module.investment.read.service.InvestmentPositionReadQueryService.class),
+                mock(com.financeos.module.investment.read.service.InvestmentPositionDetailQueryService.class));
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> positions.list("OPEN", null, null, null, 2));
+        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> positions.position(1));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.list(0, 2, "", "", "", "ALL"));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> ledger.transaction("TRANSFER", 1));
         assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> queries.confirmHistoricalBinding(identity));

@@ -19,6 +19,8 @@ import { isFinanceTransaction, isFinanceTransactionPage, isFinanceTransactionQue
 import type { FinanceTransaction, FinanceTransactionPage, FinanceTransactionQuery } from './financeTransactions'
 import { isFinanceAsset, isFinanceAssetPage, isFinanceAssetQuery } from './financeAssets'
 import type { FinanceAsset, FinanceAssetPage, FinanceAssetQuery } from './financeAssets'
+import { isFinancePositionQuery, isFinancePositionPage, isFinancePositionDetail } from './financeInvestments'
+import type { FinancePositionQuery, FinancePositionPage, FinancePositionDetail } from './financeInvestments'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
@@ -33,7 +35,7 @@ const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.ar
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -75,6 +77,14 @@ export class WorkspaceClient {
   financeAsset(id: string) {
     if (!financeId(id)) return Promise.reject(new BridgeError('InvalidRequest', '资产标识无效。'))
     return this.request('finance.asset', { id }) as Promise<FinanceAsset>
+  }
+  financePositions(query: FinancePositionQuery) {
+    if (!isFinancePositionQuery(query)) return Promise.reject(new BridgeError('InvalidRequest', '持仓查询参数无效。'))
+    return this.request('finance.positions', query) as Promise<FinancePositionPage>
+  }
+  financePosition(id: string) {
+    if (!financeId(id)) return Promise.reject(new BridgeError('InvalidRequest', '持仓 ID 无效。'))
+    return this.request('finance.position', { id }) as Promise<FinancePositionDetail>
   }
   visionReadiness() { return this.request('vision.readiness') as Promise<VisionReadiness> }
   pickVision() { return this.request('vision.pick') as Promise<VisionPick> }
@@ -137,7 +147,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.budgets', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', 'finance.assets', 'finance.asset', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
+    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.overview', 'finance.budgets', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', 'finance.assets', 'finance.asset', 'finance.positions', 'finance.position', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -148,6 +158,7 @@ export class WorkspaceClient {
         : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(method === 'finance.transactions' ? { transactionQuery: payload as unknown as FinanceTransactionQuery } : {}),
+        ...(method === 'finance.positions' ? { positionQuery: payload as unknown as FinancePositionQuery } : {}),
         ...(method === 'finance.assets' ? { assetQuery: payload as unknown as FinanceAssetQuery } : {}),
         ...(typeof payload.kind === 'string' ? { kind: payload.kind } : {}),
         ...(typeof payload.id === 'string' ? { id: payload.id } : {}),
@@ -202,6 +213,8 @@ export class WorkspaceClient {
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
         : pending.method === 'finance.budgets' ? isFinanceBudgetAvailability(data.result)
+        : pending.method === 'finance.position' ? isFinancePositionDetail(data.result) && data.result.positionId === pending.id
+        : pending.method === 'finance.positions' ? pending.positionQuery && isFinancePositionPage(data.result, pending.positionQuery)
         : pending.method === 'finance.asset' ? isFinanceAsset(data.result) && data.result.id === pending.id
         : pending.method === 'finance.assets' ? isFinanceAssetPage(data.result) && data.result.page === pending.assetQuery?.page && data.result.size === pending.assetQuery?.size && data.result.type === pending.assetQuery?.type && data.result.sort === pending.assetQuery?.sort
         : pending.method === 'finance.overview' ? isFinanceOverview(data.result)

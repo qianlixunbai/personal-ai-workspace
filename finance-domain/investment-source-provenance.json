@@ -1,0 +1,92 @@
+{
+  "repository": "qianlixunbai/Personal-Finance-OS",
+  "commit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
+  "policy": "Unmodified source bytes; explicit read-only wiring and Workspace transport adapter",
+  "files": [
+    {
+      "source": "backend/src/main/java/com/financeos/common/BusinessException.java",
+      "destination": "finance-domain/src/main/java/com/financeos/common/BusinessException.java",
+      "sha256": "3ef82a9ffee684f8d64507e1b0934f6dffb248256581496090bddf645b3d679c"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentPositionReadQueryService.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentPositionReadQueryService.java",
+      "sha256": "b63e730afb78363ff50ee8bfb2bbce0b8be40ed825c449c5b19bd0366d869314"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentPositionDetailQueryService.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentPositionDetailQueryService.java",
+      "sha256": "44c0cd79865632e546da52e9f6280f2966493312cbcd06bf39e955400b53df84"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentReadSupport.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentReadSupport.java",
+      "sha256": "5f0cf801cb69e39bed266a56046249320efa7b5f861a847c3dd149fe8860e082"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/cursor/CursorCodec.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/cursor/CursorCodec.java",
+      "sha256": "12f2c69a8a0e2f9c9c609f32e60fb05eab31b7e0ad1c9092016e11d636fc556d"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/cursor/CursorKind.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/cursor/CursorKind.java",
+      "sha256": "7d618085fa92242bea42e38792250642e38bab9cb7261bc35b2d635435bb003d"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/cursor/PositionCursor.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/cursor/PositionCursor.java",
+      "sha256": "7b6ce4699649fbe5f3423acf2ed4a7de555a70d5c7447ce9eadd822f89a0d718"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/cursor/LogicalTransactionCursor.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/cursor/LogicalTransactionCursor.java",
+      "sha256": "4a6a1de08f390e48af5809466ecaa858ade2cf271cd66b48d06e4d5176e83a8c"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/CursorPage.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/CursorPage.java",
+      "sha256": "8630e42bd6aba1a7f19984c3e214ebf0a1288c8da04be039a2a0303919f6318e"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentPositionDetail.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentPositionDetail.java",
+      "sha256": "d5e7288f261780a1df33eaf2bf210e34134f6bdcb305c6bb5a02906b0f097897"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentPositionListItem.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentPositionListItem.java",
+      "sha256": "68c145684eb222a6f0cdf29fedb8ae07ddf2954306033eedbac1b309c573c97e"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/model/PositionListQuery.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/model/PositionListQuery.java",
+      "sha256": "1f0ed82fc31e5d931b0622ef35470f47825795982b8f50a6951ef6f738e6a2b7"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/InvestmentReadMapper.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/InvestmentReadMapper.java",
+      "sha256": "410c3aa14071850d3361f91c84408538eb8829a8db86013a51da3ad045057a1d"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/InvestmentReadRow.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/InvestmentReadRow.java",
+      "sha256": "988c5f7d0db6a5a5d2fc1d057960f7e938d3a104c5af7ec77bb8ecfef2757801"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/PositionReadCriteria.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/PositionReadCriteria.java",
+      "sha256": "a2e10d70249f1673525ec1fc1c4c8408049423b8bc88040c5921dd081be42b9f"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/LogicalTransactionReadCriteria.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/LogicalTransactionReadCriteria.java",
+      "sha256": "aa40ec16e91686167048326e50cbd0b2629c0f05c7026e86b6f1104f7d3d04a4"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/InvestmentPortfolioStatisticsRow.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/InvestmentPortfolioStatisticsRow.java",
+      "sha256": "796e8a88e1b59c8fc36c766464ab74c5f7da9db10567986697f0277e10590a4b"
+    }
+  ]
+}

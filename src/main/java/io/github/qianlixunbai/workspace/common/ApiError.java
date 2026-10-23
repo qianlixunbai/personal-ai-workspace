@@ -8,6 +8,7 @@ public record ApiError(ErrorCode code, String message, String phase) {
             case FINANCE_UNAVAILABLE -> "Finance database is unavailable.";
             case FINANCE_ACCOUNT_NOT_FOUND -> "Finance account does not exist or is inaccessible.";
             case FINANCE_TRANSACTION_NOT_FOUND -> "Finance transaction does not exist or is inaccessible.";
+            case FINANCE_POSITION_NOT_FOUND -> "Investment resource does not exist or is inaccessible.";
             case FINANCE_ASSET_NOT_FOUND -> "Finance asset does not exist or is inaccessible.";
             case VISION_UNVERIFIED -> "The active model has no valid Vision execution proof.";
             case VISION_TOO_LARGE -> "Vision input exceeds its size budget.";

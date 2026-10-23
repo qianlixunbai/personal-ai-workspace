@@ -46,7 +46,7 @@ public final class FinanceNextPreparation {
                         sql(db, "ALTER DATABASE " + finance + " RENAME TO fnext1_original_" + suffix);
                         sql(db, "ALTER DATABASE fnext1_clone_" + suffix + " RENAME TO " + finance);
                     } else if (args[0].equals("unswap")) {
-                        sql(db, "ALTER DATABASE " + finance + " RENAME TO fnext1_swapped_" + suffix);
+                        sql(db, "ALTER DATABASE " + finance + " RENAME TO fnext1_swapped_" + suffix + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
                         sql(db, "ALTER DATABASE fnext1_original_" + suffix + " RENAME TO " + finance);
                     } else if (args[0].equals("offline") || args[0].equals("online")) {
                         sql(db, "ALTER ROLE " + reader + (args[0].equals("offline") ? " NOLOGIN" : " LOGIN"));
@@ -120,6 +120,42 @@ public final class FinanceNextPreparation {
                     sql(db, "INSERT INTO exchange_rates(base_currency,quote_currency,rate,rate_time,fetched_at,provider) VALUES "
                             + "('USD','CNY',7.000000000000,'2026-10-01 08:00:00Z','2026-10-01 08:01:00Z','SYNTHETIC_FIXED')");
                     sql(db, "GRANT SELECT ON public.assets,public.market_quotes,public.exchange_rates TO " + reader);
+                }
+                if (config.path("investments").asBoolean(false)) {
+                    // Only the NEW fixture initialization path. Ledger facts and their explicit projections;
+                    // no production writes, replay implementation, or mutation of earlier fixtures.
+                    sql(db, "INSERT INTO accounts(id,user_id,name,type,currency,balance,status) VALUES "
+                            + "(6,1,'合成投资账户 A','BROKERAGE','CNY',0.00,'ACTIVE'),"
+                            + "(7,1,'合成投资账户 B','BROKERAGE','CNY',0.00,'INACTIVE'),"
+                            + "(8,2,'Bob private brokerage','BROKERAGE','CNY',0.00,'ACTIVE')");
+                    sql(db, "INSERT INTO investment_instruments(id,user_id,symbol,name,market,asset_class,quote_currency,status) VALUES "
+                            + "(11,1,'SYNUSD','合成精确持仓','US','STOCK','USD','ACTIVE'),"
+                            + "(12,1,'SYNJPY','合成缺汇率持仓','US','ETF','JPY','ACTIVE'),"
+                            + "(13,1,'SYNNONE','合成无行情持仓','US','STOCK','USD','INACTIVE'),"
+                            + "(14,1,'SYNCNY','合成 CNY 参考持仓','US','ETF','CNY','ACTIVE'),"
+                            + "(15,2,'SYNUSD','Bob private instrument','US','STOCK','USD','ACTIVE'),"
+                            + "(16,1,'SYNHK','合成非 US 持仓','HK','FUND','HKD','ACTIVE')");
+                    sql(db, "INSERT INTO assets(id,user_id,account_id,instrument_id,name,symbol,type,market,currency,quantity,avg_cost,total_cost,realized_profit_loss,position_status,position_mode,projection_version,current_price,market_value) VALUES "
+                            + "(11,1,6,11,'精确投影','SYNUSD','STOCK','US','CNY',9007199254740993.12345678,1.00000000,9007199254740993.12,1.00,'OPEN','TRANSACTION_DRIVEN',2,1.0000,123.45),"
+                            + "(12,1,7,11,'已平仓投影','SYNUSD','STOCK','US','CNY',0.00000000,0.00000000,0.00,-3.00,'CLOSED','TRANSACTION_DRIVEN',2,NULL,NULL),"
+                            + "(13,1,6,12,'缺汇率投影','SYNJPY','ETF','US','CNY',0.12345678,2.34900019,0.29,0.00,'OPEN','TRANSACTION_DRIVEN',1,NULL,NULL),"
+                            + "(14,1,6,13,'无行情投影','SYNNONE','STOCK','US','CNY',2.00000000,3.00000000,6.00,0.00,'OPEN','TRANSACTION_DRIVEN',1,NULL,NULL),"
+                            + "(15,1,6,14,'CNY 参考投影','SYNCNY','ETF','US','CNY',0.12345678,0.08100001,0.01,0.00,'OPEN','TRANSACTION_DRIVEN',1,NULL,NULL),"
+                            + "(16,2,8,15,'Bob private position','SYNUSD','STOCK','US','CNY',999.00000000,1.00000000,999.00,0.00,'OPEN','TRANSACTION_DRIVEN',1,NULL,NULL),"
+                            + "(17,1,6,16,'非 US 投影','SYNHK','FUND','HK','CNY',3.00000000,4.00000000,12.00,0.00,'OPEN','TRANSACTION_DRIVEN',1,NULL,NULL)");
+                    sql(db, "INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,net_amount,trade_time,settlement_time,source,idempotency_key,request_hash) VALUES "
+                            + "(11,1,6,11,'OPENING_POSITION',9007199254740994.12345678,1.00000000,9007199254740994.12,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-11',repeat('a',64)),"
+                            + "(12,1,7,12,'OPENING_POSITION',2,10,20,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-12',repeat('a',64)),"
+                            + "(13,1,6,13,'OPENING_POSITION',0.12345678,2.34567890,0.29,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-13',repeat('a',64)),"
+                            + "(14,1,6,14,'OPENING_POSITION',2,3,6,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-14',repeat('a',64)),"
+                            + "(15,1,6,15,'OPENING_POSITION',0.12345678,0.10000000,0.01,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-15',repeat('a',64)),"
+                            + "(16,2,8,16,'OPENING_POSITION',999,1,999,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-16',repeat('a',64)),"
+                            + "(17,1,6,17,'OPENING_POSITION',3,4,12,0,'2026-10-01 08:00:00Z','2026-10-01 08:00:00Z','MIGRATION','f6-opening-17',repeat('a',64))");
+                    sql(db, "INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,net_amount,released_cost_amount,realized_profit_loss,trade_time,settlement_time,source,idempotency_key,request_hash,account_balance_after,position_quantity_after,position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version_after) VALUES "
+                            + "(21,1,6,11,'SELL',1,2,2,2,1,1,'2026-10-02 08:00:00Z','2026-10-02 08:00:00Z','MANUAL','f6-sell-11',repeat('b',64),0,9007199254740993.12345678,1,9007199254740993.12,1,'OPEN',2),"
+                            + "(22,1,7,12,'SELL',2,8.5,17,17,20,-3,'2026-10-02 08:00:00Z','2026-10-02 08:00:00Z','MANUAL','f6-sell-12',repeat('b',64),0,0,0,0,-3,'CLOSED',2)");
+                    sql(db, "UPDATE assets SET last_transaction_id=CASE id WHEN 11 THEN 21 WHEN 12 THEN 22 ELSE id END WHERE position_mode='TRANSACTION_DRIVEN'");
+                    sql(db, "GRANT SELECT ON public.investment_instruments,public.investment_transactions TO " + reader);
                 }
             }
             stage = "WORKSPACE_V1_V2";

@@ -73,7 +73,7 @@ public static partial class RuntimeLifecycleProbe
                 }
                 else
                 {
-                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode == "gui-finance-next5" ? "fnext5-target.json" : mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
+                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode.StartsWith("gui-finance-next6", StringComparison.Ordinal) ? "fnext6-target.json" : mode == "gui-finance-next5" ? "fnext5-target.json" : mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
                     string fixtureRoot = target.RootElement.GetProperty("root").GetString()!;
                     Assert.StartsWith(@"D:\PersonalAiWorkspace-Fnext1\", fixtureRoot, StringComparison.Ordinal);
                     byte[] Fixture(string name) => ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(fixtureRoot, name)), null, DataProtectionScope.CurrentUser);
@@ -94,7 +94,7 @@ public static partial class RuntimeLifecycleProbe
                         }
                         finally { CryptographicOperations.ZeroMemory(input); }
                     }
-                    if (mode is "gui-finance" or "gui-finance-next3" or "gui-finance-next5" && !File.Exists(binding))
+                    if (mode is "gui-finance" or "gui-finance-next3" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" && !File.Exists(binding))
                     {
                         Assert.Equal("DISABLED", (await client.GetFinanceOverviewAsync(CancellationToken.None)).State);
                         phase = "NATIVE_WORKSPACE_CONFIGURATION";
@@ -133,7 +133,7 @@ public static partial class RuntimeLifecycleProbe
                         Assert.Contains("服务端数据库：fnext1_finance_", string.Join("\n", panel.Children.OfType<TextBlock>().Select(x => x.Text)));
                         Assert.Contains("Synthetic Alice", candidates.Items[0].ToString()); Assert.Contains("Synthetic Bob", candidates.Items[1].ToString());
                         // The real native MessageBox is automated only for this explicitly synthetic candidate.
-                        candidates.SelectedIndex = 0;
+                        candidates.SelectedIndex = mode == "gui-finance-next6-bob" ? 1 : 0;
                         phase = "NATIVE_FINANCE_CONFIRMATION";
                         await ConfirmNative(buttons[1], dialog);
                         await Wait(() => Task.FromResult(panel.Children.OfType<TextBlock>().Any(x => x.Text.StartsWith("已确认绑定并请求重启", StringComparison.Ordinal) || x.Text.StartsWith("绑定或重启未确认", StringComparison.Ordinal))));
@@ -142,6 +142,9 @@ public static partial class RuntimeLifecycleProbe
                         dialog.Close();
                         await Wait(() => Task.FromResult(app.DevelopmentRuntime.Snapshot().CanQueryStorage));
                         Console.WriteLine("FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS");
+                    }
+                    if (mode == "gui-finance-next6-bob") {
+                        phase = "POSITIONS_BOB"; await VerifyFinancePositionsBob(app, client); passed = true; return;
                     }
                     phase = "ACCOUNT_DISPLAY";
                     var overview = await client.GetFinanceOverviewAsync(CancellationToken.None);
@@ -210,7 +213,7 @@ public static partial class RuntimeLifecycleProbe
                         Console.WriteLine("FINANCE_DISABLED_MEMORY_KNOWLEDGE_CONVERSATION_REGRESSION_AND_RESTART_PASS");
                     }
                     phase = "DURABLE_REOPEN";
-                    if (mode != "gui-finance-next5") {
+                    if (mode is not ("gui-finance-next5" or "gui-finance-next6")) {
                     var saved = JsonSerializer.Deserialize<FinanceStoreEvidence>(await File.ReadAllTextAsync(evidencePath))!;
                     Assert.Equal(saved.BindingHash, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(binding))));
                     Assert.Equal(SyntheticMemory, (await client.GetMemoryAsync(saved.Memory, CancellationToken.None)).Content);
@@ -226,6 +229,7 @@ public static partial class RuntimeLifecycleProbe
                 }
                 if (mode == "gui-finance-next3") { phase = "TRANSACTIONS"; await VerifyFinanceTransactions(app, client); }
                 if (mode == "gui-finance-next5") { phase = "ASSETS"; await VerifyFinanceAssets(app, client, launch); }
+                if (mode == "gui-finance-next6") { phase = "POSITIONS"; await VerifyFinancePositions(app, client, launch); }
                 passed = true;
             }
             catch (Exception error) { Console.WriteLine("FINANCE_GUI_STOP_" + phase + "_" + (error is DesktopException desktop ? desktop.Error.ToString() : error.GetType().Name) + "_" + app.DevelopmentRuntime!.Snapshot().Failure); }
