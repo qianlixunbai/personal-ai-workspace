@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## F-next-10 后工程清理（2026-10-24）
+
+后续 UI 调研候选基线为 `codex/workspace-post-fnext10-cleanup`，直接继承已验收的 `codex/finance-f-next-10 @ f09d1bd1f883db8740cef8336a78e9a3a4123270`。旧分支与八个 B4A6 未追踪文件已完成安全备份和退役；清单、恢复入口与验证边界见 [工程清理报告](docs/engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md)。下方 B4A6 保留说明属于清理前的历史记录。当前仍为 Development-only，未授予 Production GO。
+
 ## PostgreSQL Desktop 开发收尾（2026-10-22）
 
 开发源码交付分支 `codex/postgresql-desktop-integration` 已整理成功工作区记忆与托盘切换。用户已确认 final 无参数进入 PostgreSQL、V1/V2 Ready 与历史会话可见；同一 final 的完整物理托盘退出/重开人工关卡仍 PENDING，Production GO 未授予。
