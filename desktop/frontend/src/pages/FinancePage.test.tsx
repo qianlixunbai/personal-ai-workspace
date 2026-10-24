@@ -6,6 +6,32 @@ import { FinancePage } from './FinancePage'
 
 afterEach(cleanup)
 
+it('keeps import receipt precision, empty history and identity clearing without accepting a late or numeric receipt', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
+  const batch = { importBatchId: '00000000-0000-0000-0001-000000000101', sourceFileName: 'statement.csv', confirmedAt: '2026-10-23T12:00:00.123456Z', status: 'CONFIRMED', totalRows: 1, warningCount: 0, contractVersion: 'TRANSACTION_IMPORT_CONFIRM_V1' }
+  const page = { items: [batch], page: 0, size: 10, total: '1' }
+  const segment = { receipt: { ...batch, importSessionId: '00000000-0000-0000-0002-000000000101', fileDigest: 'a'.repeat(64), acceptedRows: 1, createdCount: 1, skippedCount: 0,
+    transactions: [{ rowNumber: 2, transactionId: '9007199254740993' }], accountImpacts: [{ accountId: '1', rowCount: 1, balanceBefore: '9007199254740993.10', delta: '0.20', balanceAfter: '9007199254740993.30' }], resultDigest: 'b'.repeat(64) }, transactionPage: 0, accountImpactPage: 0, segmentSize: 20, accountImpactCount: 1, completeReceipt: true }
+  const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
+  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Import History · 导入历史' })); await reply(overview); await reply({ ...page, items: [], total: '0' })
+    expect(screen.getByText('当前绑定用户没有已确认的导入批次。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新导入历史' })); await reply(overview); await reply(page)
+    fireEvent.click(screen.getByRole('button', { name: 'statement.csv' })); await reply(overview); await reply(page); await reply(segment)
+    expect(screen.getByText('9007199254740993.30')).toBeTruthy(); expect(screen.getByText('9007199254740993')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新导入历史' })); await reply(overview); await reply(page); const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, segment) })
+    expect(screen.queryByText('9007199254740993.30')).toBeNull(); expect(screen.queryByText('Confirmation Receipt · 确认回执')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新导入历史' })); await reply(overview); await reply(page)
+    fireEvent.click(screen.getByRole('button', { name: 'statement.csv' })); await reply(overview); await reply(page)
+    await reply({ ...segment, receipt: { ...segment.receipt, accountImpacts: [{ ...segment.receipt.accountImpacts[0], balanceAfter: 1 }] } })
+    expect(screen.getByRole('alert')).toBeTruthy(); expect(screen.queryByText('Confirmation Receipt · 确认回执')).toBeNull()
+    view.unmount()
+  } finally { bridge.dispose() }
+})
+
 it('keeps investment facts and receipts exact and discards a late audit across identity changes', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }

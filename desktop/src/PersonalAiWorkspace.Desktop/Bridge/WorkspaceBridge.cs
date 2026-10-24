@@ -28,6 +28,8 @@ internal interface IWorkspaceNativeActions
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task<StorageStatus> StorageStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceOverview> FinanceOverviewAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceImportPage> FinanceImportsAsync(int page, int size, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceImportSegment> FinanceImportReceiptAsync(string id, int transactionPage, int accountImpactPage, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryPage> FinanceHistoryAsync(FinanceHistoryQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryDetail> FinanceHistoryDetailAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryTimeline> FinanceHistoryTimelineAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
@@ -190,6 +192,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "storage.status") result = await native.StorageStatusAsync(cancellation);
             else if (method == "storage.startupStatus") result = await native.StorageStartupStatusAsync(cancellation);
             else if (method == "finance.overview") result = await native.FinanceOverviewAsync(cancellation);
+            else if (method == "finance.imports") result = await native.FinanceImportsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), cancellation);
+            else if (method == "finance.importReceipt") result = await native.FinanceImportReceiptAsync(payload.GetProperty("id").GetString()!, payload.GetProperty("transactionPage").GetInt32(), payload.GetProperty("accountImpactPage").GetInt32(), cancellation);
             else if (method == "finance.history") result = await native.FinanceHistoryAsync(HistoryQuery(payload), cancellation);
             else if (method == "finance.historyDetail") result = await native.FinanceHistoryDetailAsync(payload.GetProperty("id").GetString()!, cancellation);
             else if (method == "finance.historyTimeline") result = await native.FinanceHistoryTimelineAsync(payload.GetProperty("id").GetString()!, cancellation);
@@ -376,6 +380,15 @@ internal sealed class WorkspaceBridge : IDisposable
         if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
+        if (method == "finance.imports") return Fields(payload, "page", "size")
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("size").ValueKind == JsonValueKind.Number
+            && payload.GetProperty("page").TryGetInt32(out int importPage) && payload.GetProperty("size").TryGetInt32(out int importSize)
+            && RuntimeClient.ValidFinanceImportQuery(importPage, importSize);
+        if (method == "finance.importReceipt") return Fields(payload, "id", "transactionPage", "accountImpactPage")
+            && Text(payload, "id", 36, out var batchId) && RuntimeClient.ValidFinanceBatchId(batchId)
+            && payload.GetProperty("transactionPage").ValueKind == JsonValueKind.Number && payload.GetProperty("accountImpactPage").ValueKind == JsonValueKind.Number
+            && payload.GetProperty("transactionPage").TryGetInt32(out int rowPage) && rowPage is >= 0 and <= 499
+            && payload.GetProperty("accountImpactPage").TryGetInt32(out int impactPage) && impactPage is >= 0 and <= 499;
         if (method == "finance.get") return Fields(payload, "accountId") && Text(payload, "accountId", 19, out var accountId) && RuntimeClient.ValidFinanceId(accountId);
         if (method is "finance.historyDetail" or "finance.historyTimeline" or "finance.position") return Fields(payload, "id") && Text(payload, "id", 19, out var positionId) && RuntimeClient.ValidFinanceId(positionId);
         if (method == "finance.history") return Fields(payload, "positionId", "accountId", "instrumentId", "type", "correctionStatus", "from", "to", "cursor", "size")

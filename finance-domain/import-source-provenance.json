@@ -1,0 +1,18 @@
+{
+  "sourceRepository": "personal-finance-OS",
+  "sourceCommit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
+  "files": [
+    {
+      "source": "backend/src/main/java/com/financeos/module/importing/dto/TransactionImportReceipt.java",
+      "target": "finance-domain/src/main/java/com/financeos/module/importing/dto/TransactionImportReceipt.java",
+      "sha256": "a11827a45b57aa7a51cbfc12315b2d9539cf555637b85b0542eb7e36da5b7ad3",
+      "mode": "byte-for-byte"
+    }
+  ],
+  "adaptation": {
+    "source": "backend/src/main/java/com/financeos/module/importing/service/TransactionImportConfirmService.java",
+    "sha256": "9d5ad9000c2a0de439eaec70fdf2bf395a7c841eea5b886c8d5c410a94c4e07c",
+    "target": "src/main/java/io/github/qianlixunbai/workspace/finance/FinanceImportQueries.java",
+    "scope": "getReceipt, reconstruct, receipt, resultDigest only; JDBC read-only adapter, bounded full validation then explicit segments. No confirm/replay/write service copied or wired."
+  }
+}

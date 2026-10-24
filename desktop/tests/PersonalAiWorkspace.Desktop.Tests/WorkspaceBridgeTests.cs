@@ -119,6 +119,11 @@ public sealed class WorkspaceBridgeTests
             await f.Receive(f.Request("finance.positions", payload: value));
         await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "", correctionStatus = "", from = "", to = "", cursor = "", size = 2, userId = 2 }));
         await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "REVERSAL", correctionStatus = "", from = "", to = "", cursor = "", size = 2 }));
+        foreach (object value in new object[] { new { page = 0, size = 2, userId = 2 }, new { page = "0", size = 2 }, new { page = 0, size = 21 } })
+            await f.Receive(f.Request("finance.imports", payload: value));
+        foreach (object value in new object[] { new { id = "00000000-0000-0000-0001-000000000101", transactionPage = 0, accountImpactPage = 0, userId = 2 },
+            new { id = "../confirm", transactionPage = 0, accountImpactPage = 0 }, new { id = "00000000-0000-0000-0001-000000000101", transactionPage = "0", accountImpactPage = 0 } })
+            await f.Receive(f.Request("finance.importReceipt", payload: value));
         foreach (object value in new object[] { new { page = 0, size = 2, type = "ALL", sort = "ID_ASC", userId = 2 },
             new { page = 0, size = 21, type = "STOCK", sort = "CREATED_DESC" }, new { page = 0, size = 2, type = "ALL", sort = "price;--" } })
             await f.Receive(f.Request("finance.assets", payload: value));

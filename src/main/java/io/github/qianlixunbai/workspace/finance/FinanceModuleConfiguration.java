@@ -84,6 +84,12 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceImportQueries financeImportQueries(FinanceAccountQueries identity,
+                @Qualifier("financeDataSource") DataSource source) {
+            return new FinanceImportQueries(identity, source);
+        }
+
+        @Bean
         FinanceTransactionQueries financeTransactionQueries(FinanceAccountQueries identity,
                 @Qualifier("financeDataSource") DataSource dataSource) {
             return new FinanceTransactionQueries(identity, dataSource);

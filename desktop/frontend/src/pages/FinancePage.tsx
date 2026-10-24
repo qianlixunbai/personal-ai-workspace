@@ -1,3 +1,4 @@
+import { FinanceImports } from '../components/FinanceImports'
 import { FinanceHistory } from '../components/FinanceHistory'
 import { FinancePortfolio } from '../components/FinancePortfolio'
 import { useEffect, useRef, useState } from 'react'
@@ -20,7 +21,7 @@ const statusLabel = (status: string) => status === 'ACTIVE' ? '使用中 · ACTI
 const typeLabel = (type: string) => ({ BANK: '银行账户', CASH: '现金', CREDIT_CARD: '信用卡', INVESTMENT: '投资账户', OTHER: '其他' }[type] ?? type)
 
 export function FinancePage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
-  const [view, setView] = useState<'accounts' | 'transactions' | 'budgets' | 'assets' | 'investments' | 'portfolio' | 'history'>('accounts')
+  const [view, setView] = useState<'accounts' | 'transactions' | 'budgets' | 'assets' | 'investments' | 'portfolio' | 'history' | 'imports'>('accounts')
   const [historyPosition, setHistoryPosition] = useState('')
   return <>
     <nav className="finance-toolbar" aria-label="Finance 视图">
@@ -31,10 +32,12 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
       <button className="secondary" aria-pressed={view === 'investments'} onClick={() => setView('investments')}>Investment Positions · 投资持仓</button>
       <button className="secondary" aria-pressed={view === 'portfolio'} onClick={() => setView('portfolio')}>Portfolio Summary · 投资组合统计</button>
       <button className="secondary" aria-pressed={view === 'history'} onClick={() => { setHistoryPosition(''); setView('history') }}>Investment History · 投资交易历史</button>
+      <button className="secondary" aria-pressed={view === 'imports'} onClick={() => setView('imports')}>Import History · 导入历史</button>
     </nav>
     {view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} />
+      : view === 'imports' ? <FinanceImports bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'history' ? <FinanceHistory bridge={bridge} enabled={enabled} openSettings={openSettings} initialPosition={historyPosition} />
       : view === 'portfolio' ? <FinancePortfolio bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'investments' ? <FinanceInvestments bridge={bridge} enabled={enabled} openSettings={openSettings} openHistory={id => { setHistoryPosition(id); setView('history') }} />

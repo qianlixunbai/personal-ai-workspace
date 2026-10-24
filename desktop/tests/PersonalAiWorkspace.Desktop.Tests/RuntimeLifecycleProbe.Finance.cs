@@ -73,7 +73,7 @@ public static partial class RuntimeLifecycleProbe
                 }
                 else
                 {
-                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode.StartsWith("gui-finance-next8", StringComparison.Ordinal) ? "fnext8-target.json" : mode.StartsWith("gui-finance-next7", StringComparison.Ordinal) ? "fnext7-target.json" : mode.StartsWith("gui-finance-next6", StringComparison.Ordinal) ? "fnext6-target.json" : mode == "gui-finance-next5" ? "fnext5-target.json" : mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
+                    using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", mode.StartsWith("gui-finance-next9", StringComparison.Ordinal) ? "fnext9-target.json" : mode.StartsWith("gui-finance-next8", StringComparison.Ordinal) ? "fnext8-target.json" : mode.StartsWith("gui-finance-next7", StringComparison.Ordinal) ? "fnext7-target.json" : mode.StartsWith("gui-finance-next6", StringComparison.Ordinal) ? "fnext6-target.json" : mode == "gui-finance-next5" ? "fnext5-target.json" : mode == "gui-finance-next3" ? "fnext3-target.json" : "fnext1-target.json")));
                     string fixtureRoot = target.RootElement.GetProperty("root").GetString()!;
                     Assert.StartsWith(@"D:\PersonalAiWorkspace-Fnext1\", fixtureRoot, StringComparison.Ordinal);
                     byte[] Fixture(string name) => ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(fixtureRoot, name)), null, DataProtectionScope.CurrentUser);
@@ -94,7 +94,7 @@ public static partial class RuntimeLifecycleProbe
                         }
                         finally { CryptographicOperations.ZeroMemory(input); }
                     }
-                    if (mode is "gui-finance" or "gui-finance-next3" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob" or "gui-finance-next8" or "gui-finance-next8-bob" && !File.Exists(binding))
+                    if (mode is "gui-finance" or "gui-finance-next3" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob" or "gui-finance-next8" or "gui-finance-next8-bob" or "gui-finance-next9" or "gui-finance-next9-bob" && !File.Exists(binding))
                     {
                         Assert.Equal("DISABLED", (await client.GetFinanceOverviewAsync(CancellationToken.None)).State);
                         phase = "NATIVE_WORKSPACE_CONFIGURATION";
@@ -143,6 +143,7 @@ public static partial class RuntimeLifecycleProbe
                         await Wait(() => Task.FromResult(app.DevelopmentRuntime.Snapshot().CanQueryStorage));
                         Console.WriteLine("FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS");
                     }
+                    if (mode.StartsWith("gui-finance-next9", StringComparison.Ordinal)) { phase = "IMPORTS"; await VerifyFinanceImports(app, client, launch, mode.EndsWith("-bob", StringComparison.Ordinal), Mutate); passed = true; return; }
                     if (mode.StartsWith("gui-finance-next8", StringComparison.Ordinal)) { phase = "HISTORY"; await VerifyFinanceHistory(app, client, launch, mode.EndsWith("-bob", StringComparison.Ordinal), mode.EndsWith("-ui", StringComparison.Ordinal), Mutate); passed = true; return; }
                     if (mode is "gui-finance-next6-bob" or "gui-finance-next7-bob") {
                         if (mode == "gui-finance-next7-bob") await VerifyFinancePortfolio(app, client, launch, true);

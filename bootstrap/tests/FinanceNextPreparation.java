@@ -185,6 +185,10 @@ public final class FinanceNextPreparation {
                     }
                 }
             }
+            if (config.path("imports").asBoolean(false)) {
+                stage = "NEW_IMPORT_RECEIPTS";
+                try (var db = source(finance).getConnection()) { FinanceImportFixture.prepare(db, reader); }
+            }
             stage = "WORKSPACE_V1_V2";
             try (var db = source(workspace).getConnection()) {
                 sql(db, "REVOKE ALL ON SCHEMA public FROM PUBLIC"); sql(db, "CREATE SCHEMA workspace"); sql(db, "REVOKE ALL ON SCHEMA workspace FROM PUBLIC");

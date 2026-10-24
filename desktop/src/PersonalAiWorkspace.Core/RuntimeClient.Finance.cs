@@ -106,6 +106,8 @@ public sealed partial class RuntimeClient
             (403, "FINANCE_BINDING_INVALID") => DesktopError.FinanceBindingInvalid,
             (404, "FINANCE_ACCOUNT_NOT_FOUND") => DesktopError.FinanceAccountNotFound,
             (404, "FINANCE_TRANSACTION_NOT_FOUND") => DesktopError.FinanceTransactionNotFound,
+            (404, "FINANCE_IMPORT_NOT_FOUND") => DesktopError.FinanceImportNotFound,
+            (503, "FINANCE_IMPORT_RECEIPT_INVALID") => DesktopError.FinanceImportReceiptInvalid,
             (404, "FINANCE_POSITION_NOT_FOUND") => DesktopError.FinancePositionNotFound,
             (404, "FINANCE_ASSET_NOT_FOUND") => DesktopError.FinanceAssetNotFound,
             (503, "FINANCE_UNAVAILABLE") => DesktopError.FinanceUnavailable,

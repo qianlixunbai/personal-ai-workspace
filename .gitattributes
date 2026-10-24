@@ -12,4 +12,5 @@
 /finance-domain/src/main/java/com/financeos/module/asset/**/*.java -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # Preserve frozen investment reads, DTOs and cursor dependencies byte for byte.
 /finance-domain/src/main/java/com/financeos/module/investment/**/*.java -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/finance-domain/src/main/java/com/financeos/module/importing/dto/*.java -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /finance-domain/src/main/java/com/financeos/common/BusinessException.java -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
