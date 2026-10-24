@@ -4,7 +4,7 @@
 
 ## 结果与范围
 
-- 远端分支：清理前 **18**，删除旧分支 **16**；发布清理分支后目标为 **3**。HEAD 符号引用不计为分支。
+- 远端分支：清理前 **18**，删除旧分支 **16**；发布清理分支后实际核对为 **3**。HEAD 符号引用不计为分支。
 - 本地分支：清理前 **32**，新建清理分支 **1**，通过 `git branch -d` 删除旧分支 **30**，剩余 **3**。
 - 八个 B4A6 未追踪文件：全部逐文件私有归档、字节哈希验证、从原位置退役；没有提交原始文件。
 - 生产代码、测试/验证脚本、配置、Native Gate、React/Bridge、金融计算、持久化格式及 migrations 均无修改。Git 中仅新增本报告和 README 当前入口。
@@ -16,7 +16,7 @@
 
 先把全部本地 refs、完整远端 `ls-remote --symref`、worktree 和 status 写入仓库外私有归档，然后按约定代理执行 `fetch --prune origin` 成功，未走直连 fallback。远端默认分支为 `main`，并非 F-next-10。
 
-下表覆盖全部 32 个原本地分支及全部 18 个原远端分支；同名本地/远端 tip 完全一致，因此合并列示。“本地”表示开始前没有同名远端分支，未创建过对应远端。
+下表覆盖全部 32 个原本地分支及全部 18 个原远端分支；同名本地/远端 tip 完全一致，因此合并列示。“本地”表示开始前没有同名远端分支，本轮也没有创建对应远端。
 
 对每个 tip 均实际执行完整提交遍历、`merge-base tip F-next-10`、`merge-base --is-ancestor` 和 `rev-list F-next-10..tip`。**每一行共同祖先均等于该行 tip，独有提交数均为 0**；不是内容相似或 cherry-pick 推断。完整提交图和逐 ref 计算结果保存在私有归档。
 
@@ -134,7 +134,7 @@ A 类为已废弃工具，B 类为历史验证文档；D 表示含本机路径�
 | 项目 | 本轮实际证据与边界 |
 | --- | --- |
 | F-next-10 与 main | 本地保留原 SHA，删除后远端 `ls-remote --symref` 核对相同；候选分支从 F-next-10 直接继承。 |
-| Finance、统一 Shared AI Runtime、Memory/Knowledge/Translate、Native Gate、绑定逻辑 | 原 tracked tree 在八文件退役后仍逐字等于 F-next-10；最终预期 diff 仅本报告及 README。没有生产行为变化。 |
+| Finance、统一 Shared AI Runtime、Memory/Knowledge/Translate、Native Gate、绑定逻辑 | 原 tracked tree 在八文件退役后仍逐字等于 F-next-10；实际提交 diff 仅本报告及 README。没有生产行为变化。 |
 | Finance 冻结来源 | 入场/退役后 `git status` 均干净，HEAD 均为 `c6c87a0627b746e70a45b1c7896f63defd76a810`；仅只读检查。 |
 | 原 Finance V1–V21 / Workspace V1–V2 migrations | 未修改、未运行；生产树比较覆盖原 SQL 和 provenance。 |
 | 历史开发客户端/包、原 F-next-2 startup recovery、F-next-10 独立包及既有保护清单 | 复用既有 F-next-10 保护清单，去掉本轮授权退役八文件，补入当前 F-next-10 包和三个旧证据文件；本轮建立并复核 17,340 个文件 SHA-256，变化为 0。相对于原历史清单也未发现其他缺失/变化；范围见私有清单，不推断未列出的文件。 |
@@ -152,9 +152,9 @@ A 类为已废弃工具，B 类为历史验证文档；D 表示含本机路径�
 
 - 当前候选分支：`codex/workspace-post-fnext10-cleanup`。
 - 继承起点：`f09d1bd1f883db8740cef8336a78e9a3a4123270`，没有重打已验收包；原包内构建来源与 manifest 保持原值。
-- 本报告首次提交前审计 HEAD：上述 F-next-10 SHA。提交/推送与最终远端核对在交付记录中补充；自引用的最终提交 SHA 以本文件所在分支 HEAD / `git rev-parse HEAD` 为准。
-- 待交付：仅明确暂存 README 和本报告；先检查实际/staged diff、`git diff --check`，普通 commit/push 后核对远端 HEAD、分支清单和工作树。
-- 清理动作已全部完成，没有尚未安全处理的八文件或 REVIEW_REQUIRED 分支；提交推送尚待本报告完成后执行。
+- 工程清理内容提交及本次补记前实际审计 HEAD：`15051fc6351063ec271114591339c3545c99d03e`，已正常 push，随后精确核对远端同名分支 SHA 一致。该提交相对 F-next-10 只含 README 和本报告；本次另一个提交仅补充最终交付记录，不改写前一提交。
+- 已执行实际/staged diff 审查和 `git diff --check`；首次 push 后 `git status --porcelain=v1 --untracked-files=all` 为空，本地/远端均只有上述三个保留分支，默认分支仍为 main，F-next-10 SHA 不变。没有独有历史提交丢失或未清理的八文件。
+- 最终报告补记提交的完整 SHA 以此分支 `git rev-parse HEAD`、GitHub 本文件所属最新提交及最终交付回复为准（文档不能预先嵌入其自身提交哈希）；精确值及最终 `ls-remote`/status 另写在私有 `A/final-delivery.json`。本轮没有清理阻碍。
 
 下一阶段为 **Personal AI Workspace — GitHub Open-source UI Research**，推荐从本清理分支新建后续工作。首先阅读本报告、[FINANCE-REMAINING-CAPABILITIES.md](FINANCE-REMAINING-CAPABILITIES.md)、[FINANCE-F-NEXT-10-REPORT.md](FINANCE-F-NEXT-10-REPORT.md) 和现有架构资料，然后另行开展开源 UI 调研。本轮不启动该调研、F-next-11、UI 重设计或金融写入迁移。
 
