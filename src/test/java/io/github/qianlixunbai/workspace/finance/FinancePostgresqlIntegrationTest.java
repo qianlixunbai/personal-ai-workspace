@@ -50,6 +50,76 @@ class FinancePostgresqlIntegrationTest {
     private final Map<String, Object> evidence = new LinkedHashMap<>();
 
     @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "FINANCE_DRILLDOWN_TEST_ROOT", matches = ".+")
+    void dashboardDrilldownUsesExactReadOnlyScopeAndBoundUserOnExistingSyntheticPostgresql() throws Exception {
+        Path root = Path.of(System.getenv("FINANCE_DRILLDOWN_TEST_ROOT")).toAbsolutePath();
+        String suffix = root.getFileName().toString();
+        assertTrue(suffix.matches("[a-f0-9]{12}"));
+        assertEquals(Path.of("D:/PersonalAiWorkspace-Fnext1", suffix).toAbsolutePath(), root);
+        Path file = root.resolve("finance.dpapi"); verifyPrivateCredential(file);
+        byte[] plain = com.sun.jna.platform.win32.Crypt32Util.cryptUnprotectData(Files.readAllBytes(file), null, 1, null);
+        var config = JSON.readTree(plain); Arrays.fill(plain, (byte) 0);
+        int port = config.path("port").asInt(); assertTrue(port >= 55000 && port <= 55999);
+        assertEquals("127.0.0.1", config.path("host").asString());
+        assertEquals("fnext1_finance_" + suffix, config.path("database").asString());
+        assertEquals("fnext1_reader_" + suffix, config.path("username").asString());
+        try (var context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("drilldown-read-only-fixture", Map.of(
+                    "workspace.finance.enabled", "true", "workspace.finance.flyway.enabled", "false",
+                    "workspace.finance.datasource.url", "jdbc:postgresql://127.0.0.1:" + port + "/fnext1_finance_" + suffix,
+                    "workspace.finance.datasource.username", "fnext1_reader_" + suffix,
+                    "workspace.finance.datasource.password", config.path("password").asString())));
+            context.register(FinanceInfrastructureConfiguration.class); context.refresh(); config = null;
+            var source = context.getBean("financeDataSource", PGSimpleDataSource.class);
+            var jdbc = new JdbcTemplate(source);
+            assertEquals("FNEXT1_SYNTHETIC_" + suffix, jdbc.queryForObject("SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()", String.class));
+            assertEquals("on", jdbc.queryForObject("SHOW default_transaction_read_only", String.class));
+            var identities = new FinanceIdentityRepository(source); var profile = mock(LocalFinanceProfile.class);
+            when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(1)));
+            var accounts = new AccountQueryService(context.getBean(AccountMapper.class));
+            var identity = new FinanceAccountQueries(profile, identities, accounts, new FinanceAccountListing(source),
+                    context.getBean("financeTransactionManager", JdbcTransactionManager.class));
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(ClientIdentity.NATIVE, "unused",
+                    List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
+            var dashboard = new FinanceDashboardQueries(identity, accounts, source,
+                    java.time.Clock.fixed(java.time.Instant.parse("2026-10-24T04:00:00Z"), java.time.ZoneOffset.UTC));
+            var transactions = new FinanceTransactionQueries(identity, source);
+            for (long user : List.of(1L, 2L)) {
+                when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(user)));
+                var snapshot = dashboard.dashboard();
+                for (var flow : snapshot.monthlyCashFlow()) {
+                    for (String type : List.of("INCOME", "EXPENSE")) {
+                        BigDecimal sum = BigDecimal.ZERO; int page = 0; var ids = new HashSet<String>();
+                        FinanceTransactionQueries.TransactionPage rows;
+                        do {
+                            assertTrue(page < 30, "Synthetic fixture must stay bounded");
+                            rows = transactions.list(page++, 2, "", flow.month() + "-01", "", type, flow.month(), snapshot.asOf());
+                            for (var t : rows.items()) {
+                                assertEquals("TRANSACTION", t.kind()); assertEquals("CNY", t.currency()); assertEquals(type, t.type());
+                                assertTrue(t.transactedAt().compareTo(snapshot.asOf()) < 0); assertTrue(t.transactedAt().startsWith(flow.month()));
+                                assertTrue(ids.add(t.id())); sum = sum.add(new BigDecimal(t.amount()));
+                                assertNotEquals(user == 1 ? "3" : "1", t.id());
+                            }
+                        } while (page * rows.size() < Long.parseLong(rows.total()));
+                        assertEquals(Long.parseLong(rows.total()), ids.size());
+                        assertEquals(0, sum.compareTo(new BigDecimal(type.equals("INCOME") ? flow.income() : flow.expense())));
+                    }
+                }
+            }
+            when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(1)));
+            assertEquals("9007199254740993.10", transactions.transaction("TRANSACTION", 1).amount());
+            assertEquals("0.10", transactions.transaction("TRANSFER", 1).amount());
+            code(ErrorCode.FINANCE_TRANSACTION_NOT_FOUND, () -> transactions.transaction("TRANSACTION", 3));
+            code(ErrorCode.INVALID_REQUEST, () -> transactions.list(0, 10, "", "2026-10-01", "", "ALL", "2026-10", "2026-10-24T12:00"));
+            code(ErrorCode.INVALID_REQUEST, () -> transactions.list(0, 10, "", "2026-10-01", "2026-10-24", "INCOME", "2026-10", "2026-10-24T12:00"));
+            var actual = identities.activeIdentity(1);
+            when(profile.requireBinding()).thenReturn(new LocalFinanceProfile.Binding(1, UUID.randomUUID(), actual.userId(), "0".repeat(64), actual.userFingerprint()));
+            code(ErrorCode.FINANCE_BINDING_INVALID, () -> transactions.list(0, 10, "", "2026-10-01", "", "INCOME", "2026-10", "2026-10-24T12:00"));
+            System.out.println("D1_REAL_POSTGRESQL_READ_ONLY_SIX_MONTHS_TWO_USERS_PAGINATION_CNY_EXCLUSIVE_BOUNDARY_AND_SOURCE_KIND_PASS");
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test
     @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "FINANCE_DASHBOARD_TEST_CONFIG", matches = ".+")
     void dashboardUsesNewSyntheticPostgresqlWithExactSnapshotAndSourceSemantics() throws Exception {
         Path file = Path.of(System.getenv("FINANCE_DASHBOARD_TEST_CONFIG"));

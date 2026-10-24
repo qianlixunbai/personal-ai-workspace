@@ -141,3 +141,19 @@
   .chart-expense.chart-line { stroke-dasharray: 6 4; }
   .bar-fill { fill: Highlight; }
 }
+.finance-back { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.finance-filter-notice { padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow-wrap: anywhere; }
+.metric-hit { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: inherit; background: transparent; color: inherit; padding: 0; z-index: 2; box-shadow: none; }
+.metric-hit span { position: absolute; right: 18px; bottom: 14px; font-size: 12px; }
+.metric-hit:hover { background: rgb(128 160 220 / 9%); box-shadow: none; }
+.metric-hit:active { background: rgb(128 160 220 / 18%); }
+.metric-card:has(.metric-hit) { padding-bottom: 42px; }
+.metric-hit:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.cash-flow-months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-block: 12px; }
+.cash-flow-months button { display: grid; gap: 4px; padding: 8px 4px; min-width: 0; font-size: 12px; }
+.cash-flow-months button span { font-size: 10px; }
+.cash-flow-months button[aria-pressed="true"] { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.chart-pick { cursor: pointer; }
+.chart-point.chart-selected { stroke-width: 3px; fill: currentColor; }
+.cash-flow-detail { scroll-margin-block: 20px; }
+@media (max-width: 640px) { .cash-flow-months { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

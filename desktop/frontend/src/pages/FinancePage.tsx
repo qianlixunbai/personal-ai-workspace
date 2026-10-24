@@ -10,6 +10,7 @@ import { FinanceBudgets } from '../components/FinanceBudgets'
 import { FinanceAssets } from '../components/FinanceAssets'
 import { FinanceInvestments } from '../components/FinanceInvestments'
 import { Icon } from '../components/Icon'
+import { invalidFinanceIdentity, type FinanceIntent, type FinanceReturn, type FinanceView } from './financeNavigation'
 
 const initialQuery: FinanceQuery = { page: 0, size: 10, status: 'ALL', sort: 'ID_ASC' }
 const states = {
@@ -28,14 +29,34 @@ const financeGroups = [
   { label: '历史记录', items: [{ id: 'imports', name: 'Import History', label: '导入历史' }] },
   { label: '能力说明', items: [{ id: 'budgets', name: 'Budgets', label: '预算 · 来源不支持' }] },
 ] as const
-type FinanceView = typeof financeGroups[number]['items'][number]['id']
 
 export function FinancePage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
   const [view, setView] = useState<FinanceView>('dashboard')
-  const [historyPosition, setHistoryPosition] = useState('')
+  const [intent, setIntent] = useState<FinanceIntent | null>(null)
+  const [back, setBack] = useState<FinanceReturn[]>([])
+  const [entry, setEntry] = useState(0)
+  const content = useRef<HTMLDivElement>(null)
+  const clearNavigation = () => { setIntent(null); setBack([]) }
+  useEffect(() => {
+    const session = bridge.onSession(clearNavigation)
+    const runtime = bridge.onStorageStartup(clearNavigation)
+    return () => { session(); runtime() }
+  }, [bridge])
+  useEffect(() => { if (!enabled) clearNavigation() }, [enabled])
+  useEffect(() => { setIntent(null); if (entry) content.current?.focus() }, [entry])
+  const enter = (next: FinanceIntent, previous: FinanceReturn) => {
+    setBack(stack => [...stack, previous].slice(-2)); setIntent(next); setView(next.target); setEntry(n => n + 1)
+  }
+  const goBack = () => {
+    const previous = back[back.length - 1]
+    if (!previous) return
+    setBack(back.slice(0, -1))
+    setIntent(previous.view === 'dashboard' ? { source: view, target: 'dashboard', month: previous.month }
+      : previous.view === 'investments' ? { source: view, target: 'investments', query: previous.query, selection: previous.selection } : null)
+    setView(previous.view); setEntry(n => n + 1)
+  }
   const selectView = (next: FinanceView) => {
-    if (next === 'history') setHistoryPosition('')
-    setView(next)
+    clearNavigation(); setView(next); setEntry(n => n + 1)
   }
   return <div className="finance-layout">
     <nav className="finance-navigation" aria-label="Finance 视图">
@@ -46,21 +67,22 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
     <label className="finance-picker">选择 Finance 页面<select value={view} onChange={event => selectView(event.target.value as FinanceView)}>
       {financeGroups.map(group => <optgroup key={group.label} label={group.label}>{group.items.map(item => <option key={item.id} value={item.id}>{item.name} · {item.label}</option>)}</optgroup>)}
     </select></label>
-    <div className="finance-content">
-    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} openAssets={() => setView('assets')} openAccounts={() => setView('accounts')} openTransactions={() => setView('transactions')} />
-      : view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
-      : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} />
-      : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} />
+    {back.length > 0 && <div className="finance-back"><button className="secondary" onClick={goBack}>返回{back[back.length - 1]!.view === 'dashboard' ? '财务总览' : back[back.length - 1]!.view === 'portfolio' ? '投资组合' : '持仓上下文'}</button><span className="hint">返回后重新验证身份并读取数据</span></div>}
+    <div className="finance-content" ref={content} tabIndex={-1} key={entry}>
+    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} initialMonth={intent?.target === 'dashboard' ? intent.month : ''} invalidateNavigation={clearNavigation} navigate={(next, month) => enter(next, { view: 'dashboard', month })} />
+      : view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} invalidateNavigation={clearNavigation} />
+      : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} intent={intent?.target === 'transactions' ? intent : undefined} invalidateNavigation={clearNavigation} />
+      : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} invalidateNavigation={clearNavigation} />
       : view === 'imports' ? <FinanceImports bridge={bridge} enabled={enabled} openSettings={openSettings} />
-      : view === 'history' ? <FinanceHistory bridge={bridge} enabled={enabled} openSettings={openSettings} initialPosition={historyPosition} />
-      : view === 'portfolio' ? <FinancePortfolio bridge={bridge} enabled={enabled} openSettings={openSettings} />
-      : view === 'investments' ? <FinanceInvestments bridge={bridge} enabled={enabled} openSettings={openSettings} openHistory={id => { setHistoryPosition(id); setView('history') }} />
+      : view === 'history' ? <FinanceHistory bridge={bridge} enabled={enabled} openSettings={openSettings} initialPosition={intent?.target === 'history' ? intent.positionId : ''} invalidateNavigation={clearNavigation} />
+      : view === 'portfolio' ? <FinancePortfolio bridge={bridge} enabled={enabled} openSettings={openSettings} invalidateNavigation={clearNavigation} navigate={next => enter(next, { view: 'portfolio' })} />
+      : view === 'investments' ? <FinanceInvestments bridge={bridge} enabled={enabled} openSettings={openSettings} intent={intent?.target === 'investments' ? intent : undefined} invalidateNavigation={clearNavigation} openHistory={(id, query) => enter({ source: 'investments', target: 'history', positionId: id }, { view: 'investments', query: { ...query, cursor: '' }, selection: id })} />
       : <FinanceBudgets bridge={bridge} enabled={enabled} openSettings={openSettings} />}
     </div>
   </div>
 }
 
-function FinanceAccountPage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
+function FinanceAccountPage({ bridge, enabled, openSettings, invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; invalidateNavigation: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [list, setList] = useState<FinanceAccountPage | null>(null)
   const [detail, setDetail] = useState<FinanceAccount | null>(null)
@@ -98,7 +120,7 @@ function FinanceAccountPage({ bridge, enabled, openSettings }: { bridge: Workspa
     try {
       const snapshot = await bridge.financeOverview()
       if (current !== generation.current) return
-      if (snapshot.state !== 'READY') { setOverview(snapshot); setSelected(null); return }
+      if (snapshot.state !== 'READY') { setOverview(snapshot); setSelected(null); invalidateNavigation(); return }
       // Publish the batch only after every requested read passes its own identity check.
       const accounts = await bridge.financeAccounts(next)
       if (current !== generation.current) return
@@ -107,7 +129,7 @@ function FinanceAccountPage({ bridge, enabled, openSettings }: { bridge: Workspa
       setOverview(snapshot); setList(accounts); setDetail(account); setRefreshed(new Date().toLocaleTimeString())
       if (account) setTimeout(() => { if (current === generation.current) detailHeading.current?.focus() }, 0)
     } catch (problem) {
-      if (current === generation.current) setError(problem instanceof Error ? problem.message : 'Finance 读取失败，请重试。')
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : 'Finance 读取失败，请重试。'); if (invalidFinanceIdentity(problem)) { setSelected(null); invalidateNavigation() } }
     } finally {
       if (current === generation.current) { inFlight.current = false; setWorking(false) }
     }
@@ -157,7 +179,7 @@ function FinanceAccountPage({ bridge, enabled, openSettings }: { bridge: Workspa
       </div>}
     </section>}
     {detail && <section className="card finance-detail" aria-labelledby="finance-detail-title">
-      <div className="card-heading"><h2 id="finance-detail-title" ref={detailHeading} tabIndex={-1}>{detail.name}</h2><span className="shell-badge">只读账户</span></div>
+      <div className="card-heading"><h2 id="finance-detail-title" ref={detailHeading} tabIndex={-1}>{detail.name}</h2><button className="secondary" onClick={() => { setDetail(null); setSelected(null); document.getElementById('finance-account-list')?.focus() }}>返回账户列表</button></div>
       <dl className="finance-summary">
         <div><dt>服务端账户 ID</dt><dd>{detail.id}</dd></div><div><dt>账户类型</dt><dd>{typeLabel(detail.type)} · {detail.type}</dd></div>
         <div><dt>币种</dt><dd>{detail.currency}</dd></div><div><dt>账户状态</dt><dd>{statusLabel(detail.status)}</dd></div>

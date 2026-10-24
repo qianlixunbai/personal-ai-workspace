@@ -6,6 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +30,7 @@ public final class FinanceTransactionQueries {
         @Override public String toString() { return "FinanceTransaction[private]"; }
     }
     public record TransactionPage(List<TransactionView> items, int page, int size, String total,
-            String accountId, String startDate, String endDate, String type) { }
+            String accountId, String startDate, String endDate, String type, String cashFlowMonth, String cashFlowAsOf) { }
 
     // Distinct source keys are required: transactions.id and transfers.id can overlap.
     private static final String ROWS = """
@@ -46,6 +48,11 @@ public final class FinanceTransactionQueries {
             """;
 
     public TransactionPage list(int page, int size, String accountId, String startDate, String endDate, String type) {
+        return list(page, size, accountId, startDate, endDate, type, "", "");
+    }
+
+    public TransactionPage list(int page, int size, String accountId, String startDate, String endDate, String type,
+            String cashFlowMonth, String cashFlowAsOf) {
         if (page < 0 || page > 100000 || size < 1 || size > 20 || type == null
                 || !Set.of("ALL", "INCOME", "EXPENSE", "ADJUSTMENT", "TRANSFER", "REFUND").contains(type)) throw invalid();
         Long account = null;
@@ -57,20 +64,44 @@ public final class FinanceTransactionQueries {
         }
         LocalDate start = date(startDate), end = date(endDate);
         if (start != null && end != null && start.isAfter(end)) throw invalid();
+        LocalDateTime cutoff = null;
+        if (!cashFlowMonth.isEmpty() || !cashFlowAsOf.isEmpty()) {
+            try {
+                if (!cashFlowMonth.matches("[0-9]{4}-[0-9]{2}") || cashFlowMonth.startsWith("0000") || cashFlowMonth.compareTo("9999-12") >= 0 || cashFlowAsOf.startsWith("0000")
+                        || !cashFlowAsOf.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]{1,9})?)?")) throw invalid();
+                var month = YearMonth.parse(cashFlowMonth);
+                var asOf = LocalDateTime.parse(cashFlowAsOf);
+                var current = YearMonth.from(asOf);
+                if (month.isAfter(current) || month.isBefore(current.minusMonths(5))
+                        || !startDate.equals(cashFlowMonth + "-01") || !endDate.isEmpty()
+                        || !Set.of("INCOME", "EXPENSE").contains(type)) throw invalid();
+                var nextMonth = month.plusMonths(1).atDay(1).atStartOfDay();
+                cutoff = asOf.isBefore(nextMonth) ? asOf : nextMonth;
+            } catch (java.time.DateTimeException bad) { throw invalid(); }
+        }
+        LocalDateTime exclusive = cutoff;
         Long selectedAccount = account;
         return identity.query(userId -> {
+            // Never silently lose a Dashboard constituent through the authorized-account join.
+            if (exclusive != null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM public.transactions t
+                    WHERE t.user_id=? AND t.currency='CNY' AND t.type=? AND t.transacted_at>=? AND t.transacted_at<?
+                      AND NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=t.account_id AND a.user_id=t.user_id))
+                    """, Boolean.class, userId, type, start.atStartOfDay(), exclusive)))
+                throw new WorkspaceException(ErrorCode.FINANCE_UNAVAILABLE, "FINANCE");
             var args = new ArrayList<Object>(List.of(userId, userId));
             String where = " WHERE 1=1";
             if (selectedAccount != null) { where += " AND (account_id=? OR to_account_id=?)"; args.add(selectedAccount); args.add(selectedAccount); }
             if (start != null) { where += " AND transacted_at>=?"; args.add(start.atStartOfDay()); }
             if (end != null) { where += " AND transacted_at<?"; args.add(end.plusDays(1).atStartOfDay()); }
             if (!type.equals("ALL")) { where += " AND type=?"; args.add(type); }
+            if (exclusive != null) { where += " AND kind='TRANSACTION' AND currency='CNY' AND transacted_at<?"; args.add(exclusive); }
             String sql = " FROM (" + ROWS + ") ledger" + where;
             long total = jdbc.queryForObject("SELECT count(*)" + sql, Long.class, args.toArray());
             args.add(size); args.add((long) page * size);
             var items = jdbc.query("SELECT *" + sql + " ORDER BY transacted_at DESC,id DESC,kind ASC LIMIT ? OFFSET ?",
                     FinanceTransactionQueries::view, args.toArray());
-            return new TransactionPage(items, page, size, Long.toString(total), accountId, startDate, endDate, type);
+            return new TransactionPage(items, page, size, Long.toString(total), accountId, startDate, endDate, type, cashFlowMonth, cashFlowAsOf);
         });
     }
 

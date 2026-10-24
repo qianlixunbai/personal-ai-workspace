@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePortfolio as Portfolio } from '../bridge/financePortfolio'
+import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，组合统计读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
 const freshness = { FRESH: '完整覆盖 · 缓存有效', STALE: '完整覆盖 · 缓存已过期', PARTIAL: '部分覆盖 · 仅含已估值部分', UNAVAILABLE: '暂无可用估值' }
 const warnings = { INVALID_INPUT: '存在无效数量，相关持仓不能估值。', QUOTE_MISSING: '存在缺少可用参考行情的持仓。', QUOTE_STALE: '参考行情已过期，估值包含过期信息。', FX_MISSING: '存在缺少换算汇率的持仓，其 CNY 参考值未知。', FX_STALE: '参考汇率已过期，估值包含过期信息。' }
 
-export function FinancePortfolio({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
+export function FinancePortfolio({ bridge, enabled, openSettings, navigate, invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; navigate: (intent: FinanceIntent) => void; invalidateNavigation: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null), [value, setValue] = useState<Portfolio | null>(null)
   const [working, setWorking] = useState(false), [error, setError] = useState(''), [runtimeReady, setRuntimeReady] = useState(0)
   const generation = useRef(0), inFlight = useRef(false)
@@ -28,12 +29,12 @@ export function FinancePortfolio({ bridge, enabled, openSettings }: { bridge: Wo
     try {
       const status = await bridge.financeOverview()
       if (current !== generation.current) return
-      if (status.state !== 'READY') { setOverview(status); return }
+      if (status.state !== 'READY') { setOverview(status); invalidateNavigation(); return }
       const result = await bridge.financePortfolio()
       if (current !== generation.current) return
       setOverview(status); setValue(result)
     } catch (problem) {
-      if (current === generation.current) setError(problem instanceof Error ? problem.message : '组合统计读取失败，请重试。')
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : '组合统计读取失败，请重试。'); if (invalidFinanceIdentity(problem)) invalidateNavigation() }
     } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
   const r = value?.referenceValuation
@@ -46,6 +47,7 @@ export function FinancePortfolio({ bridge, enabled, openSettings }: { bridge: Wo
     {error && <div className="error" role="alert"><p>{error}</p><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button></div>}
     {value && r && <>
       <section className="card" aria-label="组合账务统计"><h3>投资账务事实 · CNY</h3>
+        <div className="finance-toolbar">{(['ALL', 'OPEN', 'CLOSED'] as const).map(status => <button className="secondary" key={status} onClick={() => navigate({ source: 'portfolio', target: 'investments', query: { status, accountId: '', instrumentId: '', cursor: '', size: 10 } })}>查看{status === 'ALL' ? '全部' : status}持仓</button>)}<button className="secondary" onClick={() => navigate({ source: 'portfolio', target: 'history', positionId: '' })}>查看投资交易历史</button></div>
         {value.positionCount === 0 ? <p>当前组合为空：没有交易驱动持仓。</p> : value.openPositionCount === 0 && <p>全部持仓已平仓，没有应估值的 OPEN 持仓；累计已实现盈亏仍保留。</p>}
         <dl className="finance-summary"><div><dt>总持仓数量</dt><dd>{value.positionCount}</dd></div><div><dt>OPEN 持仓数量</dt><dd>{value.openPositionCount}</dd></div><div><dt>CLOSED 持仓数量</dt><dd>{value.closedPositionCount}</dd></div>
           <div><dt>OPEN 持仓总账务成本</dt><dd className="finance-amount">{value.openTotalCost} CNY</dd></div><div><dt>累计已实现盈亏 · 全部持仓</dt><dd className="finance-amount">{value.cumulativeRealizedProfitLoss} CNY</dd></div></dl>

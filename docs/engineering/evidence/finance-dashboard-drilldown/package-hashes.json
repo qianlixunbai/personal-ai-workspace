@@ -1,0 +1,60 @@
+{
+  "sourceFilesMatch": true,
+  "packages": [
+    {
+      "name": "PersonalAiWorkspace-finance-fnext10-development-20261024",
+      "files": 36
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-phase1-development-20261025",
+      "files": 35
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-visual-redesign-development",
+      "files": 35
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-ux-d1-development",
+      "files": 35
+    }
+  ],
+  "sourceCommit": "003562cf327d1f97167284ad01090cfc9be16b22",
+  "sourceDirty": true,
+  "reactManifestMatches": true,
+  "hashes": [
+    {
+      "sha256": "a8ec1d650c4cd3913ab6eb682b1f6304a278782e001bc99b7cf9d69b0ebe5e10",
+      "path": "PersonalAiWorkspace.Desktop.exe"
+    },
+    {
+      "sha256": "4b5d65116e328302dc07f13c705bd5ab3a4e127b3f48619465cd8bdc70a94020",
+      "path": "PersonalAiWorkspace.Desktop.dll"
+    },
+    {
+      "sha256": "b685d6510b14632b7120f5ea3c4e554b1c43bfa7c577fc308a2c744d7c0a365d",
+      "path": "PersonalAiWorkspace.Core.dll"
+    },
+    {
+      "sha256": "d478bf7cdcdb6b4258a117f508c5755f8c02dd72f8b0eed0f40aea897a48330d",
+      "path": "runtime/personal-ai-workspace.jar"
+    },
+    {
+      "sha256": "263e0961dc63624abae1cfa8b2896ca41a51266e8e18effe1b8e082522f0269e",
+      "path": "MainWorkspace/workspace-assets.json"
+    },
+    {
+      "sha256": "679ef422d91cd19369748bb94ffc2938aebe8c8e177ee04b7496313dc66d3511",
+      "path": "Open-Workspace-Finance-UX-D1.cmd"
+    },
+    {
+      "sha256": "41d2d736dae3ea63bb0fc6cc82569fb6f38e98c8f7fd5450956252e6c0c3c6dd",
+      "path": "Open-Workspace-Finance-UX-D1.ps1"
+    },
+    {
+      "sha256": "0ff633c01fac04a33bcc12acd5e4e5276baaa13b9bbb1b3053785b3d0c07e46b",
+      "path": "BUILD-INFO.json"
+    }
+  ],
+  "profileBindingAndDpapiUnchanged": true,
+  "result": "PASS"
+}

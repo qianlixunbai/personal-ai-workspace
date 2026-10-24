@@ -11,6 +11,36 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
+    public async Task DashboardDrilldownRequiresEchoedScopeOrdinaryCnyAndExclusiveNanosecondBoundary()
+    {
+        var query = new FinanceTransactionQuery(0, 10, "", "2026-10-01", "", "INCOME", "2026-10", "2026-10-24T12:00:00.123456789");
+        Assert.True(RuntimeClient.ValidFinanceTransactionQuery(query));
+        Assert.False(RuntimeClient.ValidFinanceTransactionQuery(query with { CashFlowAsOf = "" }));
+        Assert.False(RuntimeClient.ValidFinanceTransactionQuery(query with { EndDate = "2026-10-24" }));
+        string valid = """
+            {"page":0,"size":10,"total":"1","accountId":"","startDate":"2026-10-01","endDate":"","type":"INCOME",
+             "cashFlowMonth":"2026-10","cashFlowAsOf":"2026-10-24T12:00:00.123456789",
+             "items":[{"kind":"TRANSACTION","id":"1","type":"INCOME","amount":"9007199254740993.10","currency":"CNY",
+             "transactedAt":"2026-10-24T12:00:00.123456788","description":null,"accountId":"1","accountName":"Synthetic",
+             "toAccountId":null,"toAccountName":null}]}
+            """;
+        string response = valid;
+        using var client = new RuntimeClient(new Handler((request, _) => {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.StartsWith("/api/v1/finance/transactions?", request.RequestUri!.PathAndQuery);
+            Assert.Contains("cashFlowAsOf=" + query.CashFlowAsOf, request.RequestUri.Query);
+            return Task.FromResult(Response(HttpStatusCode.OK, response));
+        }), () => Token);
+        Assert.Equal("9007199254740993.10", (await client.ListFinanceTransactionsAsync(query, CancellationToken.None)).Items[0].Amount);
+        foreach (string bad in new[] { valid.Replace("\"CNY\"", "\"USD\""),
+            valid.Replace("123456788", "123456789"), valid.Replace("\"cashFlowMonth\":\"2026-10\"", "\"cashFlowMonth\":\"2026-09\""),
+            valid.Replace("\"9007199254740993.10\"", "9007199254740993.10") }) {
+            response = bad;
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.ListFinanceTransactionsAsync(query, CancellationToken.None))).Error);
+        }
+    }
+
+    [Fact]
     public async Task InvestmentAuditRejectsNumericMoneyAndConfusedPhysicalFacts()
     {
         var values = new FinanceHistoryValues("9007199254740993.12345678", "1.00000000", "9007199254740993.12", "0.00", "0.00", "0.00", "0.00", "0.00", null, null);

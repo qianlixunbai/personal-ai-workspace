@@ -100,6 +100,8 @@ public sealed class WorkspaceBridgeTests
         foreach (object value in new object[] { new { kind = "TRANSFER", id = "1", userId = 2 }, new { kind = "../accounts", id = "1" }, new { kind = "TRANSACTION", id = "9223372036854775808" } })
             await f.Receive(f.Request("finance.transaction", payload: value));
         foreach (object value in new object[] { new { page = 0, size = 2, accountId = "", startDate = "", endDate = "", type = "ALL", userId = 2 },
+            new { page = 0, size = 10, accountId = "", startDate = "2026-10-01", endDate = "", type = "INCOME", cashFlowMonth = "2026-10", cashFlowAsOf = "" },
+            new { page = 0, size = 10, accountId = "", startDate = "2026-10-01", endDate = "", type = "INCOME", cashFlowMonth = "2026-10", cashFlowAsOf = "2026-10-24T12:00", userId = 2 },
             new { page = 0, size = 2, accountId = "../3", startDate = "", endDate = "", type = "ALL" },
             new { page = 0, size = 2, accountId = "", startDate = "2026-02-30", endDate = "", type = "ALL" } })
             await f.Receive(f.Request("finance.transactions", payload: value));

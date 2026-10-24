@@ -1,0 +1,74 @@
+{
+  "result": "PASS",
+  "source": "Synthetic browser contract, not native Windows or SQL",
+  "keyboard": "Enter card, Space month, Escape close",
+  "layout": [
+    {
+      "label": "income",
+      "width": 1440,
+      "scroll": 1440,
+      "buttons": true
+    },
+    {
+      "label": "light-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "buttons": true
+    },
+    {
+      "label": "light-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "buttons": true
+    },
+    {
+      "label": "light-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "buttons": true
+    },
+    {
+      "label": "light-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "buttons": true
+    },
+    {
+      "label": "light-540",
+      "width": 540,
+      "scroll": 540,
+      "buttons": true
+    },
+    {
+      "label": "dark-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "buttons": true
+    },
+    {
+      "label": "dark-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "buttons": true
+    },
+    {
+      "label": "dark-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "buttons": true
+    },
+    {
+      "label": "dark-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "buttons": true
+    },
+    {
+      "label": "dark-540",
+      "width": 540,
+      "scroll": 540,
+      "buttons": true
+    }
+  ],
+  "errors": []
+}

@@ -3,6 +3,7 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import { assetTypes } from '../bridge/financeAssets'
 import type { FinanceAsset, FinanceAssetPage, FinanceAssetQuery, FinanceAssetReference } from '../bridge/financeAssets'
+import { invalidFinanceIdentity } from '../pages/financeNavigation'
 
 const initial: FinanceAssetQuery = { page: 0, size: 10, type: 'ALL', sort: 'CREATED_DESC' }
 const types = { ALL: '全部类型', STOCK: '股票', ETF: 'ETF', FUND: '基金', BOND: '债券', GOLD: '黄金', CRYPTO: '加密资产', CASH: '现金资产', OTHER: '其他' }
@@ -12,7 +13,7 @@ const warnings: Record<string, string> = { INVALID_INPUT: '数量无效，不能
 const amount = (value: string | null, currency: string | null) => value === null ? '未提供' : `${value}${currency ? ` ${currency}` : ''}`
 const localTime = (value: string) => value.replace('T', ' ')
 
-export function FinanceAssets({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
+export function FinanceAssets({ bridge, enabled, openSettings, invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; invalidateNavigation?: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [list, setList] = useState<FinanceAssetPage | null>(null)
   const [detail, setDetail] = useState<FinanceAsset | null>(null)
@@ -41,7 +42,7 @@ export function FinanceAssets({ bridge, enabled, openSettings }: { bridge: Works
     try {
       const status = await bridge.financeOverview()
       if (current !== generation.current) return
-      if (status.state !== 'READY') { setOverview(status); setSelected(null); return }
+      if (status.state !== 'READY') { setOverview(status); setSelected(null); invalidateNavigation?.(); return }
       const rows = await bridge.financeAssets(next)
       if (current !== generation.current) return
       const record = selection ? await bridge.financeAsset(selection) : null
@@ -49,7 +50,7 @@ export function FinanceAssets({ bridge, enabled, openSettings }: { bridge: Works
       setOverview(status); setList(rows); setDetail(record)
       if (record) setTimeout(() => { if (current === generation.current) heading.current?.focus() }, 0)
     } catch (problem) {
-      if (current === generation.current) setError(problem instanceof Error ? problem.message : '资产读取失败，请重试。')
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : '资产读取失败，请重试。'); if (invalidFinanceIdentity(problem)) { setSelected(null); invalidateNavigation?.() } }
     } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
 

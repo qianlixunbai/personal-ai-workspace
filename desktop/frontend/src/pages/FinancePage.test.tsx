@@ -13,7 +13,7 @@ it('keeps dashboard strings, partial coverage and clears failed or late snapshot
   const dashboard = { currency: 'CNY', asOf: '2026-10-24T12:00:00', businessZone: 'Asia/Shanghai', cnyAccountBalance: '9007199254740993.30', monthIncome: '0', monthExpense: '0', monthNet: '0',
     cashFlowPlot: { income: [10000, 10000, 10000, 10000, 10000, 10000], expense: [10000, 10000, 10000, 10000, 10000, 10000], zero: 10000 },
     monthlyCashFlow: ['05', '06', '07', '08', '09', '10'].map(m => ({ month: `2026-${m}`, income: '0', expense: '0', net: '0' })),
-    allocation: { items: Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1), name: `Asset ${i}`, value: '1.000000000000', percentage: '4.7619' })), total: '21', complete: false, referenceTotal: '21', assetTotal: '22', excludedCurrency: '0', excludedUnpriced: '1', excludedQuantity: '0', excludedValue: '0' }, recentTransactions: [] }
+    allocation: { items: Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1), name: `Asset ${i}`, value: '1.000000000000', percentage: '4.7619' })), total: '21', complete: false, referenceTotal: '21', assetTotal: '22', excludedCurrency: '0', excludedUnpriced: '1', excludedQuantity: '0', excludedValue: '0' }, recentTransactions: [{ id: '1', type: 'TRANSFER', amount: '9007199254740993.10', categoryName: null, accountName: 'Alice', transactedAt: '2026-10-24T13:00' }] }
   const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
   const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
   try {
@@ -23,6 +23,33 @@ it('keeps dashboard strings, partial coverage and clears failed or late snapshot
     expect(isFinanceDashboard({ ...dashboard, cashFlowPlot: { ...dashboard.cashFlowPlot, income: [0] } })).toBe(false)
     expect(screen.getByText('9007199254740993.30 CNY')).toBeTruthy(); expect(screen.getByText(/部分视图/)).toBeTruthy()
     expect(screen.getAllByText('4.7619%')).toHaveLength(20)
+    const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
+    const returnDashboard = async () => { click('返回财务总览'); await reply(overview); await reply(dashboard) }
+    const emptyTransactions = async () => { await reply(overview); const q = port.sent.at(-1)!.payload as object; await reply({ ...q, items: [], total: '0' }) }
+    click('CNY 账户总余额 · 查看明细'); await reply(overview)
+    await reply({ items: [], page: 0, size: 10, total: '0', status: 'ALL', sort: 'ID_ASC' }); await returnDashboard()
+    for (const type of ['INCOME', 'EXPENSE']) {
+      click(type === 'INCOME' ? '本月收入 · 查看明细' : '本月支出 · 查看明细'); await reply(overview)
+      expect(port.sent.at(-1)).toMatchObject({ method: 'finance.transactions', payload: { page: 0, type, startDate: '2026-10-01', endDate: '', cashFlowMonth: '2026-10', cashFlowAsOf: dashboard.asOf } })
+      const q = port.sent.at(-1)!.payload as object; await reply({ ...q, items: [], total: '0' })
+      expect(screen.getByText(/普通交易 TRANSACTION · CNY/)).toBeTruthy()
+      click('清除筛选'); await emptyTransactions(); expect(screen.queryByText(/Dashboard 统计明细/)).toBeNull()
+      await returnDashboard()
+    }
+    click('本月净现金流 · 查看明细'); expect(screen.getByRole('heading', { name: '2026-10 净现金流组成' })).toBeTruthy()
+    click('查看 2026-10 收入明细'); await emptyTransactions(); await returnDashboard()
+    const month = screen.getByRole('button', { name: /^2026-05 收入/ }); month.focus(); fireEvent.click(month)
+    expect(month.getAttribute('aria-pressed')).toBe('true'); expect(screen.getByRole('heading', { name: '2026-05 月度收支明细' })).toBeTruthy()
+    click('查看 2026-05 支出明细'); await emptyTransactions(); await returnDashboard()
+    expect(screen.getByRole('button', { name: /^2026-05 收入/ }).getAttribute('aria-pressed')).toBe('true')
+    click('关闭收支明细')
+    click('2026-10-24T13:00 · 查看普通交易 1 详情'); await reply(overview)
+    const q = port.sent.at(-1)!.payload as object
+    await reply({ ...q, items: [], total: '0' })
+    expect(port.sent.at(-1)).toMatchObject({ method: 'finance.transaction', payload: { kind: 'TRANSACTION', id: '1' } })
+    await reply({ kind: 'TRANSACTION', id: '1', type: 'TRANSFER', amount: '9007199254740993.10', currency: 'CNY', transactedAt: '2026-10-24T13:00', description: 'Trusted detail from server', accountId: '1', accountName: 'Alice', toAccountId: null, toAccountName: null })
+    expect(screen.getByText('TRANSACTION · 1')).toBeTruthy(); expect(screen.getByText('Trusted detail from server')).toBeTruthy()
+    click('返回交易列表'); expect(screen.queryByRole('heading', { name: '交易详情' })).toBeNull(); await returnDashboard()
     fireEvent.click(screen.getByRole('button', { name: '刷新 Dashboard' })); await reply(overview); const late = port.sent.length - 1
     await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, dashboard) })
     expect(screen.queryByText('9007199254740993.30 CNY')).toBeNull()
@@ -117,6 +144,24 @@ it('keeps source portfolio amounts and coverage exact, clears snapshots, and ret
     expect(screen.getByText('6305039478318695.21 CNY')).toBeTruthy()
     expect(screen.getByText('2 / 5')).toBeTruthy(); expect(screen.getByText(/不能作为完整组合总市值/)).toBeTruthy()
     expect(screen.getByText(/QUOTE_STALE \/ QUOTE/)).toBeTruthy()
+    const position = { positionId: '11', positionMode: 'TRANSACTION_DRIVEN', account: { id: '6', displayName: 'Synthetic brokerage', type: 'BROKERAGE', status: 'ACTIVE' }, instrument: { id: '11', name: 'Synthetic position', symbol: 'SYN', market: 'US', assetClass: 'STOCK', quoteCurrency: 'USD', status: 'ACTIVE' }, quantity: '9007199254740993.12345678', averageCost: '1.00', totalCost: '9007199254740993.12', cumulativeRealizedProfitLoss: '1.00', status: 'OPEN', referenceValuation: { baseCurrency: 'CNY', value: null, freshness: 'UNAVAILABLE', warnings: [] } }
+    const positions = { records: [position], nextCursor: null, hasMore: false, size: 10 }
+    const detail = { ...position, manualReference: { currentPrice: null, marketValue: null }, referenceValuation: { accountingTruth: false, quotePrice: null, quoteCurrency: null, quoteTime: null, quoteFetchedAt: null, quoteProvider: null, fxRate: null, fxBaseCurrency: null, fxQuoteCurrency: null, fxRateTime: null, fxFetchedAt: null, fxProvider: null, baseCurrency: 'CNY', baseCurrencyValue: null, freshness: 'UNAVAILABLE', warnings: [] } }
+    for (const status of ['ALL', 'CLOSED', 'OPEN']) {
+      fireEvent.click(screen.getByRole('button', { name: `查看${status === 'ALL' ? '全部' : status}持仓` })); await reply(overview)
+      expect(port.sent.at(-1)).toMatchObject({ method: 'finance.positions', payload: { status, cursor: '' } })
+      await reply(status === 'OPEN' ? positions : { ...positions, records: [] })
+      if (status === 'OPEN') {
+        fireEvent.click(screen.getByRole('button', { name: 'Synthetic position · #11' })); await reply(overview); await reply(positions); await reply(detail)
+        fireEvent.click(screen.getByRole('button', { name: '查看此持仓投资历史' })); await reply(overview)
+        expect(port.sent.at(-1)).toMatchObject({ method: 'finance.history', payload: { positionId: '11' } })
+        await reply({ records: [], nextCursor: null, hasMore: false, size: 10 })
+        fireEvent.click(screen.getByRole('button', { name: '返回持仓上下文' })); await reply(overview); await reply(positions)
+        expect(port.sent.at(-1)).toMatchObject({ method: 'finance.position', payload: { id: '11' } }); await reply(detail)
+        expect(screen.getByRole('heading', { name: '持仓详情 · Synthetic position · #11' })).toBeTruthy()
+      }
+      fireEvent.click(screen.getByRole('button', { name: '返回投资组合' })); await reply(overview); await reply(portfolio)
+    }
     fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
     expect(screen.queryByText('9007199254741011.42 CNY')).toBeNull()
     await reply(overview); const late = port.sent.length - 1

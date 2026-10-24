@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import { isFinanceHistoryQuery, type FinanceHistoryQuery, type FinanceHistoryPage, type FinanceHistoryDetail, type FinanceHistoryTimeline, type HistoryValues, type HistoryReceipt, type HistoryPosition } from '../bridge/financeHistory'
+import { invalidFinanceIdentity } from '../pages/financeNavigation'
 
 const initial: FinanceHistoryQuery = { positionId: '', accountId: '', instrumentId: '', type: '', correctionStatus: '', from: '', to: '', cursor: '', size: 10 }
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
@@ -9,7 +10,7 @@ const amount = (v: string | null, unit = 'CNY') => v === null ? 'null · 未知 
 const time = (v: string | null) => v === null ? 'null · 未提供' : v
 const correctionText: Record<string, string> = { UNCHANGED: '未修正 · 原事实有效', REVERSED: '已冲正 · 逻辑交易不再有效，事实仍保留', REPLACED: '已替换 · 以替换事实生效，原事实仍保留' }
 
-export function FinanceHistory({ bridge, enabled, openSettings, initialPosition = '' }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; initialPosition?: string }) {
+export function FinanceHistory({ bridge, enabled, openSettings, initialPosition = '', invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; initialPosition?: string; invalidateNavigation?: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [list, setList] = useState<FinanceHistoryPage | null>(null)
   const [detail, setDetail] = useState<FinanceHistoryDetail | null>(null)
@@ -21,9 +22,11 @@ export function FinanceHistory({ bridge, enabled, openSettings, initialPosition 
   const [working, setWorking] = useState(false), [error, setError] = useState('')
   const [runtimeReady, setRuntimeReady] = useState(0)
   const generation = useRef(0), inFlight = useRef(false), heading = useRef<HTMLHeadingElement>(null)
+  const entry = useRef(initialPosition)
   useEffect(() => {
     const reset = () => {
       generation.current++; inFlight.current = false; setOverview(null); setList(null); setDetail(null); setTimeline(null); setSelected(null)
+      entry.current = ''
       setQuery(initial); setFilters(initial); setPages([]); setError(''); setWorking(false)
     }
     const session = bridge.onSession(reset)
@@ -31,10 +34,10 @@ export function FinanceHistory({ bridge, enabled, openSettings, initialPosition 
     return () => { generation.current++; session(); runtime() }
   }, [bridge])
   useEffect(() => {
-    const start = { ...initial, positionId: initialPosition }
+    const start = { ...initial, positionId: entry.current }; entry.current = ''
     if (enabled) { setFilters(start); void refresh(start, null, []) }
     else { generation.current++; inFlight.current = false; setOverview(null); setList(null); setDetail(null); setTimeline(null); setSelected(null); setQuery(initial); setFilters(initial); setPages([]); setWorking(false); setError('') }
-  }, [enabled, bridge, runtimeReady, initialPosition])
+  }, [enabled, bridge, runtimeReady])
 
   async function refresh(next = query, id = selected, back = pages) {
     if (!enabled || inFlight.current) return
@@ -43,7 +46,7 @@ export function FinanceHistory({ bridge, enabled, openSettings, initialPosition 
     try {
       const identity = await bridge.financeOverview()
       if (current !== generation.current) return
-      if (identity.state !== 'READY') { setOverview(identity); setSelected(null); return }
+      if (identity.state !== 'READY') { setOverview(identity); setSelected(null); setQuery(initial); setFilters(initial); setPages([]); invalidateNavigation?.(); return }
       const records = await bridge.financeHistory(next)
       if (current !== generation.current) return
       const transaction = id ? await bridge.financeHistoryDetail(id) : null
@@ -55,7 +58,7 @@ export function FinanceHistory({ bridge, enabled, openSettings, initialPosition 
       setOverview(identity); setList(records); setDetail(transaction); setTimeline(audit)
       if (transaction) setTimeout(() => { if (current === generation.current) heading.current?.focus() }, 0)
     } catch (problem) {
-      if (current === generation.current) setError(problem instanceof Error ? problem.message : '投资历史读取失败，请重试。')
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : '投资历史读取失败，请重试。'); if (invalidFinanceIdentity(problem)) { setSelected(null); setQuery(initial); setFilters(initial); setPages([]); invalidateNavigation?.() } }
     } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
   const field = (key: keyof FinanceHistoryQuery, value: string) => setFilters(v => ({ ...v, [key]: value }))

@@ -1,0 +1,9 @@
+{
+  "result": "PASS",
+  "checks": [
+    "Tab June",
+    "Shift+Tab May",
+    "Space select",
+    "Escape close and opener focus"
+  ]
+}

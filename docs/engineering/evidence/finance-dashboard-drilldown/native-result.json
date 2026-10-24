@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "source": "Actual packaged Windows WPF/WebView2 with new Java/C#/React, original F-next-10 synthetic PostgreSQL",
+  "checks": [
+    "Prior phase passed: default Dashboard, Enter income, scope fields, clear filters, EXPENSE scope; evidence in income elements/screenshot; first harness stopped at net ExpandCollapse",
+    "Balance card -> Accounts -> account detail -> list -> Dashboard",
+    "Net authoritative components; Space selects May; exact 2.10 / 0.20 / 1.90; historic upper bound June 1; selected month restored on return",
+    "Recent ordinary historical TRANSFER 307 re-fetched as TRANSACTION, not V19 TRANSFER; close list and return",
+    "Portfolio ALL/CLOSED/OPEN; Position 18 -> History -> Original posting/audit -> position selection restored -> Portfolio; all investment history entry",
+    "Light/dark and actual native resize 1920/1440/1280/1024; screenshots, no DevTools",
+    "Only verified owned D1 Runtime stopped; scope and sensitive return context cleared",
+    "Normal tray exit -> actual D1 CMD reopen -> freshly queried default Dashboard -> normal tray exit; owned runtime listener gone"
+  ],
+  "identityDatabaseMutation": "NOT_RUN_OLD_FIXTURE_PROTECTED",
+  "wholeWindowsReboot": "NOT_RUN",
+  "devTools": false
+}

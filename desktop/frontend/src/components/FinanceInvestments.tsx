@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePositionDetail, FinancePositionPage, FinancePositionQuery, PositionCachedReference } from '../bridge/financeInvestments'
+import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const initial: FinancePositionQuery = { status: 'OPEN', accountId: '', instrumentId: '', cursor: '', size: 10 }
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，持仓读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
@@ -9,7 +10,7 @@ const freshness = { FRESH: '缓存有效', STALE: '缓存已过期', PARTIAL: '�
 const warnings = { INVALID_INPUT: '数量无效，不能估值。', QUOTE_MISSING: '未提供可用参考行情。', QUOTE_STALE: '参考行情已过期。', FX_MISSING: '缺少换算汇率，CNY 参考值未知。', FX_STALE: '参考汇率已过期。' }
 const amount = (v: string | null, currency = '') => v === null ? '未知 / 未提供' : `${v}${currency ? ` ${currency}` : ''}`
 
-export function FinanceInvestments({ bridge, enabled, openSettings, openHistory }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openHistory?: (id: string) => void }) {
+export function FinanceInvestments({ bridge, enabled, openSettings, openHistory, intent, invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openHistory?: (id: string, query: FinancePositionQuery) => void; intent?: Extract<FinanceIntent, { target: 'investments' }> | undefined; invalidateNavigation?: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [list, setList] = useState<FinancePositionPage | null>(null)
   const [detail, setDetail] = useState<FinancePositionDetail | null>(null)
@@ -20,10 +21,12 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
   const [working, setWorking] = useState(false), [error, setError] = useState('')
   const [runtimeReady, setRuntimeReady] = useState(0)
   const generation = useRef(0), inFlight = useRef(false), heading = useRef<HTMLHeadingElement>(null)
+  const entry = useRef(intent)
 
   useEffect(() => {
     const reset = () => {
       generation.current++; inFlight.current = false; setOverview(null); setList(null); setDetail(null); setSelected(null)
+      entry.current = undefined
       setQuery(initial); setHistory([]); setAccount(''); setInstrument(''); setError(''); setWorking(false)
     }
     const session = bridge.onSession(reset)
@@ -31,7 +34,8 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
     return () => { generation.current++; session(); runtime() }
   }, [bridge])
   useEffect(() => {
-    if (enabled) void refresh(initial, null, [])
+    const pending = entry.current; entry.current = undefined
+    if (enabled) { const next = pending?.query ?? initial; setAccount(next.accountId); setInstrument(next.instrumentId); void refresh(next, pending?.selection ?? null, []) }
     else { generation.current++; inFlight.current = false; setOverview(null); setList(null); setDetail(null); setSelected(null); setQuery(initial); setHistory([]); setAccount(''); setInstrument(''); setWorking(false) }
   }, [enabled, bridge, runtimeReady])
 
@@ -42,7 +46,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
     try {
       const status = await bridge.financeOverview()
       if (current !== generation.current) return
-      if (status.state !== 'READY') { setOverview(status); setSelected(null); setQuery(initial); setHistory([]); return }
+      if (status.state !== 'READY') { setOverview(status); setSelected(null); setQuery(initial); setHistory([]); setAccount(''); setInstrument(''); invalidateNavigation?.(); return }
       const rows = await bridge.financePositions(next)
       if (current !== generation.current) return
       const record = selection ? await bridge.financePosition(selection) : null
@@ -50,7 +54,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
       setOverview(status); setList(rows); setDetail(record)
       if (record) setTimeout(() => { if (current === generation.current) heading.current?.focus() }, 0)
     } catch (problem) {
-      if (current === generation.current) setError(problem instanceof Error ? problem.message : '持仓读取失败，请重试。')
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : '持仓读取失败，请重试。'); if (invalidFinanceIdentity(problem)) { setSelected(null); setQuery(initial); setHistory([]); setAccount(''); setInstrument(''); invalidateNavigation?.() } }
     } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
   function filter(next: FinancePositionQuery) { void refresh({ ...next, cursor: '' }, null, []) }
@@ -60,6 +64,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
       <div className="card-heading"><h2>投资持仓</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void refresh({ ...query, cursor: '' }, selected, []) }}>刷新持仓</button></div>
       <p role="status">{working ? '正在验证身份并读取持仓…' : overview ? `${states[overview.state]}${overview.username ? ` · ${overview.username}` : ''}` : '等待持仓读取。'}</p>
       <p className="hint">仅包含交易驱动持仓（TRANSACTION_DRIVEN），全部状态也不包含 LEGACY 资产。账务事实、人工参考与缓存市场参考估值分别展示。刷新只重读缓存。</p>
+      <p className="hint">当前筛选：{query.status} · 账户 {query.accountId || '全部'} · Instrument {query.instrumentId || '全部'}</p>
       <div className="finance-toolbar">
         <label>持仓状态<select aria-label="持仓状态" value={query.status} disabled={!enabled || working} onChange={e => filter({ ...query, status: e.target.value as FinancePositionQuery['status'] })}><option value="OPEN">持有 · OPEN</option><option value="CLOSED">已平仓 · CLOSED</option><option value="ALL">全部状态 · ALL</option></select></label>
         <label>账户 ID<input aria-label="持仓账户 ID" inputMode="numeric" maxLength={19} value={account} disabled={!enabled || working} onChange={e => setAccount(e.target.value)} /></label>
@@ -86,7 +91,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory 
     </section>}
     {detail && <section className="card finance-detail" aria-labelledby="finance-position-title">
       <div className="card-heading"><h2 id="finance-position-title" ref={heading} tabIndex={-1}>持仓详情 · {detail.instrument.name} · #{detail.positionId}</h2><span className="shell-badge">只读持仓</span></div>
-      {openHistory && <button className="secondary" onClick={() => openHistory(detail.positionId)}>查看此持仓投资历史</button>}
+      <div className="finance-toolbar">{openHistory && <button className="secondary" onClick={() => openHistory(detail.positionId, query)}>查看此持仓投资历史</button>}<button className="secondary" onClick={() => { setDetail(null); setSelected(null) }}>返回持仓列表</button></div>
       <h3>投资账务事实</h3><dl className="finance-summary">
         <div><dt>Position ID / 模式 / 状态</dt><dd>{detail.positionId} / {detail.positionMode} / {detail.status}</dd></div>
         <div><dt>账户 ID / 名称 / 类型 / 状态</dt><dd>{detail.account.id} / {detail.account.displayName} / {detail.account.type} / {detail.account.status}</dd></div>
