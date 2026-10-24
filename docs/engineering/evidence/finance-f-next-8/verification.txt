@@ -1,0 +1,85 @@
+2026-10-24 Asia/Shanghai. Execution excerpts; full logs remain in ignored .verification.
+A log hash identifies the entire log, including any failure. Only explicit result lines below are evidence; source-stage PASS does not imply its GUI invocation exited successfully.
+
+LOG fnext8-maven-build.log SHA256 fecb2b858faf1dfc80942789585cc78dfa62faa80250bbbc0914867fc70221c1
+PASS Runtime JAR audit: default sha256=5c83340b32214fabc527d5e0428146a2c7232be9bb0fb40b176e36d9fc2bc5f9 fileId=3fe64521:0035000000022a0f
+
+LOG fnext8-java-focused-final.log SHA256 a10a90ce1554c550b083e7523022a19790848f1432641d906f3ad181abba0269
+
+LOG fnext8-frontend-focused-final.log SHA256 2bbda896f10c8fecd3f53d4e1b2cea898c360704889b34130d1adcf43532a314
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Duration  1.60s (environment 47%, tests 29%, transform 12%, import 11%)
+
+LOG fnext8-native-focused.log SHA256 0fb6c3f1fbe90dddebc7b6e8160974dadd64c9e5766f5f03055f45ec25cde512
+已通过! - 失败:     0，通过:     2，已跳过:     0，总计:     2，持续时间: 59 ms - PersonalAiWorkspace.Desktop.Tests.dll (net10.0)
+
+LOG fnext8-frontend-build-final.log SHA256 e04422fcb593d61803dff3709359e56c5ab5f73e1d07de3129f8d7317038ae3c
+✓ built in 102ms
+
+LOG fnext8-desktop-build-final.log SHA256 4f5090ad21a6838b488d60f39930c0e0ee07bbce6e95213e80fe6e6adae64962
+  PersonalAiWorkspace.Desktop.Tests -> D:\IDEA\Daima\personal-ai-workspace\desktop\tests\PersonalAiWorkspace.Desktop.Tests\bin\Debug\net10.0-windows\PersonalAiWorkspace.Desktop.Tests.dll
+    0 个错误
+
+LOG fnext8-windows-e2e-current.log SHA256 82a25d443b82147312dee1f2751187b243acbbf6bd986957e9f9eebaea66512a
+FINANCE_REAL_NATIVE_CONFIRMATION_PUBLISHED_BINDING_PASS
+FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS
+FNEXT8_REAL_SOURCE_CURSOR_TIE_ORDER_FILTERS_UTC_INCLUSIVE_EXCLUSIVE_EXACT_DETAIL_FACTS_RECEIPTS_AUDIT_PASS
+FNEXT8_REAL_ALICE_BOB_ISOLATION_PHYSICAL_IDS_DENIED_AUTH_METHODS_CURSOR_FINGERPRINT_NO_STORE_PASS
+FINANCE_GUI_STOP_HISTORY_TaskCanceledException_NONE
+REAL_RUNTIME_PROBE_STOP stage=GUI_OR_OWNER code=UNKNOWN hresult=0x80131500
+
+LOG fnext8-windows-e2e-ui.log SHA256 903e4486e28565f59de06db254cdd7ecee3d18539adb2c23841cbda9b575cf29
+FNEXT8_REAL_WEBVIEW_HISTORY_DETAIL_GROUPED_TIMELINE_POSITION_NAV_REFRESH_PAGING_ERROR_RETRY_RESPONSIVE_PASS
+FNEXT8_REAL_PORTFOLIO_CORE_FINANCE_REGRESSION_RUNTIME_RESTART_DURABLE_HISTORY_BINDING_UNCHANGED_PASS
+FNEXT8_REAL_IDENTITY_CHANGE_CLEARS_HISTORY_DETAIL_AUDIT_RESTORED_READ_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+
+LOG fnext8-bob-windows-e2e.log SHA256 22b3f811945b665cffec2f3c2f1d8070b6694d979ca7ca5b89e9f37c49732cff
+FINANCE_REAL_NATIVE_CONFIRMATION_PUBLISHED_BINDING_PASS
+FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS
+FNEXT8_BOB_REAL_NATIVE_HISTORY_AUDIT_ALICE_FACTS_DENIED_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+
+LOG fnext8-package.log SHA256 631d4c20f3a8571549ab0cbc0b830d71b4c537d1fb6a32aa8d48dc8dea686421
+BUILT_DEVELOPMENT_ONLY D:\IDEA\Daima\personal-ai-workspace\artifacts\PersonalAiWorkspace-finance-fnext8-development-20261024
+
+LOG fnext8-product-final.log SHA256 ad4f208fcec504b9717b615e399b76fbf66ecd7285e2f326026246ce84be0d10
+PASS actual-CMD-native-gate-independent-JAR-EXE-React-Native-history-detail-audit-receipts-cursor-portfolio-core-finance
+PASS normal-PostgreSQL-stop-unavailable-clears-history-detail-audit
+PASS normal-tray-exit-releases-runtime
+PASS stopped-new-synthetic-PostgreSQL-restored-by-actual-CMD-history-audit-portfolio-core-finance-readable
+PASS CMD-reopen-original-profiles-DPAPI-binding-migrations-B4A6-and-new-profile-pins
+
+LOG fnext8-source-provenance-audit.log SHA256 0599814d66f27870f67f4a57249779942776ba7d0d3fef96e83559dbdd2fa75c
+PASS frozen source and migrated bytes SHA-256
+
+LOG fnext8-ledger-before.txt SHA256 ce9bd5ecd810f0dc491a07aa2bc66da94d8166f819e66fd73b03b64a921a1778
+on|repeatable read
+facts|19|06b9014c7a8f9dd6b9cfb319d2b82de2
+corrections|1|e9b301c134b9094fccfd440a5b4a5b71
+positions|14|027d63c86d4f759500ebd314d94c72f9
+accounts|8|19375d4a12a32bc210c8e620f7520ed1
+
+LOG fnext8-ledger-after.txt SHA256 ce9bd5ecd810f0dc491a07aa2bc66da94d8166f819e66fd73b03b64a921a1778
+on|repeatable read
+facts|19|06b9014c7a8f9dd6b9cfb319d2b82de2
+corrections|1|e9b301c134b9094fccfd440a5b4a5b71
+positions|14|027d63c86d4f759500ebd314d94c72f9
+accounts|8|19375d4a12a32bc210c8e620f7520ed1
+
+PROTECTION AUDIT (copied from completed tool output):
+PASS fnext8-protected-files.json
+PASS fnext8-previous-packages.json
+PASS fnext8-new-profile-pins.json
+PASS final tested bundle and source manifest hashes
+PASS reader ledger, corrections, positions, accounts unchanged
+PASS no runtime listener after normal exit
+
+REAL_WINDOWS_REBOOT_NOT_EXECUTED
+
+LOG fnext8-package-metadata-check.log SHA256 5e714378943cd2e71a7c6990962bbb11b9503266b7fd7ad6924b0602f8698e71
+SYNTHETIC_DATABASE_IDENTITY_VERIFIED
+PASS normalized provenance and inventory, all product bytes unchanged
+
+PASS staged frozen source bytes and provenance match verified bundle

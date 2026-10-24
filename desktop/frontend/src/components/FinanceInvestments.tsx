@@ -9,7 +9,7 @@ const freshness = { FRESH: '缓存有效', STALE: '缓存已过期', PARTIAL: '�
 const warnings = { INVALID_INPUT: '数量无效，不能估值。', QUOTE_MISSING: '未提供可用参考行情。', QUOTE_STALE: '参考行情已过期。', FX_MISSING: '缺少换算汇率，CNY 参考值未知。', FX_STALE: '参考汇率已过期。' }
 const amount = (v: string | null, currency = '') => v === null ? '未知 / 未提供' : `${v}${currency ? ` ${currency}` : ''}`
 
-export function FinanceInvestments({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
+export function FinanceInvestments({ bridge, enabled, openSettings, openHistory }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openHistory?: (id: string) => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [list, setList] = useState<FinancePositionPage | null>(null)
   const [detail, setDetail] = useState<FinancePositionDetail | null>(null)
@@ -86,6 +86,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings }: { bridge: 
     </section>}
     {detail && <section className="card finance-detail" aria-labelledby="finance-position-title">
       <div className="card-heading"><h2 id="finance-position-title" ref={heading} tabIndex={-1}>持仓详情 · {detail.instrument.name} · #{detail.positionId}</h2><span className="shell-badge">只读持仓</span></div>
+      {openHistory && <button className="secondary" onClick={() => openHistory(detail.positionId)}>查看此持仓投资历史</button>}
       <h3>投资账务事实</h3><dl className="finance-summary">
         <div><dt>Position ID / 模式 / 状态</dt><dd>{detail.positionId} / {detail.positionMode} / {detail.status}</dd></div>
         <div><dt>账户 ID / 名称 / 类型 / 状态</dt><dd>{detail.account.id} / {detail.account.displayName} / {detail.account.type} / {detail.account.status}</dd></div>

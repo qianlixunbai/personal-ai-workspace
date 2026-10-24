@@ -107,6 +107,8 @@ public sealed class WorkspaceBridgeTests
         {
             await f.Receive(f.Request("finance.asset", payload: value));
             await f.Receive(f.Request("finance.position", payload: value));
+            await f.Receive(f.Request("finance.historyDetail", payload: value));
+            await f.Receive(f.Request("finance.historyTimeline", payload: value));
         }
         foreach (object value in new object[] { new { status = "OPEN", accountId = "", instrumentId = "", cursor = "", size = 2, userId = 2 },
             new { status = "LEGACY", accountId = "", instrumentId = "", cursor = "", size = 2 },
@@ -115,6 +117,8 @@ public sealed class WorkspaceBridgeTests
             new { status = "OPEN", accountId = "", instrumentId = "9223372036854775808", cursor = "", size = 2 },
             new { status = "OPEN", accountId = "", instrumentId = "", cursor = "../4?userId=2", size = 2 } })
             await f.Receive(f.Request("finance.positions", payload: value));
+        await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "", correctionStatus = "", from = "", to = "", cursor = "", size = 2, userId = 2 }));
+        await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "REVERSAL", correctionStatus = "", from = "", to = "", cursor = "", size = 2 }));
         foreach (object value in new object[] { new { page = 0, size = 2, type = "ALL", sort = "ID_ASC", userId = 2 },
             new { page = 0, size = 21, type = "STOCK", sort = "CREATED_DESC" }, new { page = 0, size = 2, type = "ALL", sort = "price;--" } })
             await f.Receive(f.Request("finance.assets", payload: value));

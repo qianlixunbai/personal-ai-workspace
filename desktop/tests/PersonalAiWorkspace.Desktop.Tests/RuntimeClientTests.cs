@@ -11,6 +11,26 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
+    public async Task InvestmentAuditRejectsNumericMoneyAndConfusedPhysicalFacts()
+    {
+        var values = new FinanceHistoryValues("9007199254740993.12345678", "1.00000000", "9007199254740993.12", "0.00", "0.00", "0.00", "0.00", "0.00", null, null);
+        var position = new FinanceHistoryPosition("1.00000000", "1.00000000", "1.00", "0.00", "OPEN");
+        var timeline = new FinanceHistoryTimeline("101", "UNCHANGED", [new("ORIGINAL_POSTING", "2026-10-01T00:00:00.123456789Z", "101", null, "BUY", null, "POSTING_TIME", values, null, null, [])], position);
+        string valid = JsonSerializer.Serialize(timeline, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }), response = valid;
+        using var client = new RuntimeClient(new Handler((request, _) => {
+            Assert.Equal("/api/v1/finance/investment/transactions/101/audit-timeline", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Response(HttpStatusCode.OK, response));
+        }), () => Token);
+        Assert.Equal(values.Quantity, (await client.GetFinanceHistoryTimelineAsync("101", CancellationToken.None)).Events[0].BusinessValues!.Quantity);
+        foreach (string bad in new[] { valid.Replace("\"9007199254740993.12\"", "9007199254740993.12"),
+            valid.Replace("\"physicalFactId\":\"101\"", "\"physicalFactId\":\"102\""), valid.Replace("ORIGINAL_POSTING", "REPLACEMENT_FACT"),
+            valid.Replace("\"currentPosition\":", "\"userId\":2,\"currentPosition\":") }) {
+            response = bad;
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceHistoryTimelineAsync("101", CancellationToken.None))).Error);
+        }
+    }
+
+    [Fact]
     public async Task PortfolioKeepsPartialAmountsExactAndRejectsAmbiguousFinancialResponses()
     {
         string valid = """

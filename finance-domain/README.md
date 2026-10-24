@@ -1,5 +1,7 @@
 # Finance Module — Read-only Integration
 
+2026-10-24：F-next-8 原字节迁入逻辑投资交易列表、详情与审计查询及其 DTO/Mapper 依赖。Workspace 使用受信 Finance GET 与 Typed Bridge 展示 Investment History、修正关系、历史 Receipt 和分组不可变事实；保留来源 Cursor、UTC Instant `[from,to)` 和精确十进制字符串。没有装配投资写服务或 Replay 命令，原 migrations 未改。来源哈希见 [investment-source-provenance.json](investment-source-provenance.json)，实际 Windows 交付与验证见 [F-next-8 报告](../docs/engineering/FINANCE-F-NEXT-8-REPORT.md)。仅 Development-only。
+
 2026-10-24：F-next-7 原字节迁入 `InvestmentPortfolioQueryService` 与 `InvestmentPortfolioResponse`，复用已迁入的 Mapper、统计 Row、Quote/FX 和估值服务。Portfolio Summary 读取当前绑定用户全部交易驱动持仓，账务金额沿用 CNY 投影；估值保留覆盖数、PARTIAL / STALE / UNAVAILABLE 与 warnings。来源哈希继续记录在 [investment-source-provenance.json](investment-source-provenance.json)，独立 Windows 客户端和本轮实际验证见 [F-next-7 报告](../docs/engineering/FINANCE-F-NEXT-7-REPORT.md)。仅 Development-only。
 
 2026-10-24：F-next-6 增加 Investment Positions 只读列表与重新查询的详情，保留来源 OPEN/CLOSED/ALL、账户/Instrument 筛选和不透明 seek Cursor。原字节迁入投资查询、DTO、Mapper 与 Cursor 依赖，逐文件哈希见 [investment-source-provenance.json](investment-source-provenance.json)。继续复用已绑定 Native 身份、独立 Finance 只读快照和 F-next-5 Quote/FX/ReferenceValuation；账务投影、持久化人工参考与缓存市场估值分别展示，不迁入写服务、重放算法或 Portfolio 聚合。实际 Windows、双用户隔离及独立客户端证据见 [F-next-6 报告](../docs/engineering/FINANCE-F-NEXT-6-REPORT.md)。仅 Development-only。

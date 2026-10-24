@@ -204,6 +204,12 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     Task<FinanceOverview> IWorkspaceNativeActions.FinanceOverviewAsync(CancellationToken cancellation)
         => ReadFinanceAsync(() => runtime.GetFinanceOverviewAsync(cancellation), cancellation);
+    Task<FinanceHistoryPage> IWorkspaceNativeActions.FinanceHistoryAsync(FinanceHistoryQuery query, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.ListFinanceHistoryAsync(query, cancellation), cancellation);
+    Task<FinanceHistoryDetail> IWorkspaceNativeActions.FinanceHistoryDetailAsync(string id, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.GetFinanceHistoryDetailAsync(id, cancellation), cancellation);
+    Task<FinanceHistoryTimeline> IWorkspaceNativeActions.FinanceHistoryTimelineAsync(string id, CancellationToken cancellation)
+        => ReadFinanceAsync(() => runtime.GetFinanceHistoryTimelineAsync(id, cancellation), cancellation);
     Task<FinancePortfolio> IWorkspaceNativeActions.FinancePortfolioAsync(CancellationToken cancellation)
         => ReadFinanceAsync(() => runtime.GetFinancePortfolioAsync(cancellation), cancellation);
     Task<FinanceBudgetAvailability> IWorkspaceNativeActions.FinanceBudgetsAsync(CancellationToken cancellation)

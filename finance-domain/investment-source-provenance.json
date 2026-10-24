@@ -97,6 +97,61 @@
       "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
       "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
       "sha256": "ac3acd1ab827585073c20e787df5be9dc4de54be09a045961e04fe925935f87d"
+    },
+    {
+      "sha256": "b67a4313ffe4c3316580a47ac3b56537b2fbc808622c286f12e0ee40a7dc5faa",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentLogicalTransactionReadQueryService.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentLogicalTransactionReadQueryService.java"
+    },
+    {
+      "sha256": "99bb1fe67dddaa5ef971e73babf7676e1438b17856eb59abca67acf46b898c5a",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentLogicalTransactionDetailQueryService.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentLogicalTransactionDetailQueryService.java"
+    },
+    {
+      "sha256": "c49dda6c6c8118ca6659795056fefc827bf6a711a52679ff17e3adf32d211cbd",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/model/LogicalTransactionListQuery.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/model/LogicalTransactionListQuery.java"
+    },
+    {
+      "sha256": "9a36a918018983f19e96edddc4d61cbba063bd789bf856aa3184485f32b3ec41",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentLogicalTransactionListItem.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentLogicalTransactionListItem.java"
+    },
+    {
+      "sha256": "ee9e7d19e213165a32ef90a0a9632b3a0ff6c46f3d46681bab5080e5552e73e7",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentTransactionDetail.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentTransactionDetail.java"
+    },
+    {
+      "sha256": "8f044235b60bef07a02b1de5429e820e442fd94db9c1081ddd700cf3230b9e7d",
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentTransactionAuditTimeline.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentTransactionAuditTimeline.java"
+    },
+    {
+      "sha256": "cd1622742cef7f56fabe1e567c8bdd21d59783ba0f2feffe2412eef9d54c3760",
+      "source": "backend/src/main/java/com/financeos/module/investment/entity/InvestmentTransaction.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/entity/InvestmentTransaction.java"
+    },
+    {
+      "sha256": "03c4b2c6804ed81c973566aa0849e4d9471752ede7d29f736e616b66d8236dd9",
+      "source": "backend/src/main/java/com/financeos/module/investment/entity/InvestmentTransactionCorrection.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/entity/InvestmentTransactionCorrection.java"
+    },
+    {
+      "sha256": "fd230a1d1adcf193de68072425743da6ba340388ce3b7492f64f7264403672d1",
+      "source": "backend/src/main/java/com/financeos/module/investment/mapper/InvestmentTransactionMapper.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/mapper/InvestmentTransactionMapper.java"
+    },
+    {
+      "sha256": "7e65051436286dfd6ded45b8bab1e189ea9d6917c493f47d8295faa7cc7cb238",
+      "source": "backend/src/main/java/com/financeos/module/investment/mapper/InvestmentTransactionCorrectionMapper.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/mapper/InvestmentTransactionCorrectionMapper.java"
+    },
+    {
+      "sha256": "70113108fb5a6b4c31995569241a0a52987046cd70ecffc98f32956eb73d46e8",
+      "source": "backend/src/main/java/com/financeos/module/investment/mapper/PostgresUuidTypeHandler.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/mapper/PostgresUuidTypeHandler.java"
     }
   ]
 }

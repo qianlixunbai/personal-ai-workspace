@@ -121,7 +121,7 @@ public static class ErrorText
         DesktopError.FinanceBindingInvalid => "Finance 历史身份或数据集已改变，访问已拒绝。请保留绑定文件并核对配置。",
         DesktopError.FinanceUnavailable => "Finance 数据库不可用，请检查连接后重试。",
         DesktopError.FinanceAccountNotFound => "账户不存在、已删除或无权访问，请刷新账户列表。",
-        DesktopError.FinanceTransactionNotFound => "交易不存在、已删除或无权访问，请刷新交易列表。",
+        DesktopError.FinanceTransactionNotFound => "交易不存在或无权访问，请核对筛选后重试。",
         DesktopError.FinancePositionNotFound => "持仓、账户或 Instrument 不存在或无权访问，请核对筛选后重试。",
         DesktopError.FinanceAssetNotFound => "资产不存在或无权访问，请刷新资产列表。",
         DesktopError.MemoryNotFound => "Memory 已不存在；请新建或刷新列表。",

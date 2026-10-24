@@ -74,6 +74,16 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceInvestmentHistoryQueries financeInvestmentHistoryQueries(FinanceAccountQueries identity,
+                com.financeos.module.investment.read.mapper.InvestmentReadMapper reads,
+                com.financeos.module.investment.mapper.InvestmentTransactionMapper facts,
+                com.financeos.module.investment.mapper.InvestmentTransactionCorrectionMapper corrections) {
+            return new FinanceInvestmentHistoryQueries(identity,
+                    new com.financeos.module.investment.read.service.InvestmentLogicalTransactionReadQueryService(reads),
+                    new com.financeos.module.investment.read.service.InvestmentLogicalTransactionDetailQueryService(facts, corrections, reads));
+        }
+
+        @Bean
         FinanceTransactionQueries financeTransactionQueries(FinanceAccountQueries identity,
                 @Qualifier("financeDataSource") DataSource dataSource) {
             return new FinanceTransactionQueries(identity, dataSource);

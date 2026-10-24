@@ -6,6 +6,43 @@ import { FinancePage } from './FinancePage'
 
 afterEach(cleanup)
 
+it('keeps investment facts and receipts exact and discards a late audit across identity changes', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
+  const money = { quantity: '9007199254740993.12345678', unitPrice: '1.00000000', grossAmount: '9007199254740993.12', feeAmount: '0.00', taxAmount: '0.00', netAmount: '9007199254740993.12', releasedCostAmount: '0.00', realizedProfitLoss: '0.00' }
+  const values = { ...money, note: 'original <script>', externalReference: null }
+  const account = { id: '6', displayName: 'Synthetic account' }, instrument = { id: '11', symbol: 'SYN', name: 'Synthetic', market: 'US', assetClass: 'STOCK', quoteCurrency: 'USD' }
+  const item = { ...money, logicalTransactionId: '101', positionId: '18', account, instrument, transactionType: 'BUY', effectiveTradeTime: '2026-10-02T09:00:00.123456Z', correctionStatus: 'UNCHANGED', effective: true, correctionCreatedAt: null }
+  const page = { records: [item], nextCursor: null, hasMore: false, size: 10 }
+  const currentPosition = { quantity: '1.00000000', averageCost: '1.00000000', totalCost: '1.00', cumulativeRealizedProfitLoss: '0.00', status: 'OPEN' }
+  const detail = { logicalTransactionId: '101', account, instrument, transactionType: 'BUY', effectiveTradeTime: item.effectiveTradeTime, settlementTime: null, correctionStatus: 'UNCHANGED', effective: true, originalBusinessValues: values, effectiveBusinessValues: null, postingReceipt: null, correctionFinalReceipt: null, correction: null, currentPosition }
+  const timeline = { logicalTransactionId: '101', correctionStatus: 'UNCHANGED', currentPosition, events: [{ eventKind: 'ORIGINAL_POSTING', createdAt: item.effectiveTradeTime, physicalFactId: '101', originalFactId: null, factType: 'BUY', reason: null, receiptApplicability: 'POSTING_TIME', businessValues: values, postingReceipt: null, correctionFinalReceipt: null, facts: [] }] }
+  const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
+  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Investment History · 投资交易历史' }))
+    await reply(overview); await reply(page)
+    expect(port.sent.at(-1)).toMatchObject({ method: 'finance.history', payload: { cursor: '', from: '', to: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '交易 #101' })); await reply(overview); await reply(page); await reply(detail); await reply(timeline)
+    expect(screen.getByText('投资交易详情 · #101')).toBeTruthy(); expect(screen.getByText('ORIGINAL_POSTING')).toBeTruthy()
+    expect(screen.getAllByText('9007199254740993.12345678').length).toBeGreaterThan(0)
+    expect(screen.getByText(/未发生替换，原始事实仍有效/)).toBeTruthy()
+    expect(document.querySelector('script')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新投资历史' })); await reply(overview); await reply(page); await reply(detail)
+    const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, timeline) })
+    expect(screen.queryByText('ORIGINAL_POSTING')).toBeNull(); expect(screen.queryByText('投资交易详情 · #101')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新投资历史' })); await reply(overview)
+    await reply({ ...page, records: [{ ...item, quantity: 9007199254740992 }] })
+    expect(screen.getByRole('alert')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重试投资历史' })); await reply(overview); await reply(page)
+    fireEvent.click(screen.getByRole('button', { name: '交易 #101' })); await reply(overview); await reply(page); await reply(detail)
+    await reply({ ...timeline, events: [{ ...timeline.events[0], businessValues: { ...values, netAmount: 1 } }] })
+    expect(screen.getByRole('alert')).toBeTruthy(); expect(screen.queryByText('ORIGINAL_POSTING')).toBeNull()
+    view.unmount()
+  } finally { bridge.dispose() }
+})
+
 it('keeps source portfolio amounts and coverage exact, clears snapshots, and retries invalid responses', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }

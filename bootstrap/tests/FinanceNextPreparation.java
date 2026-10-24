@@ -158,6 +158,10 @@ public final class FinanceNextPreparation {
                     sql(db, "GRANT SELECT ON public.investment_instruments,public.investment_transactions TO " + reader);
                 }
             }
+            if (config.path("history").asBoolean(false)) {
+                stage = "NEW_HISTORY_FACTS";
+                try (var db = source(finance).getConnection()) { history(db, reader); }
+            }
             if (config.path("portfolio").asBoolean(false)) {
                 stage = "PORTFOLIO_SCENARIOS";
                 try (var db = source(finance).getConnection()) {
@@ -199,5 +203,44 @@ public final class FinanceNextPreparation {
         } catch (Exception | LinkageError rejected) {
             output.println("FNEXT_FIXTURE_STOP_" + stage + "_" + (rejected instanceof SQLException sql ? sql.getSQLState() : rejected.getClass().getSimpleName())); System.exit(10);
         } finally { if (input != null) Arrays.fill(input, (byte) 0); password = null; }
+    }
+    /** Only reached after CREATE DATABASE and all original migrations in a NEW marked cluster. */
+    private static void history(Connection db, String reader) throws SQLException {
+        db.setAutoCommit(false);
+        sql(db, "INSERT INTO investment_instruments(id,user_id,symbol,name,market,asset_class,quote_currency) VALUES(17,1,'SYNAUDIT','合成审计持仓','US','STOCK','CNY')");
+        sql(db, "INSERT INTO assets(id,user_id,account_id,instrument_id,name,symbol,market,type,currency,quantity,avg_cost,total_cost,realized_profit_loss,position_status,position_mode,projection_version) VALUES(18,1,6,17,'合成审计投影','SYNAUDIT','US','STOCK','CNY',3,11,33,0,'OPEN','TRANSACTION_DRIVEN',7)");
+        // Historical posting receipts are immutable snapshots, deliberately different from current projections.
+        sql(db, """
+                INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,net_amount,
+                    trade_time,settlement_time,source,idempotency_key,request_hash,account_balance_after,position_quantity_after,
+                    position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version_after,created_at,note,external_reference)
+                VALUES
+                (101,1,6,18,'BUY',1,10,10,10,'2026-10-02 09:00:00.123456Z','2026-10-04 09:00:00Z','MANUAL','f8-101',repeat('a',64),-10,1,10,10,0,'OPEN',1,'2026-10-02 09:00:01Z','Synthetic unchanged','SYN-101'),
+                (102,1,6,18,'BUY',2,10,20,20,'2026-10-03 09:00:00Z','2026-10-04 09:00:00Z','MANUAL','f8-102',repeat('a',64),-30,3,10,30,0,'OPEN',2,'2026-10-03 09:00:01Z','Synthetic reversed','SYN-102'),
+                (103,1,6,18,'BUY',1,10,10,10,'2026-10-03 09:00:00Z','2026-10-04 09:00:00Z','MANUAL','f8-103',repeat('a',64),-40,4,10,40,0,'OPEN',3,'2026-10-03 09:00:02Z','Synthetic original <script>','SYN-103'),
+                (201,2,8,16,'BUY',1,10,10,10,'2026-10-02 09:00:00Z','2026-10-04 09:00:00Z','MANUAL','f8-201',repeat('a',64),-10,1000,1.00900000,1009,0,'OPEN',2,'2026-10-02 09:00:01Z','Bob private original','BOB-PRIVATE')
+                """);
+        sql(db, """
+                INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,net_amount,
+                    trade_time,settlement_time,source,idempotency_key,request_hash,original_transaction_id,correction_reason,cash_delta,
+                    account_balance_after,position_quantity_after,position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version_after,created_at)
+                VALUES
+                (104,1,6,18,'REVERSAL',2,10,20,20,'2026-10-04 09:00:00Z','2026-10-04 09:00:00Z','CORRECTION','f8-104',repeat('b',64),102,'Synthetic standalone reversal',20,-20,2,10,20,0,'OPEN',4,'2026-10-04 09:00:01Z'),
+                (202,2,8,16,'REVERSAL',1,10,10,10,'2026-10-04 09:00:00Z','2026-10-04 09:00:00Z','CORRECTION','f8-202',repeat('b',64),201,'Bob private reversal',10,0,999,1,999,0,'OPEN',3,'2026-10-04 09:00:01Z')
+                """);
+        String group = "'00000000-0000-4000-8000-000000000008'::uuid";
+        sql(db, "INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,net_amount,trade_time,settlement_time,source,idempotency_key,request_hash,original_transaction_id,correction_reason,cash_delta,correction_group_id,created_at) VALUES(105,1,6,18,'REVERSAL',1,10,10,10,'2026-10-05 09:00:00Z','2026-10-05 09:00:00Z','CORRECTION','f8-105',repeat('b',64),103,'Synthetic replacement',10," + group + ",'2026-10-05 09:00:01Z')");
+        sql(db, "INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,fee_amount,net_amount,trade_time,settlement_time,source,idempotency_key,request_hash,cash_delta,correction_group_id,replay_anchor_transaction_id,replay_sequence,account_balance_after,position_quantity_after,position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version_after,created_at,note) VALUES(106,1,6,18,'BUY',3,11,33,1,34,'2026-10-03 09:00:00Z','2026-10-04 09:00:00Z','CORRECTION','f8-106',repeat('c',64),-34," + group + ",103,1,-44,4,11,44,0,'OPEN',5,'2026-10-05 09:00:02Z','Synthetic replacement fact')");
+        sql(db, "INSERT INTO investment_transaction_corrections(correction_group_id,user_id,account_id,asset_id,instrument_id,original_transaction_id,transaction_type,correction_kind,idempotency_key,request_hash,correction_reason,reversal_transaction_id,replacement_transaction_id,reversal_cash_delta,replacement_cash_delta,command_cash_delta,balance_after,position_quantity_after,position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version,last_transaction_id,created_at) VALUES(" + group + ",1,6,18,17,103,'BUY','REPLACEMENT','f8-command',repeat('d',64),'Synthetic replacement',105,106,10,-34,-24,-44,4,11,44,0,'OPEN',5,106,'2026-10-05 09:00:02Z')");
+        sql(db, """
+                INSERT INTO investment_transactions(id,user_id,account_id,asset_id,transaction_type,quantity,unit_price,gross_amount,fee_amount,tax_amount,net_amount,released_cost_amount,realized_profit_loss,
+                    trade_time,settlement_time,source,idempotency_key,request_hash,account_balance_after,position_quantity_after,position_avg_cost_after,position_total_cost_after,position_realized_profit_loss_after,position_status_after,projection_version_after,created_at)
+                VALUES
+                (107,1,6,18,'SELL',1,12,12,0.5,0.5,11,11,0,'2026-10-06 09:00:00Z','2026-10-06 09:00:00Z','MANUAL','f8-107',repeat('e',64),-33,3,11,33,0,'OPEN',6,'2026-10-06 09:00:01Z'),
+                (108,1,6,18,'DIVIDEND',NULL,NULL,1,0,0,1,0,0,'2026-10-07 09:00:00Z','2026-10-07 09:00:00Z','MANUAL','f8-108',repeat('e',64),-32,3,11,33,0,'OPEN',7,'2026-10-07 09:00:01Z')
+                """);
+        sql(db, "UPDATE accounts SET balance=-32 WHERE id=6 AND user_id=1");
+        sql(db, "GRANT SELECT ON public.investment_transaction_corrections TO " + reader);
+        db.commit(); db.setAutoCommit(true);
     }
 }

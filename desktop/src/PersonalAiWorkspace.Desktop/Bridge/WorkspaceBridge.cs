@@ -28,6 +28,9 @@ internal interface IWorkspaceNativeActions
     Task<ShellStatus> StatusAsync(CancellationToken cancellation);
     Task<StorageStatus> StorageStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceOverview> FinanceOverviewAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceHistoryPage> FinanceHistoryAsync(FinanceHistoryQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceHistoryDetail> FinanceHistoryDetailAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceHistoryTimeline> FinanceHistoryTimelineAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinancePortfolio> FinancePortfolioAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceBudgetAvailability> FinanceBudgetsAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceAccountPage> FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
@@ -187,6 +190,9 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "storage.status") result = await native.StorageStatusAsync(cancellation);
             else if (method == "storage.startupStatus") result = await native.StorageStartupStatusAsync(cancellation);
             else if (method == "finance.overview") result = await native.FinanceOverviewAsync(cancellation);
+            else if (method == "finance.history") result = await native.FinanceHistoryAsync(HistoryQuery(payload), cancellation);
+            else if (method == "finance.historyDetail") result = await native.FinanceHistoryDetailAsync(payload.GetProperty("id").GetString()!, cancellation);
+            else if (method == "finance.historyTimeline") result = await native.FinanceHistoryTimelineAsync(payload.GetProperty("id").GetString()!, cancellation);
             else if (method == "finance.portfolio") result = await native.FinancePortfolioAsync(cancellation);
             else if (method == "finance.budgets") result = await native.FinanceBudgetsAsync(cancellation);
             else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
@@ -371,7 +377,11 @@ internal sealed class WorkspaceBridge : IDisposable
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
         if (method == "finance.get") return Fields(payload, "accountId") && Text(payload, "accountId", 19, out var accountId) && RuntimeClient.ValidFinanceId(accountId);
-        if (method == "finance.position") return Fields(payload, "id") && Text(payload, "id", 19, out var positionId) && RuntimeClient.ValidFinanceId(positionId);
+        if (method is "finance.historyDetail" or "finance.historyTimeline" or "finance.position") return Fields(payload, "id") && Text(payload, "id", 19, out var positionId) && RuntimeClient.ValidFinanceId(positionId);
+        if (method == "finance.history") return Fields(payload, "positionId", "accountId", "instrumentId", "type", "correctionStatus", "from", "to", "cursor", "size")
+            && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out _)
+            && new[] { "positionId", "accountId", "instrumentId", "type", "correctionStatus", "from", "to", "cursor" }.All(key => payload.GetProperty(key).ValueKind == JsonValueKind.String)
+            && RuntimeClient.ValidFinanceHistoryQuery(HistoryQuery(payload));
         if (method == "finance.positions") return Fields(payload, "status", "accountId", "instrumentId", "cursor", "size")
             && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out _)
             && new[] { "status", "accountId", "instrumentId", "cursor" }.All(key => payload.GetProperty(key).ValueKind == JsonValueKind.String)
@@ -407,6 +417,8 @@ internal sealed class WorkspaceBridge : IDisposable
         return ValidReferences(payload, mode == "Summarize");
     }
     private static MemoryType ReadMemoryType(JsonElement payload) => Enum.Parse<MemoryType>(payload.GetProperty("type").GetString()!);
+    private static FinanceHistoryQuery HistoryQuery(JsonElement p) => new(p.GetProperty("positionId").GetString()!, p.GetProperty("accountId").GetString()!, p.GetProperty("instrumentId").GetString()!,
+        p.GetProperty("type").GetString()!, p.GetProperty("correctionStatus").GetString()!, p.GetProperty("from").GetString()!, p.GetProperty("to").GetString()!, p.GetProperty("cursor").GetString()!, p.GetProperty("size").GetInt32());
     private static FinancePositionQuery PositionQuery(JsonElement p) => new(p.GetProperty("status").GetString()!, p.GetProperty("accountId").GetString()!,
         p.GetProperty("instrumentId").GetString()!, p.GetProperty("cursor").GetString()!, p.GetProperty("size").GetInt32());
     private static FinanceAssetQuery AssetQuery(JsonElement p) => new(p.GetProperty("page").GetInt32(), p.GetProperty("size").GetInt32(), p.GetProperty("type").GetString()!, p.GetProperty("sort").GetString()!);
