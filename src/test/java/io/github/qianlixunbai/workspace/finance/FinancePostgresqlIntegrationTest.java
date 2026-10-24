@@ -50,6 +50,62 @@ class FinancePostgresqlIntegrationTest {
     private final Map<String, Object> evidence = new LinkedHashMap<>();
 
     @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "FINANCE_DASHBOARD_TEST_CONFIG", matches = ".+")
+    void dashboardUsesNewSyntheticPostgresqlWithExactSnapshotAndSourceSemantics() throws Exception {
+        Path file = Path.of(System.getenv("FINANCE_DASHBOARD_TEST_CONFIG"));
+        verifyPrivateCredential(file);
+        var config = JSON.readTree(Files.readAllBytes(file));
+        String suffix = config.path("suffix").asString(); int port = config.path("port").asInt();
+        assertTrue(suffix.matches("[a-f0-9]{12}") && port >= 55000 && port <= 55999);
+        assertEquals(Path.of("D:/PersonalAiWorkspace-Fnext1", suffix).toAbsolutePath(), file.getParent().toAbsolutePath());
+        try (var context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("new-dashboard-fixture", Map.of(
+                    "workspace.finance.enabled", "true", "workspace.finance.flyway.enabled", "false",
+                    "workspace.finance.datasource.url", "jdbc:postgresql://127.0.0.1:" + port + "/fnext1_finance_" + suffix,
+                    "workspace.finance.datasource.username", "fnext1_reader_" + suffix,
+                    "workspace.finance.datasource.password", config.path("readerPassword").asString())));
+            context.register(FinanceInfrastructureConfiguration.class); context.refresh(); config = null;
+            var source = context.getBean("financeDataSource", PGSimpleDataSource.class);
+            var jdbc = new JdbcTemplate(source);
+            assertEquals("FNEXT1_SYNTHETIC_" + suffix, jdbc.queryForObject("SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()", String.class));
+            var identities = new FinanceIdentityRepository(source);
+            var profile = mock(LocalFinanceProfile.class); // Only profile IO is substituted; every financial result executes real SQL.
+            when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(1)));
+            var accounts = new AccountQueryService(context.getBean(AccountMapper.class));
+            var identity = new FinanceAccountQueries(profile, identities, accounts, new FinanceAccountListing(source),
+                    context.getBean("financeTransactionManager", JdbcTransactionManager.class));
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(ClientIdentity.NATIVE, "unused",
+                    List.of(new SimpleGrantedAuthority("ROLE_LOCAL_CLIENT"))));
+            var clock = java.time.Clock.fixed(java.time.Instant.parse("2026-10-24T04:00:00Z"), java.time.ZoneOffset.UTC);
+            var query = new FinanceDashboardQueries(identity, accounts, source, clock);
+            identity.query(id -> {
+                assertEquals("on", jdbc.queryForObject("SHOW transaction_read_only", String.class));
+                assertEquals("repeatable read", jdbc.queryForObject("SHOW transaction_isolation", String.class)); return null;
+            });
+            var d = query.dashboard();
+            assertEquals("2026-10-24T12:00", d.asOf());
+            assertEquals("9007199254740961.30", d.cnyAccountBalance()); // F-next-8 synthetic investment account is -32.00.
+            assertEquals("9007199254741093.38", d.monthIncome());
+            assertEquals("1.45", d.monthExpense()); assertEquals("9007199254741091.93", d.monthNet());
+            assertEquals(List.of("2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"), d.monthlyCashFlow().stream().map(FinanceDashboardQueries.Flow::month).toList());
+            assertEquals("1.90", d.monthlyCashFlow().getFirst().net());
+            assertEquals("0", d.monthlyCashFlow().get(1).income()); assertEquals("0", d.monthlyCashFlow().get(3).net());
+            assertEquals("3.00", d.monthlyCashFlow().get(4).income());
+            var a = d.allocation(); assertEquals("24", a.total()); assertFalse(a.complete()); assertEquals(20, a.items().size());
+            assertEquals(0, new BigDecimal("18014398509482007.34691356").compareTo(new BigDecimal(a.referenceTotal())));
+            assertEquals(List.of("1", "5", "11"), a.items().subList(0, 3).stream().map(FinanceDashboardQueries.AllocationItem::id).toList());
+            assertEquals("0.0000", a.items().get(3).percentage()); // Full denominator, never renormalized to the visible subset.
+            assertEquals(List.of("307", "306", "305", "304", "303"), d.recentTransactions().stream().map(FinanceDashboardQueries.Recent::id).toList());
+            assertNull(d.recentTransactions().get(2).categoryName()); assertNull(d.recentTransactions().get(3).categoryName());
+            when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(2)));
+            var bob = query.dashboard(); assertEquals("88.88", bob.cnyAccountBalance()); assertEquals("88.89", bob.monthIncome());
+            assertTrue(bob.recentTransactions().stream().noneMatch(t -> t.id().equals("307")));
+            assertEquals("1", bob.allocation().total()); assertTrue(bob.allocation().complete());
+            System.out.println("FNEXT10_REAL_SQL_FIXED_SHANGHAI_BOUNDARIES_EXACT_MONEY_SIX_MONTHS_FULL_DENOMINATOR_NAMES_AND_TWO_USERS_PASS");
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @Test
     void originalSchemaAndTrustedAccountReadsUseRealPostgresql() throws Exception {
         Path credentials = Path.of(".runtime/finance/a2-test-credentials.json");
         verifyPrivateCredential(credentials);

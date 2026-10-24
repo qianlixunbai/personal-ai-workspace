@@ -33,6 +33,7 @@ internal interface IWorkspaceNativeActions
     Task<FinanceHistoryPage> FinanceHistoryAsync(FinanceHistoryQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryDetail> FinanceHistoryDetailAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryTimeline> FinanceHistoryTimelineAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceDashboard> FinanceDashboardAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinancePortfolio> FinancePortfolioAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceBudgetAvailability> FinanceBudgetsAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceAccountPage> FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
@@ -197,6 +198,7 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.history") result = await native.FinanceHistoryAsync(HistoryQuery(payload), cancellation);
             else if (method == "finance.historyDetail") result = await native.FinanceHistoryDetailAsync(payload.GetProperty("id").GetString()!, cancellation);
             else if (method == "finance.historyTimeline") result = await native.FinanceHistoryTimelineAsync(payload.GetProperty("id").GetString()!, cancellation);
+            else if (method == "finance.dashboard") result = await native.FinanceDashboardAsync(cancellation);
             else if (method == "finance.portfolio") result = await native.FinancePortfolioAsync(cancellation);
             else if (method == "finance.budgets") result = await native.FinanceBudgetsAsync(cancellation);
             else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
@@ -417,7 +419,7 @@ internal sealed class WorkspaceBridge : IDisposable
             && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out int financeSize)
             && Text(payload, "status", 8, out var financeStatus) && Text(payload, "sort", 8, out var financeSort)
             && RuntimeClient.ValidFinanceQuery(financePage, financeSize, financeStatus, financeSort);
-        if (method is "shell.bootstrap" or "shell.refreshStatus" or "storage.status" or "storage.startupStatus" or "finance.overview" or "finance.budgets" or "finance.portfolio" || NativeMethods.ContainsKey(method)
+        if (method is "shell.bootstrap" or "shell.refreshStatus" or "storage.status" or "storage.startupStatus" or "finance.overview" or "finance.budgets" or "finance.portfolio" or "finance.dashboard" || NativeMethods.ContainsKey(method)
             || method == "assistant.selectMemories") return Fields(payload);
         if (method is "operations.get" or "operations.cancel" or "operations.copyResult")
             return Fields(payload, "operationId") && Text(payload, "operationId", 36, out var id) && CanonicalId(id);

@@ -84,6 +84,12 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceDashboardQueries financeDashboardQueries(FinanceAccountQueries identity, AccountQueryService accounts,
+                @Qualifier("financeDataSource") DataSource source) {
+            return new FinanceDashboardQueries(identity, accounts, source, java.time.Clock.system(java.time.ZoneId.of("Asia/Shanghai")));
+        }
+
+        @Bean
         FinanceImportQueries financeImportQueries(FinanceAccountQueries identity,
                 @Qualifier("financeDataSource") DataSource source) {
             return new FinanceImportQueries(identity, source);

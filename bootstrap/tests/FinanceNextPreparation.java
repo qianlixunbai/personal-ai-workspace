@@ -14,6 +14,26 @@ public final class FinanceNextPreparation {
         var ds = new PGSimpleDataSource(); ds.setServerNames(new String[]{"127.0.0.1"}); ds.setPortNumbers(new int[]{port});
         ds.setDatabaseName(database); ds.setUser("fnext_admin"); ds.setPassword(password); ds.setConnectTimeout(5); return ds;
     }
+    private static void dashboardFixture(Connection db, String reader) throws Exception {
+        sql(db, "INSERT INTO categories(id,user_id,name,type,is_system) VALUES(301,1,'Alice category','INCOME',false),(302,2,'Bob secret category','INCOME',false),(303,NULL,'Not a system category','INCOME',false)");
+        sql(db, "GRANT SELECT ON public.categories TO " + reader);
+        String[][] rows = {
+            {"301","INCOME","100.00","2026-10-01 00:00:00","301"},
+            {"302","EXPENSE","1.25","2026-10-24 11:59:59.999999","1"},
+            {"303","INCOME","77.00","2026-10-24 12:00:00","1"},
+            {"304","INCOME","88.00","2026-11-01 00:00:00","302"},
+            {"305","REFUND","50.00","2026-11-01 00:00:00","303"},
+            {"306","ADJUSTMENT","20.00","2026-11-01 00:00:00","301"},
+            {"307","TRANSFER","30.00","2026-11-01 00:00:00","1"},
+            {"308","INCOME","2.10","2026-05-01 00:00:00","1"},
+            {"309","EXPENSE","0.20","2026-05-31 23:59:59.999999","1"},
+            {"310","INCOME","999.00","2026-04-30 23:59:59.999999","1"},
+            {"311","INCOME","3.00","2026-09-30 23:59:59.999999","1"}
+        };
+        for (var row : rows) sql(db, "INSERT INTO transactions(id,user_id,account_id,category_id,type,amount,currency,transacted_at) VALUES(" + row[0] + ",1,1," + row[4] + ",'" + row[1] + "'," + row[2] + ",'CNY','" + row[3] + "')");
+        for (int i=301;i<=321;i++) sql(db, "INSERT INTO assets(id,user_id,name,type,currency,quantity,avg_cost,current_price) VALUES(" + i + ",1,'Repeated synthetic asset','OTHER','CNY',1,1,1)");
+        sql(db, "INSERT INTO assets(id,user_id,name,type,currency,quantity,avg_cost,current_price) VALUES(322,1,'Excluded USD','OTHER','USD',1,1,999),(323,1,'Closed quantity','OTHER','CNY',0,1,1)");
+    }
     private static void sql(Connection db, String text) throws SQLException { try (var statement = db.createStatement()) { statement.execute(text); } }
     private static void require(boolean condition) throws IOException { if (!condition) throw new IOException(); }
     public static void main(String[] args) {
@@ -188,6 +208,10 @@ public final class FinanceNextPreparation {
             if (config.path("imports").asBoolean(false)) {
                 stage = "NEW_IMPORT_RECEIPTS";
                 try (var db = source(finance).getConnection()) { FinanceImportFixture.prepare(db, reader); }
+            }
+            if (config.path("dashboard").asBoolean(false)) {
+                stage = "NEW_DASHBOARD";
+                try (var db = source(finance).getConnection()) { dashboardFixture(db, reader); }
             }
             stage = "WORKSPACE_V1_V2";
             try (var db = source(workspace).getConnection()) {

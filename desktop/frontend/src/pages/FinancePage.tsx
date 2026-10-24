@@ -1,3 +1,4 @@
+import { FinanceDashboard } from '../components/FinanceDashboard'
 import { FinanceImports } from '../components/FinanceImports'
 import { FinanceHistory } from '../components/FinanceHistory'
 import { FinancePortfolio } from '../components/FinancePortfolio'
@@ -21,10 +22,11 @@ const statusLabel = (status: string) => status === 'ACTIVE' ? '使用中 · ACTI
 const typeLabel = (type: string) => ({ BANK: '银行账户', CASH: '现金', CREDIT_CARD: '信用卡', INVESTMENT: '投资账户', OTHER: '其他' }[type] ?? type)
 
 export function FinancePage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
-  const [view, setView] = useState<'accounts' | 'transactions' | 'budgets' | 'assets' | 'investments' | 'portfolio' | 'history' | 'imports'>('accounts')
+  const [view, setView] = useState<'dashboard' | 'accounts' | 'transactions' | 'budgets' | 'assets' | 'investments' | 'portfolio' | 'history' | 'imports'>('accounts')
   const [historyPosition, setHistoryPosition] = useState('')
   return <>
     <nav className="finance-toolbar" aria-label="Finance 视图">
+      <button className="secondary" aria-pressed={view === 'dashboard'} onClick={() => setView('dashboard')}>Dashboard · 财务总览</button>
       <button className="secondary" aria-pressed={view === 'accounts'} onClick={() => setView('accounts')}>Accounts · 账户</button>
       <button className="secondary" aria-pressed={view === 'transactions'} onClick={() => setView('transactions')}>Transactions · 交易流水</button>
       <button className="secondary" aria-pressed={view === 'budgets'} onClick={() => setView('budgets')}>Budgets · 预算</button>
@@ -34,7 +36,8 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
       <button className="secondary" aria-pressed={view === 'history'} onClick={() => { setHistoryPosition(''); setView('history') }}>Investment History · 投资交易历史</button>
       <button className="secondary" aria-pressed={view === 'imports'} onClick={() => setView('imports')}>Import History · 导入历史</button>
     </nav>
-    {view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
+    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} openAssets={() => setView('assets')} />
+      : view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'imports' ? <FinanceImports bridge={bridge} enabled={enabled} openSettings={openSettings} />

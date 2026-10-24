@@ -1,10 +1,11 @@
 #Requires -Version 7.4
 [CmdletBinding()]
-param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422, [switch]$Transactions, [switch]$Assets, [switch]$Investments, [switch]$Portfolio, [switch]$History, [switch]$Imports)
+param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422, [switch]$Transactions, [switch]$Assets, [switch]$Investments, [switch]$Portfolio, [switch]$History, [switch]$Imports, [switch]$Dashboard)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if ($Port -lt 55000 -or $Port -gt 55999 -or @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue).Count) { throw 'NEW_UNUSED_TEST_PORT_REQUIRED' }
+if ($Dashboard) { $Imports = $true }
 $suffix = [Guid]::NewGuid().ToString('N').Substring(0,12)
 # PostgreSQL WAL hard links cannot use this machine's EFS-encrypted LocalAppData.
 $root = Join-Path 'D:\PersonalAiWorkspace-Fnext1' $suffix
@@ -42,7 +43,7 @@ try {
 $classpath = (Join-Path $tools 'classes') + ';' + (Join-Path $tools 'lib/*')
 & (Join-Path $JavaHome 'bin/javac.exe') -encoding UTF-8 -cp $classpath -d (Join-Path $tools 'classes') (Join-Path $repo 'bootstrap/tests/FinanceNextPreparation.java') (Join-Path $repo 'bootstrap/tests/FinanceImportFixture.java')
 if ($LASTEXITCODE) { throw 'FIXTURE_COMPILATION_FAILED' }
-$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer;transactions=([bool]$Transactions -or [bool]$Assets -or [bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);assets=([bool]$Assets -or [bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);investments=([bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);portfolio=[bool]$Portfolio;history=([bool]$History -or [bool]$Imports);imports=[bool]$Imports}
+$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer;transactions=([bool]$Transactions -or [bool]$Assets -or [bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);assets=([bool]$Assets -or [bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);investments=([bool]$Investments -or [bool]$Portfolio -or [bool]$History -or [bool]$Imports);portfolio=[bool]$Portfolio;history=([bool]$History -or [bool]$Imports);imports=[bool]$Imports;dashboard=[bool]$Dashboard}
 function Protect-Json([string]$Name,$Value) {
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Compress))
     try { [IO.File]::WriteAllBytes((Join-Path $root $Name),[Security.Cryptography.ProtectedData]::Protect($bytes,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)) }
@@ -59,6 +60,6 @@ $process.StandardInput.Write(($fixture | ConvertTo-Json -Compress)); $process.St
 $response = $process.StandardOutput.ReadToEnd(); $errors = $process.StandardError.ReadToEnd(); $process.WaitForExit()
 if ($process.ExitCode -ne 0 -or $response.Trim() -ne 'FNEXT_FIXTURE_PASS_prepare') { throw $response.Trim() }
 $receipt = @{suffix=$suffix;port=$Port;root=$root;finance="fnext1_finance_$suffix";workspace="fnext1_workspace_$suffix";financeMigrations='V1-V21';workspaceMigrations='V1-V2';productionGo=$false}
-$receiptName = if ($Imports) { '.verification/fnext9-target.json' } elseif ($History) { '.verification/fnext8-target.json' } elseif ($Portfolio) { '.verification/fnext7-target.json' } elseif ($Investments) { '.verification/fnext6-target.json' } elseif ($Assets) { '.verification/fnext5-target.json' } elseif ($Transactions) { '.verification/fnext3-target.json' } else { '.verification/fnext1-target.json' }
+$receiptName = if ($Dashboard) { '.verification/fnext10-target.json' } elseif ($Imports) { '.verification/fnext9-target.json' } elseif ($History) { '.verification/fnext8-target.json' } elseif ($Portfolio) { '.verification/fnext7-target.json' } elseif ($Investments) { '.verification/fnext6-target.json' } elseif ($Assets) { '.verification/fnext5-target.json' } elseif ($Transactions) { '.verification/fnext3-target.json' } else { '.verification/fnext1-target.json' }
 $receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repo $receiptName) -Encoding utf8NoBOM
 $receipt | ConvertTo-Json

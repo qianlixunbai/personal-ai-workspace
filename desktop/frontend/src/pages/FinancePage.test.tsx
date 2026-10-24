@@ -6,6 +6,31 @@ import { FinancePage } from './FinancePage'
 
 afterEach(cleanup)
 
+it('keeps dashboard strings, partial coverage and clears failed or late snapshots across session and runtime changes', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
+  const dashboard = { currency: 'CNY', asOf: '2026-10-24T12:00:00', businessZone: 'Asia/Shanghai', cnyAccountBalance: '9007199254740993.30', monthIncome: '0', monthExpense: '0', monthNet: '0',
+    monthlyCashFlow: ['05', '06', '07', '08', '09', '10'].map(m => ({ month: `2026-${m}`, income: '0', expense: '0', net: '0' })),
+    allocation: { items: Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1), name: `Asset ${i}`, value: '1.000000000000', percentage: '4.7619' })), total: '21', complete: false, referenceTotal: '21', assetTotal: '22', excludedCurrency: '0', excludedUnpriced: '1', excludedQuantity: '0', excludedValue: '0' }, recentTransactions: [] }
+  const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
+  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard · 财务总览' })); await reply(overview); await reply(dashboard)
+    expect(screen.getByText('9007199254740993.30 CNY')).toBeTruthy(); expect(screen.getByText(/部分视图/)).toBeTruthy()
+    expect(screen.getAllByText('4.7619%')).toHaveLength(20)
+    fireEvent.click(screen.getByRole('button', { name: '刷新 Dashboard' })); await reply(overview); const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, dashboard) })
+    expect(screen.queryByText('9007199254740993.30 CNY')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新 Dashboard' })); await reply(overview); await reply({ ...dashboard, monthNet: 0 })
+    expect(screen.getByRole('alert')).toBeTruthy(); expect(screen.queryByText('人工参考资产分布')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重试' })); await reply(overview); await reply(dashboard)
+    await act(async () => { port.emit({ type: 'storage.lifecycle', version: 1, sessionId: '22222222-2222-4222-8222-222222222222', result: { runtime: 'UNAVAILABLE', failure: 'PROCESS_EXITED', configurationTrust: 'NOT_CHECKED', canQueryStorage: false, configurationAction: 'NATIVE_SETUP_AVAILABLE', confirmationRequired: true } }) })
+    expect(screen.queryByText('人工参考资产分布')).toBeNull()
+    view.rerender(<FinancePage bridge={bridge} enabled={false} openSettings={() => {}} />)
+    expect(screen.queryByText('人工参考资产分布')).toBeNull()
+  } finally { view.unmount(); bridge.dispose() }
+})
+
 it('keeps import receipt precision, empty history and identity clearing without accepting a late or numeric receipt', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }

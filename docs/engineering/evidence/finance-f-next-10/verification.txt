@@ -1,0 +1,40 @@
+F-next-10 actual local evidence; 2026-10-24 Asia/Shanghai. Development-only.
+Full logs retained in ignored .verification. Hashes identify actual executions. Historical PASS is not counted.
+Package flow resumed after correcting the outage UI text locator; initial failure retained below.
+
+fnext10-maven-build.log sha256=bbedc310c38db807a2216233e2346b8cbf94b63558285ca2999ebb367e44c584
+fnext10-java-focused-first.log sha256=a6080ce289a95a4f05dc12989aba5b5991b13262bba302a25d1b50705cb43b12
+fnext10-java-focused-second.log sha256=5c575a46fc408e5b1e0680a7cd56e81d15b2eb60be059160d305c54bd6197b40
+fnext10-java-focused.log sha256=a849ec19205f506c7d659f9a2fe3b8abf58212129517e268c3f075075618bab4
+FNEXT10_REAL_SQL_FIXED_SHANGHAI_BOUNDARIES_EXACT_MONEY_SIX_MONTHS_FULL_DENOMINATOR_NAMES_AND_TWO_USERS_PASS
+[INFO] BUILD SUCCESS
+fnext10-frontend-focused.log sha256=f5fbadcde1ee657a2351125e12f078bee9f905aa664c0d825a9eebc933c672ba
+fnext10-frontend-build.log sha256=feae9bc1b0130005c68f3c98a2bde6b2c4c584114691c599fa607910eb7ef376
+fnext10-native-focused.log sha256=0d98c114eb19ee49a56836584cfe241cdb94c480a86e55cb60831c140f7d2fec
+fnext10-desktop-build.log sha256=84665da85d0f72217d8b7adcd4beacc25d2d1a3c60c7bf76d8e45731d3d8c57e
+fnext10-windows-e2e.log sha256=7c7dba08b707e67126695e262b83817390e9d6bc4f5c70823e9fb0906be1ad69
+FNEXT10_DASHBOARD_UI_AND_HTTP_PASS
+FNEXT10_IDENTITY_CLEAR_AND_RECOVERY_PASS
+FNEXT10_REAL_WPF_WEBVIEW_BRIDGE_SQL_DASHBOARD_REFRESH_PARTIAL_LAYOUT_HTTP_RUNTIME_IDENTITY_CORE_READS_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+fnext10-bob-windows-e2e.log sha256=287a62b5b0b8ee32472f5b8b197e4d6ef6d8ed7460c162cdb2a663b8db8b1c74
+FINANCE_REAL_NATIVE_CONFIRMATION_PUBLISHED_BINDING_PASS
+FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS
+FNEXT10_BOB_REAL_NATIVE_BINDING_DASHBOARD_ISOLATION_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+fnext10-package.log sha256=69d56afc5ce66d484086120b4a1c671d7bff07de74488349f3d2950bb31711a5
+fnext10-product.log sha256=7eb81ed8730a31809564441c3c4b2d0aad1747fa6b6d3ed95241c9e302ffc652
+PASS actual-CMD-EXE-native-gate-independent-JAR-React-Bridge-dashboard-cashflow-allocation-recent-core-finance
+STOP product-code=OUTAGE_STATE_MISSING line=26 type=RuntimeException
+PASS own-PostgreSQL-normal-stop-clears-dashboard-and-normal-tray-exit-releases-runtime
+PASS actual-CMD-restores-stopped-own-cluster-and-dashboard-durable-after-reopen
+PASS second-normal-tray-exit-no-runtime-listener; real-Windows-reboot-NOT-EXECUTED
+fnext10-ledger-before.txt sha256=0d44c90cd6aa484385d6be3cde677c2fe034b5aec4b2738ebcf95b82cf3abf69
+fnext10-ledger-final.txt sha256=0d44c90cd6aa484385d6be3cde677c2fe034b5aec4b2738ebcf95b82cf3abf69
+fnext10-protection-result.json sha256=f03f8a35976c162adeb980c8945539ff7c8b6b2744b41667bc8472c2f8498431
+fnext10-budget.txt sha256=64701fbe551255b743d9a89050268864ef997141b1d4b227c1bb2cddd2070c63
+
+Conservative escaped maximum accepted field lengths, including all optional minus signs; 20 assets / 5 recent / 6 months: HTTP 54284 < 61440; Bridge 54419 < 65536. No response limit increase.
+Protected existing files: 17308; changed: 0.
+Reader ledger before/final: identical; READ ONLY, REPEATABLE READ.
+Human acceptance and physical Windows reboot: NOT RUN.
