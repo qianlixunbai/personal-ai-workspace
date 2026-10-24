@@ -23,10 +23,14 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const heading = useRef<HTMLHeadingElement>(null)
   const pageRef = useRef(page); pageRef.current = page
   const leaveMemory = useRef<MemoryLeaveGuard>(leave => leave())
+  const focusRuntime = useRef(false)
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
-  const navigate = (next: typeof page) => {
-    if (next === pageRef.current) return
-    const commit = () => { history.replaceState(null, '', `#/${next}`); setPage(next); heading.current?.focus({ preventScroll: true }) }
+  const navigate = (next: typeof page, runtime = false) => {
+    if (next === pageRef.current) {
+      if (runtime) document.getElementById('settings-status-title')?.focus()
+      return
+    }
+    const commit = () => { focusRuntime.current = runtime; history.replaceState(null, '', `#/${next}`); setPage(next); heading.current?.focus({ preventScroll: true }) }
     if (pageRef.current === 'memory') leaveMemory.current(commit); else commit()
   }
   useEffect(() => {
@@ -65,6 +69,12 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     return () => window.removeEventListener('hashchange', route)
   }, [])
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
+  useEffect(() => {
+    if (page === 'settings' && focusRuntime.current) {
+      focusRuntime.current = false
+      document.getElementById('settings-status-title')?.focus()
+    }
+  }, [page])
   const run = async (method?: NativeMethod) => {
     const current = generation.current
     const request = method ? statusRequest.current : ++statusRequest.current
@@ -77,15 +87,20 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     finally { if (current === generation.current) { setBusy(false); if (method) heading.current?.focus({ preventScroll: true }) } }
   }
   const current = pages.find(item => item.id === page)!
-  return <div className="workspace">
+  const runtimeLabel = status ? status.runtime === 'Available' ? 'Runtime 可连接' : 'Runtime 不可连接' : 'Runtime 未核对'
+  return <div className={`workspace workspace-${page}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>跳到页面内容</a>
     <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true">P</span><div>Personal AI<span>你的本机工作区</span></div></div>
-      <nav aria-label="工作区页面">{pages.map((item, index) => <a key={item.id} href={`#/${item.id}`} onClick={event => { event.preventDefault(); navigate(item.id) }} aria-current={item.id === page ? 'page' : undefined}>
-        <span className="nav-number" aria-hidden="true">0{index + 1}</span>{item.name}</a>)}</nav>
-      <div className="sidebar-bottom"><span className="local-badge"><span className="dot online" /> Local only</span><p>内容由本机 Runtime 管理</p>
-        <button className="theme-button" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}>切换到{theme === 'light' ? '深色' : '浅色'}主题</button></div>
+      <nav className="workspace-navigation" aria-label="工作区页面">{(['工作', '资料', '业务'] as const).map(group => <div className="nav-group" key={group}>
+        <p className="nav-group-label">{group}</p>{pages.filter(item => item.group === group).map(item => <a key={item.id} href={`#/${item.id}`} title={`${item.name} / ${item.label}`} aria-label={`${item.name} / ${item.label}`} onClick={event => { event.preventDefault(); navigate(item.id) }} aria-current={item.id === page ? 'page' : undefined}>
+          <span className="nav-label">{item.label}</span><span className="nav-name" aria-hidden="true">{item.name}</span></a>)}</div>)}</nav>
+      <label className="workspace-picker">工作区页面<select value={page} onChange={event => navigate(event.target.value as typeof page)}>{pages.map(item => <option key={item.id} value={item.id}>{item.label} / {item.name}</option>)}</select></label>
+      <div className="sidebar-bottom">
+        <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型就绪需单独核对`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><span className="runtime-short" aria-hidden="true">状态</span><span className="runtime-label">{runtimeLabel}</span></button>
+        <a className="settings-link" href="#/settings" title="Settings / 设置" aria-label="Settings / 设置" aria-current={page === 'settings' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('settings') }}><span className="nav-label">设置</span><span className="nav-name" aria-hidden="true">Settings</span></a>
+        <button className="theme-button" title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}><span className="theme-short" aria-hidden="true">{theme === 'light' ? '深色' : '浅色'}</span><span className="theme-label">切换到{theme === 'light' ? '深色' : '浅色'}主题</span></button></div>
     </aside>
-    <main id="main-content" tabIndex={-1}><header className="page-header"><div><p className="eyebrow">MAIN WORKSPACE</p><h1 ref={heading} tabIndex={-1}>{current.name}</h1><p>{current.subtitle}</p></div><span className="shell-badge">原生功能可用</span></header>
+    <main id="main-content" tabIndex={-1}><header className="page-header"><div><p className="eyebrow">{current.group === '底部' ? '工作区' : current.group}</p><h1 ref={heading} tabIndex={-1}>{current.name} <span>/ {current.label}</span></h1><p>{current.subtitle}</p></div><span className="shell-badge">{runtimeLabel}</span></header>
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}

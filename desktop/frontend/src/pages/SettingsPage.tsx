@@ -15,7 +15,7 @@ const maintenance: { method: NativeMethod; title: string; description: string }[
 export function SettingsPage({ bridge, status, busy, open, refresh }: {
   bridge: WorkspaceClient; status: ShellStatus | null; busy: boolean; open: (method: NativeMethod) => void; refresh: () => void
 }) {
-  return <><section className="card" aria-labelledby="settings-status-title"><div className="card-heading"><h2 id="settings-status-title">本机运行状态</h2><button className="secondary" onClick={refresh} disabled={busy || !status}>刷新状态</button></div>
+  return <><section className="card" aria-labelledby="settings-status-title"><div className="card-heading"><h2 id="settings-status-title" tabIndex={-1}>本机运行状态</h2><button className="secondary" onClick={refresh} disabled={busy || !status}>刷新状态</button></div>
     <StatusPanel status={status} /><dl className="status-list"><div><dt>Application version</dt><dd>{status?.applicationVersion ?? '等待检查'}</dd></div><div><dt>Credential</dt><dd>{status?.credential ?? '等待检查'}</dd></div><div><dt>WebView</dt><dd>{status?.webView ?? '等待检查'}</dd></div></dl>
     <p className="hint">Runtime 可连接与凭据状态不代表所有模型或能力就绪。模型可用性会在具体操作中确认。</p></section>
     <StorageSettings bridge={bridge} enabled={!!status && !busy} />

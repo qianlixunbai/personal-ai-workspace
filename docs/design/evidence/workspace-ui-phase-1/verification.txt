@@ -1,0 +1,74 @@
+Workspace UI Phase 1 verification evidence
+2026-10-25 Asia/Shanghai; Development-only.
+
+ACTUALLY EXECUTED
+cwd desktop/frontend:
+npm test -- src/pages/MemoryPage.test.tsx src/pages/FinancePage.test.tsx -t "guards actual App sidebar|keeps dashboard strings"
+Result: both selected existing integrated cases passed; remaining cases excluded by -t.
+Memory case extended for select/runtime entry cancellation, retained draft and focus. No new test case.
+Finance case unchanged; exact decimal text, partial allocation and stale/failed/session/runtime snapshot clearing preserved.
+
+npm run build
+Result: tsc --noEmit PASS, Vite production build PASS, workspace-assets.json generated.
+Outputs: index-CcejjEvi.css / index-DTPf_d-i.js.
+
+Native publish:
+dotnet publish desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj -c Debug -r win-x64 --self-contained false -p:Mmf3ProfileAcceptanceBuild=true -p:Mmf3AcceptanceBuild=false -p:FrontendSkipBuild=true -p:TrustedDevelopmentManifest=<local pinned manifest> -o artifacts/PersonalAiWorkspace-ui-phase1-development-20261025 -v minimal
+Result PASS. Existing host/source unchanged. No Java rebuild.
+Original F-next-10 launcher template reused with identical trust/Profile settings and refreshed package dependency hashes.
+Launcher -CheckOnly: SYNTHETIC_DATABASE_IDENTITY_VERIFIED.
+
+Browser: installed Playwright + headless Edge, existing loopback Vite dev configuration, in-memory MemoryService/finance replies.
+Integrated navigation flow PASS. Separate focused narrow-page layout follow-up PASS.
+7 top pages, 9 Finance views, initial Accounts, Memory cancel/confirm/retained draft/focus, Tab/Shift+Tab/Enter/Escape,
+Runtime Settings focus, light/dark, 60 integer + 16 fraction digits, full long names/ID, no document overflow,
+Finance unmount/re-entry resets to Accounts, forced-colors/reduced-motion emulation.
+Dashboard widths: 1920, 1440, 1280, 1024, 800, 540, 400 CSS px.
+All top pages additionally checked at 1024, 540, 400 CSS px. devicePixelRatio=1.
+These are synthetic browser checks, not native data or SQL acceptance.
+
+Actual Windows WPF/WebView2/Bridge/Runtime/synthetic PostgreSQL:
+Real CMD opened the new packaged EXE; original Native Gate and pinned Runtime admitted.
+7 top-page entries invoked. 9 Finance destinations invoked at 1440x900 / zoom100.
+Actual CNY Dashboard balance 9007199254740961.30, income 9007199254741170.38, expense 1.45, net 9007199254741168.93.
+Budgets verified using actual unsupported explanation, not a fabricated budget.
+Light/dark screenshots obtained and visually reviewed: native-light.png / native-dark.png.
+Host DPI 96, physical screen 2560x1440, wide WebView bounds 1424x821.
+1024x800 / zoom100: Finance select Home/End changed Dashboard/Budgets and loaded corresponding content.
+780x540 / zoom200: global page select exists, Runtime entry opens actual Settings, zoom reset succeeds.
+Normal tray exit releases owned Runtime; actual CMD reopens native UI and Finance Accounts; second normal tray exit succeeds.
+Current native app and owned Runtime are stopped; synthetic PostgreSQL intentionally remains running per existing launcher contract.
+
+LIMITS / NON-PASS ATTEMPTS
+Browser harness initially used a non-unique bootstrap selector, then waited for a normalized hash on the already-active default Assistant.
+Both locators corrected in ignored harness; no production change, final browser flows passed.
+Native harness initially searched literal UNSUPPORTED although visible copy is explanatory Chinese; corrected and resumed.
+Native label and ComboBox share a name; narrowed UIA lookup to ComboBox. Foreground focus/key simulation was unstable.
+A reopened transient window handle caused bootstrap wait timeout; refreshed actual native window handle and resumed successfully.
+Later CopyFromScreen images were obscured by another foreground application/start menu; rejected, not published as evidence.
+200-percent global-select keyboard selection and an unobscured small-window screenshot remain unverified.
+Native innerWidth/devicePixelRatio were NOT read; host dimensions are not asserted as CSS viewport dimensions.
+No DevTools enablement, production CSP/origin/gate change, OS focus/proxy configuration change or policy bypass.
+No Windows reboot, full DPI/IME/stress matrix, full Java/Desktop/Frontend suite, paid inference, real user data or Finance writes.
+Position-to-History filter transfer/explicit History clearing and Dashboard-to-Assets callbacks checked statically unchanged.
+
+PARITY
+Old F-next-10 payload hashes checked before/after; all unchanged.
+New payload and changed source hashes match BUILD-INFO.json; packaged React manifest matches this build's dist manifest.
+Existing synthetic database.dpapi, finance.dpapi and Finance identity binding hashes unchanged.
+Payload hashes in package-hashes.json; all payload/source hashes and original dirty runtime provenance also in local BUILD-INFO.json.
+The report/verified screenshots were added after binary build; no needless rebuild after documentation-only changes.
+
+LOCAL LOG SHA-256
+.verification/ui-phase1-package.log fd2a7f4b11314ed2761599c97a1de21cbe99948c45c9b983ed1b94281bf8f9b0
+.verification/ui-phase1-browser-result.json 7f44d9a429d97043476b95273fa1d0032dd958f1dff0c322ef517bf07232d6a3
+.verification/ui-phase1-browser-narrow-result.json 4e94dde0f0751c59d29bd11852ca6cd5af041bdb7a21bcb4f669fad8aabb09c5
+.verification/ui-phase1-native.log 001e95f824ce944daab4574fa63f7a1c57cb50be9c7900f5b74205f2db58d7e6
+.verification/ui-phase1-native-resume.log 8c6c583a3495a26d527e589efe12216e26ab1b873b8475df6cc23440383a550b
+.verification/ui-phase1-native-final.log 317584bb3381db18fac85f9633c31e4b9b505b0d8ecb5606ed8b567c50d945a8
+.verification/ui-phase1-native-final-resume.log 2d06ec7cd6d278225be9888fdf1f5eb879f6afdb7980dc274c742df2c12bc3ae
+.verification/ui-phase1-native-final-focus.log a9aa523a4c7e34d0325d5de4b91abe4c79a89cc9fddf5d16f729ba3c331249ef
+.verification/ui-phase1-native-close.log eaf4db25007bc61ebabd1e01eb4233a657c86214a811619e75dcc1177b969720
+.verification/ui-phase1-native-reopen-finish.log 1e7788ca1d38567723dfcf0eae6faa7345845958ad194165c7725122af327a26
+.verification/ui-phase1-native-result.json b22231647386f97c9bc5a44e710651174ad8e7aaa676fac1a3df0d7e4b2f7b40
+.verification/ui-phase1-parity.json dbcc635b5df465ba8785df89363a2636dfe57d71b89fd3ad3e43d66e4bb11ac7

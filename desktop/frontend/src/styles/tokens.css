@@ -1,0 +1,67 @@
+:root {
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-synthesis: none;
+  color-scheme: light;
+  --canvas: #f4f6fa;
+  --surface: #ffffff;
+  --rail: #eef2f7;
+  --text: #1b2638;
+  --text-muted: #52627a;
+  --border: #d7dee8;
+  --accent: #315ea8;
+  --accent-soft: #e8effb;
+  --primary-fill: #315ea8;
+  --primary-text: #ffffff;
+  --success: #1f6a4b;
+  --warning: #8a5300;
+  --danger: #ae2a32;
+  --unknown: #5b6473;
+  /* Compatibility with existing page styles; theme storage remains unchanged. */
+  --bg: var(--canvas);
+  --muted: var(--text-muted);
+  --active: var(--accent-soft);
+  --focus: var(--accent);
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --sidebar-width: 216px;
+  --page-gutter: 24px;
+  --content-width: 1680px;
+}
+
+:root[data-theme=dark] {
+  color-scheme: dark;
+  --canvas: #141a23;
+  --surface: #1c2431;
+  --rail: #171f2c;
+  --text: #e6ecf4;
+  --text-muted: #adbcd0;
+  --border: #344154;
+  --accent: #95b9f2;
+  --accent-soft: #233b61;
+  --primary-fill: #a7c7fa;
+  --primary-text: #12223c;
+  --success: #8bd5b0;
+  --warning: #f1ca7c;
+  --danger: #ffa5aa;
+  --unknown: #b9c2cf;
+}
+
+@media (forced-colors: active) {
+  :root, :root[data-theme=dark] {
+    --canvas: Canvas;
+    --surface: Canvas;
+    --rail: Canvas;
+    --text: CanvasText;
+    --text-muted: CanvasText;
+    --border: ButtonText;
+    --accent: LinkText;
+    --accent-soft: Canvas;
+    --primary-fill: Highlight;
+    --primary-text: HighlightText;
+    --success: CanvasText;
+    --warning: CanvasText;
+    --danger: CanvasText;
+    --unknown: CanvasText;
+  }
+}
