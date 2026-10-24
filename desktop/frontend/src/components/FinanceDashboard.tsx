@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinanceDashboard as Dashboard } from '../bridge/financeDashboard'
+import { Icon, type IconName } from './Icon'
 
 const states = { DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请先进行原生身份绑定。', BINDING_INVALID: 'Finance 身份或数据集已改变，读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用。', READY: '已验证当前绑定身份' }
-export function FinanceDashboard({ bridge, enabled, openSettings, openAssets }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openAssets: () => void }) {
+export function FinanceDashboard({ bridge, enabled, openSettings, openAssets, openAccounts, openTransactions }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openAssets: () => void; openAccounts: () => void; openTransactions: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null), [value, setValue] = useState<Dashboard | null>(null)
   const [working, setWorking] = useState(false), [error, setError] = useState(''), [runtimeReady, setRuntimeReady] = useState(0)
   const generation = useRef(0), inFlight = useRef(false)
@@ -34,32 +35,69 @@ export function FinanceDashboard({ bridge, enabled, openSettings, openAssets }: 
     } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
   const a = value?.allocation
-  return <section className="finance-page" aria-label="Finance 只读财务总览" aria-busy={working}>
-    <section className="card"><div className="card-heading"><h2>Dashboard · 财务总览</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void refresh() }}>刷新 Dashboard</button></div>
-      <p role="status">{working ? '正在验证身份并读取财务总览…' : !enabled ? states.DISABLED : overview ? `${states[overview.state]}${overview.username ? ` · ${overview.username}` : ''}` : '等待 Dashboard 读取。'}</p>
-      {value && <p className="hint">快照截至 {value.asOf} · {value.businessZone}；手动刷新重新读取服务端。</p>}
-      <button className="secondary" onClick={openSettings}>Finance 配置与身份绑定</button>
-    </section>
+  return <section className="finance-page finance-dashboard" aria-label="Finance 只读财务总览" aria-busy={working}>
+    <div className="dashboard-heading"><div><h2>Finance Dashboard <span>· 财务总览</span></h2>
+      <p role="status"><Icon name="shield" />{working ? '正在验证身份并读取财务总览…' : !enabled ? states.DISABLED : overview ? `${states[overview.state]}${overview.username ? ` · ${overview.username}` : ''}` : '等待 Dashboard 读取。'}</p></div>
+      <div className="dashboard-actions"><button className="text-button" onClick={openSettings}>Finance 配置与身份绑定</button><button className="secondary" disabled={!enabled || working} onClick={() => { void refresh() }}><Icon name="refresh" />刷新 Dashboard</button></div>
+    </div>
+    {value && <p className="snapshot-label">快照截至 {value.asOf} · {value.businessZone} · 只读</p>}
     {error && <div className="error" role="alert"><p>{error}</p><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button></div>}
     {value && a && <>
-      <section className="card"><h3>CNY 账户与本月收支</h3><dl className="finance-summary">
-        <div><dt>CNY 账户总余额</dt><dd className="finance-amount">{value.cnyAccountBalance} CNY</dd></div>
-        <div><dt>Month Income · 本月收入</dt><dd className="finance-amount">{value.monthIncome} CNY</dd></div>
-        <div><dt>Month Expense · 本月支出</dt><dd className="finance-amount">{value.monthExpense} CNY</dd></div>
-        <div><dt>Month Net · 本月净收支</dt><dd className="finance-amount">{value.monthNet} CNY</dd></div>
-      </dl><p className="hint">余额包含使用中与停用 CNY 账户。月收支仅统计普通交易表 INCOME / EXPENSE，自本月首日 00:00 至本次快照时刻（不含）；不合并转账表与投资交易。</p></section>
-      <section className="card"><h3>六个月普通交易收支趋势 · CNY</h3><div className="finance-table-scroll" tabIndex={0} aria-label="六个月收支表格"><table>
+      <dl className="dashboard-metrics">
+        <Metric icon="coins" title="CNY 账户总余额" english="Total account balance" amount={value.cnyAccountBalance} tone="balance" note="使用中与停用 CNY 账户" />
+        <Metric icon="income" title="本月收入" english="Month income" amount={value.monthIncome} tone="income" note="本月普通收入 · INCOME" />
+        <Metric icon="expense" title="本月支出" english="Month expense" amount={value.monthExpense} tone="expense" note="本月普通支出 · EXPENSE" />
+        <Metric icon="status" title="本月净现金流" english="Month net cash flow" amount={value.monthNet} tone={value.monthNet.startsWith('-') ? 'expense' : 'net'} note="普通收入 − 普通支出" />
+      </dl>
+      <div className="dashboard-grid">
+      <section className="card dashboard-trend"><div className="card-heading"><h3>收入与支出趋势 <small>Cash flow</small></h3><span className="period-label">近 6 个月 · CNY</span></div>
+        <div className="chart-legend"><span className="income-key">收入 Income</span><span className="expense-key">支出 Expense</span></div>
+        <CashFlowChart value={value} />
+        <p className="chart-caption">同一比例展示收支，零线已标出；精确金额见明细。</p>
+        <details className="dashboard-details"><summary>查看六个月精确收支</summary><div className="finance-table-scroll" tabIndex={0} aria-label="六个月收支表格"><table>
         <thead><tr><th>月份</th><th>收入</th><th>支出</th><th>净收支</th></tr></thead><tbody>{value.monthlyCashFlow.map(f => <tr key={f.month}><td>{f.month}</td><td className="finance-amount">{f.income}</td><td className="finance-amount">{f.expense}</td><td className="finance-amount">{f.net}</td></tr>)}</tbody>
-      </table></div><p className="hint">当前月及此前五个月；无交易月份由服务端补零。这是普通 CNY 收支统计，不代表账户余额变化或投资收益。</p></section>
-      <section className="card"><h3>人工参考资产分布</h3><p>符合条件 {a.total} / 全部 {a.assetTotal} 项资产；当前显示 {a.items.length} 项。完整分母：{a.referenceTotal} CNY。</p>
-        {!a.complete && <p role="status">部分视图：仅显示 ID 升序前 20 项，百分比仍基于全部符合条件资产；当前列表不代表完整 100% 配置。</p>}
-        {a.items.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="人工参考资产分布表格"><table><thead><tr><th>资产 / ID</th><th>人工参考价值 · CNY</th><th>占全部符合条件资产</th></tr></thead><tbody>{a.items.map(item => <tr key={item.id}><td>{item.name}<small>{item.id}</small></td><td className="finance-amount">{item.value}</td><td className="finance-amount">{item.percentage}%</td></tr>)}</tbody></table></div> : <p>没有符合人工参考分布条件的资产，无法形成分布。</p>}
+      </table></div></details><p className="hint">当前月及此前五个月；无交易月份由服务端补零。本月截至快照时刻（不含）。仅普通 CNY 收支，不含转账表与投资交易，不代表余额变化或投资收益。</p></section>
+      <section className="card dashboard-allocation"><div className="card-heading"><h3>人工参考资产分布 <small>Reference allocation</small></h3><Icon name="assets" /></div>
+        <div className="allocation-coverage"><span className="coverage-icon"><Icon name="assets" /></span><div><strong>{a.total} <span>/ {a.assetTotal} 项</span></strong><small>符合条件 / 全部资产 · 显示 {a.items.length} 项</small></div><span className="coverage-tag">{a.complete ? '合格资产完整列表' : '部分展示'}</span></div>
+        <p className="allocation-denominator">完整分母 <strong>{a.referenceTotal} CNY</strong></p>
+        {!a.complete && <p className="coverage-notice" role="status">部分视图：ID 升序前 20 项，占比使用全部符合条件资产的完整分母，不代表完整 100% 配置。</p>}
+        {a.items.length ? <ol className="allocation-list" tabIndex={0} aria-label="人工参考资产分布">{a.items.map(item => <li key={item.id}>
+          <div><span className="allocation-name">{item.name}<small>ID {item.id}</small></span><strong>{item.percentage}%</strong></div>
+          <svg className="allocation-bar" viewBox="0 0 100 1.6" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="1.6" rx=".8" className="bar-track" /><rect width={`${item.percentage}%`} height="1.6" rx=".8" className="bar-fill" /></svg>
+          <small className="allocation-value">{item.value} CNY</small>
+        </li>)}</ol> : <div className="dashboard-empty"><Icon name="assets" /><p>没有符合人工参考分布条件的资产，无法形成分布。</p></div>}
         <p className="hint">排除（按顺序互斥计数）：非 CNY {a.excludedCurrency}；未定价 {a.excludedUnpriced}；数量缺失或非正 {a.excludedQuantity}；参考价值非正 {a.excludedValue}。</p>
-        <p className="hint">不是完整净资产配置，不是实时行情。未定价资产不视为价值零。人工价格更新时间和新鲜度未知；资产记录更新时间不能证明价格新鲜度。不合并账户余额、投资成本或行情估值。</p>
-        <button className="secondary" onClick={openAssets}>进入 Assets 查看详细数据</button>
+        <button className="text-button" onClick={openAssets}>进入 Assets 查看详细数据<Icon name="arrow" /></button>
       </section>
-      <section className="card"><h3>最近五条普通交易 · CNY</h3>{value.recentTransactions.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="最近普通交易表格"><table><thead><tr><th>时间 / ID</th><th>类型</th><th>账户</th><th>分类</th><th>金额 · CNY</th></tr></thead><tbody>{value.recentTransactions.map(t => <tr key={t.id}><td>{t.transactedAt}<small>{t.id}</small></td><td>{t.type}</td><td>{t.accountName ?? '未知账户'}</td><td>{t.categoryName ?? '未知分类'}</td><td className="finance-amount">{t.amount}</td></tr>)}</tbody></table></div> : <p>当前用户没有 CNY 普通交易。</p>}
+      <section className="card dashboard-recent"><div className="card-heading"><h3>最近五条普通交易 · CNY <small>Recent transactions</small></h3><button className="text-button" onClick={openTransactions}>查看交易<Icon name="arrow" /></button></div>{value.recentTransactions.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="最近普通交易表格"><table><thead><tr><th>时间 / ID</th><th>类型</th><th>账户</th><th>分类</th><th>金额 · CNY</th></tr></thead><tbody>{value.recentTransactions.map(t => <tr key={t.id}><td>{t.transactedAt}<small>{t.id}</small></td><td><span className={`transaction-kind ${t.type === 'INCOME' ? 'kind-income' : t.type === 'EXPENSE' ? 'kind-expense' : ''}`}>{t.type}</span></td><td>{t.accountName ?? '未知账户'}</td><td>{t.categoryName ?? '未知分类'}</td><td className={`finance-amount ${t.type === 'INCOME' ? 'amount-income' : t.type === 'EXPENSE' ? 'amount-expense' : ''}`}>{t.amount}</td></tr>)}</tbody></table></div> : <div className="dashboard-empty"><Icon name="transactions" /><p>当前用户没有 CNY 普通交易。</p></div>}
         <p className="hint">按交易时间、ID 降序。保留历史 REFUND / ADJUSTMENT / TRANSFER，也可能显示未来日期记录；这些记录不因此计入本月收支。</p></section>
+      <section className="card dashboard-accounts"><div className="card-heading"><h3>账户概览 <small>Accounts</small></h3><Icon name="accounts" /></div>
+        <div className="account-count"><span className="metric-icon"><Icon name="accounts" /></span><div><strong>{overview?.accountCount}</strong><small>当前绑定用户的账户</small></div></div>
+        <p className="account-scope"><Icon name="shield" />{overview?.username}</p>
+        <p className="hint">在账户页面查看余额、状态与详情。总览余额仅包含 CNY 账户，包含使用中与停用账户。</p>
+        <button className="account-entry" onClick={openAccounts}><Icon name="accounts" /><span>查看全部账户<small>Accounts overview</small></span><Icon name="arrow" /></button>
+      </section>
+      </div>
+      <div className="dashboard-disclosure"><Icon name="shield" /><p>人工参考分布不是完整净资产配置，也不是实时行情。未定价资产不视为价值零；人工价格更新时间和新鲜度未知，资产记录更新时间不能证明价格新鲜度。不合并账户余额、投资成本或行情估值。</p></div>
     </>}
   </section>
+}
+
+function Metric({ icon, title, english, amount, tone, note }: { icon: IconName; title: string; english: string; amount: string; tone: string; note: string }) {
+  return <div className={`metric-card metric-${tone}`}><dt><span className="metric-icon"><Icon name={icon} /></span><span>{title}<small>{english}</small></span></dt><dd>{amount} CNY</dd><p>{note}</p>{tone === 'balance' && <svg className="balance-motif" viewBox="0 0 150 80" aria-hidden="true"><path d="M5 80V65m16 15V50m16 30V58m16 22V40m16 40V47m16 33V25m16 55V32m16 48V10m16 70V18m16 62V0" stroke="currentColor" strokeWidth="7" strokeLinecap="round" /></svg>}</div>
+}
+
+function CashFlowChart({ value }: { value: Dashboard }) {
+  // Only bounded, non-authoritative server coordinates are used for geometry.
+  const y = (coordinate: number) => 20 + coordinate * .016
+  const x = (index: number) => 36 + index * 106
+  const path = (points: number[]) => points.map((point, i) => `${i ? 'L' : 'M'}${x(i)},${y(point)}`).join(' ')
+  const zero = y(value.cashFlowPlot.zero)
+  return <svg className="cash-flow-chart" viewBox="0 0 602 218" role="img" aria-label="六个月收入和支出趋势图；金额见下方精确明细">
+    <defs>{['income', 'expense'].map(kind => <linearGradient id={`cash-${kind}`} key={kind} x1="0" y1="0" x2="0" y2="1"><stop className={`chart-${kind}`} stopOpacity=".22" /><stop offset="1" className={`chart-${kind}`} stopOpacity=".01" /></linearGradient>)}</defs>
+    {[20, 60, 100, 140, 180].map(v => <line className="chart-grid" key={v} x1="36" x2="566" y1={v} y2={v} />)}
+    <line className="chart-zero" x1="36" x2="566" y1={zero} y2={zero} /><text className="chart-label" x="12" y={zero + 4}>0</text>
+    {(['income', 'expense'] as const).map(kind => <g key={kind}><path d={`${path(value.cashFlowPlot[kind])} L566,${zero} L36,${zero} Z`} fill={`url(#cash-${kind})`} /><path d={path(value.cashFlowPlot[kind])} fill="none" className={`chart-line chart-${kind}`} />{value.cashFlowPlot[kind].map((point, i) => <circle key={i} cx={x(i)} cy={y(point)} r="4" className={`chart-point chart-${kind}`}><title>{value.monthlyCashFlow[i]!.month} {kind === 'income' ? '收入' : '支出'} {value.monthlyCashFlow[i]![kind]} CNY</title></circle>)}</g>)}
+    {value.monthlyCashFlow.map((flow, i) => <text className="chart-label" key={flow.month} x={x(i)} y="207" textAnchor="middle">{flow.month}</text>)}
+  </svg>
 }

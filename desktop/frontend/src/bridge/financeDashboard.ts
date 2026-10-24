@@ -5,6 +5,7 @@ export interface DashboardFlow { month: string; income: string; expense: string;
 export interface FinanceDashboard {
   currency: 'CNY'; asOf: string; businessZone: 'Asia/Shanghai'; cnyAccountBalance: string
   monthIncome: string; monthExpense: string; monthNet: string; monthlyCashFlow: DashboardFlow[]
+  cashFlowPlot: { income: number[]; expense: number[]; zero: number }
   allocation: { items: { id: string; name: string; value: string; percentage: string }[]; total: string; complete: boolean
     referenceTotal: string; assetTotal: string; excludedCurrency: string; excludedUnpriced: string; excludedQuantity: string; excludedValue: string }
   recentTransactions: { id: string; type: string; amount: string; categoryName: string | null; accountName: string | null; transactedAt: string }[]
@@ -14,7 +15,7 @@ const count = (v: unknown): v is string => typeof v === 'string' && /^(0|[1-9][0
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256
 const time = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(v) && !Number.isNaN(Date.parse(v))
 export function isFinanceDashboard(v: unknown): v is FinanceDashboard {
-  if (!isObject(v) || !exactFields(v, ['currency', 'asOf', 'businessZone', 'cnyAccountBalance', 'monthIncome', 'monthExpense', 'monthNet', 'monthlyCashFlow', 'allocation', 'recentTransactions'])
+  if (!isObject(v) || !exactFields(v, ['currency', 'asOf', 'businessZone', 'cnyAccountBalance', 'monthIncome', 'monthExpense', 'monthNet', 'monthlyCashFlow', 'allocation', 'recentTransactions', 'cashFlowPlot'])
     || v.currency !== 'CNY' || v.businessZone !== 'Asia/Shanghai' || !time(v.asOf)
     || !['cnyAccountBalance', 'monthIncome', 'monthExpense', 'monthNet'].every(k => amount(v[k]))
     || !Array.isArray(v.monthlyCashFlow) || v.monthlyCashFlow.length !== 6) return false
@@ -24,6 +25,10 @@ export function isFinanceDashboard(v: unknown): v is FinanceDashboard {
     return isObject(f) && exactFields(f, ['month', 'income', 'expense', 'net']) && f.month === d.toISOString().slice(0, 7)
       && amount(f.income) && amount(f.expense) && amount(f.net)
   })) return false
+  const p = v.cashFlowPlot
+  const coordinate = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 10000
+  if (!isObject(p) || !exactFields(p, ['income', 'expense', 'zero']) || !coordinate(p.zero)
+    || !['income', 'expense'].every(k => Array.isArray(p[k]) && p[k].length === 6 && p[k].every(coordinate))) return false
   const a = v.allocation
   if (!isObject(a) || !exactFields(a, ['items', 'total', 'complete', 'referenceTotal', 'assetTotal', 'excludedCurrency', 'excludedUnpriced', 'excludedQuantity', 'excludedValue'])
     || !count(a.total) || !count(a.assetTotal) || !count(a.excludedCurrency) || !count(a.excludedUnpriced) || !count(a.excludedQuantity) || !count(a.excludedValue)

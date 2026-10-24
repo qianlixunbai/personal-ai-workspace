@@ -9,6 +9,7 @@ import { FinanceTransactions } from '../components/FinanceTransactions'
 import { FinanceBudgets } from '../components/FinanceBudgets'
 import { FinanceAssets } from '../components/FinanceAssets'
 import { FinanceInvestments } from '../components/FinanceInvestments'
+import { Icon } from '../components/Icon'
 
 const initialQuery: FinanceQuery = { page: 0, size: 10, status: 'ALL', sort: 'ID_ASC' }
 const states = {
@@ -30,7 +31,7 @@ const financeGroups = [
 type FinanceView = typeof financeGroups[number]['items'][number]['id']
 
 export function FinancePage({ bridge, enabled, openSettings }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void }) {
-  const [view, setView] = useState<FinanceView>('accounts')
+  const [view, setView] = useState<FinanceView>('dashboard')
   const [historyPosition, setHistoryPosition] = useState('')
   const selectView = (next: FinanceView) => {
     if (next === 'history') setHistoryPosition('')
@@ -39,14 +40,14 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
   return <div className="finance-layout">
     <nav className="finance-navigation" aria-label="Finance 视图">
       {financeGroups.map(group => <div className="finance-nav-group" key={group.label}><p className="nav-group-label">{group.label}</p>
-        {group.items.map(item => <button key={item.id} aria-label={`${item.name} · ${item.label}`} aria-current={view === item.id ? 'page' : undefined} aria-pressed={view === item.id} onClick={() => selectView(item.id)}><span>{item.label}</span><small aria-hidden="true">{item.name}</small></button>)}
+        {group.items.map(item => <button key={item.id} aria-label={`${item.name} · ${item.label}`} aria-current={view === item.id ? 'page' : undefined} aria-pressed={view === item.id} onClick={() => selectView(item.id)}><Icon name={item.id} /><span className="finance-nav-copy"><span>{item.id === 'budgets' ? '预算' : item.label}</span><small aria-hidden="true">{item.name}{item.id === 'budgets' ? ' · UNSUPPORTED' : ''}</small></span></button>)}
       </div>)}
     </nav>
     <label className="finance-picker">选择 Finance 页面<select value={view} onChange={event => selectView(event.target.value as FinanceView)}>
       {financeGroups.map(group => <optgroup key={group.label} label={group.label}>{group.items.map(item => <option key={item.id} value={item.id}>{item.name} · {item.label}</option>)}</optgroup>)}
     </select></label>
     <div className="finance-content">
-    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} openAssets={() => setView('assets')} />
+    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} openAssets={() => setView('assets')} openAccounts={() => setView('accounts')} openTransactions={() => setView('transactions')} />
       : view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} />
       : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} />

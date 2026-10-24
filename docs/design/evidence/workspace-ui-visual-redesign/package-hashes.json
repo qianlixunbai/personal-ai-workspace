@@ -1,0 +1,42 @@
+{
+  "result": "PASS",
+  "oldPackageFiles": 36,
+  "newPackageFiles": 35,
+  "reactManifestMatches": true,
+  "sourceHashesMatch": true,
+  "profileConfigAndBindingUnchanged": true,
+  "hashes": [
+    {
+      "path": "PersonalAiWorkspace.Desktop.exe",
+      "sha256": "a5d00919c037c3701d47baa1ff8af19613d3e8a61d56d394f6a0615167486ea1"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.dll",
+      "sha256": "c495a359bfc34ec1068547b1b5c6d029c2a9a6dad99bcb751d8ba6ad2ba29c35"
+    },
+    {
+      "path": "PersonalAiWorkspace.Core.dll",
+      "sha256": "5f6ea7cd6d1269fba400ae4e3a1d90a5dcd95dd4c0e31209c8d0d18c27d64306"
+    },
+    {
+      "path": "runtime/personal-ai-workspace.jar",
+      "sha256": "96b68c9804fe21adfcf26ac5e2063d57ae1d706d36543f55c076fa8f7e9b3fb3"
+    },
+    {
+      "path": "MainWorkspace/workspace-assets.json",
+      "sha256": "c4bb4d2a3bac9b960d8523103061c3e87bd6d9a1ce58946143c9468aa30558fd"
+    },
+    {
+      "path": "Open-Workspace-Visual-Redesign.cmd",
+      "sha256": "a4a2bef053de2f96320d9b8b00e3fd26c9ad5b780be81c51383d15be85e0d004"
+    },
+    {
+      "path": "Open-Workspace-Visual-Redesign.ps1",
+      "sha256": "6753a29305ab55f7945f1867104345b68f1ffca5383feaa3bd7cf858e588a0b7"
+    },
+    {
+      "path": "BUILD-INFO.json",
+      "sha256": "dee600f63bafdb0f1095c0dd82f1322dc7245fe431228bee39598693f86a3756"
+    }
+  ]
+}

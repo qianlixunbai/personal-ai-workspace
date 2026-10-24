@@ -1,0 +1,34 @@
+2026-10-25 Asia/Shanghai - WORKSPACE UI VISUAL REDESIGN - DEVELOPMENT ONLY
+Source baseline: 01258eb0ab00e11946dc2fde9e3b9e79c68e49fe; dirty build on codex/workspace-ui-visual-redesign.
+Actual local commands and scopes:
+- mvnw -B -ntp -pl workspace-application -am -Dtest=FinanceDashboardPlotTest -Dsurefire.failIfNoSpecifiedTests=false test: PASS.
+- npm test -- FinancePage.test.tsx MemoryPage.test.tsx -t dashboard strings|discards financial snapshots|guards actual App: Dashboard and App/Memory PASS; account flow initially failed only on old Budgets selector. Original combined result retained in chat tool output, not a local log.
+- Account flow resumed alone after correcting the selector: PASS; precision and lifecycle assertions retained.
+- npm run build: PASS, includes tsc, Vite, resource manifest. Final WPF publish uses final dist.
+- mvnw -B -ntp -pl workspace-application -am -DskipTests package: PASS, new Runtime JAR + built-in identity/JAR audit.
+- .verification/ui-redesign-package-final.ps1: final Debug Development-only Core/WPF publish and pinned synthetic launcher.
+- Launcher CheckOnly: SYNTHETIC_DATABASE_IDENTITY_VERIFIED. Actual CMD startup and final CMD reopen separately performed.
+- Browser integrated synthetic flow: PASS, seven routes, nine Finance views, Memory guards, theme, expanded exact table, long exact strings, unmount/default reentry, 400..1920 CSS px. This is not SQL or native proof.
+- Native final + resume: seven routes, exact money, chart and details, nine Finance entries; original summary Invoke failed, corrected to ExpandCollapse. Native Home after End did not reliably restore Dashboard: manual review pending. No product workaround.
+- Native stable flow: verified light/dark Dashboard, exact money, 780x540 zoom150/zoom200, Runtime status to Settings. Only verified-light and verified-dark captures copied to this directory. Earlier wrong-route or mislabeled captures are excluded.
+- Native lifecycle: only task-owned Runtime stopped after parent/JAR-path verification; snapshot cleared; normal tray exit; actual CMD reopen; default Dashboard exact money; second normal tray exit and listener release. PASS.
+- Package parity: final payloads, source hashes, dist manifest, new target JAR, old F-next-10 and Phase 1 payloads, DPAPI/profile/binding pins: PASS.
+Approval rejection: direct DPAPI decrypt plus temporary SQL-test config command was rejected as blocked by policy. Command/Maven SQL test did NOT run. No retry or credential export. Two-user SQL result remains F-next-10 historical evidence only.
+NOT RUN: full Java/Desktop/Frontend suites, fresh two-user SQL, real AI/paid Provider calls, production financial data, writes/migrations/new Profiles, whole Windows reboot, full IME/browser/OS-DPI/stress/package matrix.
+Native: 2560x1440 physical screen, 96 DPI. Resized 1920x1080,1440x900,1280x800,1024x800; 780x540 at150/200 WebView Zoom. CSS viewport/DPR not measured in native host; DevTools/security unchanged.
+Local logs retained under ignored .verification/. SHA256:
+ui-redesign-java.log 695375aa6f0af4a04c53fc23ec092f52af19772eca1294a2d86c154b839d840e
+ui-redesign-frontend-resume.log e3530f4156664adc55993aaa5c26178774c124916d4dd2826416708b9867b8d1
+ui-redesign-frontend-build.log e241c726a1a012386eaf94ce49dd517dc11ee3417c396fb02b59aad2e2f857c2
+ui-redesign-runtime-package.log dec072e159a87adf2884d0ace5aa0a44a7db85a7675e92d727dc891db6405d78
+ui-redesign-package-final.log 62f2d061d61c4729964d31139ba72f12dcc0096b473c79d58738dfcab6c7f1df
+ui-redesign-checkonly.log 47a3533f5d07dd6ece86bf61fa22b3b261ba5a6bf471e4490b58df1b902abdef
+ui-redesign-browser.log 2383e7bcb4c34d90078ce20efe7605d0b82f9b597d61bcd92afb5b4ddbd9f13d
+ui-redesign-browser-result.json aed4a477a813a59310cc7ec171210ee9a19f7c448d26639cce4afeb412b8f6ba
+ui-redesign-native-final.log 28e58ba9c0f84043e192c0622b460de2ab4011e4c2cc9c223a471737b82748d8
+ui-redesign-native-resume.log a98a5cb88bed43d2e14694a7f57dc5f4a598875ad3d7df4326e6330b32a27bbf
+ui-redesign-native-stable.log c0fa4ea1d36b5a6603d0b0ee5711ec5b7fed2fa4dd74c67e3accb9ba4cc31fa6
+ui-redesign-native-result.json 078b547dcb48d378e10d1abaa936e01f9002a5db67720f0e84f0efcf41a5259d
+ui-redesign-native-lifecycle.log e31676e34c3152eee97b69af68723e8666ad451e69d88d08802bde66a43861e1
+ui-redesign-native-lifecycle-result.json b05f4b0003ce7bc5054f5da668013cff45fd4e11105fadc56b1b1140b56b1acc
+ui-redesign-package-parity.log 422009799b8cac4392964e7a56fa08392d88a9e27b87f9282f83abe21899375b

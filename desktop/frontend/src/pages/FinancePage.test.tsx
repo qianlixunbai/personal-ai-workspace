@@ -3,6 +3,7 @@ import { afterEach, expect, it } from 'vitest'
 import { WorkspaceClient } from '../bridge/client'
 import { Port } from '../test/fixtures'
 import { FinancePage } from './FinancePage'
+import { isFinanceDashboard } from '../bridge/financeDashboard'
 
 afterEach(cleanup)
 
@@ -10,12 +11,16 @@ it('keeps dashboard strings, partial coverage and clears failed or late snapshot
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
   const dashboard = { currency: 'CNY', asOf: '2026-10-24T12:00:00', businessZone: 'Asia/Shanghai', cnyAccountBalance: '9007199254740993.30', monthIncome: '0', monthExpense: '0', monthNet: '0',
+    cashFlowPlot: { income: [10000, 10000, 10000, 10000, 10000, 10000], expense: [10000, 10000, 10000, 10000, 10000, 10000], zero: 10000 },
     monthlyCashFlow: ['05', '06', '07', '08', '09', '10'].map(m => ({ month: `2026-${m}`, income: '0', expense: '0', net: '0' })),
     allocation: { items: Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1), name: `Asset ${i}`, value: '1.000000000000', percentage: '4.7619' })), total: '21', complete: false, referenceTotal: '21', assetTotal: '22', excludedCurrency: '0', excludedUnpriced: '1', excludedQuantity: '0', excludedValue: '0' }, recentTransactions: [] }
   const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
   const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
   try {
-    fireEvent.click(screen.getByRole('button', { name: 'Dashboard · 财务总览' })); await reply(overview); await reply(dashboard)
+    expect(screen.getByRole('button', { name: 'Dashboard · 财务总览' }).getAttribute('aria-current')).toBe('page')
+    await reply(overview); await reply(dashboard)
+    expect(isFinanceDashboard({ ...dashboard, cashFlowPlot: { ...dashboard.cashFlowPlot, zero: 10001 } })).toBe(false)
+    expect(isFinanceDashboard({ ...dashboard, cashFlowPlot: { ...dashboard.cashFlowPlot, income: [0] } })).toBe(false)
     expect(screen.getByText('9007199254740993.30 CNY')).toBeTruthy(); expect(screen.getByText(/部分视图/)).toBeTruthy()
     expect(screen.getAllByText('4.7619%')).toHaveLength(20)
     fireEvent.click(screen.getByRole('button', { name: '刷新 Dashboard' })); await reply(overview); const late = port.sent.length - 1
@@ -149,7 +154,9 @@ it('discards financial snapshots and late detail responses across runtime change
   const account = { id: '1', name: 'Alice account', type: 'BANK', currency: 'CNY', balance: '9007199254740993.10', status: 'ACTIVE' }
   const overview = { state: 'READY', account, cnyBalance: { currency: 'CNY', balance: '9007199254740993.30' }, username: 'Alice', accountCount: '1' }
   const reply = async (index: number, value: unknown) => { await act(async () => { port.reply(index, value) }) }
-  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  const view = render(<FinancePage bridge={bridge} enabled={false} openSettings={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Accounts · 账户' }))
+  view.rerender(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
   try {
     await reply(0, overview)
     await reply(1, { items: [account], page: 0, size: 10, total: '1', status: 'ALL', sort: 'ID_ASC' })
@@ -185,7 +192,7 @@ it('discards financial snapshots and late detail responses across runtime change
     await reply(11, overview)
     await reply(12, { ...query, items: [transaction], total: '1' })
     expect(screen.getByText('9007199254740993.10 CNY')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Budgets · 预算' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Budgets · 预算 · 来源不支持' }))
     expect(port.sent[13]).toMatchObject({ method: 'finance.budgets', payload: {} })
     await reply(13, { state: 'UNSUPPORTED' })
     expect(screen.getByText(/这不表示当前用户没有预算/)).toBeTruthy()

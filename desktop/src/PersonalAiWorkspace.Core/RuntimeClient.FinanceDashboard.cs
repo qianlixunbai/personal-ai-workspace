@@ -6,7 +6,8 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceDashboard(string Currency, string AsOf, string BusinessZone, string CnyAccountBalance,
     string MonthIncome, string MonthExpense, string MonthNet, FinanceDashboardFlow[] MonthlyCashFlow,
-    FinanceDashboardAllocation Allocation, FinanceDashboardRecent[] RecentTransactions);
+    FinanceDashboardAllocation Allocation, FinanceDashboardRecent[] RecentTransactions, FinanceDashboardPlot CashFlowPlot);
+public sealed record FinanceDashboardPlot(int[] Income, int[] Expense, int Zero);
 public sealed record FinanceDashboardFlow(string Month, string Income, string Expense, string Net);
 public sealed record FinanceDashboardAsset(string Id, string Name, string Value, string Percentage);
 public sealed record FinanceDashboardAllocation(FinanceDashboardAsset[] Items, string Total, bool Complete, string ReferenceTotal,
@@ -19,7 +20,7 @@ public sealed partial class RuntimeClient
     {
         using var body = await FinanceJson("/dashboard", token);
         var r = body.RootElement;
-        MemoryFields(r, "currency", "asOf", "businessZone", "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet", "monthlyCashFlow", "allocation", "recentTransactions");
+        MemoryFields(r, "currency", "asOf", "businessZone", "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet", "monthlyCashFlow", "allocation", "recentTransactions", "cashFlowPlot");
         if (String(r, "currency") != "CNY" || String(r, "businessZone") != "Asia/Shanghai" || !DashboardTime(String(r, "asOf"))) throw Invalid();
         foreach (string k in new[] { "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet" }) DashboardAmount(r, k);
         var flows = Property(r, "monthlyCashFlow");
@@ -30,6 +31,14 @@ public sealed partial class RuntimeClient
             MemoryFields(f, "month", "income", "expense", "net");
             if (String(f, "month") != current.AddMonths(index++ - 5).ToString("yyyy-MM", CultureInfo.InvariantCulture)) throw Invalid();
             foreach (string k in new[] { "income", "expense", "net" }) DashboardAmount(f, k);
+        }
+        var plot = Property(r, "cashFlowPlot");
+        MemoryFields(plot, "income", "expense", "zero");
+        static bool Coordinate(JsonElement v) => v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) && n is >= 0 and <= 10000;
+        if (!Coordinate(Property(plot, "zero"))) throw Invalid();
+        foreach (string k in new[] { "income", "expense" }) {
+            var points = Property(plot, k);
+            if (points.ValueKind != JsonValueKind.Array || points.GetArrayLength() != 6 || !points.EnumerateArray().All(Coordinate)) throw Invalid();
         }
         var a = Property(r, "allocation");
         MemoryFields(a, "items", "total", "complete", "referenceTotal", "assetTotal", "excludedCurrency", "excludedUnpriced", "excludedQuantity", "excludedValue");

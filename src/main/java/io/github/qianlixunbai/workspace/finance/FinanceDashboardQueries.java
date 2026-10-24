@@ -26,13 +26,15 @@ public final class FinanceDashboardQueries {
         this.clock = clock.withZone(ZoneId.of(ZONE));
     }
     public record Flow(String month, String income, String expense, String net) { }
+    /** Non-authoritative SVG y coordinates, 0..10000, on one shared income/expense scale. */
+    public record CashFlowPlot(List<Integer> income, List<Integer> expense, int zero) { }
     public record AllocationItem(String id, String name, String value, String percentage) { }
     public record Allocation(List<AllocationItem> items, String total, boolean complete, String referenceTotal,
             String assetTotal, String excludedCurrency, String excludedUnpriced, String excludedQuantity, String excludedValue) { }
     public record Recent(String id, String type, String amount, String categoryName, String accountName, String transactedAt) { }
     public record Dashboard(String currency, String asOf, String businessZone, String cnyAccountBalance,
             String monthIncome, String monthExpense, String monthNet, List<Flow> monthlyCashFlow,
-            Allocation allocation, List<Recent> recentTransactions) {
+            Allocation allocation, List<Recent> recentTransactions, CashFlowPlot cashFlowPlot) {
         @Override public String toString() { return "FinanceDashboard[private]"; }
     }
     private record Aggregate(YearMonth month, BigDecimal income, BigDecimal expense) { }
@@ -88,7 +90,18 @@ public final class FinanceDashboardQueries {
                     r.getString("category_name"), r.getString("account_name"), r.getTimestamp("transacted_at").toLocalDateTime().toString()), userId);
             var current = flows.getLast();
             return new Dashboard("CNY", now.toString(), ZONE, accounts.sumBalanceByUser(userId).toPlainString(),
-                    current.income(), current.expense(), current.net(), flows, allocation, recent);
+                    current.income(), current.expense(), current.net(), flows, allocation, recent, plot(flows));
         });
+    }
+
+    static CashFlowPlot plot(List<Flow> flows) {
+        var values = flows.stream().flatMap(f -> java.util.stream.Stream.of(new BigDecimal(f.income()), new BigDecimal(f.expense()))).toList();
+        BigDecimal min = values.stream().min(BigDecimal::compareTo).orElse(BigDecimal.ZERO).min(BigDecimal.ZERO);
+        BigDecimal max = values.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO).max(BigDecimal.ZERO);
+        BigDecimal range = max.subtract(min);
+        java.util.function.Function<String, Integer> y = value -> range.signum() == 0 ? 10000
+                : max.subtract(new BigDecimal(value)).multiply(BigDecimal.valueOf(10000)).divide(range, 0, RoundingMode.HALF_UP).intValueExact();
+        return new CashFlowPlot(flows.stream().map(f -> y.apply(f.income())).toList(),
+                flows.stream().map(f -> y.apply(f.expense())).toList(), y.apply("0"));
     }
 }

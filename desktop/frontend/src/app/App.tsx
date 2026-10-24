@@ -10,6 +10,8 @@ import { OperationPage } from '../pages/OperationPage'
 import { ConversationsPage } from '../pages/ConversationsPage'
 import { FinancePage } from '../pages/FinancePage'
 import { KnowledgePage } from '../pages/KnowledgePage'
+import { Icon } from '../components/Icon'
+import { FinanceArtwork } from '../components/FinanceArtwork'
 
 export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [page, setPage] = useState(() => pageFromHash(location.hash))
@@ -90,17 +92,21 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const runtimeLabel = status ? status.runtime === 'Available' ? 'Runtime 可连接' : 'Runtime 不可连接' : 'Runtime 未核对'
   return <div className={`workspace workspace-${page}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>跳到页面内容</a>
-    <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true">P</span><div>Personal AI<span>你的本机工作区</span></div></div>
+    <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="cube" /></span><div>Personal AI Workspace<span>Development-only</span></div></div>
       <nav className="workspace-navigation" aria-label="工作区页面">{(['工作', '资料', '业务'] as const).map(group => <div className="nav-group" key={group}>
         <p className="nav-group-label">{group}</p>{pages.filter(item => item.group === group).map(item => <a key={item.id} href={`#/${item.id}`} title={`${item.name} / ${item.label}`} aria-label={`${item.name} / ${item.label}`} onClick={event => { event.preventDefault(); navigate(item.id) }} aria-current={item.id === page ? 'page' : undefined}>
-          <span className="nav-label">{item.label}</span><span className="nav-name" aria-hidden="true">{item.name}</span></a>)}</div>)}</nav>
+          <Icon name={item.id} /><span className="nav-copy"><span className="nav-label">{item.label}</span><span className="nav-name" aria-hidden="true">{item.name}</span></span></a>)}</div>)}</nav>
       <label className="workspace-picker">工作区页面<select value={page} onChange={event => navigate(event.target.value as typeof page)}>{pages.map(item => <option key={item.id} value={item.id}>{item.label} / {item.name}</option>)}</select></label>
       <div className="sidebar-bottom">
-        <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型就绪需单独核对`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><span className="runtime-short" aria-hidden="true">状态</span><span className="runtime-label">{runtimeLabel}</span></button>
-        <a className="settings-link" href="#/settings" title="Settings / 设置" aria-label="Settings / 设置" aria-current={page === 'settings' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('settings') }}><span className="nav-label">设置</span><span className="nav-name" aria-hidden="true">Settings</span></a>
-        <button className="theme-button" title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}><span className="theme-short" aria-hidden="true">{theme === 'light' ? '深色' : '浅色'}</span><span className="theme-label">切换到{theme === 'light' ? '深色' : '浅色'}主题</span></button></div>
+        <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型就绪需单独核对`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><Icon name="status" /><span className="nav-copy"><span>运行状态</span><small>Runtime status</small></span><span className={`dot ${status?.runtime === 'Available' ? 'online' : ''}`} /></button>
+        <a className="settings-link" href="#/settings" title="Settings / 设置" aria-label="Settings / 设置" aria-current={page === 'settings' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('settings') }}><Icon name="settings" /><span className="nav-copy"><span className="nav-label">设置</span><span className="nav-name" aria-hidden="true">Settings</span></span></a>
+        <button className="theme-button" title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}><Icon name={theme === 'light' ? 'moon' : 'sun'} /><span className="nav-copy"><span>{theme === 'light' ? '深色模式' : '浅色模式'}</span><small>Theme</small></span></button>
+        <div className="local-card"><span className="local-symbol"><Icon name="shield" /></span><div><strong>本机工作区</strong><small>Local-first workspace</small></div><p>本地管理 · 明确选择<br />由你控制数据与 AI</p></div></div>
     </aside>
-    <main id="main-content" tabIndex={-1}><header className="page-header"><div><p className="eyebrow">{current.group === '底部' ? '工作区' : current.group}</p><h1 ref={heading} tabIndex={-1}>{current.name} <span>/ {current.label}</span></h1><p>{current.subtitle}</p></div><span className="shell-badge">{runtimeLabel}</span></header>
+    <main id="main-content" tabIndex={-1}><header className={`page-header ${page === 'finance' ? 'finance-hero' : ''}`}>
+      {page === 'finance' && <FinanceArtwork />}
+      <div className="page-heading-copy"><p className="eyebrow">{current.group === '底部' ? '工作区 / Workspace' : `${current.group} / ${current.group === '业务' ? 'Business' : current.group === '资料' ? 'Library' : 'Workspace'}`}</p><h1 ref={heading} tabIndex={-1}>{page === 'finance' ? <>Finance <span>· 财务工作台</span></> : <>{current.name} <span>/ {current.label}</span></>}</h1><p>{page === 'finance' ? '账户、收支与资产，清晰呈现每一笔真实数据。' : current.subtitle}</p>{page === 'finance' && <p className="hero-english">Your accounts, cash flow and assets. A clearer financial picture.</p>}</div>
+      <button className="shell-badge" aria-label={`查看连接详情：${runtimeLabel}`} onClick={() => navigate('settings', true)}><span className={`dot ${status?.runtime === 'Available' ? 'online' : ''}`} />{runtimeLabel}<Icon name="arrow" /></button></header>
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}
