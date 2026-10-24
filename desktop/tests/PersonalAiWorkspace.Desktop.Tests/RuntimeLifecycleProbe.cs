@@ -47,7 +47,7 @@ public static partial class RuntimeLifecycleProbe
         }
         bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
             && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        if (!postgresql && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation" or "gui-finance-next2" or "gui-finance-next3" or "gui-finance-next4" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob"))) return 2;
+        if (!postgresql && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation" or "gui-finance-next2" or "gui-finance-next3" or "gui-finance-next4" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob"))) return 2;
         string phase = "PROFILE_PARSE";
         try
         {

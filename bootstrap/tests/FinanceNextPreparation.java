@@ -158,6 +158,29 @@ public final class FinanceNextPreparation {
                     sql(db, "GRANT SELECT ON public.investment_instruments,public.investment_transactions TO " + reader);
                 }
             }
+            if (config.path("portfolio").asBoolean(false)) {
+                stage = "PORTFOLIO_SCENARIOS";
+                try (var db = source(finance).getConnection()) {
+                    // Additional source-query scenarios, initialized only in this NEW cluster. Disabled users
+                    // are excluded from Native binding candidates; the source probe is an internal test only.
+                    for (int user = 101; user <= 106; user++) {
+                        sql(db, "INSERT INTO users(id,username,email,password_hash,status) VALUES(" + user + ",'Portfolio scenario " + user + "','scenario" + user + "@example.invalid','not-a-login','DISABLED')");
+                        for (int slot = 1; slot <= 2; slot++) {
+                            int id = user * 10 + slot;
+                            sql(db, "INSERT INTO accounts(id,user_id,name,type,currency,balance,status) VALUES(" + id + "," + user + ",'Portfolio scenario','BROKERAGE','CNY',0,'ACTIVE')");
+                            String symbol = user == 104 || user == 106 && slot == 1 ? "SYNUSD" : user == 105 || user == 106 ? (slot == 1 ? "SYNNONE" : "SYNJPY") : "SYNCNY";
+                            String currency = symbol.equals("SYNCNY") ? "CNY" : symbol.equals("SYNJPY") ? "JPY" : "USD";
+                            if (slot == 1 || user >= 105)
+                                sql(db, "INSERT INTO investment_instruments(id,user_id,symbol,name,market,asset_class,quote_currency,status) VALUES(" + id + "," + user + ",'" + symbol + "','Portfolio scenario','US','STOCK','" + currency + "','ACTIVE')");
+                            if (user == 101) continue;
+                            String values = user == 102 ? "0,0,0," + (slot == 1 ? "5.13" : "-7.25") + ",'CLOSED'" : "0.12345678,1,0.12," + (slot == 1 ? "5.13" : "-7.25") + ",'OPEN'";
+                            // Scenario 103 deliberately holds the same Instrument in two different accounts.
+                            int instrument = user <= 104 ? user * 10 + 1 : id;
+                            sql(db, "INSERT INTO assets(id,user_id,account_id,instrument_id,name,symbol,market,type,currency,quantity,avg_cost,total_cost,realized_profit_loss,position_status,position_mode,projection_version) VALUES(" + id + "," + user + "," + id + "," + instrument + ",'Portfolio scenario','" + symbol + "','US','STOCK','CNY'," + values + ",'TRANSACTION_DRIVEN',1)");
+                        }
+                    }
+                }
+            }
             stage = "WORKSPACE_V1_V2";
             try (var db = source(workspace).getConnection()) {
                 sql(db, "REVOKE ALL ON SCHEMA public FROM PUBLIC"); sql(db, "CREATE SCHEMA workspace"); sql(db, "REVOKE ALL ON SCHEMA workspace FROM PUBLIC");

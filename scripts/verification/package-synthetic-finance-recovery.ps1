@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $baseline = Join-Path $repo 'artifacts/PersonalAiWorkspace-finance-fnext2-development-20261023'
-if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-(fnext2-recovery|fnext3|fnext4|fnext5|fnext6)-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
+if ($DistributionName -cnotmatch '^PersonalAiWorkspace-finance-(fnext2-recovery|fnext3|fnext4|fnext5|fnext6|fnext7)-development-[A-Za-z0-9-]+$') { throw 'INVALID_DISTRIBUTION_NAME' }
 $destination = Join-Path $repo ('artifacts/' + $DistributionName)
 if (Test-Path -LiteralPath $destination) { throw 'NEW_OUTPUT_REQUIRED' }
 . (Join-Path $PSScriptRoot 'synthetic-postgresql.ps1')
@@ -174,7 +174,8 @@ Real reboot acceptance is PENDING until the user performs it. This is not a prod
     if ($FixtureReceipt) { $readme += "`nThis package uses the explicitly selected isolated synthetic cluster and Profile; accepted identity files are preserved.`nOpen Finance -> Transactions for the six synthetic records. Account filters use the system ID from Accounts.`n" }
     $budgets = $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext4-', [StringComparison]::Ordinal)
     $assets = $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext5-', [StringComparison]::Ordinal)
-    $investments = $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext6-', [StringComparison]::Ordinal)
+    $portfolio = $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext7-', [StringComparison]::Ordinal)
+    $investments = $portfolio -or $DistributionName.StartsWith('PersonalAiWorkspace-finance-fnext6-', [StringComparison]::Ordinal)
     if ($investments) {
         $readme = @'
 Development-only F-next-6 read-only investment positions, same Windows user and isolated synthetic Profile.
@@ -191,6 +192,11 @@ Exit from the application tray, then double-click the CMD again. Real Windows re
 This is not a production distribution, Finance Freeze or Production GO.
 '@
     }
+    if ($portfolio) {
+        $readme = $readme.Replace('F-next-6 read-only investment positions', 'F-next-7 read-only portfolio summary and investment positions')
+        $readme = $readme.Replace('No live quote calls, financial writes or portfolio aggregation.', 'No live quote calls or financial writes.')
+        $readme += "`nFinance -> Portfolio Summary reads ALL owned transaction-driven positions, independent of the position Cursor page. CNY accounting cost and realized P/L are separate from cached CNY market reference values. PARTIAL is only the valued subset; null / UNAVAILABLE is never a fabricated zero. Coverage counts and stale / missing quote / FX warnings retain source semantics.`n"
+    }
     if ($assets) {
         $readme = $readme.Replace('F-next-3 read-only transactions', 'F-next-5 read-only assets')
         $readme += "`nFinance -> Assets: list, paging, type filter, detail, manual-price valuation and cached source reference valuations. All fixture assets/quotes are synthetic; SYNTHETIC_FIXED is not a real provider. Refresh only rereads stored snapshots, never updates quotes. Unknown amounts are not zero. No cross-currency totals or financial writes.`n"
@@ -200,7 +206,7 @@ This is not a production distribution, Finance Freeze or Production GO.
         $readme += "`nFinance -> Budgets reports UNSUPPORTED after server identity verification. The frozen Finance source has no budget model or statistics rules; no budget list, detail, amounts or overspending status is fabricated.`n"
     }
     $readme.Replace('127.0.0.1:55423', ('127.0.0.1:' + $port)) | Set-Content -LiteralPath (Join-Path $destination 'README.txt') -Encoding utf8NoBOM
-    [ordered]@{format=$(if ($investments) { 'FINANCE_F_NEXT_6_DEVELOPMENT' } elseif ($assets) { 'FINANCE_F_NEXT_5_DEVELOPMENT' } elseif ($budgets) { 'FINANCE_F_NEXT_4_DEVELOPMENT' } elseif ($RuntimeJar) { 'FINANCE_F_NEXT_3_DEVELOPMENT' } else { 'FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT' });productionGo=$false;baseline=$old.commit;
+    [ordered]@{format=$(if ($portfolio) { 'FINANCE_F_NEXT_7_DEVELOPMENT' } elseif ($investments) { 'FINANCE_F_NEXT_6_DEVELOPMENT' } elseif ($assets) { 'FINANCE_F_NEXT_5_DEVELOPMENT' } elseif ($budgets) { 'FINANCE_F_NEXT_4_DEVELOPMENT' } elseif ($RuntimeJar) { 'FINANCE_F_NEXT_3_DEVELOPMENT' } else { 'FINANCE_F_NEXT_2_RECOVERY_DEVELOPMENT' });productionGo=$false;baseline=$old.commit;
         branch=(& git -C $repo branch --show-current).Trim();sourceCommit=(& git -C $repo rev-parse HEAD).Trim();
         sourceDirty=[bool]((& git -C $repo diff --name-only) | Out-String).Trim();
         runtimeManifestSha256=(Get-FileHash $manifestPath).Hash.ToLowerInvariant();

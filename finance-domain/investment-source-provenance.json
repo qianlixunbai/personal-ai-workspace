@@ -87,6 +87,16 @@
       "source": "backend/src/main/java/com/financeos/module/investment/read/mapper/InvestmentPortfolioStatisticsRow.java",
       "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/mapper/InvestmentPortfolioStatisticsRow.java",
       "sha256": "796e8a88e1b59c8fc36c766464ab74c5f7da9db10567986697f0277e10590a4b"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentPortfolioQueryService.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentPortfolioQueryService.java",
+      "sha256": "428c356a5698ed275d508a7c38b4f3b20f7a15029509f2a4bccd73f24226a7b4"
+    },
+    {
+      "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
+      "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
+      "sha256": "ac3acd1ab827585073c20e787df5be9dc4de54be09a045961e04fe925935f87d"
     }
   ]
 }

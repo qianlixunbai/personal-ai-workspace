@@ -69,7 +69,8 @@ public class FinanceModuleConfiguration {
             // Direct source services: the outer identity.query owns the Finance transaction manager.
             return new FinanceInvestmentQueries(identity,
                     new com.financeos.module.investment.read.service.InvestmentPositionReadQueryService(mapper, quotes, valuations),
-                    new com.financeos.module.investment.read.service.InvestmentPositionDetailQueryService(mapper, quotes, valuations));
+                    new com.financeos.module.investment.read.service.InvestmentPositionDetailQueryService(mapper, quotes, valuations),
+                    new com.financeos.module.investment.read.service.InvestmentPortfolioQueryService(mapper, quotes, valuations));
         }
 
         @Bean

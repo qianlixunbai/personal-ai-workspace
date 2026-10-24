@@ -27,7 +27,7 @@ public static partial class RuntimeLifecycleProbe
         Console.WriteLine("FNEXT6_SECOND_NATIVE_BOUND_USER_SAME_RESOURCE_OWNED_AND_FOREIGN_POSITION_ACCOUNT_INSTRUMENT_DENIED_PASS");
     }
 
-    private static async Task VerifyFinancePositions(AssistantApp app, RuntimeClient client, Mmf3AcceptanceLaunch launch)
+    private static async Task VerifyFinancePositions(AssistantApp app, RuntimeClient client, Mmf3AcceptanceLaunch launch, string receipt = "fnext6-target.json", string evidence = "fnext6")
     {
         var core = app.Workspace!.Browser.CoreWebView2;
         async Task WaitScript(string script) {
@@ -41,6 +41,7 @@ public static partial class RuntimeLifecycleProbe
         }
         async Task Contains(string text) => await WaitScript("Boolean(document.querySelector('.finance-page')?.innerText.includes(" + JsonSerializer.Serialize(text) + "))");
         async Task Select(string label, string value) {
+            await WaitScript("Boolean(document.querySelector('select[aria-label=" + JsonSerializer.Serialize(label) + "]:not(:disabled)'))");
             await core.ExecuteScriptAsync("(()=>{const e=document.querySelector('select[aria-label=" + JsonSerializer.Serialize(label) + "]');e.value=" + JsonSerializer.Serialize(value) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()");
             await WaitScript("document.querySelector('.finance-page').getAttribute('aria-busy')==='false'");
         }
@@ -112,7 +113,7 @@ public static partial class RuntimeLifecycleProbe
             await Check("?cursor=" + Convert.ToBase64String(Encoding.UTF8.GetBytes(bad)).TrimEnd('=').Replace('+', '-').Replace('/', '_'), HttpStatusCode.BadRequest);
         Console.WriteLine("FNEXT6_REAL_PERMISSION_METHOD_AUTH_NO_STORE_INVALID_PARAMS_FILTER_BOUND_AND_AMBIGUOUS_CURSOR_DENIED_PASS");
 
-        using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", "fnext6-target.json")));
+        using var target = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Environment.CurrentDirectory, ".verification", receipt)));
         string fixture = target.RootElement.GetProperty("root").GetString()!;
         async Task Identity(string action) {
             byte[] bytes = ProtectedData.Unprotect(await File.ReadAllBytesAsync(Path.Combine(fixture, "fixture.dpapi")), null, DataProtectionScope.CurrentUser);
@@ -142,7 +143,7 @@ public static partial class RuntimeLifecycleProbe
             app.Workspace.Width = width; app.Workspace.Height = 900; await Task.Delay(250);
             Assert.Equal("true", await core.ExecuteScriptAsync("document.documentElement.scrollWidth<=document.documentElement.clientWidth"));
             await core.ExecuteScriptAsync("document.querySelector('.finance-detail').scrollIntoView({block:'start'})");
-            using var picture = File.Create(Path.Combine(Environment.CurrentDirectory, ".verification", $"fnext6-{width}.png"));
+            using var picture = File.Create(Path.Combine(Environment.CurrentDirectory, ".verification", $"{evidence}-{width}.png"));
             await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, picture);
         }
         using var old = Process.GetProcessById(app.DevelopmentRuntime!.OwnedProcessId!.Value);
@@ -153,7 +154,8 @@ public static partial class RuntimeLifecycleProbe
         Assert.Equal(hash, SHA256.HashData(await File.ReadAllBytesAsync(binding)));
         await Click("Accounts · 账户"); await Contains("9007199254740993.30 CNY"); await Click("合成 CNY 账户"); await Contains("服务端账户 ID");
         await Click("Transactions · 交易流水"); await Contains("共 6 笔交易"); await Click("2026-10-23 12:00"); await Contains("F-next-3 expense");
-        await Click("Assets · 资产"); await Click("合成精确资产"); await Contains("9007199254740993.100000000000 CNY");
+        await Click("Assets · 资产");
+        await Select("资产排序", "ID_ASC"); await Click("合成精确资产"); await Contains("9007199254740993.100000000000 CNY");
         await Click("Budgets · 预算"); await Contains("来源尚未提供预算模型");
         Console.WriteLine("FNEXT6_REAL_1280_800_RUNTIME_RESTART_RECOVERY_BINDING_UNCHANGED_ACCOUNTS_TRANSACTIONS_ASSETS_BUDGETS_REGRESSION_PASS");
     }

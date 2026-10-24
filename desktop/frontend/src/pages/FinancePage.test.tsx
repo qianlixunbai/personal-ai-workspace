@@ -6,6 +6,56 @@ import { FinancePage } from './FinancePage'
 
 afterEach(cleanup)
 
+it('keeps source portfolio amounts and coverage exact, clears snapshots, and retries invalid responses', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
+  const portfolio = { currency: 'CNY', positionCount: 6, openPositionCount: 5, closedPositionCount: 1,
+    openTotalCost: '9007199254741011.42', cumulativeRealizedProfitLoss: '-2.00',
+    referenceValuation: { baseCurrency: 'CNY', value: '6305039478318695.21', valuedPositionCount: 2, totalOpenPositionCount: 5,
+      freshness: 'PARTIAL', warnings: [{ code: 'QUOTE_STALE', component: 'QUOTE' }, { code: 'FX_MISSING', component: 'FX' }] } }
+  const reply = async (value: unknown) => { await act(async () => { port.reply(port.sent.length - 1, value) }) }
+  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Portfolio Summary · 投资组合统计' }))
+    await reply(overview)
+    expect(port.sent.at(-1)).toMatchObject({ method: 'finance.portfolio', payload: {} })
+    await reply(portfolio)
+    expect(screen.getByText('9007199254741011.42 CNY')).toBeTruthy()
+    expect(screen.getByText('6305039478318695.21 CNY')).toBeTruthy()
+    expect(screen.getByText('2 / 5')).toBeTruthy(); expect(screen.getByText(/不能作为完整组合总市值/)).toBeTruthy()
+    expect(screen.getByText(/QUOTE_STALE \/ QUOTE/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
+    expect(screen.queryByText('9007199254741011.42 CNY')).toBeNull()
+    await reply(overview); const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222') })
+    await act(async () => { port.reply(late, portfolio) })
+    expect(screen.queryByText('6305039478318695.21 CNY')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
+    await reply(overview); await reply({ ...portfolio, openTotalCost: 9007199254740992 })
+    expect(screen.getByRole('alert')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await reply(overview); await reply({ ...portfolio, referenceValuation: { ...portfolio.referenceValuation, freshness: 'FRESH' } })
+    expect(screen.getByRole('alert')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await reply(overview); await reply({ ...portfolio, referenceValuation: { ...portfolio.referenceValuation, value: null, valuedPositionCount: 0, freshness: 'UNAVAILABLE' } })
+    expect(screen.getByText('未知 / 无可用估值')).toBeTruthy()
+    expect(screen.getByText(/所有 OPEN 持仓均无法完成估值/)).toBeTruthy()
+    const empty = { currency: 'CNY', positionCount: 0, openPositionCount: 0, closedPositionCount: 0, openTotalCost: '0.00', cumulativeRealizedProfitLoss: '0.00',
+      referenceValuation: { baseCurrency: 'CNY', value: null, valuedPositionCount: 0, totalOpenPositionCount: 0, freshness: 'UNAVAILABLE', warnings: [] } }
+    fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
+    await reply(overview); await reply(empty)
+    expect(screen.getByText(/当前组合为空/)).toBeTruthy(); expect(screen.getByText(/不表示行情读取失败/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
+    await reply(overview); await reply({ ...empty, positionCount: 1, closedPositionCount: 1, cumulativeRealizedProfitLoss: '-2.00' })
+    expect(screen.getByText(/全部持仓已平仓/)).toBeTruthy(); expect(screen.getByText('-2.00 CNY')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '刷新组合统计' }))
+    await reply({ state: 'BINDING_INVALID', account: null, cnyBalance: null, username: null, accountCount: null })
+    expect(screen.getByText(/组合统计读取已拒绝/)).toBeTruthy()
+    expect(screen.queryByText('9007199254741011.42 CNY')).toBeNull()
+    view.unmount()
+  } finally { bridge.dispose() }
+})
+
 it('discards financial snapshots and late detail responses across runtime changes and permits an explicit retry', async () => {
   const port = new Port(); const bridge = new WorkspaceClient(port); port.session()
   const account = { id: '1', name: 'Alice account', type: 'BANK', currency: 'CNY', balance: '9007199254740993.10', status: 'ACTIVE' }

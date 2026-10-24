@@ -99,10 +99,10 @@ public sealed partial class RuntimeClient
         if (String(r, "baseCurrency") != "CNY" || state is not ("FRESH" or "STALE" or "PARTIAL" or "UNAVAILABLE")
             || (state is "FRESH" or "STALE") != (AssetDecimal(r, valueKey) is not null)) throw Invalid();
     }
-    private static FinancePositionWarning[] PositionWarnings(JsonElement r)
+    private static FinancePositionWarning[] PositionWarnings(JsonElement r, int maximum = 8)
     {
         var warnings = Property(r, "warnings");
-        if (warnings.ValueKind != JsonValueKind.Array || warnings.GetArrayLength() > 8) throw Invalid();
+        if (warnings.ValueKind != JsonValueKind.Array || warnings.GetArrayLength() > maximum) throw Invalid();
         return warnings.EnumerateArray().Select(w => {
             MemoryFields(w, "code", "component"); string code = String(w, "code"), component = String(w, "component");
             if (code is not ("INVALID_INPUT" or "QUOTE_MISSING" or "QUOTE_STALE" or "FX_MISSING" or "FX_STALE")

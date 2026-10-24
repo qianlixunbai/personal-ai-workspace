@@ -22,10 +22,16 @@ public final class FinanceInvestmentQueries {
     private final FinanceAccountQueries identity;
     private final InvestmentPositionReadQueryService positions;
     private final InvestmentPositionDetailQueryService details;
+    private final com.financeos.module.investment.read.service.InvestmentPortfolioQueryService portfolio;
 
     FinanceInvestmentQueries(FinanceAccountQueries identity, InvestmentPositionReadQueryService positions,
-                             InvestmentPositionDetailQueryService details) {
-        this.identity = identity; this.positions = positions; this.details = details;
+                             InvestmentPositionDetailQueryService details,
+                             com.financeos.module.investment.read.service.InvestmentPortfolioQueryService portfolio) {
+        this.identity = identity; this.positions = positions; this.details = details; this.portfolio = portfolio;
+    }
+
+    public com.financeos.module.investment.read.dto.InvestmentPortfolioResponse portfolio() {
+        return identity.query(user -> source(() -> portfolio.get(user)));
     }
 
     public record Account(String id, String displayName, String type, String status) { }

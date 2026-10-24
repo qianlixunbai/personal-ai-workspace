@@ -1,6 +1,6 @@
 #Requires -Version 7.4
 [CmdletBinding()]
-param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422, [switch]$Transactions, [switch]$Assets, [switch]$Investments)
+param([string]$PostgresqlBin = 'D:\PostgreSQL\bin', [string]$JavaHome = 'D:\MC\JAVA\JAVA21', [int]$Port = 55422, [switch]$Transactions, [switch]$Assets, [switch]$Investments, [switch]$Portfolio)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -42,7 +42,7 @@ try {
 $classpath = (Join-Path $tools 'classes') + ';' + (Join-Path $tools 'lib/*')
 & (Join-Path $JavaHome 'bin/javac.exe') -encoding UTF-8 -cp $classpath -d (Join-Path $tools 'classes') (Join-Path $repo 'bootstrap/tests/FinanceNextPreparation.java')
 if ($LASTEXITCODE) { throw 'FIXTURE_COMPILATION_FAILED' }
-$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer;transactions=([bool]$Transactions -or [bool]$Assets -or [bool]$Investments);assets=([bool]$Assets -or [bool]$Investments);investments=[bool]$Investments}
+$fixture = @{suffix=$suffix;port=$Port;adminPassword=$admin;readerPassword=$reader;writerPassword=$writer;transactions=([bool]$Transactions -or [bool]$Assets -or [bool]$Investments -or [bool]$Portfolio);assets=([bool]$Assets -or [bool]$Investments -or [bool]$Portfolio);investments=([bool]$Investments -or [bool]$Portfolio);portfolio=[bool]$Portfolio}
 function Protect-Json([string]$Name,$Value) {
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Compress))
     try { [IO.File]::WriteAllBytes((Join-Path $root $Name),[Security.Cryptography.ProtectedData]::Protect($bytes,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)) }
@@ -59,6 +59,6 @@ $process.StandardInput.Write(($fixture | ConvertTo-Json -Compress)); $process.St
 $response = $process.StandardOutput.ReadToEnd(); $errors = $process.StandardError.ReadToEnd(); $process.WaitForExit()
 if ($process.ExitCode -ne 0 -or $response.Trim() -ne 'FNEXT_FIXTURE_PASS_prepare') { throw $response.Trim() }
 $receipt = @{suffix=$suffix;port=$Port;root=$root;finance="fnext1_finance_$suffix";workspace="fnext1_workspace_$suffix";financeMigrations='V1-V21';workspaceMigrations='V1-V2';productionGo=$false}
-$receiptName = if ($Investments) { '.verification/fnext6-target.json' } elseif ($Assets) { '.verification/fnext5-target.json' } elseif ($Transactions) { '.verification/fnext3-target.json' } else { '.verification/fnext1-target.json' }
+$receiptName = if ($Portfolio) { '.verification/fnext7-target.json' } elseif ($Investments) { '.verification/fnext6-target.json' } elseif ($Assets) { '.verification/fnext5-target.json' } elseif ($Transactions) { '.verification/fnext3-target.json' } else { '.verification/fnext1-target.json' }
 $receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repo $receiptName) -Encoding utf8NoBOM
 $receipt | ConvertTo-Json

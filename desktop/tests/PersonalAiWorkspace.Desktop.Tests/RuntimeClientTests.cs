@@ -10,6 +10,33 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class RuntimeClientTests
 {
+    [Fact]
+    public async Task PortfolioKeepsPartialAmountsExactAndRejectsAmbiguousFinancialResponses()
+    {
+        string valid = """
+            {"currency":"CNY","positionCount":3,"openPositionCount":2,"closedPositionCount":1,
+             "openTotalCost":"9007199254740993.12","cumulativeRealizedProfitLoss":"-2.00",
+             "referenceValuation":{"baseCurrency":"CNY","value":"123.45","valuedPositionCount":1,
+               "totalOpenPositionCount":2,"freshness":"PARTIAL","warnings":[{"code":"QUOTE_STALE","component":"QUOTE"}]}}
+            """;
+        string response = valid;
+        using var client = new RuntimeClient(new Handler((request, _) => {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v1/finance/investment/portfolio", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Response(HttpStatusCode.OK, response));
+        }), () => Token);
+        var value = await client.GetFinancePortfolioAsync(CancellationToken.None);
+        Assert.Equal("9007199254740993.12", value.OpenTotalCost); Assert.Equal("123.45", value.ReferenceValuation.Value);
+        foreach (string invalid in new[] { valid.Replace("\"9007199254740993.12\"", "9007199254740993.12"),
+            valid.Replace("\"PARTIAL\"", "\"FRESH\""), valid.Replace("\"123.45\"", "null"),
+            valid.Replace("\"positionCount\":3", "\"positionCount\":4"), valid.Replace("\"currency\":\"CNY\"", "\"currency\":\"USD\""),
+            valid.Replace("\"currency\":", "\"userId\":2,\"currency\":"), valid.Replace("\"-2.00\"", "\"-2e0\"") })
+        {
+            response = invalid;
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinancePortfolioAsync(CancellationToken.None))).Error);
+        }
+    }
+
     private static readonly Guid Id = Guid.NewGuid();
     private static string Token => new('t', 43);
     internal static string Envelope(string status, string? error = null, Guid? id = null) => JsonSerializer.Serialize(new

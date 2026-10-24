@@ -1,0 +1,89 @@
+F-next-7 actual verification excerpts, 2026-10-24 Asia/Shanghai.
+Full logs are in the local ignored .verification directory. SHA-256 identifies each full log.
+Result lines below are copied from actual executions; coverage points are not separate executions.
+
+fnext7-maven-build.log
+sha256=ce61d7407d6e80f817e006fd19f854f517bb049ad49362332f5b29fa4ad2e73b
+PASS Runtime JAR audit: default sha256=7281da420d4f8aa55df981517f35bce9d2bbecbcde50628dc24a166fe6fc2842 fileId=3fe64521:0038000000080664
+[INFO] BUILD SUCCESS
+
+fnext7-runtime-audit.log
+sha256=bf92d5b8b1627f9d28b19235035cdba9fe4acc51c20e7108a7f5ec133d6521a2
+PASS Runtime JAR audit: default sha256=7281da420d4f8aa55df981517f35bce9d2bbecbcde50628dc24a166fe6fc2842 fileId=3fe64521:0038000000080664
+
+fnext7-java-focused.log
+sha256=5414e9e53e40339dc385aaa68d78b28e71e989b74ab5fc50b12de2dc8f5bee6c
+[INFO] BUILD SUCCESS
+
+fnext7-java-identity.log
+sha256=14c9baa89975f0386843b9cbd326f95806ba3b2ba86a2fd9b886c36876c851fb
+[INFO] BUILD SUCCESS
+
+fnext7-existing-fnext6-readonly-final.log
+sha256=d25838f3e2f5d85a9e5e0ea2d3b49dd8067772dc6755945fcb7614789d1be6f1
+FNEXT7_EXISTING_FNEXT6_ALICE_BOB_SOURCE_PORTFOLIO_READONLY_PASS
+
+fnext7-source-postgresql-fixed-clock.log
+sha256=1a912a5645ae509e8c04ded95fbb60d1e8549a62577e2c3b79f9467c6577b6c1
+FNEXT7_REAL_POSTGRES_SOURCE_PORTFOLIO_EMPTY_CLOSED_OPEN_MIXED_EXACT_SAME_INSTRUMENT_ROUNDING_PARTIAL_STALE_MISSING_QUOTE_FX_READONLY_PASS
+
+fnext7-frontend-focused-final.log
+sha256=dfbcb9d2ae8dd94909c60aa0d476d4754c0bd84351ae45c3faf8996cc50ace8d
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+fnext7-native-focused.log
+sha256=00c4cc29be1e2ad6b2eb807d6faa90912a49914b8852dc7bc4e40a5aae784253
+已通过! - 失败:     0，通过:     2，已跳过:     0，总计:     2，持续时间: 54 ms - PersonalAiWorkspace.Desktop.Tests.dll (net10.0)
+
+fnext7-frontend-build.log
+sha256=d4f89bffe7e9021a1880f511b6ff44ded1a16c6352ecc82bb78e13ed19dc17f6
+
+fnext7-desktop-build-final2.log
+sha256=d8b6146c08f61f25fad981ed71e987b349f35e54640d939ea5d52e14840855ea
+已成功生成。
+
+fnext7-package.log
+sha256=c56e2adc39151cffe7c1dafd28008fd712ad7d31e8e2b7364aa2675e17894358
+BUILT_DEVELOPMENT_ONLY D:\IDEA\Daima\personal-ai-workspace\artifacts\PersonalAiWorkspace-finance-fnext7-development-20261024
+
+fnext7-windows-e2e-final2.log
+sha256=d21555512f5f7950b9cd34880c02247462d0903441a9c49da4607cc1df67cef7
+FINANCE_REAL_REACT_TYPED_BRIDGE_RUNTIME_POSTGRESQL_EXACT_CNY_PASS
+FNEXT6_REAL_SOURCE_SEEK_AND_FINANCIAL_PRECISION_COST_REALIZED_POSITIVE_NEGATIVE_ZERO_MANUAL_CACHE_NULL_FX_STALE_CNY_PASS
+FNEXT6_REAL_WEBVIEW_TYPED_BRIDGE_LIST_DETAIL_FILTER_EMPTY_SAFE_BACK_REFRESH_ERROR_RETRY_PASS
+FNEXT6_REAL_PERMISSION_METHOD_AUTH_NO_STORE_INVALID_PARAMS_FILTER_BOUND_AND_AMBIGUOUS_CURSOR_DENIED_PASS
+FNEXT6_REAL_USER_AND_DATASET_IDENTITY_CHANGE_FAIL_CLOSED_CLEAR_SNAPSHOT_SAFE_RETRY_NO_REBIND_PASS
+FNEXT6_REAL_1280_800_RUNTIME_RESTART_RECOVERY_BINDING_UNCHANGED_ACCOUNTS_TRANSACTIONS_ASSETS_BUDGETS_REGRESSION_PASS
+FNEXT7_ALICE_REAL_SOURCE_FULL_SCOPE_CNY_COST_REALIZED_EXACT_PARTIAL_COVERAGE_WARNINGS_PASS
+FNEXT7_PORTFOLIO_FIXED_GET_NO_PARAMETERS_NO_STORE_AUTH_WRITE_DENIAL_PASS
+FNEXT7_REAL_USER_DATASET_CHANGE_CLEAR_RETRY_RUNTIME_RESTART_RECHECK_NO_REBIND_1280_800_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+
+fnext7-bob-windows-e2e.log
+sha256=a3bd748cf9bff0e111032245453817139b3f20a2d44bafd563de81515196ab52
+FINANCE_REAL_NATIVE_CONFIRMATION_PUBLISHED_BINDING_PASS
+FINANCE_REAL_WPF_SERVER_REVIEW_EXPLICIT_SELECTION_MESSAGEBOX_CREATE_NEW_PASS
+FNEXT7_BOB_REAL_NATIVE_BOUND_PORTFOLIO_STALE_ALICE_TOTAL_ABSENT_PASS
+FNEXT6_SECOND_NATIVE_BOUND_USER_SAME_RESOURCE_OWNED_AND_FOREIGN_POSITION_ACCOUNT_INSTRUMENT_DENIED_PASS
+REAL_RUNTIME_LIFECYCLE_PROBE_PASS
+
+fnext7-product-final.log
+sha256=b6de679340cf27a741f5f02b1e23c349103e77fd5e264b99a8752185e3d3ad98
+PASS actual-CMD-native-gate-independent-JAR-EXE-positions-and-assets-exact-valuations-and-account-transaction-details
+PASS normal-PostgreSQL-stop-unavailable-clears-portfolio-snapshot
+PASS normal-tray-exit-releases-runtime
+PASS stopped-new-synthetic-PostgreSQL-restored-by-actual-CMD-and-portfolio-positions-assets-readable
+PASS CMD-reopen-original-profiles-DPAPI-binding-migrations-B4A6-and-new-profile-pins
+REAL_WINDOWS_REBOOT_NOT_EXECUTED
+
+fnext7-protection-audit.log
+sha256=b68041123bcb82bda7d4b048b068004ff50404f60745c5139d80284c4b048eb2
+PASS original and new DPAPI/Profile/bindings, B4A6 and migrations
+PASS previous Development-only package files unchanged
+PASS final tested bundle hashes
+PASS no runtime listener remains after normal exit
+
+fnext7-source-provenance-audit.log
+sha256=a243c408bfa8034245f2eeac6ed88a9ce375473522903a149bd3262d671677f3
+PASS frozen source HEAD, clean tree and all investment source provenance hashes

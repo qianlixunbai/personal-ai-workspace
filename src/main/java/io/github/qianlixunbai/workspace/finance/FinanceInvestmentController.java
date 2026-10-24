@@ -9,13 +9,19 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/v1/finance/investment/positions")
+@RequestMapping("/api/v1/finance/investment")
 @ConditionalOnProperty(name = "workspace.finance.enabled", havingValue = "true")
 public final class FinanceInvestmentController {
     private final FinanceInvestmentQueries queries;
     public FinanceInvestmentController(FinanceInvestmentQueries queries) { this.queries = queries; }
 
-    @GetMapping
+    @GetMapping("/portfolio")
+    public com.financeos.module.investment.read.dto.InvestmentPortfolioResponse portfolio(HttpServletRequest request) {
+        if (request.getQueryString() != null) throw invalid();
+        return queries.portfolio();
+    }
+
+    @GetMapping("/positions")
     public FinanceInvestmentQueries.PositionPage list(@RequestParam(defaultValue = "OPEN") String status,
             @RequestParam(required = false) Long accountId, @RequestParam(required = false) Long instrumentId,
             @RequestParam(required = false) String cursor, @RequestParam(defaultValue = "10") int size,
@@ -26,14 +32,14 @@ public final class FinanceInvestmentController {
         return queries.list(status, accountId, instrumentId, cursor, size);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/positions/{id}")
     public FinanceInvestmentQueries.Detail position(@PathVariable long id, HttpServletRequest request) {
         if (request.getQueryString() != null) throw invalid();
         return queries.position(id);
     }
 
     // Spring otherwise supplies implicit HEAD/OPTIONS handlers. This fixed boundary declares GET only.
-    @RequestMapping(value = {"", "/{id}"}, method = {RequestMethod.HEAD, RequestMethod.OPTIONS})
+    @RequestMapping(value = {"/portfolio", "/positions", "/positions/{id}"}, method = {RequestMethod.HEAD, RequestMethod.OPTIONS})
     public void unsupported(HttpServletRequest request) throws org.springframework.web.HttpRequestMethodNotSupportedException {
         throw new org.springframework.web.HttpRequestMethodNotSupportedException(request.getMethod(), Set.of("GET"));
     }
