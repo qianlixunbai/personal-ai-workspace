@@ -10,7 +10,6 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.stream.IntStream;
 
 /** Frozen DashboardService/TransactionMapper read slice, inside the existing Finance identity snapshot. */
 public final class FinanceDashboardQueries {
@@ -34,28 +33,18 @@ public final class FinanceDashboardQueries {
     public record Recent(String id, String type, String amount, String categoryName, String accountName, String transactedAt) { }
     public record Dashboard(String currency, String asOf, String businessZone, String cnyAccountBalance,
             String monthIncome, String monthExpense, String monthNet, List<Flow> monthlyCashFlow,
-            Allocation allocation, List<Recent> recentTransactions, CashFlowPlot cashFlowPlot) {
+            Allocation allocation, List<Recent> recentTransactions, CashFlowPlot cashFlowPlot,
+            List<FinanceAnalyticsQueries.Month> twelveMonths, FinanceAnalyticsQueries.Plot twelveMonthPlot,
+            FinanceAnalyticsQueries.Distribution accountStructure, FinanceAnalyticsQueries.Distribution expenseBreakdown) {
         @Override public String toString() { return "FinanceDashboard[private]"; }
     }
-    private record Aggregate(YearMonth month, BigDecimal income, BigDecimal expense) { }
 
     public Dashboard dashboard() {
         return identity.query(userId -> {
             LocalDateTime now = LocalDateTime.now(clock); // Exactly one business now after identity validation.
-            YearMonth month = YearMonth.from(now), first = month.minusMonths(5);
-            var aggregates = jdbc.query("""
-                    SELECT date_trunc('month', transacted_at)::date AS month_start,
-                           COALESCE(SUM(CASE WHEN type='INCOME' THEN amount ELSE 0 END),0) AS income,
-                           COALESCE(SUM(CASE WHEN type='EXPENSE' THEN amount ELSE 0 END),0) AS expense
-                    FROM public.transactions WHERE user_id=? AND currency='CNY' AND type IN ('INCOME','EXPENSE')
-                      AND transacted_at>=? AND transacted_at<?
-                    GROUP BY date_trunc('month', transacted_at) ORDER BY month_start
-                    """, (r, i) -> new Aggregate(YearMonth.from(r.getDate("month_start").toLocalDate()),
-                    r.getBigDecimal("income"), r.getBigDecimal("expense")), userId, first.atDay(1).atStartOfDay(), now);
-            List<Flow> flows = IntStream.range(0, 6).mapToObj(first::plusMonths).map(m -> {
-                var a = aggregates.stream().filter(v -> v.month().equals(m)).findFirst().orElse(new Aggregate(m, BigDecimal.ZERO, BigDecimal.ZERO));
-                return new Flow(m.toString(), a.income().toPlainString(), a.expense().toPlainString(), a.income().subtract(a.expense()).toPlainString());
-            }).toList();
+            YearMonth month = YearMonth.from(now);
+            var twelve = FinanceAnalyticsQueries.months(jdbc, userId, month.minusMonths(11), 12, now);
+            List<Flow> flows = twelve.subList(6, 12).stream().map(m -> new Flow(m.month(), m.income(), m.expense(), m.net())).toList();
             var coverage = jdbc.queryForMap("""
                     SELECT count(*) AS assets,
                       count(*) FILTER (WHERE currency<>'CNY') AS currency,
@@ -90,7 +79,9 @@ public final class FinanceDashboardQueries {
                     r.getString("category_name"), r.getString("account_name"), r.getTimestamp("transacted_at").toLocalDateTime().toString()), userId);
             var current = flows.getLast();
             return new Dashboard("CNY", now.toString(), ZONE, accounts.sumBalanceByUser(userId).toPlainString(),
-                    current.income(), current.expense(), current.net(), flows, allocation, recent, plot(flows));
+                    current.income(), current.expense(), current.net(), flows, allocation, recent, plot(flows), twelve, FinanceAnalyticsQueries.plot(twelve),
+                    FinanceAnalyticsQueries.counts(jdbc, userId, false),
+                    FinanceAnalyticsQueries.expenses(jdbc, userId, month.atDay(1).atStartOfDay(), now));
         });
     }
 

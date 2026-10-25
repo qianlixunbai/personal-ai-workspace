@@ -1,7 +1,9 @@
+import { isFinanceDistribution, type FinanceDistribution } from './financeAnalytics'
 import { exactFields, isObject } from './contracts'
 import type { PositionWarning } from './financeInvestments'
 
 export interface FinancePortfolio {
+  statusDistribution?: FinanceDistribution; coverageDistribution?: FinanceDistribution
   currency: 'CNY'; positionCount: number; openPositionCount: number; closedPositionCount: number
   openTotalCost: string; cumulativeRealizedProfitLoss: string
   referenceValuation: { baseCurrency: 'CNY'; value: string | null; valuedPositionCount: number; totalOpenPositionCount: number
@@ -10,9 +12,11 @@ export interface FinancePortfolio {
 const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 2147483647
 const amount = (v: unknown) => typeof v === 'string' && /^-?[0-9]{1,60}\.[0-9]{2}$/.test(v)
 export function isFinancePortfolio(v: unknown): v is FinancePortfolio {
-  if (!isObject(v) || !exactFields(v, ['currency', 'positionCount', 'openPositionCount', 'closedPositionCount', 'openTotalCost', 'cumulativeRealizedProfitLoss', 'referenceValuation'])
+  if (!isObject(v) || !(exactFields(v, ['currency', 'positionCount', 'openPositionCount', 'closedPositionCount', 'openTotalCost', 'cumulativeRealizedProfitLoss', 'referenceValuation']) || exactFields(v, [...['currency', 'positionCount', 'openPositionCount', 'closedPositionCount', 'openTotalCost', 'cumulativeRealizedProfitLoss', 'referenceValuation'], 'statusDistribution', 'coverageDistribution']))
     || v.currency !== 'CNY' || !count(v.positionCount) || !count(v.openPositionCount) || !count(v.closedPositionCount)
     || v.openPositionCount + v.closedPositionCount !== v.positionCount || !amount(v.openTotalCost) || !amount(v.cumulativeRealizedProfitLoss)) return false
+  if (Object.hasOwn(v, 'statusDistribution') && (!isFinanceDistribution(v.statusDistribution) || !isFinanceDistribution(v.coverageDistribution)
+    || v.statusDistribution.total !== String(v.positionCount) || v.coverageDistribution.total !== String(v.openPositionCount))) return false
   const r = v.referenceValuation
   return isObject(r) && exactFields(r, ['baseCurrency', 'value', 'valuedPositionCount', 'totalOpenPositionCount', 'freshness', 'warnings'])
     && r.baseCurrency === 'CNY' && count(r.valuedPositionCount) && r.totalOpenPositionCount === v.openPositionCount && r.valuedPositionCount <= v.openPositionCount

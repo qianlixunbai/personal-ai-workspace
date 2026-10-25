@@ -1,0 +1,25 @@
+2026-10-25 Asia/Shanghai. D2 implementation/package verification; Windows acceptance PARTIAL.
+
+ACTUALLY EXECUTED
+PASS: Maven FinanceDashboardPlotTest (original plus one analytics projection regression).
+PASS: Maven -pl workspace-application -am -Dtest=FinancePostgresqlIntegrationTest#dashboardDrilldownUsesExactReadOnlyScopeAndBoundUserOnExistingSyntheticPostgresql -Dfinance.postgresql.test=true -Dsurefire.failIfNoSpecifiedTests=false test
+  Existing private synthetic reader environment FINANCE_DRILLDOWN_TEST_ROOT; real SQL/source services, no finance writes.
+  Final relevant run: .verification/finance-d2-sql-holdings.log, D2_REAL_POSTGRESQL_ANNUAL_FUTURE_NULL_CROSS_YEAR_COUNTS_DISTRIBUTIONS_TWO_USERS_EXACT_DRILLDOWN_PASS.
+PASS: npm test -- src/pages/FinancePage.test.tsx
+PASS: final related npm test -- src/pages/FinancePage.test.tsx -t 'rebuilds annual review'
+PASS: dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.AnnualRead|FullyQualifiedName~RuntimeClientTests.DashboardDrilldown|FullyQualifiedName~RuntimeClientTests.PortfolioKeeps|FullyQualifiedName~WorkspaceBridgeTests.PayloadMustBeExactlyEmpty
+PASS: browser integrated flow; see browser-result.json. Transport substitution, not actual native HTTP acceptance.
+PASS: npm run build (TypeScript/Vite/asset manifest). JS 503.60 kB, gzip 140.64 kB; default chunk-size warning retained.
+PASS: Maven -DskipTests package with prepare-package and actual Runtime JAR identity audit.
+PASS: dotnet publish Debug win-x64 with original trusted development manifest/acceptance options and FrontendSkipBuild=true.
+PASS: D2 launcher -CheckOnly, SYNTHETIC_DATABASE_IDENTITY_VERIFIED.
+PARTIAL: actual D2 CMD started the intended WPF/WebView2 EXE and Runtime; Dashboard controls and bound data readable through UIA.
+BLOCKER: Windows Lock Screen occupied the interactive desktop. Screenshot is not a client screenshot; Space did not open month detail.
+NOT RUN TO COMPLETION: native Annual/Portfolio/Assets flows, real light/dark screenshots, native resize/150%-200% zoom, tray exit/reopen.
+
+PASS: new payload/source hashes and four historical package payload sets unchanged.
+PASS: synthetic ledger read-only count/digest snapshots unchanged before/after.
+PASS: frozen Finance source c6c87a0627b746e70a45b1c7896f63defd76a810, clean.
+
+NOT EXECUTED: full Java/Desktop/Frontend suites, full browser/IME/stress/package matrices, whole-machine reboot, real user financial data, provider calls, financial writes, M1.
+Historical D1 evidence is separate; it is not counted as executed D2 Windows acceptance.

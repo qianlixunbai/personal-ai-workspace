@@ -6,7 +6,8 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceDashboard(string Currency, string AsOf, string BusinessZone, string CnyAccountBalance,
     string MonthIncome, string MonthExpense, string MonthNet, FinanceDashboardFlow[] MonthlyCashFlow,
-    FinanceDashboardAllocation Allocation, FinanceDashboardRecent[] RecentTransactions, FinanceDashboardPlot CashFlowPlot);
+    FinanceDashboardAllocation Allocation, FinanceDashboardRecent[] RecentTransactions, FinanceDashboardPlot CashFlowPlot, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceMonth[]? TwelveMonths = null, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinancePlot? TwelveMonthPlot = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceDistribution? AccountStructure = null, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceDistribution? ExpenseBreakdown = null);
 public sealed record FinanceDashboardPlot(int[] Income, int[] Expense, int Zero);
 public sealed record FinanceDashboardFlow(string Month, string Income, string Expense, string Net);
 public sealed record FinanceDashboardAsset(string Id, string Name, string Value, string Percentage);
@@ -20,7 +21,9 @@ public sealed partial class RuntimeClient
     {
         using var body = await FinanceJson("/dashboard", token);
         var r = body.RootElement;
-        MemoryFields(r, "currency", "asOf", "businessZone", "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet", "monthlyCashFlow", "allocation", "recentTransactions", "cashFlowPlot");
+        bool analytics = r.TryGetProperty("twelveMonths", out _);
+        if (analytics) MemoryFields(r, "currency", "asOf", "businessZone", "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet", "monthlyCashFlow", "allocation", "recentTransactions", "cashFlowPlot", "twelveMonths", "twelveMonthPlot", "accountStructure", "expenseBreakdown");
+        else MemoryFields(r, "currency", "asOf", "businessZone", "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet", "monthlyCashFlow", "allocation", "recentTransactions", "cashFlowPlot");
         if (String(r, "currency") != "CNY" || String(r, "businessZone") != "Asia/Shanghai" || !DashboardTime(String(r, "asOf"))) throw Invalid();
         foreach (string k in new[] { "cnyAccountBalance", "monthIncome", "monthExpense", "monthNet" }) DashboardAmount(r, k);
         var flows = Property(r, "monthlyCashFlow");
@@ -39,6 +42,11 @@ public sealed partial class RuntimeClient
         foreach (string k in new[] { "income", "expense" }) {
             var points = Property(plot, k);
             if (points.ValueKind != JsonValueKind.Array || points.GetArrayLength() != 6 || !points.EnumerateArray().All(Coordinate)) throw Invalid();
+        }
+        if (analytics) {
+            var months = AnalyticsMonths(Property(r, "twelveMonths")); AnalyticsPlot(Property(r, "twelveMonthPlot"), months);
+            for (int i = 0; i < 12; i++) if (months[i].State != "OBSERVED" || months[i].Month != current.AddMonths(i - 11).ToString("yyyy-MM", CultureInfo.InvariantCulture)) throw Invalid();
+            AnalyticsDistribution(Property(r, "accountStructure")); AnalyticsDistribution(Property(r, "expenseBreakdown"));
         }
         var a = Property(r, "allocation");
         MemoryFields(a, "items", "total", "complete", "referenceTotal", "assetTotal", "excludedCurrency", "excludedUnpriced", "excludedQuantity", "excludedValue");

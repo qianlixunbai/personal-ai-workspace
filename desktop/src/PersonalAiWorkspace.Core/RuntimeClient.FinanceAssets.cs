@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceAssetQuery(int Page, int Size, string Type, string Sort);
-public sealed record FinanceAssetPage(FinanceAsset[] Items, int Page, int Size, string Total, string Type, string Sort);
+public sealed record FinanceAssetPage(FinanceAsset[] Items, int Page, int Size, string Total, string Type, string Sort, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceDistribution? TypeDistribution = null);
 public sealed record FinanceAsset(string Id, string Name, string? Symbol, string Type, string? Market, string Currency,
     string Quantity, string AvgCost, string? CurrentPrice, string? ManualMarketValue, string PositionMode,
     string CreatedAt, string UpdatedAt, FinanceAssetReference? ReferenceValuation);
@@ -26,14 +26,16 @@ public sealed partial class RuntimeClient
         if (!ValidFinanceAssetQuery(query)) throw new DesktopException(DesktopError.InvalidRequest);
         using var body = await FinanceJson(FormattableString.Invariant($"/assets?page={query.Page}&size={query.Size}&type={query.Type}&sort={query.Sort}"), token);
         var root = body.RootElement;
-        MemoryFields(root, "items", "page", "size", "total", "type", "sort");
+        bool analytics = root.TryGetProperty("typeDistribution", out var distribution);
+        if (analytics) { MemoryFields(root, "items", "page", "size", "total", "type", "sort", "typeDistribution"); AnalyticsDistribution(distribution); }
+        else MemoryFields(root, "items", "page", "size", "total", "type", "sort");
         var rows = Property(root, "items");
         if (MemoryInteger(root, "page") != query.Page || MemoryInteger(root, "size") != query.Size
             || String(root, "type") != query.Type || String(root, "sort") != query.Sort
             || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > query.Size) throw Invalid();
         var items = rows.EnumerateArray().Select(ParseFinanceAsset).ToArray();
         if (items.Select(a => a.Id).Distinct().Count() != items.Length || items.Any(a => query.Type != "ALL" && a.Type != query.Type)) throw Invalid();
-        return new(items, query.Page, query.Size, FinanceCount(root, "total"), query.Type, query.Sort);
+        return new(items, query.Page, query.Size, FinanceCount(root, "total"), query.Type, query.Sort, analytics ? distribution.Deserialize<FinanceDistribution>(HistoryJson) : null);
     }
 
     public async Task<FinanceAsset> GetFinanceAssetAsync(string id, CancellationToken token)

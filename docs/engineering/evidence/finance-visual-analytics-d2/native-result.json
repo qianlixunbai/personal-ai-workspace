@@ -1,0 +1,17 @@
+{
+  "result": "PARTIAL",
+  "source": "Actual D2 WPF/WebView2 EXE and JAR with original synthetic PostgreSQL",
+  "launcherCheck": "PASS",
+  "runtimeStart": "PASS",
+  "dashboardUia": "PASS: Monthly income/expense controls, current expense donut, account-count donut and real bound data were readable",
+  "blocker": "Windows desktop is locked; captured screen is Lock Screen, not the client; keyboard input did not reach the Finance month button",
+  "keyboard": "NOT_RUN_TO_COMPLETION",
+  "validNativeScreenshots": "NOT_AVAILABLE",
+  "annualPortfolioAssetsNative": "NOT_RUN",
+  "native150And200Zoom": "NOT_RUN",
+  "trayExitAndReopen": "NOT_RUN",
+  "browserEvidence": "Separate synthetic browser integrated flow PASS",
+  "productionGo": false,
+  "marketDataM1": "NOT_STARTED",
+  "cleanup": "Only verified D2 Desktop and its owned Runtime were stopped; listener 18765 released. Not a normal-tray-exit acceptance."
+}

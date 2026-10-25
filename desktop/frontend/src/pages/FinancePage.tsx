@@ -1,4 +1,4 @@
-import { FinanceDashboard } from '../components/FinanceDashboard'
+import { FinanceDashboardView } from '../components/FinanceAnnual'
 import { FinanceImports } from '../components/FinanceImports'
 import { FinanceHistory } from '../components/FinanceHistory'
 import { FinancePortfolio } from '../components/FinancePortfolio'
@@ -51,7 +51,7 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
     const previous = back[back.length - 1]
     if (!previous) return
     setBack(back.slice(0, -1))
-    setIntent(previous.view === 'dashboard' ? { source: view, target: 'dashboard', month: previous.month }
+    setIntent(previous.view === 'dashboard' ? { source: view, target: 'dashboard', month: previous.month, annualYear: previous.annualYear }
       : previous.view === 'investments' ? { source: view, target: 'investments', query: previous.query, selection: previous.selection } : null)
     setView(previous.view); setEntry(n => n + 1)
   }
@@ -69,7 +69,7 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
     </select></label>
     {back.length > 0 && <div className="finance-back"><button className="secondary" onClick={goBack}>返回{back[back.length - 1]!.view === 'dashboard' ? '财务总览' : back[back.length - 1]!.view === 'portfolio' ? '投资组合' : '持仓上下文'}</button><span className="hint">返回后重新验证身份并读取数据</span></div>}
     <div className="finance-content" ref={content} tabIndex={-1} key={entry}>
-    {view === 'dashboard' ? <FinanceDashboard bridge={bridge} enabled={enabled} openSettings={openSettings} initialMonth={intent?.target === 'dashboard' ? intent.month : ''} invalidateNavigation={clearNavigation} navigate={(next, month) => enter(next, { view: 'dashboard', month })} />
+    {view === 'dashboard' ? <FinanceDashboardView bridge={bridge} enabled={enabled} openSettings={openSettings} initialMonth={intent?.target === 'dashboard' ? intent.month : ''} invalidateNavigation={clearNavigation} initialAnnualYear={intent?.target === 'dashboard' ? intent.annualYear : undefined} navigate={(next, month, annualYear) => enter(next, { view: 'dashboard', month, annualYear })} />
       : view === 'accounts' ? <FinanceAccountPage bridge={bridge} enabled={enabled} openSettings={openSettings} invalidateNavigation={clearNavigation} />
       : view === 'transactions' ? <FinanceTransactions bridge={bridge} enabled={enabled} openSettings={openSettings} intent={intent?.target === 'transactions' ? intent : undefined} invalidateNavigation={clearNavigation} />
       : view === 'assets' ? <FinanceAssets bridge={bridge} enabled={enabled} openSettings={openSettings} invalidateNavigation={clearNavigation} />

@@ -90,6 +90,12 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceAnalyticsQueries financeAnalyticsQueries(FinanceAccountQueries identity,
+                @Qualifier("financeDataSource") DataSource source) {
+            return new FinanceAnalyticsQueries(identity, source, java.time.Clock.system(java.time.ZoneId.of("Asia/Shanghai")));
+        }
+
+        @Bean
         FinanceImportQueries financeImportQueries(FinanceAccountQueries identity,
                 @Qualifier("financeDataSource") DataSource source) {
             return new FinanceImportQueries(identity, source);

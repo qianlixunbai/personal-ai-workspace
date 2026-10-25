@@ -72,7 +72,7 @@ public final class FinanceTransactionQueries {
                 var month = YearMonth.parse(cashFlowMonth);
                 var asOf = LocalDateTime.parse(cashFlowAsOf);
                 var current = YearMonth.from(asOf);
-                if (month.isAfter(current) || month.isBefore(current.minusMonths(5))
+                if (month.isAfter(current) || month.getYear() < FinanceAnalyticsQueries.MIN_YEAR || month.getYear() > FinanceAnalyticsQueries.MAX_YEAR
                         || !startDate.equals(cashFlowMonth + "-01") || !endDate.isEmpty()
                         || !Set.of("INCOME", "EXPENSE").contains(type)) throw invalid();
                 var nextMonth = month.plusMonths(1).atDay(1).atStartOfDay();

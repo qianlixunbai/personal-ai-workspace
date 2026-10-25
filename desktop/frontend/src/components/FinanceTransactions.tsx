@@ -62,7 +62,7 @@ export function FinanceTransactions({ bridge, enabled, openSettings, intent, inv
       <div className="card-heading"><h2>交易流水</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void refresh() }}>刷新交易</button></div>
       <p role="status">{working ? '正在验证身份并读取交易…' : overview ? `${states[overview.state]}${overview.username ? ` · ${overview.username}` : ''}` : '等待交易读取。'}</p>
       <p className="hint">只读原币金额；按交易日期、ID 降序排列，同值按来源排序。日期按 Finance 原始本地时间显示，不转换时区。</p>
-      {query.cashFlowMonth && <p className="finance-filter-notice" role="status">Dashboard 统计明细 · {query.cashFlowMonth} · {labels[query.type]} ({query.type}) · 普通交易 TRANSACTION · CNY · Asia/Shanghai<br />范围：{query.startDate} 00:00（含）至 {cashFlowCutoff(query.cashFlowMonth, query.cashFlowAsOf!)}（不含）；快照截止 {query.cashFlowAsOf}。返回时重新查询，不保存原快照；来源记录如有变化，金额可能变化。</p>}
+      {query.cashFlowMonth && <p className="finance-filter-notice" role="status">Finance 收支统计明细 · {query.cashFlowMonth} · {labels[query.type]} ({query.type}) · 普通交易 TRANSACTION · CNY · Asia/Shanghai<br />范围：{query.startDate} 00:00（含）至 {cashFlowCutoff(query.cashFlowMonth, query.cashFlowAsOf!)}（不含）；快照截止 {query.cashFlowAsOf}。返回时重新查询，不保存原快照；来源记录如有变化，金额可能变化。</p>}
       {!query.cashFlowMonth && <p className="hint">当前筛选：{labels[query.type]} · {query.startDate || '不限开始日期'} 至 {query.endDate || '不限结束日期'} · 全部币种 · 普通交易与独立转账。{query.accountId && `账户 ${query.accountId}`}</p>}
       <form onSubmit={event => { event.preventDefault(); void refresh({ ...draft, page: 0 }, null) }}>
         <fieldset className="finance-toolbar" disabled={!enabled || working}>

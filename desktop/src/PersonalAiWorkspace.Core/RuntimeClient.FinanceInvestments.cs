@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 namespace PersonalAiWorkspace.Core;
 
 public sealed record FinancePositionQuery(string Status, string AccountId, string InstrumentId, string Cursor, int Size);
-public sealed record FinancePositionPage(FinancePosition[] Records, string? NextCursor, bool HasMore, int Size);
+public sealed record FinanceHoldingPoint(string PositionId, int? Cost, int? Reference);
+public sealed record FinanceHoldingPlot(FinanceHoldingPoint[] Items, int Zero, string Minimum, string Maximum);
+public sealed record FinancePositionPage(FinancePosition[] Records, string? NextCursor, bool HasMore, int Size, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceHoldingPlot? Comparison = null);
 public sealed record FinancePositionAccount(string Id, string DisplayName, string Type, string Status);
 public sealed record FinanceInstrument(string Id, string Symbol, string Name, string Market, string AssetClass, string QuoteCurrency, string Status);
 public sealed record FinancePositionWarning(string Code, string Component);
@@ -36,7 +38,9 @@ public sealed partial class RuntimeClient
             + (query.Cursor == "" ? "" : "&cursor=" + Uri.EscapeDataString(query.Cursor));
         using var body = await FinanceJson(path, token);
         var root = body.RootElement;
-        MemoryFields(root, "records", "nextCursor", "hasMore", "size");
+        bool analytics = root.TryGetProperty("comparison", out var comparison);
+        if (analytics) MemoryFields(root, "records", "nextCursor", "hasMore", "size", "comparison");
+        else MemoryFields(root, "records", "nextCursor", "hasMore", "size");
         var rows = Property(root, "records"); var more = Property(root, "hasMore");
         string? next = AssetText(root, "nextCursor", 2048);
         if (MemoryInteger(root, "size") != query.Size || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > query.Size
@@ -46,7 +50,19 @@ public sealed partial class RuntimeClient
         if (records.Select(p => p.PositionId).Distinct().Count() != records.Length || records.Any(p =>
             query.Status != "ALL" && p.Status != query.Status || query.AccountId != "" && p.Account.Id != query.AccountId
             || query.InstrumentId != "" && p.Instrument.Id != query.InstrumentId)) throw Invalid();
-        return new(records, next, more.GetBoolean(), query.Size);
+        if (analytics) {
+            MemoryFields(comparison, "items", "zero", "minimum", "maximum");
+            DashboardAmount(comparison, "minimum"); DashboardAmount(comparison, "maximum");
+            var points = Property(comparison, "items");
+            if (!PlotCoordinate(Property(comparison, "zero")) || points.ValueKind != JsonValueKind.Array || points.GetArrayLength() != records.Length) throw Invalid();
+            for (int i = 0; i < records.Length; i++) {
+                var point = points[i]; MemoryFields(point, "positionId", "cost", "reference");
+                if (String(point, "positionId") != records[i].PositionId
+                    || (records[i].TotalCost is null ? Property(point, "cost").ValueKind != JsonValueKind.Null : !PlotCoordinate(Property(point, "cost")))
+                    || (records[i].ReferenceValuation.Value is null ? Property(point, "reference").ValueKind != JsonValueKind.Null : !PlotCoordinate(Property(point, "reference")))) throw Invalid();
+            }
+        }
+        return new(records, next, more.GetBoolean(), query.Size, analytics ? comparison.Deserialize<FinanceHoldingPlot>(HistoryJson) : null);
     }
 
     public async Task<FinancePositionDetail> GetFinancePositionAsync(string id, CancellationToken token)

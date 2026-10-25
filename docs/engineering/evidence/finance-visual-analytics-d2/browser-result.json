@@ -1,0 +1,185 @@
+{
+  "result": "PASS",
+  "source": "Browser UI substitution using captured synthetic PostgreSQL aggregates; not a native/HTTP acceptance",
+  "checks": [
+    "12 grouped income/expense bars",
+    "Dashboard expense and account count donuts",
+    "6-month range reuses projection",
+    "net area with explicit zero baseline",
+    "month enters exact transaction scope",
+    "keyboard donut legend opens exact detail",
+    "dashboard-light-1920 no document overflow",
+    "dashboard-light-1440 no document overflow",
+    "dashboard-light-1280 no document overflow",
+    "dashboard-light-1024 no document overflow",
+    "dashboard-light-540 no document overflow",
+    "dashboard-dark-1920 no document overflow",
+    "dashboard-dark-1440 no document overflow",
+    "dashboard-dark-1280 no document overflow",
+    "dashboard-dark-1024 no document overflow",
+    "dashboard-dark-540 no document overflow",
+    "future month unknown and non-actionable",
+    "previous empty year is not fabricated history",
+    "annual drilldown beyond six months",
+    "return restores annual year and month",
+    "12-month audit ledger and annual total",
+    "annual-light-1920 no document overflow",
+    "annual-light-1440 no document overflow",
+    "annual-light-1280 no document overflow",
+    "annual-light-1024 no document overflow",
+    "annual-light-540 no document overflow",
+    "annual-dark-1920 no document overflow",
+    "annual-dark-1440 no document overflow",
+    "annual-dark-1280 no document overflow",
+    "annual-dark-1024 no document overflow",
+    "annual-dark-540 no document overflow",
+    "portfolio status and valuation-coverage donuts",
+    "current-page holdings cost/reference chart",
+    "asset reference bars keep full eligible denominator",
+    "no persistent financial UI state",
+    "no browser JS errors"
+  ],
+  "layout": [
+    {
+      "label": "dashboard-light-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-light-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-light-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-light-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-light-540",
+      "width": 540,
+      "scroll": 540,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-dark-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-dark-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-dark-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-dark-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "dashboard-dark-540",
+      "width": 540,
+      "scroll": 540,
+      "chart": 1,
+      "table": 0
+    },
+    {
+      "label": "annual-light-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-light-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-light-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-light-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-light-540",
+      "width": 540,
+      "scroll": 540,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-dark-1920",
+      "width": 1920,
+      "scroll": 1920,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-dark-1440",
+      "width": 1440,
+      "scroll": 1440,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-dark-1280",
+      "width": 1280,
+      "scroll": 1280,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-dark-1024",
+      "width": 1024,
+      "scroll": 1024,
+      "chart": 1,
+      "table": 1
+    },
+    {
+      "label": "annual-dark-540",
+      "width": 540,
+      "scroll": 540,
+      "chart": 1,
+      "table": 1
+    }
+  ],
+  "errors": []
+}

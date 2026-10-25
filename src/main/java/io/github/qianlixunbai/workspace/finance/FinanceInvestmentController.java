@@ -16,7 +16,7 @@ public final class FinanceInvestmentController {
     public FinanceInvestmentController(FinanceInvestmentQueries queries) { this.queries = queries; }
 
     @GetMapping("/portfolio")
-    public com.financeos.module.investment.read.dto.InvestmentPortfolioResponse portfolio(HttpServletRequest request) {
+    public FinanceInvestmentQueries.Portfolio portfolio(HttpServletRequest request) {
         if (request.getQueryString() != null) throw invalid();
         return queries.portfolio();
     }

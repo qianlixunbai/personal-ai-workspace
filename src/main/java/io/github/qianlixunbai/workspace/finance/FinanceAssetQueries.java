@@ -38,7 +38,7 @@ public final class FinanceAssetQueries {
             String createdAt, String updatedAt, ReferenceView referenceValuation) {
         @Override public String toString() { return "FinanceAsset[private]"; }
     }
-    public record AssetPage(List<AssetView> items, int page, int size, String total, String type, String sort) { }
+    public record AssetPage(List<AssetView> items, int page, int size, String total, String type, String sort, FinanceAnalyticsQueries.Distribution typeDistribution) { }
     private static final Set<String> TYPES = Set.of("ALL", "STOCK", "ETF", "FUND", "BOND", "GOLD", "CRYPTO", "CASH", "OTHER");
     private static final String COLUMNS = "id,name,symbol,type,market,currency,quantity,avg_cost,current_price,position_mode,created_at,updated_at";
 
@@ -55,7 +55,7 @@ public final class FinanceAssetQueries {
             };
             var assets = jdbc.query("SELECT " + COLUMNS + where + " ORDER BY " + order + " LIMIT ? OFFSET ?",
                     FinanceAssetQueries::asset, userId, type, type, size, (long) page * size);
-            return new AssetPage(views(assets), page, size, Long.toString(total), type, sort);
+            return new AssetPage(views(assets), page, size, Long.toString(total), type, sort, FinanceAnalyticsQueries.counts(jdbc, userId, true));
         });
     }
 

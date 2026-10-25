@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePortfolio as Portfolio } from '../bridge/financePortfolio'
+import { FinanceDonut } from './FinanceCharts'
 import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，组合统计读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
@@ -46,6 +47,10 @@ export function FinancePortfolio({ bridge, enabled, openSettings, navigate, inva
     </section>
     {error && <div className="error" role="alert"><p>{error}</p><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button></div>}
     {value && r && <>
+      <div className="finance-analysis-grid">
+        {value.statusDistribution && <FinanceDonut title="持仓状态分布" value={value.statusDistribution} note="当前用户全部交易驱动持仓；选择 OPEN / CLOSED 进入对应持仓与历史。" onSelect={key => { if (key === 'OPEN' || key === 'CLOSED') navigate({ source: 'portfolio', target: 'investments', query: { status: key, accountId: '', instrumentId: '', cursor: '', size: 10 } }) }} />}
+        {value.coverageDistribution && <FinanceDonut title="参考估值数量覆盖" value={value.coverageDistribution} note={`完整 OPEN 数量分母；可估值包含过期报价，无法估值金额未知。覆盖状态 ${r.freshness}；${r.warnings.some(w => w.code === 'QUOTE_STALE' || w.code === 'FX_STALE') ? '存在过期报价或汇率' : '未报告过期警告'}。选择图例查看精确数量。`} />}
+      </div>
       <section className="card" aria-label="组合账务统计"><h3>投资账务事实 · CNY</h3>
         <div className="finance-toolbar">{(['ALL', 'OPEN', 'CLOSED'] as const).map(status => <button className="secondary" key={status} onClick={() => navigate({ source: 'portfolio', target: 'investments', query: { status, accountId: '', instrumentId: '', cursor: '', size: 10 } })}>查看{status === 'ALL' ? '全部' : status}持仓</button>)}<button className="secondary" onClick={() => navigate({ source: 'portfolio', target: 'history', positionId: '' })}>查看投资交易历史</button></div>
         {value.positionCount === 0 ? <p>当前组合为空：没有交易驱动持仓。</p> : value.openPositionCount === 0 && <p>全部持仓已平仓，没有应估值的 OPEN 持仓；累计已实现盈亏仍保留。</p>}

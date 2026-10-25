@@ -33,6 +33,7 @@ internal interface IWorkspaceNativeActions
     Task<FinanceHistoryPage> FinanceHistoryAsync(FinanceHistoryQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryDetail> FinanceHistoryDetailAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceHistoryTimeline> FinanceHistoryTimelineAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceAnnual> FinanceAnnualAsync(int year, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceDashboard> FinanceDashboardAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinancePortfolio> FinancePortfolioAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinanceBudgetAvailability> FinanceBudgetsAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
@@ -198,6 +199,7 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.history") result = await native.FinanceHistoryAsync(HistoryQuery(payload), cancellation);
             else if (method == "finance.historyDetail") result = await native.FinanceHistoryDetailAsync(payload.GetProperty("id").GetString()!, cancellation);
             else if (method == "finance.historyTimeline") result = await native.FinanceHistoryTimelineAsync(payload.GetProperty("id").GetString()!, cancellation);
+            else if (method == "finance.annual") result = await native.FinanceAnnualAsync(payload.GetProperty("year").GetInt32(), cancellation);
             else if (method == "finance.dashboard") result = await native.FinanceDashboardAsync(cancellation);
             else if (method == "finance.portfolio") result = await native.FinancePortfolioAsync(cancellation);
             else if (method == "finance.budgets") result = await native.FinanceBudgetsAsync(cancellation);
@@ -384,6 +386,8 @@ internal sealed class WorkspaceBridge : IDisposable
         if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
         if (ConversationMethods.Contains(method)) return ValidConversationPayload(method, payload);
+        if (method == "finance.annual") return Fields(payload, "year") && payload.GetProperty("year").ValueKind == JsonValueKind.Number
+            && payload.GetProperty("year").TryGetInt32(out int year) && RuntimeClient.ValidFinanceYear(year);
         if (method == "finance.imports") return Fields(payload, "page", "size")
             && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("size").ValueKind == JsonValueKind.Number
             && payload.GetProperty("page").TryGetInt32(out int importPage) && payload.GetProperty("size").TryGetInt32(out int importSize)

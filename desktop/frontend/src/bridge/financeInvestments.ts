@@ -1,3 +1,4 @@
+import { analyticsAmount } from './financeAnalytics'
 import { exactFields, isObject } from './contracts'
 import { financeId } from './finance'
 
@@ -17,7 +18,8 @@ export interface PositionCachedReference extends Omit<PositionReference, 'value'
 export interface FinancePositionDetail extends Omit<FinancePosition, 'referenceValuation'> {
   manualReference: { currentPrice: string | null; marketValue: string | null }; referenceValuation: PositionCachedReference
 }
-export interface FinancePositionPage { records: FinancePosition[]; nextCursor: string | null; hasMore: boolean; size: number }
+export interface FinanceHoldingPlot { items: { positionId: string; cost: number | null; reference: number | null }[]; zero: number; minimum: string; maximum: string }
+export interface FinancePositionPage { comparison?: FinanceHoldingPlot; records: FinancePosition[]; nextCursor: string | null; hasMore: boolean; size: number }
 
 const text = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max
 const nullable = (v: unknown, check: (x: unknown) => boolean) => v === null || check(v)
@@ -60,9 +62,17 @@ export function isFinancePositionDetail(v: unknown): v is FinancePositionDetail 
     && ['quoteTime', 'quoteFetchedAt', 'fxRateTime', 'fxFetchedAt'].every(k => nullable(r[k], instant)) && ['quoteProvider', 'fxProvider'].every(k => nullable(r[k], x => text(x, 30)))
 }
 export function isFinancePositionPage(v: unknown, q: FinancePositionQuery): v is FinancePositionPage {
-  return isObject(v) && exactFields(v, ['records', 'nextCursor', 'hasMore', 'size']) && v.size === q.size && typeof v.hasMore === 'boolean'
+  return isObject(v) && (exactFields(v, ['records', 'nextCursor', 'hasMore', 'size']) || exactFields(v, ['records', 'nextCursor', 'hasMore', 'size', 'comparison'])) && v.size === q.size && typeof v.hasMore === 'boolean'
     && nullable(v.nextCursor, cursor) && v.hasMore === (v.nextCursor !== null) && v.nextCursor !== q.cursor
     && Array.isArray(v.records) && v.records.length <= q.size && (!v.hasMore || v.records.length === q.size)
     && v.records.every(p => isFinancePosition(p) && (q.status === 'ALL' || p.status === q.status) && (!q.accountId || p.account.id === q.accountId) && (!q.instrumentId || p.instrument.id === q.instrumentId))
     && new Set(v.records.map(p => p.positionId)).size === v.records.length
+    && (!Object.hasOwn(v, 'comparison') || isFinanceHoldingPlot(v.comparison, v.records as FinancePosition[]))
+}
+
+function isFinanceHoldingPlot(v: unknown, records: FinancePosition[]): v is FinanceHoldingPlot {
+  const coordinate = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 10000
+  return isObject(v) && exactFields(v, ['items', 'zero', 'minimum', 'maximum']) && coordinate(v.zero) && analyticsAmount(v.minimum) && analyticsAmount(v.maximum)
+    && Array.isArray(v.items) && v.items.length === records.length && v.items.every((p, i) => isObject(p) && exactFields(p, ['positionId', 'cost', 'reference']) && p.positionId === records[i]!.positionId
+      && (records[i]!.totalCost === null ? p.cost === null : coordinate(p.cost)) && (records[i]!.referenceValuation.value === null ? p.reference === null : coordinate(p.reference)))
 }

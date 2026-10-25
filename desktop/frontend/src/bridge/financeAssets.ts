@@ -1,3 +1,4 @@
+import { isFinanceDistribution, type FinanceDistribution } from './financeAnalytics'
 import { exactFields, isObject } from './contracts'
 import { financeId } from './finance'
 
@@ -15,7 +16,7 @@ export interface FinanceAsset {
   quantity: string; avgCost: string; currentPrice: string | null; manualMarketValue: string | null; positionMode: 'LEGACY' | 'TRANSACTION_DRIVEN'
   createdAt: string; updatedAt: string; referenceValuation: FinanceAssetReference | null
 }
-export interface FinanceAssetPage extends FinanceAssetQuery { items: FinanceAsset[]; total: string }
+export interface FinanceAssetPage extends FinanceAssetQuery { typeDistribution?: FinanceDistribution; items: FinanceAsset[]; total: string }
 const text = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max
 const decimal = (v: unknown) => typeof v === 'string' && /^-?[0-9]{1,60}(?:\.[0-9]{1,28})?$/.test(v)
 const currency = (v: unknown) => typeof v === 'string' && /^[A-Z]{3}$/.test(v)
@@ -50,7 +51,7 @@ export function isFinanceAsset(v: unknown): v is FinanceAsset {
     && (v.referenceValuation === null || ['STOCK', 'ETF'].includes(v.type as string) && typeof v.market === 'string' && v.market.trim().toUpperCase() === 'US' && isReference(v.referenceValuation))
 }
 export function isFinanceAssetPage(v: unknown): v is FinanceAssetPage {
-  return isObject(v) && exactFields(v, ['page', 'size', 'type', 'sort', 'items', 'total']) && isFinanceAssetQuery(v)
+  return isObject(v) && (exactFields(v, ['page', 'size', 'type', 'sort', 'items', 'total']) || exactFields(v, ['page', 'size', 'type', 'sort', 'items', 'total', 'typeDistribution']) && isFinanceDistribution(v.typeDistribution)) && isFinanceAssetQuery(v)
     && typeof v.total === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(v.total) && BigInt(v.total) <= 9223372036854775807n
     && Array.isArray(v.items) && v.items.length <= v.size && v.items.every(a => isFinanceAsset(a) && (v.type === 'ALL' || a.type === v.type))
     && new Set(v.items.map(a => a.id)).size === v.items.length

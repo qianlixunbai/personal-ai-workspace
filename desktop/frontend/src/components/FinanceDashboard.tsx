@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinanceDashboard as Dashboard } from '../bridge/financeDashboard'
+import { FinanceReferenceAllocation } from './FinanceReferenceAllocation'
+import { FinanceCashChart, FinanceDonut } from './FinanceCharts'
 import { Icon, type IconName } from './Icon'
 import type { FinanceIntent } from '../pages/financeNavigation'
 import { invalidFinanceIdentity } from '../pages/financeNavigation'
@@ -11,6 +13,7 @@ export function FinanceDashboard({ bridge, enabled, openSettings, navigate, init
   const [overview, setOverview] = useState<FinanceOverview | null>(null), [value, setValue] = useState<Dashboard | null>(null)
   const [working, setWorking] = useState(false), [error, setError] = useState(''), [runtimeReady, setRuntimeReady] = useState(0)
   const generation = useRef(0), inFlight = useRef(false)
+  const [range, setRange] = useState(12)
   const [month, setMonth] = useState(initialMonth), [netOpen, setNetOpen] = useState(false)
   const detailHeading = useRef<HTMLHeadingElement>(null), opener = useRef<HTMLElement | null>(null)
   useEffect(() => {
@@ -46,7 +49,7 @@ export function FinanceDashboard({ bridge, enabled, openSettings, navigate, init
   }
   const chooseMonth = (next: string, trigger?: HTMLElement) => { opener.current = trigger ?? null; setNetOpen(false); setMonth(next) }
   const closeDetail = () => { setMonth(''); setNetOpen(false); opener.current?.focus() }
-  const flow = netOpen && value ? { month: value.asOf.slice(0, 7), income: value.monthIncome, expense: value.monthExpense, net: value.monthNet } : value?.monthlyCashFlow.find(f => f.month === month)
+  const flow = netOpen && value ? { month: value.asOf.slice(0, 7), income: value.monthIncome, expense: value.monthExpense, net: value.monthNet } : (value?.twelveMonths ?? value?.monthlyCashFlow)?.find(f => f.month === month)
   return <section className="finance-page finance-dashboard" aria-label="Finance 只读财务总览" aria-busy={working}>
     <div className="dashboard-heading"><div><h2>Finance Dashboard <span>· 财务总览</span></h2>
       <p role="status"><Icon name="shield" />{working ? '正在验证身份并读取财务总览…' : !enabled ? states.DISABLED : overview ? `${states[overview.state]}${overview.username ? ` · ${overview.username}` : ''}` : '等待 Dashboard 读取。'}</p></div>
@@ -68,6 +71,11 @@ export function FinanceDashboard({ bridge, enabled, openSettings, navigate, init
         <div className="finance-toolbar"><button onClick={() => transactions(flow.month, 'INCOME')}>查看 {flow.month} 收入明细</button><button className="secondary" onClick={() => transactions(flow.month, 'EXPENSE')}>查看 {flow.month} 支出明细</button></div>
       </section>}
       <div className="dashboard-grid">
+      {value.twelveMonths && value.twelveMonthPlot ? <section className="card dashboard-trend"><div className="card-heading"><h3>月度收支对比 <small>Monthly income & expense</small></h3><div className="finance-toolbar" role="group" aria-label="现金流时间范围">{[6, 12].map(n => <button className="secondary" key={n} aria-pressed={range === n} onClick={() => setRange(n)}>近 {n} 个月</button>)}</div></div>
+        <FinanceCashChart months={value.twelveMonths.slice(-range)} plot={{ ...value.twelveMonthPlot, income: value.twelveMonthPlot.income.slice(-range), expense: value.twelveMonthPlot.expense.slice(-range), net: value.twelveMonthPlot.net.slice(-range) }} selected={month} onSelect={chooseMonth} />
+        <details className="dashboard-details"><summary>查看精确收支台账</summary><div className="finance-table-scroll" tabIndex={0} aria-label="月度精确收支"><table><thead><tr><th>月份</th><th>收入</th><th>支出</th><th>净额</th><th>交易数</th></tr></thead><tbody>{value.twelveMonths.slice(-range).map(f => <tr key={f.month}><td>{f.month}</td><td className="finance-amount">{f.income}</td><td className="finance-amount">{f.expense}</td><td className="finance-amount">{f.net}</td><td>{f.transactionCount}</td></tr>)}</tbody></table></div></details>
+        <p className="hint">普通 CNY 收支，当前月截至 {value.asOf}（不含），历史月截至下一月初；未来记录、转账、退款、调整及投资交易不计入。共享比例轴，极大金额会使小金额图形接近零，请查看精确台账。</p>
+      </section> : <>
       <section className="card dashboard-trend"><div className="card-heading"><h3>收入与支出趋势 <small>Cash flow</small></h3><span className="period-label">近 6 个月 · CNY</span></div>
         <div className="chart-legend"><span className="income-key">收入 Income</span><span className="expense-key">支出 Expense</span></div>
         <CashFlowChart value={value} selected={month} onSelect={chooseMonth} />
@@ -76,18 +84,10 @@ export function FinanceDashboard({ bridge, enabled, openSettings, navigate, init
         <details className="dashboard-details"><summary>查看六个月精确收支</summary><div className="finance-table-scroll" tabIndex={0} aria-label="六个月收支表格"><table>
         <thead><tr><th>月份</th><th>收入</th><th>支出</th><th>净收支</th></tr></thead><tbody>{value.monthlyCashFlow.map(f => <tr key={f.month}><td>{f.month}</td><td className="finance-amount">{f.income}</td><td className="finance-amount">{f.expense}</td><td className="finance-amount">{f.net}</td></tr>)}</tbody>
       </table></div></details><p className="hint">当前月及此前五个月；无交易月份由服务端补零。本月截至快照时刻（不含）。仅普通 CNY 收支，不含转账表与投资交易，不代表余额变化或投资收益。</p></section>
-      <section className="card dashboard-allocation"><div className="card-heading"><h3>人工参考资产分布 <small>Reference allocation</small></h3><Icon name="assets" /></div>
-        <div className="allocation-coverage"><span className="coverage-icon"><Icon name="assets" /></span><div><strong>{a.total} <span>/ {a.assetTotal} 项</span></strong><small>符合条件 / 全部资产 · 显示 {a.items.length} 项</small></div><span className="coverage-tag">{a.complete ? '合格资产完整列表' : '部分展示'}</span></div>
-        <p className="allocation-denominator">完整分母 <strong>{a.referenceTotal} CNY</strong></p>
-        {!a.complete && <p className="coverage-notice" role="status">部分视图：ID 升序前 20 项，占比使用全部符合条件资产的完整分母，不代表完整 100% 配置。</p>}
-        {a.items.length ? <ol className="allocation-list" tabIndex={0} aria-label="人工参考资产分布">{a.items.map(item => <li key={item.id}>
-          <div><span className="allocation-name">{item.name}<small>ID {item.id}</small></span><strong>{item.percentage}%</strong></div>
-          <svg className="allocation-bar" viewBox="0 0 100 1.6" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="1.6" rx=".8" className="bar-track" /><rect width={`${item.percentage}%`} height="1.6" rx=".8" className="bar-fill" /></svg>
-          <small className="allocation-value">{item.value} CNY</small>
-        </li>)}</ol> : <div className="dashboard-empty"><Icon name="assets" /><p>没有符合人工参考分布条件的资产，无法形成分布。</p></div>}
-        <p className="hint">排除（按顺序互斥计数）：非 CNY {a.excludedCurrency}；未定价 {a.excludedUnpriced}；数量缺失或非正 {a.excludedQuantity}；参考价值非正 {a.excludedValue}。</p>
-        <button className="text-button" onClick={() => open({ source: 'dashboard', target: 'assets' })}>进入 Assets 查看详细数据<Icon name="arrow" /></button>
-      </section>
+      </>}
+      {value.expenseBreakdown && <FinanceDonut title="本月支出结构" value={value.expenseBreakdown} unit="CNY" note="全部合格普通 CNY 支出。类别不可用归入未分类；超过十二类合并为其余类别。选择图例查看详情；流水暂不支持类别筛选。" />}
+      {value.accountStructure && <FinanceDonut title="账户数量结构" value={value.accountStructure} note="包含全部币种及使用中、停用账户；这是账户数量，带符号余额不参与占比。选择图例查看类型数量，在 Accounts 查看账户详情。" />}
+      <FinanceReferenceAllocation value={a} openAssets={() => open({ source: 'dashboard', target: 'assets' })} />
       <section className="card dashboard-recent"><div className="card-heading"><h3>最近五条普通交易 · CNY <small>Recent transactions</small></h3><button className="text-button" onClick={() => open({ source: 'dashboard', target: 'transactions' })}>查看交易<Icon name="arrow" /></button></div>{value.recentTransactions.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="最近普通交易表格"><table><thead><tr><th>时间 / ID</th><th>类型</th><th>账户</th><th>分类</th><th>金额 · CNY</th></tr></thead><tbody>{value.recentTransactions.map(t => <tr key={t.id}><td><button className="finance-account-link" aria-label={`${t.transactedAt} · 查看普通交易 ${t.id} 详情`} onClick={() => open({ source: 'dashboard', target: 'transactions', selection: { kind: 'TRANSACTION', id: t.id } })}>{t.transactedAt}</button><small>{t.id}</small></td><td><span className={`transaction-kind ${t.type === 'INCOME' ? 'kind-income' : t.type === 'EXPENSE' ? 'kind-expense' : ''}`}>{t.type}</span></td><td>{t.accountName ?? '未知账户'}</td><td>{t.categoryName ?? '未知分类'}</td><td className={`finance-amount ${t.type === 'INCOME' ? 'amount-income' : t.type === 'EXPENSE' ? 'amount-expense' : ''}`}>{t.amount}</td></tr>)}</tbody></table></div> : <div className="dashboard-empty"><Icon name="transactions" /><p>当前用户没有 CNY 普通交易。</p></div>}
         <p className="hint">按交易时间、ID 降序。保留历史 REFUND / ADJUSTMENT / TRANSFER，也可能显示未来日期记录；这些记录不因此计入本月收支。</p></section>
       <section className="card dashboard-accounts"><div className="card-heading"><h3>账户概览 <small>Accounts</small></h3><Icon name="accounts" /></div>

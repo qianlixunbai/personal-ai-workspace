@@ -3,6 +3,8 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import { assetTypes } from '../bridge/financeAssets'
 import type { FinanceAsset, FinanceAssetPage, FinanceAssetQuery, FinanceAssetReference } from '../bridge/financeAssets'
+import { FinanceAssetAllocation } from './FinanceReferenceAllocation'
+import { FinanceDonut } from './FinanceCharts'
 import { invalidFinanceIdentity } from '../pages/financeNavigation'
 
 const initial: FinanceAssetQuery = { page: 0, size: 10, type: 'ALL', sort: 'CREATED_DESC' }
@@ -68,6 +70,8 @@ export function FinanceAssets({ bridge, enabled, openSettings, invalidateNavigat
       <button className="secondary" onClick={openSettings}>Finance 配置与身份绑定</button>
     </section>
     {error && <div className="error" role="alert"><p>{error}</p><div className="finance-toolbar"><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button><button disabled={!enabled || working} onClick={() => { void refresh(query, null) }}>返回资产列表</button></div></div>}
+    {list && <FinanceAssetAllocation bridge={bridge} enabled={enabled} invalidateNavigation={invalidateNavigation} />}
+    {list?.typeDistribution && <FinanceDonut title="资产记录数量结构" value={list.typeDistribution} note="完整当前用户资产记录数量，包含全部币种与 LEGACY / 交易驱动记录；不是资产价值配置。选择类型筛选原列表，缺价资产继续保留。" onSelect={key => { if (assetTypes.includes(key as FinanceAssetQuery['type'])) void refresh({ ...query, page: 0, type: key as FinanceAssetQuery['type'] }, null) }} />}
     {list && <section className="card" aria-label="资产列表">
       {list.items.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="资产表格，可横向滚动"><table>
         <thead><tr><th>资产名称 / ID</th><th>类型 / 市场</th><th className="finance-amount">人工价格估值</th><th className="finance-amount">市场参考估值</th></tr></thead>

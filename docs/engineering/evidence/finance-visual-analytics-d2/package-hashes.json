@@ -1,0 +1,171 @@
+{
+  "sourceCommit": "3a83ea2f65792e9dfe7f926e828bd0d405038d27",
+  "sourceDirty": true,
+  "branch": "codex/finance-visual-analytics-d2",
+  "files": [
+    {
+      "path": "import-source-provenance.json",
+      "sha256": "bb6d82025fed9b23b27bc285ccf3ebc6b12da9184750d30b82db31fddd4af359"
+    },
+    {
+      "path": "investment-source-provenance.json",
+      "sha256": "c234fcd5256438565c3a9ab1456f396f61c1b8913e248d62f71afd04975d7f16"
+    },
+    {
+      "path": "MainWorkspace/assets/index-C_XiFsdC.js",
+      "sha256": "bfdf82aa72f0bbe5cc95ba62592b575909f72ac98a349d6b046813decb606fbe"
+    },
+    {
+      "path": "MainWorkspace/assets/index-CnlGg-W0.css",
+      "sha256": "70304221a17d095a7da931575b919e5b690bfa845f3542ea84b186e5c5b0db41"
+    },
+    {
+      "path": "MainWorkspace/index.html",
+      "sha256": "a829e09bd5261345787a2950d466942a36222b0fd478deb137245b96a0bc634c"
+    },
+    {
+      "path": "MainWorkspace/workspace-assets.json",
+      "sha256": "f08b5159bdd7de97b2dd423942de576095a0b32084798d3349a4cb982dbdfd0d"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.Core.dll",
+      "sha256": "d60e6e94245078cb56e44ebd5f360dc04bf18e460136be93bfc4cfca43b98505"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.Core.xml",
+      "sha256": "8684cd74000c77533e563785208308ada63808da85825206856cab11a9eeffce"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.WinForms.dll",
+      "sha256": "84b5772260dbdfe95591197edc9315dcd2cc86ad610e4b14ddd5e4291e31a381"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.WinForms.xml",
+      "sha256": "6a8ec199373824fdebceda7b3d780d0b31c82edceae04d92391027c971dea6c2"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.Wpf.dll",
+      "sha256": "4cbabd120344cc47f313f168fb86022d8f7423e09adff43da643e0e88570fa0c"
+    },
+    {
+      "path": "Microsoft.Web.WebView2.Wpf.xml",
+      "sha256": "0eff898556c2010ad07f29d9ada70fb1e14255c6ae574df8be4396de0f397c3a"
+    },
+    {
+      "path": "NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.deps.json",
+      "sha256": "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"
+    },
+    {
+      "path": "NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.dll",
+      "sha256": "e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d"
+    },
+    {
+      "path": "NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.exe",
+      "sha256": "0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4"
+    },
+    {
+      "path": "NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.runtimeconfig.json",
+      "sha256": "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6"
+    },
+    {
+      "path": "Open-Workspace-Finance-Visual-Analytics-D2.cmd",
+      "sha256": "b9aaf943919d453f435b845487493b9d92b1bd005508937cc6c4717c31425abc"
+    },
+    {
+      "path": "Open-Workspace-Finance-Visual-Analytics-D2.ps1",
+      "sha256": "5fdef7ae1c1d5430b093b75ea236e85d83f704fcb65c002751cf6f435fa16806"
+    },
+    {
+      "path": "PersonalAiWorkspace.Core.dll",
+      "sha256": "4a7aa37d1734c0bd39a1832434ac73f4c2cbb546efce8c76a04b57522f5014cd"
+    },
+    {
+      "path": "PersonalAiWorkspace.Core.pdb",
+      "sha256": "d3544bc5957cef7db6b26ef45f4d8e7969daecc39b36d311b6845ddd78affc26"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.deps.json",
+      "sha256": "41b136d7a941788f909ef06d027fc939c6b45ede08ee4e22980c8885acf745a5"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.dll",
+      "sha256": "b4234a1f13d78de08af6d079212ba0a24cb6f614489c42e5c1d28abbd207d0bd"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.exe",
+      "sha256": "de7d14b8f0418807ebc3011bf88b8ef789611174a71f277c8b667abef6d93b15"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.pdb",
+      "sha256": "5b09e74c15bf92fd77712c367a0550a1f3803daa9d815321859576528d313739"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.runtimeconfig.json",
+      "sha256": "039a0defb81019310fa2e8a17ef8d2ad086b1a37656149aa598f1f75893f2a22"
+    },
+    {
+      "path": "README.txt",
+      "sha256": "dede30378ced97cd28e7dd503486f97490577d5c8321412d31e177451c560285"
+    },
+    {
+      "path": "runtime/personal-ai-workspace.jar",
+      "sha256": "2a399651b062cca8204741da8020be6329f1bf08033a229b2a370c0c7529a571"
+    },
+    {
+      "path": "runtimes/win-arm64/native/WebView2Loader.dll",
+      "sha256": "4f48cb32d34298c86cca2108057eea0d900b5e422575e926e8086318a0b9cbf0"
+    },
+    {
+      "path": "runtimes/win-x64/native/WebView2Loader.dll",
+      "sha256": "3426dcc55fdfb8b5e7ac623cf33b4ccf283fbf68a0c5a65bddfdb4d749a8abee"
+    },
+    {
+      "path": "runtimes/win-x86/native/WebView2Loader.dll",
+      "sha256": "87c61e2cae380112c60853e28178b8ea9a0d63739fc03cead680d4ad3fde6b7d"
+    },
+    {
+      "path": "synthetic-postgresql.ps1",
+      "sha256": "8150f8394e79e2092fcf37a75486cef76aae90e4694ae7d6e0cdfa0c5fe9d4f3"
+    },
+    {
+      "path": "SyntheticPostgresqlFiles.cs",
+      "sha256": "d935e65e33d6697c69b5dc834aa29a4f5060230b3c668312e39df20358f3b0af"
+    },
+    {
+      "path": "ThirdPartyNotices/react-error-boundary.txt",
+      "sha256": "d4059aac239b9eb840c98f15b8337799fe6a93879efc3494768ba2ac4bd90c83"
+    },
+    {
+      "path": "WebView2Loader.dll",
+      "sha256": "3426dcc55fdfb8b5e7ac623cf33b4ccf283fbf68a0c5a65bddfdb4d749a8abee"
+    },
+    {
+      "path": "WindowsProfileSecurity.cs",
+      "sha256": "3bb91740d6ca370132add262045d2f151df4d1c143f84ab1d484ec41bf98c486"
+    }
+  ],
+  "preservedPackages": [
+    {
+      "name": "PersonalAiWorkspace-finance-fnext10-development-20261024",
+      "payloadHashes": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-phase1-development-20261025",
+      "payloadHashes": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-visual-redesign-development",
+      "payloadHashes": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-ux-d1-development",
+      "payloadHashes": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-visual-analytics-d2-development",
+      "payloadHashes": "PASS"
+    }
+  ],
+  "sourceFilesMatch": true,
+  "syntheticLedgerUnchanged": true
+}

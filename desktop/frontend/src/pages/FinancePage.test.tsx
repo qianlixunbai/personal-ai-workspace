@@ -33,7 +33,7 @@ it('keeps dashboard strings, partial coverage and clears failed or late snapshot
       expect(port.sent.at(-1)).toMatchObject({ method: 'finance.transactions', payload: { page: 0, type, startDate: '2026-10-01', endDate: '', cashFlowMonth: '2026-10', cashFlowAsOf: dashboard.asOf } })
       const q = port.sent.at(-1)!.payload as object; await reply({ ...q, items: [], total: '0' })
       expect(screen.getByText(/普通交易 TRANSACTION · CNY/)).toBeTruthy()
-      click('清除筛选'); await emptyTransactions(); expect(screen.queryByText(/Dashboard 统计明细/)).toBeNull()
+      click('清除筛选'); await emptyTransactions(); expect(screen.queryByText(/Finance 收支统计明细/)).toBeNull()
       await returnDashboard()
     }
     click('本月净现金流 · 查看明细'); expect(screen.getByRole('heading', { name: '2026-10 净现金流组成' })).toBeTruthy()
@@ -324,4 +324,35 @@ it('discards financial snapshots and late detail responses across runtime change
     expect(screen.getByText('9007199254740993.12345678')).toBeTruthy()
     view.unmount()
   } finally { bridge.dispose() }
+})
+
+it('rebuilds annual review with future unknowns, exact drilldown, restored year and session clearing', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  const overview = { state: 'READY', account: null, cnyBalance: { currency: 'CNY', balance: '0.00' }, username: 'Alice', accountCount: '0' }
+  const amount = '9007199254740993.10'
+  const annual = (year: number) => ({ currency: 'CNY', businessZone: 'Asia/Shanghai', asOf: '2026-10-24T12:00:00.123456789', currentYear: 2026, year, years: [2026, 2025], income: amount, expense: '0', net: amount, transactionCount: '1',
+    months: Array.from({ length: 12 }, (_, i) => ({ month: `${year}-${String(i + 1).padStart(2, '0')}`, state: year === 2026 && i > 9 ? 'FUTURE' : 'OBSERVED', income: year === 2026 && i > 9 ? null : i === 0 ? amount : '0', expense: year === 2026 && i > 9 ? null : '0', net: year === 2026 && i > 9 ? null : i === 0 ? amount : '0', transactionCount: year === 2026 && i > 9 ? null : i === 0 ? '1' : '0' })),
+    plot: { income: Array.from({ length: 12 }, (_, i) => year === 2026 && i > 9 ? null : i === 0 ? 0 : 10000), expense: Array.from({ length: 12 }, (_, i) => year === 2026 && i > 9 ? null : 10000), net: Array.from({ length: 12 }, (_, i) => year === 2026 && i > 9 ? null : i === 0 ? 0 : 10000), zero: 10000, ticks: [0, 2500, 5000, 7500, 10000].map(coordinate => ({ coordinate, amount: '0' })) },
+    expenseBreakdown: { state: 'EMPTY', total: '0', items: [] } })
+  const reply = async (v: unknown) => { await act(async () => { port.reply(port.sent.length - 1, v) }) }
+  const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: '年度分析 · Annual Review' })); await reply(overview); await reply(annual(2026))
+    expect(screen.getByRole('button', { name: '2026-11 尚未发生' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getAllByText(amount + ' CNY').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '上一年' })); await reply(overview); await reply(annual(2025))
+    expect(screen.getByLabelText('财务年份').getAttribute('value') ?? (screen.getByLabelText('财务年份') as HTMLSelectElement).value).toBe('2025')
+    fireEvent.click(screen.getByRole('button', { name: '台账选择 2025-01' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看 2025-01 收入明细' })); await reply(overview)
+    const query = port.sent.at(-1)!.payload
+    expect(query).toMatchObject({ cashFlowMonth: '2025-01', cashFlowAsOf: '2026-10-24T12:00:00.123456789', type: 'INCOME', startDate: '2025-01-01', endDate: '' })
+    await reply({ ...(query as object), items: [], total: '0' })
+    fireEvent.click(screen.getByRole('button', { name: '返回财务总览' })); await reply(overview); await reply(annual(2025))
+    expect(screen.getByRole('heading', { name: '2025-01 月度收支明细' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭年度月份明细' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回当前年' })); await reply(overview); await reply(annual(2026))
+    fireEvent.click(screen.getByRole('button', { name: '刷新年度' })); await reply(overview); const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, annual(2026)) })
+    expect(screen.queryByRole('table')).toBeNull(); expect(screen.queryByText(amount + ' CNY')).toBeNull()
+  } finally { view.unmount(); bridge.dispose() }
 })

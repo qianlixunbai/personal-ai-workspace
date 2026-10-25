@@ -29,7 +29,7 @@ public sealed partial class RuntimeClient
         var month = DateTime.Parse(q.CashFlowMonth + "-01", CultureInfo.InvariantCulture);
         var current = DateTime.Parse(q.CashFlowAsOf[..7] + "-01", CultureInfo.InvariantCulture);
         int distance = (current.Year - month.Year) * 12 + current.Month - month.Month;
-        return distance is >= 0 and <= 5;
+        return distance >= 0 && month.Year is >= 1900 and <= 2199;
     }
     // Preserve nanoseconds for exclusive comparisons; DateTime alone has only 100ns precision.
     private static string FinanceTimeKey(string text) => (text.Length == 16 ? text + ":00" : text).PadRight(20, '.').PadRight(29, '0');

@@ -21,8 +21,7 @@ function validCashFlow(value: Record<string, unknown>) {
   if (month === '' && asOf === '') return true
   if (typeof month !== 'string' || !/^[0-9]{4}-[0-9]{2}$/.test(month) || !date(month + '-01') || month >= '9999-12'
     || typeof asOf !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]{1,9})?)?$/.test(asOf) || !date(asOf.slice(0, 10))) return false
-  const first = new Date(asOf.slice(0, 7) + '-01T00:00:00Z'); first.setUTCMonth(first.getUTCMonth() - 5)
-  return month <= asOf.slice(0, 7) && month >= first.toISOString().slice(0, 7) && value.startDate === month + '-01'
+  return month <= asOf.slice(0, 7) && month >= '1900-01' && month <= '2199-12' && value.startDate === month + '-01'
     && value.endDate === '' && (value.type === 'INCOME' || value.type === 'EXPENSE')
 }
 export function isFinanceTransactionQuery(value: unknown): value is FinanceTransactionQuery {

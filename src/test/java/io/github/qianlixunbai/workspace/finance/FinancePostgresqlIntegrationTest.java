@@ -84,9 +84,79 @@ class FinancePostgresqlIntegrationTest {
             var dashboard = new FinanceDashboardQueries(identity, accounts, source,
                     java.time.Clock.fixed(java.time.Instant.parse("2026-10-24T04:00:00Z"), java.time.ZoneOffset.UTC));
             var transactions = new FinanceTransactionQueries(identity, source);
+            var quoteQueries = new com.financeos.module.asset.marketdata.service.MarketQuoteQueryService(
+                    context.getBean(com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper.class),
+                    new com.financeos.module.asset.marketdata.config.MarketDataProperties(), java.time.Clock.systemUTC());
+            var rates = new com.financeos.module.asset.marketdata.fx.service.ExchangeRateQueryService(
+                    context.getBean(com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper.class),
+                    new com.financeos.module.asset.marketdata.fx.config.FxDataProperties(), java.time.Clock.systemUTC());
+            var valuations = new com.financeos.module.asset.valuation.service.ReferenceValuationService(rates, java.time.Clock.systemUTC());
+            var mapper = context.getBean(com.financeos.module.investment.read.mapper.InvestmentReadMapper.class);
+            var investments = new FinanceInvestmentQueries(identity,
+                    new com.financeos.module.investment.read.service.InvestmentPositionReadQueryService(mapper, quoteQueries, valuations),
+                    new com.financeos.module.investment.read.service.InvestmentPositionDetailQueryService(mapper, quoteQueries, valuations),
+                    new com.financeos.module.investment.read.service.InvestmentPortfolioQueryService(mapper, quoteQueries, valuations));
+            var assets = new FinanceAssetQueries(identity, source, quoteQueries, valuations);
+
             for (long user : List.of(1L, 2L)) {
                 when(profile.requireBinding()).thenReturn(binding(identities.activeIdentity(user)));
                 var snapshot = dashboard.dashboard();
+                var portfolio = investments.portfolio(); var positions = investments.list("ALL", null, null, null, 10);
+                var assetPage = assets.list(0, 10, "ALL", "CREATED_DESC");
+                Files.write(Path.of(".verification/finance-d2-portfolio-" + user + ".json"), JSON.writeValueAsBytes(portfolio));
+                Files.write(Path.of(".verification/finance-d2-positions-" + user + ".json"), JSON.writeValueAsBytes(positions));
+                Files.write(Path.of(".verification/finance-d2-assets-" + user + ".json"), JSON.writeValueAsBytes(assetPage));
+                assertEquals(String.valueOf(portfolio.positionCount()), portfolio.statusDistribution().total());
+                assertEquals(String.valueOf(portfolio.openPositionCount()), portfolio.coverageDistribution().total());
+                assertEquals(assetPage.total(), assetPage.typeDistribution().total());
+                assertEquals(positions.records().size(), positions.comparison().items().size());
+                for (int i = 0; i < positions.records().size(); i++) {
+                    assertEquals(positions.records().get(i).positionId(), positions.comparison().items().get(i).positionId());
+                    assertEquals(positions.records().get(i).referenceValuation().value() == null, positions.comparison().items().get(i).reference() == null);
+                }
+
+                var annual = new FinanceAnalyticsQueries(identity, source,
+                        java.time.Clock.fixed(java.time.Instant.parse("2026-10-24T04:00:00Z"), java.time.ZoneOffset.UTC));
+                var review = annual.annual(0);
+                Files.write(Path.of(".verification/finance-d2-annual-" + user + ".json"), JSON.writeValueAsBytes(review));
+                Files.write(Path.of(".verification/finance-d2-dashboard-" + user + ".json"), JSON.writeValueAsBytes(snapshot));
+                assertEquals(2026, review.year()); assertEquals(12, review.months().size());
+                assertEquals("2026-11", review.months().get(10).month());
+                assertEquals("FUTURE", review.months().get(10).state()); assertNull(review.months().get(10).income());
+                assertNull(review.plot().income().get(10));
+                assertEquals("0", review.months().get(1).income());
+                assertEquals(0, new BigDecimal(review.expense()).compareTo(new BigDecimal(review.expenseBreakdown().total())));
+                assertEquals(12, snapshot.twelveMonths().size());
+                assertEquals("2025-11", snapshot.twelveMonths().getFirst().month());
+                assertEquals(0, new BigDecimal(snapshot.monthExpense()).compareTo(new BigDecimal(snapshot.expenseBreakdown().total())));
+                assertEquals("COMPLETE", snapshot.accountStructure().state());
+                BigDecimal annualIncome = BigDecimal.ZERO, annualExpense = BigDecimal.ZERO; long annualCount = 0;
+                for (var m : review.months()) if (m.state().equals("OBSERVED")) {
+                    annualIncome = annualIncome.add(new BigDecimal(m.income())); annualExpense = annualExpense.add(new BigDecimal(m.expense()));
+                    long count = 0;
+                    for (String type : List.of("INCOME", "EXPENSE")) {
+                        var page = transactions.list(0, 20, "", m.month() + "-01", "", type, m.month(), review.asOf());
+                        count += Long.parseLong(page.total());
+                    }
+                    assertEquals(count, Long.parseLong(m.transactionCount())); annualCount += count;
+                }
+                assertEquals(0, annualIncome.compareTo(new BigDecimal(review.income())));
+                assertEquals(0, annualExpense.compareTo(new BigDecimal(review.expense())));
+                assertEquals(0, annualIncome.subtract(annualExpense).compareTo(new BigDecimal(review.net())));
+                assertEquals(annualCount, Long.parseLong(review.transactionCount()));
+                var emptyYear = annual.annual(2025);
+                Files.write(Path.of(".verification/finance-d2-annual-empty-" + user + ".json"), JSON.writeValueAsBytes(emptyYear)); assertEquals("0", emptyYear.transactionCount());
+                assertTrue(emptyYear.months().stream().allMatch(m -> m.state().equals("OBSERVED")));
+                assertEquals("EMPTY", emptyYear.expenseBreakdown().state());
+                code(ErrorCode.INVALID_REQUEST, () -> annual.annual(2027));
+                code(ErrorCode.INVALID_REQUEST, () -> annual.annual(1899));
+                var nextYear = new FinanceAnalyticsQueries(identity, source,
+                        java.time.Clock.fixed(java.time.Instant.parse("2026-12-31T16:00:00Z"), java.time.ZoneOffset.UTC)).annual(2026);
+                assertEquals(2027, nextYear.currentYear()); assertTrue(nextYear.months().stream().allMatch(m -> m.state().equals("OBSERVED")));
+                assertTrue(nextYear.years().containsAll(List.of(2027, 2026)));
+                assertEquals(0, new BigDecimal(review.income()).compareTo(new BigDecimal(snapshot.monthIncome())
+                    .add(new BigDecimal(user == 1 ? "1004.10" : "0")))); // Full year also includes April 999.00, outside the original six-month window.
+
                 for (var flow : snapshot.monthlyCashFlow()) {
                     for (String type : List.of("INCOME", "EXPENSE")) {
                         BigDecimal sum = BigDecimal.ZERO; int page = 0; var ids = new HashSet<String>();
@@ -115,7 +185,7 @@ class FinancePostgresqlIntegrationTest {
             var actual = identities.activeIdentity(1);
             when(profile.requireBinding()).thenReturn(new LocalFinanceProfile.Binding(1, UUID.randomUUID(), actual.userId(), "0".repeat(64), actual.userFingerprint()));
             code(ErrorCode.FINANCE_BINDING_INVALID, () -> transactions.list(0, 10, "", "2026-10-01", "", "INCOME", "2026-10", "2026-10-24T12:00"));
-            System.out.println("D1_REAL_POSTGRESQL_READ_ONLY_SIX_MONTHS_TWO_USERS_PAGINATION_CNY_EXCLUSIVE_BOUNDARY_AND_SOURCE_KIND_PASS");
+            System.out.println("D2_REAL_POSTGRESQL_ANNUAL_FUTURE_NULL_CROSS_YEAR_COUNTS_DISTRIBUTIONS_TWO_USERS_EXACT_DRILLDOWN_PASS");
         } finally { SecurityContextHolder.clearContext(); }
     }
 

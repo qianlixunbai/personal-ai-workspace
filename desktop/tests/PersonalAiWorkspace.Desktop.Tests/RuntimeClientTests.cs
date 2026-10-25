@@ -11,6 +11,33 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
+    public async Task AnnualReadPreservesExactMoneyFutureUnknownsAndRejectsUnboundedOrConfusedContracts()
+    {
+        var months = Enumerable.Range(1, 12).Select(m => new FinanceMonth($"2026-{m:D2}", m > 10 ? "FUTURE" : "OBSERVED",
+            m > 10 ? null : m == 1 ? "9007199254740993.10" : "0", m > 10 ? null : "0",
+            m > 10 ? null : m == 1 ? "9007199254740993.10" : "0", m > 10 ? null : m == 1 ? "1" : "0")).ToArray();
+        int?[] coordinates = Enumerable.Range(1, 12).Select(m => m > 10 ? (int?)null : 10000).ToArray();
+        var annual = new FinanceAnnual("CNY", "Asia/Shanghai", "2026-10-24T12:00:00.123456789", 2026, 2026, [2026],
+            "9007199254740993.10", "0", "9007199254740993.10", "1", months,
+            new(coordinates, coordinates, coordinates, 10000, Enumerable.Range(0, 5).Select(i => new FinancePlotTick(i * 2500, "0")).ToArray()), new("EMPTY", "0", []));
+        string valid = JsonSerializer.Serialize(annual, new JsonSerializerOptions(JsonSerializerDefaults.Web)), response = valid;
+        using var client = new RuntimeClient(new Handler((request, _) => {
+            Assert.Equal(HttpMethod.Get, request.Method); Assert.Equal("/api/v1/finance/annual?year=0", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Response(HttpStatusCode.OK, response));
+        }), () => Token);
+        var result = await client.GetFinanceAnnualAsync(0, CancellationToken.None);
+        Assert.Equal("9007199254740993.10", result.Income); Assert.Null(result.Months[10].Income);
+        Assert.False(RuntimeClient.ValidFinanceYear(1899)); Assert.False(RuntimeClient.ValidFinanceYear(2200));
+        Assert.True(RuntimeClient.ValidFinanceTransactionQuery(new(0, 10, "", "2025-01-01", "", "EXPENSE", "2025-01", annual.AsOf)));
+        foreach (string bad in new[] { valid.Replace("\"9007199254740993.10\"", "9007199254740993.10"),
+            valid.Replace("\"year\":2026", "\"year\":2025"), valid.Replace("\"zero\":10000", "\"zero\":10001"),
+            valid.Replace("\"income\":null", "\"income\":\"0\""), valid.Replace("\"currency\":", "\"userId\":2,\"currency\":") }) {
+            response = bad;
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceAnnualAsync(0, CancellationToken.None))).Error);
+        }
+    }
+
+    [Fact]
     public async Task DashboardDrilldownRequiresEchoedScopeOrdinaryCnyAndExclusiveNanosecondBoundary()
     {
         var query = new FinanceTransactionQuery(0, 10, "", "2026-10-01", "", "INCOME", "2026-10", "2026-10-24T12:00:00.123456789");
