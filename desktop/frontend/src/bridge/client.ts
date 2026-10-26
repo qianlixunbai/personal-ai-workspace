@@ -86,6 +86,9 @@ export class WorkspaceClient {
   financeDashboard() { return this.request('finance.dashboard') as Promise<FinanceDashboard> }
   financePortfolio() { return this.request('finance.portfolio') as Promise<FinancePortfolio> }
   financeMarketData() { return this.request('finance.marketData') as Promise<FinanceMarketStatus> }
+  financeMarketReference(referenceSymbol: 'AAPL' | 'SPY') {
+    return this.request('finance.marketRefresh', { referenceSymbol }) as Promise<FinanceMarketStatus>
+  }
   financeMarketRefresh(positionId = '') {
     if (positionId !== '' && !financeId(positionId)) return Promise.reject(new BridgeError('InvalidRequest', '持仓 ID 无效。'))
     return this.request('finance.marketRefresh', { positionId }) as Promise<FinanceMarketStatus>
@@ -314,7 +317,7 @@ export class WorkspaceClient {
         : pending.method === 'operations.copyResult' ? isObject(data.result) && exactFields(data.result, ['copied']) && data.result.copied === true
         : isObject(data.result) && exactFields(data.result, ['opened']) && data.result.opened === true
       if (valid) {
-        pending.resolve((pending.method === 'finance.marketData' || pending.method === 'finance.marketRefresh') && isObject(data.result) && data.result.licenseStatus !== 'UNVERIFIED' ? { ...data.result, enabled: false, fx: null, licenseStatus: 'UNVERIFIED', providerValidation: 'NOT_RUN', result: 'LICENSE_UNVERIFIED' } : data.result); return
+        pending.resolve(data.result); return
       }
     } else if (data.ok === false && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'error'])
       && isSafeError(data.error)) {

@@ -5,27 +5,33 @@ import { Port } from '../test/fixtures'
 import { FinanceMarketData } from './FinanceMarketData'
 
 afterEach(cleanup)
-it('keeps unreviewed licenses locked and suppresses old M1 provider cache across sessions', async () => {
+it('enables personal EOD display, keeps calculations closed and discards late session data', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
-  let updates = 0
-  const value = { provider: 'TWELVE_DATA', enabled: false, keyConfigured: false, retentionHours: 24, result: 'IDLE', fx: null }
-  const view = render(<FinanceMarketData bridge={bridge} enabled updated={() => { updates++ }} />)
+  const value = { provider: 'MASSIVE', enabled: false, keyConfigured: false, result: 'IDLE', quote: null, fx: null,
+    rights: { display: true, displayMemory: true, persistence: false, offline: false, valuation: false },
+    licenseStatus: 'PERSONAL_DISPLAY_ONLY', providerValidation: 'NOT_RUN', dataContext: 'SYNTHETIC' }
+  const view = render(<FinanceMarketData bridge={bridge} enabled updated={() => { throw new Error('display cannot trigger valuation refresh') }} />)
   const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
   const reply = async (v: unknown) => act(async () => { port.reply(port.sent.length - 1, v) })
   try {
-    expect(port.sent).toHaveLength(0)
+    expect(port.sent).toHaveLength(0); click('读取配置状态'); await reply(value)
     expect((screen.getByRole('button', { name: '主动刷新 USD/CNY' }) as HTMLButtonElement).disabled).toBe(true)
     click('配置行情服务'); expect(port.sent.at(-1)).toMatchObject({ method: 'native.openMarketDataSettings', payload: {} })
-    await reply({ opened: true }); expect(port.sent.at(-1)).toMatchObject({ method: 'finance.marketData', payload: {} }); await reply(value)
-    expect(screen.getByText(/外部请求关闭 · 未配置 Key/)).toBeTruthy()
-    click('查看行情状态与缓存汇率'); await reply({ ...value, enabled: true, keyConfigured: true })
-    const sentBefore = port.sent.length
-    click('主动刷新 USD/CNY'); expect(port.sent).toHaveLength(sentBefore)
-    click('查看行情状态与缓存汇率')
-    const stale = { ...value, enabled: true, keyConfigured: true, result: 'PROVIDER_FAILED', fx: { rate: '7.123456789012', time: '2026-10-23T14:00:00Z', fetchedAt: '2026-10-23T14:00:01Z', freshness: 'STALE' } }
-    await reply(stale); expect(screen.queryByText(/1 USD =/)).toBeNull(); expect(updates).toBe(0)
-    click('查看行情状态与缓存汇率'); const late = port.sent.length - 1
-    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, stale) })
-    expect(screen.queryByText(/1 USD =/)).toBeNull(); expect(updates).toBe(0)
+    await reply({ opened: true }); await reply({ ...value, enabled: true, keyConfigured: true })
+    click('查看 SPY ETF 日终价'); expect(port.sent.at(-1)).toMatchObject({ method: 'finance.marketRefresh', payload: { referenceSymbol: 'SPY' } })
+    const shown = { ...value, enabled: true, keyConfigured: true, result: 'UPDATED', providerValidation: 'RESPONSE_VALIDATED',
+      quote: { symbol: 'SPY', price: '100.12345678', time: '2026-10-23T04:00:00Z', fetchedAt: '2026-10-26T14:00:00Z', exchange: 'ARCX', date: '2026-10-23', timeZone: 'America/New_York' } }
+    await reply(shown)
+    expect(screen.getByText('100.12345678 USD')).toBeTruthy(); expect(screen.getByText(/2026-10-23 \/ America\/New_York/)).toBeTruthy()
+    expect(screen.getByText(/报价不进入持仓人民币估值/)).toBeTruthy()
+    click('主动刷新 USD/CNY'); await reply({ ...value, enabled: true, keyConfigured: true, result: 'ACCESS_DENIED' })
+    expect(screen.getByText(/Massive 拒绝本次访问/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: '查看 AAPL 日终价' }) as HTMLButtonElement).disabled).toBe(false)
+    click('查看 SPY ETF 日终价'); await reply({ ...shown, rights: { ...shown.rights, valuation: true } })
+    expect(screen.queryByText('100.12345678 USD')).toBeNull(); expect(screen.getByRole('alert')).toBeTruthy()
+    click('读取配置状态'); await reply({ ...value, enabled: true, keyConfigured: true })
+    click('查看 SPY ETF 日终价'); const late = port.sent.length - 1
+    await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, shown) })
+    expect(screen.queryByText('100.12345678 USD')).toBeNull()
   } finally { view.unmount(); bridge.dispose() }
 })

@@ -205,7 +205,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.dashboard") result = await native.FinanceDashboardAsync(cancellation);
             else if (method == "finance.portfolio") result = await native.FinancePortfolioAsync(cancellation);
             else if (method == "finance.marketData") result = await native.FinanceMarketDataAsync(null, cancellation);
-            else if (method == "finance.marketRefresh") result = await native.FinanceMarketDataAsync(payload.GetProperty("positionId").GetString()!, cancellation);
+            else if (method == "finance.marketRefresh") result = await native.FinanceMarketDataAsync(payload.TryGetProperty("referenceSymbol", out var reference)
+                ? "reference:" + reference.GetString() : payload.GetProperty("positionId").GetString()!, cancellation);
             else if (method == "finance.budgets") result = await native.FinanceBudgetsAsync(cancellation);
             else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
             else if (method == "finance.get") result = await native.FinanceAccountAsync(payload.GetProperty("accountId").GetString()!, cancellation);
@@ -371,7 +372,9 @@ internal sealed class WorkspaceBridge : IDisposable
     private static bool ValidPayload(string method, JsonElement payload)
     {
         if (method == "finance.marketData") return Fields(payload);
-        if (method == "finance.marketRefresh") return Fields(payload, "positionId") && payload.GetProperty("positionId").ValueKind == JsonValueKind.String
+        if (method == "finance.marketRefresh") return Fields(payload, "referenceSymbol") && payload.GetProperty("referenceSymbol").ValueKind == JsonValueKind.String
+            && payload.GetProperty("referenceSymbol").GetString() is ("AAPL" or "SPY")
+            || Fields(payload, "positionId") && payload.GetProperty("positionId").ValueKind == JsonValueKind.String
             && (payload.GetProperty("positionId").GetString() == "" || RuntimeClient.ValidFinanceId(payload.GetProperty("positionId").GetString()!));
         if(VisionMethods.Contains(method)) return method switch {
             "vision.submit"=>Fields(payload,"handle","question")&&Text(payload,"handle",36,out var imageHandle)&&CanonicalId(imageHandle)

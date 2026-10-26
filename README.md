@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## Finance Market Data M1.2（2026-10-26）
+
+Massive Basic 免费日终行情接入：本人非商业屏幕显示开放，支持 AAPL / SPY 固定入口、US/USD 股票和 ETF 持仓逐项刷新及 USD/CNY 独立刷新。报价显示来源、日期、时区和获取时间，不进入持久行情缓存或持仓派生估值。Key 仅在原生窗口经 DPAPI 保存；实际免费账号及真实接口仍 **LIVE PROVIDER NOT RUN**。选型、接口与分用途权限依据见 [M1.2 调研](docs/design/FINANCE-MARKET-DATA-M12-REFERENCE.md)。D2 历史 PARTIAL、Development-only 和无 Production GO 均不变。
+
 ## Finance Market Data M1.1（2026-10-26）
 
 小范围改进合成数据/旧缓存标识、行情操作说明、Portfolio 警告汇总和超大金额可读性。**展示与缓存许可尚未核验，真实 Provider 请求和 Twelve Data 缓存展示保持服务端锁定；保存 Key、旧版许可勾选不能解锁。** 独立 Windows 开发包、实际验证与剩余事项见 [M1.1 报告](docs/engineering/FINANCE-MARKET-DATA-M11-REPORT.md)。下方 M1 记录保留历史语境；D2 历史原生验收 PARTIAL、Development-only 和无 Production GO 均不变。

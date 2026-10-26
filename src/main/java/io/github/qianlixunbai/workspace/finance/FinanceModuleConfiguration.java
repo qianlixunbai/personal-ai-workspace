@@ -44,7 +44,7 @@ public class FinanceModuleConfiguration {
 
         @Bean
         FinanceMarketDataQueries financeMarketDataQueries(FinanceAccountQueries identity, FinanceInvestmentQueries positions, FinanceMarketDataStore store) {
-            return new FinanceMarketDataQueries(identity, positions, store, new TwelveDataClient(store.clock));
+            return new FinanceMarketDataQueries(identity, positions, store, new MassiveClient(store.clock));
         }
 
         @Bean

@@ -15,32 +15,43 @@ final class FinanceMarketDataQueries {
     private final FinanceAccountQueries identity;
     private final FinanceInvestmentQueries positions;
     final FinanceMarketDataStore store;
-    private final TwelveDataClient provider;
-    FinanceMarketDataQueries(FinanceAccountQueries identity, FinanceInvestmentQueries positions, FinanceMarketDataStore store, TwelveDataClient provider) {
+    private final MassiveClient provider;
+    FinanceMarketDataQueries(FinanceAccountQueries identity, FinanceInvestmentQueries positions, FinanceMarketDataStore store, MassiveClient provider) {
         this.identity = identity; this.positions = positions; this.store = store; this.provider = provider;
     }
-    record Fx(String rate, String time, String fetchedAt, String freshness) { }
-    record Status(String provider, boolean enabled, boolean keyConfigured, int retentionHours, String result, Fx fx,
+    record Rights(boolean display, boolean displayMemory, boolean persistence, boolean offline, boolean valuation) { }
+    record Status(String provider, boolean enabled, boolean keyConfigured, String result,
+                  FinanceMarketDataStore.Sample quote, FinanceMarketDataStore.Sample fx, Rights rights,
                   String licenseStatus, String providerValidation, String dataContext) { }
-    Status status() { identity.query(user -> true); return status("IDLE"); }
-    private Status status(String result) {
+    synchronized Status status() { identity.query(user -> true); return status("IDLE", null, false); }
+    private Status status(String result, FinanceMarketDataStore.Sample sample, boolean fx) {
         try {
-            var s = store.read(); var fx = store.sample("USD/CNY");
-            return new Status("TWELVE_DATA", s.enabled() && store.verifiedLicense, !s.apiKey().isEmpty(), s.retentionHours(), result,
-                    fx == null ? null : new Fx(fx.price(), fx.time(), fx.fetchedAt(), store.fresh(fx, 60) ? "FRESH" : "STALE"),
-                    store.verifiedLicense ? "TEST_FIXTURE" : "UNVERIFIED", "NOT_RUN", identity.dataContext());
+            var s = store.read();
+            var rights = new Rights(FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.DISPLAY),
+                    FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.DISPLAY_MEMORY),
+                    FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.PERSISTENCE),
+                    FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.OFFLINE),
+                    FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.VALUATION));
+            return new Status("MASSIVE", rights.display && !s.apiKey().isEmpty(), !s.apiKey().isEmpty(), result,
+                    fx ? null : sample, fx ? sample : null, rights, "PERSONAL_DISPLAY_ONLY",
+                    sample == null ? "NOT_RUN" : "RESPONSE_VALIDATED", identity.dataContext());
         } catch (IOException invalid) { throw unavailable(); }
     }
-    synchronized Status configure(boolean enabled, boolean licensed, String key, int hours) {
+    synchronized Status configure(String key) {
         identity.query(user -> true);
-        try { store.configure(enabled, licensed, key, hours); return status("SAVED"); }
+        try { store.configure(key); return status("SAVED", null, false); }
         catch (IllegalArgumentException invalid) { throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "FINANCE"); }
         catch (IOException invalid) { throw unavailable(); }
     }
-    synchronized Status refresh(String positionId) {
+    synchronized Status refresh(String positionId) { return refresh(positionId, ""); }
+    synchronized Status refresh(String positionId, String referenceSymbol) {
         // Resolve ownership/market/asset type from the bound server snapshot before any provider access.
         String symbol = "USD/CNY", type = "FX";
-        if (positionId.isEmpty()) identity.query(user -> true);
+        if (!referenceSymbol.isEmpty()) {
+            if (!positionId.isEmpty() || !Set.of("AAPL", "SPY").contains(referenceSymbol)) throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "FINANCE");
+            identity.query(user -> true);
+            symbol = referenceSymbol; type = referenceSymbol.equals("SPY") ? "ETF" : "STOCK";
+        } else if (positionId.isEmpty()) identity.query(user -> true);
         else {
             long id;
             try { if (!positionId.matches("[1-9][0-9]{0,18}")) throw new IllegalArgumentException(); id = Long.parseLong(positionId); }
@@ -48,33 +59,20 @@ final class FinanceMarketDataQueries {
             var p = positions.position(id);
             if (!"US".equals(p.instrument().market()) || !"USD".equals(p.instrument().quoteCurrency())
                     || !Set.of("STOCK", "ETF").contains(p.instrument().assetClass())
-                    || !p.instrument().symbol().matches("[A-Za-z][A-Za-z0-9.-]{0,14}")) return status("UNSUPPORTED");
+                    || !p.instrument().symbol().matches("[A-Za-z][A-Za-z0-9.-]{0,14}")) return status("UNSUPPORTED", null, false);
             symbol = p.instrument().symbol().toUpperCase(Locale.ROOT); type = p.instrument().assetClass();
         }
         try {
             var s = store.read();
-            if (!s.enabled()) return status("DISABLED");
-            if (!store.verifiedLicense) return status("LICENSE_UNVERIFIED");
-            String result = fetch(symbol, type);
-            // FX shares the same quota; preserve successful quote when FX fails.
-            if (!positionId.isEmpty() && Set.of("UPDATED", "CACHED").contains(result)) {
-                String fx = fetch("USD/CNY", "FX");
-                if (!Set.of("UPDATED", "CACHED").contains(fx)) result = "PARTIAL_" + fx;
-            }
+            if (s.apiKey().isEmpty()) return status("KEY_REQUIRED", null, false);
+            var sample = provider.fetch(symbol, type, s.apiKey(), store::reserve);
             identity.query(user -> true); // Do not deliver a response if binding/data identity changed in flight.
-            return status(result);
+            return status("UPDATED", sample, symbol.equals("USD/CNY"));
+        } catch (MassiveClient.Failure failure) {
+            try { if (failure.code.equals("RATE_LIMITED")) store.throttle(); }
+            catch (IOException invalid) { throw unavailable(); }
+            return status(failure.code, null, false);
         } catch (IOException failure) { throw unavailable(); }
-    }
-    private String fetch(String symbol, String type) throws IOException {
-        if (store.fresh(store.sample(symbol), symbol.equals("USD/CNY") ? 60 : 15)) return "CACHED";
-        String admission = store.reserve(); if (!admission.equals("READY")) return admission;
-        try {
-            store.put(provider.fetch(symbol, type, store.read().apiKey()));
-            return "UPDATED";
-        } catch (TwelveDataClient.Failure failure) {
-            if (failure.code.equals("RATE_LIMITED")) store.throttle();
-            return failure.code;
-        }
     }
     static WorkspaceException unavailable() { return new WorkspaceException(ErrorCode.FINANCE_UNAVAILABLE, "FINANCE"); }
 
@@ -84,19 +82,11 @@ final class FinanceMarketDataQueries {
                 var result = new HashMap<String, MarketQuoteSnapshotResponse>();
                 if ("SYNTHETIC".equals(store.dataContext.get())) {
                     super.findCachedUsQuotes(symbols).forEach((symbol, q) -> {
-                        if (!isTwelveData(q.provider())) result.put(symbol, new MarketQuoteSnapshotResponse(q.symbol(), q.market(), q.currency(),
+                        if (!isExternalProvider(q.provider())) result.put(symbol, new MarketQuoteSnapshotResponse(q.symbol(), q.market(), q.currency(),
                                 q.price(), q.quoteTime(), q.fetchedAt(), "SYNTHETIC_LEGACY", q.freshness()));
                     });
                 }
-                var normalized = symbols.stream().map(this::normalizeSymbol).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-                if (normalized.isEmpty()) return result;
-                try { for (var sample : store.samples()) if (normalized.contains(sample.symbol())) result.put(sample.symbol(), snapshot(sample)); }
-                catch (IOException invalid) { throw unavailable(); }
                 return result;
-            }
-            private MarketQuoteSnapshotResponse snapshot(FinanceMarketDataStore.Sample s) {
-                return new MarketQuoteSnapshotResponse(s.symbol(), "US", "USD", new BigDecimal(s.price()), Instant.parse(s.time()),
-                        Instant.parse(s.fetchedAt()), "TWELVE_DATA", store.fresh(s, 15) ? MarketQuoteFreshness.FRESH : MarketQuoteFreshness.STALE);
             }
             @Override public MarketQuoteSnapshotResponse findCachedUsQuote(String symbol) {
                 String normalized = normalizeSymbol(symbol); if (normalized == null) return null;
@@ -112,24 +102,14 @@ final class FinanceMarketDataQueries {
     static ExchangeRateQueryService rates(com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper mapper, FinanceMarketDataStore store) {
         return new ExchangeRateQueryService(mapper, new com.financeos.module.asset.marketdata.fx.config.FxDataProperties(), store.clock) {
             @Override public ExchangeRate find(String base, String quote) {
-                if ("USD".equals(normalize(base)) && "CNY".equals(normalize(quote))) {
-                    try {
-                        var s = store.sample("USD/CNY");
-                        if (s != null) {
-                            var rate = new ExchangeRate(); rate.setBaseCurrency("USD"); rate.setQuoteCurrency("CNY");
-                            rate.setRate(new BigDecimal(s.price())); rate.setRateTime(Instant.parse(s.time()));
-                            rate.setFetchedAt(Instant.parse(s.fetchedAt())); rate.setProvider("TWELVE_DATA"); return rate;
-                        }
-                    } catch (IOException invalid) { throw unavailable(); }
-                }
                 var legacy = super.find(base, quote);
-                if (legacy == null || !"SYNTHETIC".equals(store.dataContext.get()) || isTwelveData(legacy.getProvider())) return null;
+                if (legacy == null || !"SYNTHETIC".equals(store.dataContext.get()) || isExternalProvider(legacy.getProvider())) return null;
                 legacy.setProvider("SYNTHETIC_LEGACY"); return legacy;
             }
             @Override public List<ExchangeRate> findAll(List<String> bases, String quote) {
                 var result = new ArrayList<ExchangeRate>();
                 if ("SYNTHETIC".equals(store.dataContext.get())) for (var rate : super.findAll(bases, quote)) {
-                    if (!isTwelveData(rate.getProvider())) { rate.setProvider("SYNTHETIC_LEGACY"); result.add(rate); }
+                    if (!isExternalProvider(rate.getProvider())) { rate.setProvider("SYNTHETIC_LEGACY"); result.add(rate); }
                 }
                 if (bases.contains("USD") && "CNY".equals(normalize(quote))) {
                     var rate = find("USD", "CNY");
@@ -144,7 +124,9 @@ final class FinanceMarketDataQueries {
             }
         };
     }
-    private static boolean isTwelveData(String provider) {
-        return provider != null && provider.toUpperCase(Locale.ROOT).replace("_", "").replace(" ", "").contains("TWELVEDATA");
+    private static boolean isExternalProvider(String provider) {
+        if (provider == null) return false;
+        String normalized = provider.toUpperCase(Locale.ROOT).replace("_", "").replace(" ", "");
+        return normalized.contains("TWELVEDATA") || normalized.contains("MASSIVE") || normalized.contains("POLYGON");
     }
 }

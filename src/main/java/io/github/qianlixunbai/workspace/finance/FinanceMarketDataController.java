@@ -15,17 +15,21 @@ public final class FinanceMarketDataController {
     FinanceMarketDataController(FinanceMarketDataQueries queries) { this.queries = queries; }
     @GetMapping public FinanceMarketDataQueries.Status status(HttpServletRequest request) { noQuery(request); return queries.status(); }
     @PostMapping("/refresh") public FinanceMarketDataQueries.Status refresh(@RequestBody JsonNode body, HttpServletRequest request) {
-        noQuery(request); fields(body, "positionId");
+        noQuery(request);
+        if (body.has("referenceSymbol")) {
+            fields(body, "referenceSymbol");
+            if (!body.path("referenceSymbol").isString()) throw invalid();
+            return queries.refresh("", body.path("referenceSymbol").asString());
+        }
+        fields(body, "positionId");
         if (!body.path("positionId").isString()) throw invalid();
         return queries.refresh(body.path("positionId").asString());
     }
     /** Native WPF only: no corresponding WebMessage method accepts a credential/configuration payload. */
     @PostMapping("/configuration") public FinanceMarketDataQueries.Status configure(@RequestBody JsonNode body, HttpServletRequest request) {
-        noQuery(request); fields(body, "enabled", "licensed", "apiKey", "retentionHours");
-        if (!body.path("enabled").isBoolean() || !body.path("licensed").isBoolean() || !body.path("apiKey").isString()
-                || !FinanceMarketDataStore.validKey(body.path("apiKey").asString()) || !body.path("retentionHours").isIntegralNumber()
-                || !body.path("retentionHours").canConvertToInt()) throw invalid();
-        return queries.configure(body.path("enabled").asBoolean(), body.path("licensed").asBoolean(), body.path("apiKey").asString(), body.path("retentionHours").intValue());
+        noQuery(request); fields(body, "apiKey");
+        if (!body.path("apiKey").isString() || !FinanceMarketDataStore.validKey(body.path("apiKey").asString())) throw invalid();
+        return queries.configure(body.path("apiKey").asString());
     }
     private static void fields(JsonNode body, String... fields) {
         if (!body.isObject() || body.size() != fields.length) throw invalid();

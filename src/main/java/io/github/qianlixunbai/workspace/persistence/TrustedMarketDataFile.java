@@ -21,7 +21,7 @@ public final class TrustedMarketDataFile {
         return data;
     }
     public byte[] read() throws IOException {
-        var data = directory(); var file = data.resolve("market-data.dpapi");
+        var data = directory(); var file = data.resolve("massive-data.dpapi");
         if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS)) return null;
         PrivateMemoryDirectory.noLinks(file); WindowsPrivateAcl.verify(file, false);
         var identity = TrustedDatabaseConfiguration.Identity.read(file, false);
@@ -39,7 +39,7 @@ public final class TrustedMarketDataFile {
     }
     public void write(byte[] plaintext) throws IOException {
         if (plaintext.length > LIMIT / 2) throw new IOException();
-        var data = directory(); var file = data.resolve("market-data.dpapi");
+        var data = directory(); var file = data.resolve("massive-data.dpapi");
         var dataIdentity = TrustedDatabaseConfiguration.Identity.read(data, true);
         if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
             PrivateMemoryDirectory.noLinks(file); WindowsPrivateAcl.verify(file, false);

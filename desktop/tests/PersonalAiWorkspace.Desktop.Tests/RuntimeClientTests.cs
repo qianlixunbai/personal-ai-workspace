@@ -11,27 +11,37 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
-    public async Task MarketDataRequiresReviewedLicenseAndRejectsSecretBearingResponses()
+    public async Task MarketDataAllowsPersonalDisplayButRejectsBroaderRightsAndSecretBearingResponses()
     {
-        string valid = """{"provider":"TWELVE_DATA","enabled":true,"keyConfigured":true,"retentionHours":24,"result":"UPDATED","fx":{"rate":"7.123456789012","time":"2026-10-26T14:00:00Z","fetchedAt":"2026-10-26T14:00:01Z","freshness":"FRESH"}}""";
+        string valid = """{"provider":"MASSIVE","enabled":true,"keyConfigured":true,"result":"UPDATED","quote":null,"fx":{"symbol":"USD/CNY","price":"7.123456789012","time":"2026-10-23T00:00:00Z","fetchedAt":"2026-10-26T14:00:01Z","exchange":"FOREX","date":"2026-10-23","timeZone":"UTC"},"rights":{"display":true,"displayMemory":true,"persistence":false,"offline":false,"valuation":false},"licenseStatus":"PERSONAL_DISPLAY_ONLY","providerValidation":"RESPONSE_VALIDATED","dataContext":"SYNTHETIC"}""";
         string response = valid;
         var calls = new List<string>();
         using var client = new RuntimeClient(new Handler(async (request, _) => {
             calls.Add(request.Method + " " + request.RequestUri!.PathAndQuery);
             if (request.Content is not null) {
                 using var payload = JsonDocument.Parse(await request.Content.ReadAsStringAsync());
-                if (request.RequestUri.AbsolutePath.EndsWith("/refresh")) Assert.Equal("", payload.RootElement.GetProperty("positionId").GetString());
-                else Assert.Equal("synthetic_key", payload.RootElement.GetProperty("apiKey").GetString());
+                if (request.RequestUri.AbsolutePath.EndsWith("/refresh")) {
+                    if (payload.RootElement.TryGetProperty("referenceSymbol", out var symbol)) Assert.Equal("SPY", symbol.GetString());
+                    else Assert.Equal("", payload.RootElement.GetProperty("positionId").GetString());
+                } else { Assert.Single(payload.RootElement.EnumerateObject()); Assert.Equal("synthetic_key", payload.RootElement.GetProperty("apiKey").GetString()); }
             }
             return Response(HttpStatusCode.OK, response);
         }), () => Token);
-        var legacy = await client.RefreshFinanceMarketDataAsync("", CancellationToken.None);
-        Assert.False(legacy.Enabled); Assert.Null(legacy.Fx); Assert.Equal("LICENSE_UNVERIFIED", legacy.Result);
-        response = """{"provider":"TWELVE_DATA","enabled":false,"keyConfigured":true,"retentionHours":24,"result":"SAVED","fx":null,"licenseStatus":"UNVERIFIED","providerValidation":"NOT_RUN","dataContext":"SYNTHETIC"}""";
-        var saved = await client.ConfigureFinanceMarketDataAsync(false, false, "synthetic_key", 24, CancellationToken.None);
-        Assert.False(saved.Enabled); Assert.Equal("UNVERIFIED", saved.LicenseStatus);
-        Assert.Equal(new[] { "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/configuration" }, calls);
-        foreach (string bad in new[] { valid.Replace("\"provider\":", "\"apiKey\":\"synthetic_key\",\"provider\":"), valid.Replace("\"7.123456789012\"", "7.123456789012") }) {
+        var shown = await client.RefreshFinanceMarketDataAsync("", CancellationToken.None);
+        Assert.True(shown.Enabled); Assert.Equal("7.123456789012", shown.Fx!.Price); Assert.False(shown.Rights.Valuation);
+        var stock = shown with { Fx = null, Quote = new("SPY", "100.12345678", "2026-10-23T04:00:00Z", "2026-10-26T14:00:01Z", "ARCX", "2026-10-23", "America/New_York") };
+        response = JsonSerializer.Serialize(stock, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("SPY", (await client.RefreshFinanceMarketDataAsync("reference:SPY", CancellationToken.None)).Quote!.Symbol);
+        response = valid.Replace("\"result\":\"UPDATED\"", "\"result\":\"SAVED\"").Replace("\"providerValidation\":\"RESPONSE_VALIDATED\"", "\"providerValidation\":\"NOT_RUN\"");
+        using (var json = JsonDocument.Parse(response)) {
+            var fields = json.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone());
+            fields["fx"] = JsonSerializer.SerializeToElement<object?>(null); response = JsonSerializer.Serialize(fields);
+        }
+        var saved = await client.ConfigureFinanceMarketDataAsync("synthetic_key", CancellationToken.None);
+        Assert.True(saved.Enabled); Assert.Equal("PERSONAL_DISPLAY_ONLY", saved.LicenseStatus); Assert.Null(saved.Fx);
+        Assert.Equal(new[] { "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/configuration" }, calls);
+        foreach (string bad in new[] { valid.Replace("\"provider\":", "\"apiKey\":\"synthetic_key\",\"provider\":"), valid.Replace("\"7.123456789012\"", "7.123456789012"),
+            valid.Replace("\"valuation\":false", "\"valuation\":true"), valid.Replace("\"MASSIVE\"", "\"TWELVE_DATA\"") }) {
             response = bad;
             Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceMarketDataAsync(CancellationToken.None))).Error);
         }
