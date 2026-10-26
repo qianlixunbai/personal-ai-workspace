@@ -39,7 +39,7 @@ export function FinanceMarketData({ bridge, enabled, position }: { bridge: Works
   }
   const supported = position && position.instrument.market === 'US' && position.instrument.quoteCurrency === 'USD' && ['STOCK', 'ETF'].includes(position.instrument.assetClass)
   return <section className="card" aria-label="真实行情与汇率" aria-busy={busy}>
-    <div className="card-heading"><h3>免费日终行情 · Massive</h3><span className="shell-badge">{value?.providerValidation === 'RESPONSE_VALIDATED' ? '本次响应已校验' : '本次 Provider · NOT RUN'}</span></div>
+    <div className="card-heading"><h3>免费日终行情 · Massive</h3><span className="shell-badge">{value?.providerValidation === 'RESPONSE_VALIDATED' ? '本次响应已校验' : value?.providerValidation === 'NOT_VALIDATED' ? '本次未取得有效报价' : '本次 Provider · NOT RUN'}</span></div>
     <p>个人非商业、仅本人屏幕显示已开放。先读取配置状态，或配置免费 Basic Key，再主动刷新；报价不进入持仓人民币估值，不持久缓存，不支持离线回看。</p>
     <p className="hint">美股 / ETF 使用纽约交易日期，Basic 在纽约午夜后提供前一日数据；周末、节假日回看最近 14 天。FX 为 UTC 日参考价。以下服务商数据与原 Finance 合成旧缓存分开显示。</p>
     <div className="finance-toolbar">
@@ -52,6 +52,7 @@ export function FinanceMarketData({ bridge, enabled, position }: { bridge: Works
     </div>
     {position && !supported && <p className="hint">此持仓的市场 / 币种 / 类型不在支持范围内；仍可查看上方固定美股与 ETF。</p>}
     {value && <><p role="status">{value.keyConfigured ? 'Massive Key 已安全保存' : '未配置 Massive Key'}。{results[value.result]}</p>
+      {value.diagnostic && <p className="hint">安全诊断：{value.diagnostic.stage} / {value.diagnostic.reason}（仅失败分类，不包含服务商响应内容）。</p>}
       {[value.quote, value.fx].filter(v => v !== null).map(v => <dl className="finance-summary" key={v.symbol}>
         <div><dt>{v.symbol} · Massive 真实日终参考</dt><dd>{v.symbol === 'USD/CNY' ? `1 USD = ${v.price} CNY` : `${v.price} USD`}</dd></div>
         <div><dt>{v.symbol === 'USD/CNY' ? '参考日期' : '交易日期'} / 时区 / 来源</dt><dd>{v.date} / {v.timeZone} / Massive · {v.exchange} · 未复权日线 close</dd></div>

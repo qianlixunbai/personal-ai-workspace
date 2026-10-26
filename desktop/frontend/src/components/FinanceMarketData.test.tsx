@@ -27,6 +27,13 @@ it('enables personal EOD display, keeps calculations closed and discards late se
     click('主动刷新 USD/CNY'); await reply({ ...value, enabled: true, keyConfigured: true, result: 'ACCESS_DENIED' })
     expect(screen.getByText(/Massive 拒绝本次访问/)).toBeTruthy()
     expect((screen.getByRole('button', { name: '查看 AAPL 日终价' }) as HTMLButtonElement).disabled).toBe(false)
+    click('主动刷新 USD/CNY')
+    const diagnostic = { ...value, enabled: true, keyConfigured: true, result: 'INVALID_DATA', providerValidation: 'NOT_VALIDATED', diagnostic: { stage: 'FOREX_BARS', reason: 'PRICE_SCALE' } }
+    await reply(diagnostic)
+    expect(screen.getByText(/FOREX_BARS \/ PRICE_SCALE/)).toBeTruthy(); expect(screen.getByText('本次未取得有效报价')).toBeTruthy()
+    expect(screen.queryByText('本次 Provider · NOT RUN')).toBeNull()
+    click('主动刷新 USD/CNY'); await reply({ ...diagnostic, diagnostic: { ...diagnostic.diagnostic, reason: 'synthetic_key' } })
+    expect(screen.queryByText(/synthetic_key/)).toBeNull(); expect(screen.getByRole('alert')).toBeTruthy()
     click('查看 SPY ETF 日终价'); await reply({ ...shown, rights: { ...shown.rights, valuation: true } })
     expect(screen.queryByText('100.12345678 USD')).toBeNull(); expect(screen.getByRole('alert')).toBeTruthy()
     click('读取配置状态'); await reply({ ...value, enabled: true, keyConfigured: true })

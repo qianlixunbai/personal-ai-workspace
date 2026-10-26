@@ -22,9 +22,12 @@ final class FinanceMarketDataQueries {
     record Rights(boolean display, boolean displayMemory, boolean persistence, boolean offline, boolean valuation) { }
     record Status(String provider, boolean enabled, boolean keyConfigured, String result,
                   FinanceMarketDataStore.Sample quote, FinanceMarketDataStore.Sample fx, Rights rights,
-                  String licenseStatus, String providerValidation, String dataContext) { }
+                  String licenseStatus, String providerValidation, String dataContext, MassiveClient.Diagnostic diagnostic) { }
     synchronized Status status() { identity.query(user -> true); return status("IDLE", null, false); }
     private Status status(String result, FinanceMarketDataStore.Sample sample, boolean fx) {
+        return status(result, sample, fx, null);
+    }
+    private Status status(String result, FinanceMarketDataStore.Sample sample, boolean fx, MassiveClient.Diagnostic diagnostic) {
         try {
             var s = store.read();
             var rights = new Rights(FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.DISPLAY),
@@ -34,7 +37,7 @@ final class FinanceMarketDataQueries {
                     FinanceMarketDataStore.permits(s.provider(), FinanceMarketDataStore.Use.VALUATION));
             return new Status("MASSIVE", rights.display && !s.apiKey().isEmpty(), !s.apiKey().isEmpty(), result,
                     fx ? null : sample, fx ? sample : null, rights, "PERSONAL_DISPLAY_ONLY",
-                    sample == null ? "NOT_RUN" : "RESPONSE_VALIDATED", identity.dataContext());
+                    sample != null ? "RESPONSE_VALIDATED" : diagnostic != null ? "NOT_VALIDATED" : "NOT_RUN", identity.dataContext(), diagnostic);
         } catch (IOException invalid) { throw unavailable(); }
     }
     synchronized Status configure(String key) {
@@ -71,7 +74,7 @@ final class FinanceMarketDataQueries {
         } catch (MassiveClient.Failure failure) {
             try { if (failure.code.equals("RATE_LIMITED")) store.throttle(); }
             catch (IOException invalid) { throw unavailable(); }
-            return status(failure.code, null, false);
+            return status(failure.code, null, false, failure.diagnostic);
         } catch (IOException failure) { throw unavailable(); }
     }
     static WorkspaceException unavailable() { return new WorkspaceException(ErrorCode.FINANCE_UNAVAILABLE, "FINANCE"); }

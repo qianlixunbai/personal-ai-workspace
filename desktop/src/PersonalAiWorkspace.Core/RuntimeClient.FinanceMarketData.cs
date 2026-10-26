@@ -6,8 +6,9 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceMarketSample(string Symbol, string Price, string Time, string FetchedAt, string Exchange, string Date, string TimeZone);
 public sealed record FinanceMarketRights(bool Display, bool DisplayMemory, bool Persistence, bool Offline, bool Valuation);
+public sealed record FinanceMarketDiagnostic(string Stage, string Reason);
 public sealed record FinanceMarketStatus(string Provider, bool Enabled, bool KeyConfigured, string Result, FinanceMarketSample? Quote,
-    FinanceMarketSample? Fx, FinanceMarketRights Rights, string LicenseStatus, string ProviderValidation, string DataContext);
+    FinanceMarketSample? Fx, FinanceMarketRights Rights, string LicenseStatus, string ProviderValidation, string DataContext, FinanceMarketDiagnostic? Diagnostic = null);
 
 public sealed partial class RuntimeClient
 {
@@ -39,12 +40,14 @@ public sealed partial class RuntimeClient
         using var body = await SendAsync(method, "/api/v1/finance/market-data" + path, payload, true, HttpStatusCode.OK, token,
             endpointErrorMap: FinanceError, maximumResponse: 8192, requestTimeout: TimeSpan.FromSeconds(30));
         var r = body.RootElement;
-        MemoryFields(r, "provider", "enabled", "keyConfigured", "result", "quote", "fx", "rights", "licenseStatus", "providerValidation", "dataContext");
+        if (r.TryGetProperty("diagnostic", out var diagnosticValue))
+            MemoryFields(r, "provider", "enabled", "keyConfigured", "result", "quote", "fx", "rights", "licenseStatus", "providerValidation", "dataContext", "diagnostic");
+        else MemoryFields(r, "provider", "enabled", "keyConfigured", "result", "quote", "fx", "rights", "licenseStatus", "providerValidation", "dataContext");
         string result = String(r, "result"), validation = String(r, "providerValidation"), context = String(r, "dataContext");
         if (String(r, "provider") != "MASSIVE" || String(r, "licenseStatus") != "PERSONAL_DISPLAY_ONLY"
             || Property(r, "enabled").ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || Property(r, "keyConfigured").ValueKind is not (JsonValueKind.True or JsonValueKind.False)
-            || context is not ("SYNTHETIC" or "UNVERIFIED") || validation is not ("NOT_RUN" or "RESPONSE_VALIDATED")
+            || context is not ("SYNTHETIC" or "UNVERIFIED") || validation is not ("NOT_RUN" or "NOT_VALIDATED" or "RESPONSE_VALIDATED")
             || result is not ("IDLE" or "SAVED" or "UPDATED" or "KEY_REQUIRED" or "UNSUPPORTED" or "RATE_LIMITED" or "ACCESS_DENIED" or "PROVIDER_FAILED" or "IDENTITY_MISMATCH" or "INVALID_DATA" or "NO_DATA" or "LICENSE_UNVERIFIED")) throw Invalid();
         var rights = Property(r, "rights");
         MemoryFields(rights, "display", "displayMemory", "persistence", "offline", "valuation");
@@ -52,11 +55,23 @@ public sealed partial class RuntimeClient
             || Property(rights, "persistence").ValueKind != JsonValueKind.False || Property(rights, "offline").ValueKind != JsonValueKind.False
             || Property(rights, "valuation").ValueKind != JsonValueKind.False) throw Invalid();
         var quote = MarketSample(Property(r, "quote"), false); var fx = MarketSample(Property(r, "fx"), true);
+        FinanceMarketDiagnostic? diagnostic = null;
+        if (diagnosticValue.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+        {
+            MemoryFields(diagnosticValue, "stage", "reason");
+            string stage = String(diagnosticValue, "stage"), reason = String(diagnosticValue, "reason");
+            if (stage is not ("LOCAL" or "STOCK_BARS" or "FOREX_BARS" or "STOCK_REFERENCE")
+                || reason is not ("TARGET" or "ADMISSION" or "HTTP_STATUS" or "RESPONSE_SIZE" or "JSON_FORMAT" or "PROVIDER_STATUS" or "TICKER"
+                    or "RESULTS_SHAPE" or "EMPTY_RESULTS" or "ADJUSTMENT_FLAG" or "TIMESTAMP_TYPE" or "TIMESTAMP_RANGE"
+                    or "MARKET" or "CURRENCY" or "ASSET_TYPE" or "EXCHANGE" or "PRICE_TYPE" or "PRICE_SIGN" or "PRICE_SCALE" or "PRICE_RANGE" or "TRANSPORT" or "INTERRUPTED")) throw Invalid();
+            diagnostic = new(stage, reason);
+        }
         bool enabled = Property(r, "enabled").GetBoolean(), configured = Property(r, "keyConfigured").GetBoolean();
         bool hasData = quote is not null || fx is not null;
         if (enabled != configured || quote is not null && fx is not null || hasData != (result == "UPDATED")
-            || hasData != (validation == "RESPONSE_VALIDATED") || hasData && (!enabled || path != "/refresh")) throw Invalid();
-        return new("MASSIVE", enabled, configured, result, quote, fx, new(true, true, false, false, false), "PERSONAL_DISPLAY_ONLY", validation, context);
+            || hasData != (validation == "RESPONSE_VALIDATED") || hasData && (!enabled || path != "/refresh")
+            || (diagnostic is not null) != (validation == "NOT_VALIDATED") || diagnostic is not null && result is ("IDLE" or "SAVED" or "UPDATED")) throw Invalid();
+        return new("MASSIVE", enabled, configured, result, quote, fx, new(true, true, false, false, false), "PERSONAL_DISPLAY_ONLY", validation, context, diagnostic);
     }
     private static FinanceMarketSample? MarketSample(JsonElement s, bool fx)
     {

@@ -45,6 +45,16 @@ public sealed class RuntimeClientTests
             response = bad;
             Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceMarketDataAsync(CancellationToken.None))).Error);
         }
+        response = JsonSerializer.Serialize(shown with { Fx = null, Result = "INVALID_DATA", ProviderValidation = "NOT_VALIDATED",
+            Diagnostic = new("FOREX_BARS", "PRICE_SCALE") }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(new("FOREX_BARS", "PRICE_SCALE"), (await client.RefreshFinanceMarketDataAsync("", CancellationToken.None)).Diagnostic);
+        string diagnosticResponse = response;
+        foreach (string bad in new[] { diagnosticResponse.Replace("PRICE_SCALE", "synthetic_key"),
+            diagnosticResponse.Replace("\"reason\":", "\"message\":\"synthetic_key\",\"reason\":") }) {
+            response = bad;
+            var rejected = await Assert.ThrowsAsync<DesktopException>(() => client.RefreshFinanceMarketDataAsync("", CancellationToken.None));
+            Assert.Equal(DesktopError.InvalidResponse, rejected.Error); Assert.DoesNotContain("synthetic_key", rejected.ToString());
+        }
     }
     [Fact]
     public async Task AnnualReadPreservesExactMoneyFutureUnknownsAndRejectsUnboundedOrConfusedContracts()

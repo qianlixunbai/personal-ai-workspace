@@ -34,6 +34,25 @@ class FinanceMarketDataTest {
     private static String metadata(String type, String venue) {
         return "{\"status\":\"OK\",\"results\":{\"ticker\":\"SPY\",\"market\":\"stocks\",\"locale\":\"us\",\"currency_name\":\"usd\",\"type\":\"" + type + "\",\"primary_exchange\":\"" + venue + "\"}}";
     }
+    @Test void equivalentJsonPriceRepresentationsDoNotLosePrecision() throws Exception {
+        var time = new Time();
+        for (String symbol : List.of("SPY", "USD/CNY")) {
+            boolean fx = symbol.equals("USD/CNY");
+            String ticker = fx ? "C:USDCNY" : symbol;
+            var client = new MassiveClient(time, (p, k) -> p.startsWith("/v3/") ? reply(metadata("ETF", "ARCX"))
+                    : reply(bars(ticker, fx ? "7.1234567890120000000000" : "100.12345678000000000000", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
+            assertEquals(fx ? "7.123456789012" : "100.12345678", client.fetch(symbol, fx ? "FX" : "ETF", "synthetic_key", () -> "READY").price());
+            var excessive = new MassiveClient(time, (p, k) -> reply(bars(ticker, fx ? "7.1234567890121" : "100.123456781", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
+            var failure = assertThrows(MassiveClient.Failure.class, () -> excessive.fetch(symbol, fx ? "FX" : "ETF", "synthetic_key", () -> "READY"));
+            assertEquals("INVALID_DATA", failure.code);
+            assertEquals(fx ? MassiveClient.Stage.FOREX_BARS : MassiveClient.Stage.STOCK_BARS, failure.diagnostic.stage());
+            assertEquals(MassiveClient.Reason.PRICE_SCALE, failure.diagnostic.reason());
+            assertEquals("INVALID_DATA", failure.getMessage()); // No upstream content or credential in errors.
+        }
+        var fx = new MassiveClient(time, (p, k) -> reply(bars("C:USDCNY", "7.1", "2026-10-23T00:00:00Z").replace("\"adjusted\":false", "\"adjusted\":true")));
+        assertEquals(MassiveClient.Reason.ADJUSTMENT_FLAG, assertThrows(MassiveClient.Failure.class,
+                () -> fx.fetch("USD/CNY", "FX", "synthetic_key", () -> "READY")).diagnostic.reason());
+    }
     @Test void personalDisplayWorksWithoutPersistenceOfflineOrValuationRightsAndPreservesOwnership() throws Exception {
         var time = new Time(); var file = new File(); var store = new FinanceMarketDataStore(time, file, () -> "SYNTHETIC");
         var identity = mock(FinanceAccountQueries.class);
@@ -91,7 +110,9 @@ class FinanceMarketDataTest {
                 new ReferenceValuationService(FinanceMarketDataQueries.rates(rateMapper, store), time).calculateAll(List.of(asset), legacyQuotes).get(1L).baseCurrencyMarketValue());
         legacyQuote.setProvider("MASSIVE");
         assertTrue(FinanceMarketDataQueries.quotes(quoteMapper, store).findCachedUsQuotes(List.of("SPY")).isEmpty());
-        deniedFx[0] = true; assertEquals("ACCESS_DENIED", queries.refresh("").result());
+        deniedFx[0] = true; var denied = queries.refresh("");
+        assertEquals("ACCESS_DENIED", denied.result()); assertEquals("NOT_VALIDATED", denied.providerValidation());
+        assertEquals(new MassiveClient.Diagnostic(MassiveClient.Stage.FOREX_BARS, MassiveClient.Reason.HTTP_STATUS), denied.diagnostic());
         time.now = time.now.plusSeconds(61);
         assertEquals("UPDATED", queries.refresh("", "SPY").result()); // FX denial cannot lock the stock display grant.
         assertTrue(FinanceMarketDataStore.permits("MASSIVE", FinanceMarketDataStore.Use.DISPLAY));
@@ -108,7 +129,12 @@ class FinanceMarketDataTest {
             assertFalse(failure.toString().contains("synthetic_key"));
         }
         var wrong = new MassiveClient(time, (p, k) -> p.startsWith("/v3/") ? reply(metadata("CS", "XHKG")) : reply(bars("SPY", "100", "2026-10-23T04:00:00Z")));
-        assertEquals("IDENTITY_MISMATCH", assertThrows(MassiveClient.Failure.class, () -> wrong.fetch("SPY", "ETF", "synthetic_key", () -> "READY")).code);
+        var wrongType = assertThrows(MassiveClient.Failure.class, () -> wrong.fetch("SPY", "ETF", "synthetic_key", () -> "READY"));
+        assertEquals("IDENTITY_MISMATCH", wrongType.code); assertEquals(MassiveClient.Stage.STOCK_REFERENCE, wrongType.diagnostic.stage());
+        assertEquals(MassiveClient.Reason.ASSET_TYPE, wrongType.diagnostic.reason());
+        var incomplete = new MassiveClient(time, (p, k) -> reply(bars("SPY", "100", "2026-10-26T04:00:00Z")));
+        assertEquals(MassiveClient.Reason.TIMESTAMP_RANGE, assertThrows(MassiveClient.Failure.class,
+                () -> incomplete.fetch("SPY", "ETF", "synthetic_key", () -> "READY")).diagnostic.reason());
         var file = new File(); var store = new FinanceMarketDataStore(time, file, () -> "SYNTHETIC"); store.configure("synthetic_key");
         for (int i = 0; i < 5; i++) assertEquals("READY", store.reserve());
         var restarted = new FinanceMarketDataStore(time, file, () -> "SYNTHETIC"); restarted.configure("replacement");
