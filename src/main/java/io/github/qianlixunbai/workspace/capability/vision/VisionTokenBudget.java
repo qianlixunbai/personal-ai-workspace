@@ -15,7 +15,9 @@ public final class VisionTokenBudget {
     public static void verify(Evidence trusted, String currentIdentity, String currentPayloadDigest,
                               String currentPreprocessingDigest, String currentTemplateDigest, String question) {
         if (question == null || question.isBlank() || question.length() > 1000
-                || question.getBytes(StandardCharsets.UTF_8).length > 4096) {
+                || question.getBytes(StandardCharsets.UTF_8).length > 4096
+                // Ollama's renderer treats these as media control syntax, not user text.
+                || question.contains("[img]") || question.contains("[img-") || question.contains("<__ollama_media_")) {
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"VISION_QUESTION");
         }
         if (trusted == null || currentIdentity == null || !currentIdentity.equals(trusted.identity)

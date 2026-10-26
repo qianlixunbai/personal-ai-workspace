@@ -1,5 +1,9 @@
 # Personal AI Workspace — Current Status
 
+## Current V1 Vision gate remediation（2026-10-27）
+
+WIC 与 held-handle 候选已完成本轮定点复审、无模型 Windows fixture 和 Java 聚焦验证，具备独立复审条件，尚未取得独立批准。共享 0.40.6 的实际 server hash 绑定、采样期间文件锁及媒体标记输入校验已定点修复；唯一 Active 与 Native Gate 保持。官方 payload/预处理源码及固定模型磁盘哈希已核实，但本机当前没有驻留 runner，实际 native payload/有效环境及完整 token 合同证据不足。`REVIEWED_TOKEN_POLICIES` 仍为空，真实/合成图片均未发往 Ollama，Vision Ready / Windows 单图验收 / Production 仍 BLOCKED。交付分支 `codex/v1-vision-gate-remediation`；证据与下一步最小授权边界见 [V1 修复报告](engineering/V1-VISION-GATE-REMEDIATION-REPORT.md)。
+
 ## Current Market Data M1.2 closing（2026-10-27）
 
 M1.2 在个人非商业显示范围内完成；用户提供的真实 Windows 人工验收报告 AAPL、SPY 和 USD/CNY 成功。USD/CNY 参考日期较早的原因尚未查明，界面已明确提示返回成功不代表最新行情。D2 原生验收仍 PARTIAL，Workspace Production GO 未授予。建议暂停市场数据开发，下一阶段转向 V1 Vision Foundation。证据归属、限制及新开发包详见 [M1.2 收尾](engineering/FINANCE-MARKET-DATA-M12-CLOSING.md)。

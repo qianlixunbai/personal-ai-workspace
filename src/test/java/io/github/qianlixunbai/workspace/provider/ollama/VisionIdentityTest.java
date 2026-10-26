@@ -8,6 +8,72 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class VisionIdentityTest {
+    @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void heldWindowsObjectsKeepIdentityAndFileLocksUntilSamplingEnds(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        Path javaExe=Path.of(System.getProperty("java.home"),"bin","java.exe");
+        var command=List.of(javaExe.toString(),"-cp",System.getProperty("java.class.path"),NativeFixture.class.getName(),"fixture 空格🙂");
+        var builder=new ProcessBuilder(command).directory(directory.toFile());
+        builder.environment().put("VISION_NATIVE_FIXTURE","model-free");
+        Process child=builder.start();
+        try(var output=new java.io.BufferedReader(new java.io.InputStreamReader(child.getInputStream(),java.nio.charset.StandardCharsets.UTF_8))) {
+            assertEquals("READY",java.util.concurrent.CompletableFuture.supplyAsync(()->{
+                try{return output.readLine();}catch(IOException error){throw new java.io.UncheckedIOException(error);}
+            }).get(5,java.util.concurrent.TimeUnit.SECONDS));
+            Class<?> processType=Class.forName(OllamaVisionEnvironment.class.getName()+"$HeldProcess");
+            var processConstructor=processType.getDeclaredConstructor(ProcessHandle.class);processConstructor.setAccessible(true);
+            var handleField=processType.getDeclaredField("handle");handleField.setAccessible(true);
+            var check=processType.getDeclaredMethod("check");check.setAccessible(true);
+            var generation=processType.getDeclaredMethod("generation");generation.setAccessible(true);
+            var state=OllamaVisionEnvironment.class.getDeclaredMethod("state",com.sun.jna.platform.win32.WinNT.HANDLE.class);state.setAccessible(true);
+            Class<?> moduleType=Class.forName(OllamaVisionEnvironment.class.getName()+"$NativeModules");
+            Object api=com.sun.jna.Native.load("kernel32",moduleType.asSubclass(com.sun.jna.Library.class));
+            var modules=OllamaVisionEnvironment.class.getDeclaredMethod("modules",moduleType,com.sun.jna.platform.win32.WinNT.HANDLE.class);modules.setAccessible(true);
+            try(var held=(AutoCloseable)processConstructor.newInstance(child.toHandle())) {
+                Object handle=handleField.get(held);check.invoke(held);
+                var observed=(OllamaVisionEnvironment.ProcessState)state.invoke(null,handle);
+                assertEquals(command.subList(1,command.size()),observed.arguments());
+                assertEquals(directory.toRealPath(),observed.cwd());assertEquals(javaExe.toRealPath(),observed.image());
+                assertEquals(ProcessHandle.current().pid(),observed.parent());
+                assertEquals("model-free",observed.environment().get("VISION_NATIVE_FIXTURE"));
+                assertFalse(((Map<?,?>)modules.invoke(null,api,handle)).isEmpty());
+                Object originalGeneration=generation.invoke(held);
+                Path file=directory.resolve("payload.fixture");byte[] bytes="model-free payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                java.nio.file.Files.write(file,bytes);
+                Class<?> fileType=Class.forName(OllamaVisionEnvironment.class.getName()+"$HeldFile");
+                var fileConstructor=fileType.getDeclaredConstructor(Path.class,boolean.class);fileConstructor.setAccessible(true);
+                var hash=fileType.getDeclaredMethod("hash",long.class,String.class,Cancellation.class,long.class);hash.setAccessible(true);
+                String expected=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+                try(var pinned=(AutoCloseable)fileConstructor.newInstance(file,false)) {
+                    var reader=new OllamaVisionEnvironment.IdentityReader() {
+                        boolean hashed;
+                        public OllamaVisionEnvironment.Snapshot snapshot() throws Exception {
+                            check.invoke(held);
+                            if(hashed)assertThrows(IOException.class,()->{
+                                try(var writer=java.nio.file.Files.newByteChannel(file,java.nio.file.StandardOpenOption.WRITE)) {}
+                            }); // The no-write handle must survive hashing into the second snapshot.
+                            return new OllamaVisionEnvironment.Snapshot(generation.invoke(held).toString(),List.of(),
+                                ((OllamaVisionEnvironment.ProcessState)state.invoke(null,handle)).arguments(),Map.of(1L,file));
+                        }
+                        public String hashModules(OllamaVisionEnvironment.Snapshot snapshot,Cancellation cancellation,long deadline) throws Exception {
+                            String result=(String)hash.invoke(pinned,(long)bytes.length,expected,cancellation,deadline);hashed=true;return result;
+                        }
+                    };
+                    assertEquals(expected,OllamaVisionEnvironment.sample(reader,new Cancellation(),System.nanoTime()+5_000_000_000L).payload());
+                }
+                try(var writer=java.nio.file.Files.newByteChannel(file,java.nio.file.StandardOpenOption.WRITE)) {} // Released after sampling.
+                assertEquals(originalGeneration,generation.invoke(held));
+                child.getOutputStream().close();assertTrue(child.waitFor(5,java.util.concurrent.TimeUnit.SECONDS));assertEquals(0,child.exitValue());
+                assertInstanceOf(IOException.class,assertThrows(java.lang.reflect.InvocationTargetException.class,()->check.invoke(held)).getCause());
+            }
+            assertNull(OllamaVisionEnvironment.currentContext(0,"fixture",new Cancellation())); // Empty reviewed policy never reaches NativeGate/network.
+        } finally {
+            if(child.isAlive()){child.destroyForcibly();assertTrue(child.waitFor(5,java.util.concurrent.TimeUnit.SECONDS));}
+        }
+    }
+    public static final class NativeFixture {
+        public static void main(String[] args) throws Exception {System.out.println("READY");System.out.flush();System.in.read();}
+    }
     @Test void exactProjectorFitRequiresVerifiedCopyAndPinnedSourceBranch() throws Exception {
         Path root=Path.of("D:/fit-fixture"),dist=root.resolve("dist"),models=root.resolve("models"),windows=Path.of("C:/Windows");
         var serverPin=new java.util.concurrent.atomic.AtomicReference<>("74462c0d7caa1aeb547f086ef1662f2b23d1cb573f70d21027e72250679e9112");

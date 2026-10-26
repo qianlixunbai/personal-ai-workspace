@@ -658,12 +658,15 @@ final class OllamaVisionEnvironment {
     static OllamaProvider.VisionContext currentContext(int port,String identity,Cancellation cancellation) {
         if(REVIEWED_TOKEN_POLICIES.isEmpty()) return null;
         long deadline=System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos();
+        List<HeldFile> pinned=new ArrayList<>();
         try {
             WindowsNativeGate.admit();
             ProcessHandle service=listener(port);
             try(var server=new HeldProcess(service)) {
                 Path executable=server.executable();Path installation=executable.getParent();
-                digest(executable,Files.size(executable),SERVER_HASH,cancellation);
+                var serverImage=new HeldFile(executable,false);pinned.add(serverImage);
+                String serverHash=serverImage.hash(Files.size(executable),null,cancellation,deadline);
+                if(!SHARED_SERVER_HASHES.contains(serverHash))return null;
                 List<ProcessHandle> candidates=service.descendants().limit(65).toList();
                 if(candidates.size()>64) return null;
                 HeldProcess selected=null;
@@ -697,7 +700,7 @@ final class OllamaVisionEnvironment {
                             return new Snapshot(server.generation()+"/"+runner.generation(),serve,args,modules);
                         }
                         public String hashModules(Snapshot snapshot,Cancellation cancel,long until) throws Exception {
-                            SortedMap<String,String> hashes=new TreeMap<>();byte[] buffer=new byte[65536];
+                            SortedMap<String,String> hashes=new TreeMap<>();
                             for(Path path:snapshot.modules().values()) {
                                 check(cancel,until);
                                 if(!path.startsWith(installation)) {
@@ -709,22 +712,18 @@ final class OllamaVisionEnvironment {
                                     if(attributes==-1 || (attributes&0x400)!=0)throw new IOException();
                                 }
                                 if(hashes.size()>=64 || !Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) || Files.size(path)>512L*1024*1024)throw new IOException();
-                                var sha=MessageDigest.getInstance("SHA-256");long length=0;
-                                var before=Files.readAttributes(path,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
-                                try(var file=java.nio.channels.FileChannel.open(path,StandardOpenOption.READ,
-                                        com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE)) {
-                                    var bytes=java.nio.ByteBuffer.wrap(buffer);int count;
-                                    while((count=file.read(bytes))!=-1) {check(cancel,until);length+=count;if(length>512L*1024*1024)throw new IOException();sha.update(buffer,0,count);bytes.clear();}
-                                    var after=Files.readAttributes(path,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
-                                    if(length!=before.size() || !Objects.equals(before.fileKey(),after.fileKey()) || before.size()!=after.size() || !before.lastModifiedTime().equals(after.lastModifiedTime()))throw new IOException();
-                                }
-                                if(hashes.put(installation.relativize(path).toString(),HexFormat.of().formatHex(sha.digest()))!=null)throw new IOException();
+                                // Keep the same no-write/delete object pinned through the second
+                                // snapshot and policy lookup, rather than releasing it after hashing.
+                                var file=new HeldFile(path,false);pinned.add(file);
+                                String sha=file.hash(Files.size(path),null,cancel,until);
+                                if(hashes.put(installation.relativize(path).toString(),sha)!=null)throw new IOException();
                             }
                             if(hashes.isEmpty())throw new IOException();
                             return hash(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(hashes));
                         }
                     };
                     Sample sample=sample(reader,cancellation,deadline);
+                    for(var file:pinned){check(cancellation,deadline);file.check();}
                     List<String> args=new ArrayList<>();List<String> values=sample.snapshot().runnerArguments();
                     for(int i=0;i<values.size();i++) {
                         String value=values.get(i);if(value.length()>16384)return null;
@@ -733,7 +732,7 @@ final class OllamaVisionEnvironment {
                     }
                     String payload=sample.payload();
                     String preprocessing=hash(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(List.of(VisionTokenBudget.POLICY,payload,args)));
-                    String template=hash(("renderer=qwen3.5|"+SERVER_HASH+"|"+OllamaVisionAdmission.CONFIG).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    String template=hash(("renderer=qwen3.5|"+serverHash+"|"+OllamaVisionAdmission.CONFIG).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     var evidence=REVIEWED_TOKEN_POLICIES.get(payload+"/"+preprocessing+"/"+template);
                     check(cancellation,deadline);
                     if(evidence==null || !identity.equals(evidence.identity()))return null;
@@ -741,6 +740,7 @@ final class OllamaVisionEnvironment {
                 } finally {if(selected!=null)selected.close();}
             }
         } catch(Exception | LinkageError missing) {return null;}
+        finally {for(var file:pinned)file.close();}
     }
     private static void check(Cancellation cancellation,long deadline) throws IOException {
         cancellation.check();if(Thread.currentThread().isInterrupted() || System.nanoTime()>=deadline)throw new IOException();

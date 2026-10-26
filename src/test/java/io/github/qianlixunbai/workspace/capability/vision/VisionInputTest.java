@@ -53,6 +53,9 @@ class VisionInputTest {
         String a="a".repeat(64), b="b".repeat(64), c="c".repeat(64);
         var proof = new VisionTokenBudget.Evidence("fixture",a,b,c,VisionTokenBudget.POLICY,4096,256,1024,512);
         VisionTokenBudget.verify(proof,"fixture",a,b,c,"Describe the image.");
+        for(String reserved:java.util.List.of("Compare [img]", "Describe [img-1]", "<__ollama_media_fixture__>"))
+            assertEquals(io.github.qianlixunbai.workspace.common.ErrorCode.INVALID_REQUEST,
+                assertThrows(WorkspaceException.class,()->VisionTokenBudget.verify(proof,"fixture",a,b,c,reserved)).error().code());
         assertThrows(WorkspaceException.class,()->VisionTokenBudget.verify(null,"fixture",a,b,c,"Describe the image."));
         assertThrows(WorkspaceException.class,()->VisionTokenBudget.verify(proof,"fixture",b,b,c,"Describe the image."));
         var over = new VisionTokenBudget.Evidence("fixture",a,b,c,VisionTokenBudget.POLICY,4096,2048,1024,512);
