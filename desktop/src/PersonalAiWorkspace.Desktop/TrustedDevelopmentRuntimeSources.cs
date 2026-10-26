@@ -18,6 +18,7 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
     private readonly List<FileStream> pins = new();
     internal string Java { get; private set; } = "";
     internal string Jar { get; private set; } = "";
+    internal string JarSha256 { get; private set; } = "";
     internal string JnaJar { get; private set; } = "";
     internal static TrustedDevelopmentRuntimeSources Open()
     {
@@ -64,6 +65,7 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
                 var pin = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 result.pins.Add(pin);
                 if (!Convert.ToHexString(SHA256.HashData(pin)).Equals(source.Sha256, StringComparison.OrdinalIgnoreCase)) throw new IOException();
+                if (source.Path == result.Jar) result.JarSha256 = source.Sha256.ToLowerInvariant();
             }
             string release = File.ReadAllText(Path.Combine(manifest.JavaHome, "release"));
             if (!release.Contains("JAVA_VERSION=\"21.", StringComparison.Ordinal) && !release.Contains("JAVA_VERSION=\"21\"", StringComparison.Ordinal)) throw new IOException();

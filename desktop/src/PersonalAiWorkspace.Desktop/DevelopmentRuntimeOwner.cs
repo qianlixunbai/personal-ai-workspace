@@ -22,10 +22,15 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     private RuntimeStartupDiagnostic diagnostic = new();
     private Task? running;
     private Process? child;
+    private string? jarSha256;
     private string state = "STARTING";
     private bool disposed;
     internal event Action<StorageStartupStatus>? Changed;
     internal int? OwnedProcessId { get { lock (sync) return child?.Id; } }
+    internal string? RunningJarSha256
+    {
+        get { lock (sync) return state == "READY" && child is not null && !child.HasExited ? jarSha256 : null; }
+    }
     internal DevelopmentRuntimeOwner(Mmf3AcceptanceLaunch profile, RuntimeClient runtime)
     { this.profile = profile; this.runtime = runtime; }
     internal void Start(CancellationToken applicationLifetime)
@@ -116,7 +121,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             var start = sources.StartInfo(profile);
             job = RuntimeProcessJob.Create();
             var process = Process.Start(start) ?? throw new IOException();
-            lock (sync) child = process; // Hold the actual Process handle before any further operation can fail.
+            lock (sync) { child = process; jarSha256 = sources.JarSha256; } // Hold the actual Process handle before any further operation can fail.
             job.Assign(process);
             output = PumpAsync(process.StandardOutput, false, lifetime.Token);
             errors = PumpAsync(process.StandardError, true, lifetime.Token);
@@ -221,7 +226,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             applicationLifetime.ThrowIfCancellationRequested();
-            child?.Dispose(); child = null; running = null;
+            child?.Dispose(); child = null; jarSha256 = null; running = null;
             stop.Dispose(); stop = new(); diagnostic = new();
             State("STARTING"); Start(applicationLifetime);
         }

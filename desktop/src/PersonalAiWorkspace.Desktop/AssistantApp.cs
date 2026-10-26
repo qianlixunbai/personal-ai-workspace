@@ -124,6 +124,10 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (acceptance is not null)
         {
             trayMenu.Items.Add("当前开发 Profile：" + acceptance.RunId).Enabled = false;
+            var runtimeVersion = trayMenu.Items.Add("Java Runtime：未就绪");
+            runtimeVersion.Enabled = false;
+            trayMenu.Opening += (_, _) => runtimeVersion.Text = runtimeOwner?.RunningJarSha256 is string hash
+                ? "运行中 Java JAR SHA-256：" + hash : "Java Runtime：未就绪";
             trayMenu.Items.Add("切换开发工作区…", null, async (_, _) =>
             {
                 if (exitRequested) return;

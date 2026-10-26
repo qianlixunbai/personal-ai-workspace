@@ -58,8 +58,13 @@ internal static class Program
 #endif
             if (!single.IsPrimary)
             {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+                MessageBox.Show("此开发工作区已有客户端运行。本次启动没有切换或更新 Runtime。请先从已有客户端的托盘菜单选择“退出”，再重新启动此包。", "Personal AI Workspace · 启动冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return 1;
+#else
                 if (!single.SignalPrimary()) MessageBox.Show("已有实例正在启动，请稍后从托盘打开。", "Personal AI Workspace");
                 return 0;
+#endif
             }
 #if MMF3_ACCEPTANCE && DEBUG
             var app = new AssistantApp(single, acceptance: acceptance);
