@@ -11,6 +11,29 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
+    public async Task MarketDataUsesFixedNativeRoutesPreservesExactFxAndRejectsSecretBearingResponses()
+    {
+        string valid = """{"provider":"TWELVE_DATA","enabled":true,"keyConfigured":true,"retentionHours":24,"result":"UPDATED","fx":{"rate":"7.123456789012","time":"2026-10-26T14:00:00Z","fetchedAt":"2026-10-26T14:00:01Z","freshness":"FRESH"}}""";
+        string response = valid;
+        var calls = new List<string>();
+        using var client = new RuntimeClient(new Handler(async (request, _) => {
+            calls.Add(request.Method + " " + request.RequestUri!.PathAndQuery);
+            if (request.Content is not null) {
+                using var payload = JsonDocument.Parse(await request.Content.ReadAsStringAsync());
+                if (request.RequestUri.AbsolutePath.EndsWith("/refresh")) Assert.Equal("", payload.RootElement.GetProperty("positionId").GetString());
+                else Assert.Equal("synthetic_key", payload.RootElement.GetProperty("apiKey").GetString());
+            }
+            return Response(HttpStatusCode.OK, response);
+        }), () => Token);
+        Assert.Equal("7.123456789012", (await client.RefreshFinanceMarketDataAsync("", CancellationToken.None)).Fx!.Rate);
+        await client.ConfigureFinanceMarketDataAsync(true, true, "synthetic_key", 24, CancellationToken.None);
+        Assert.Equal(new[] { "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/configuration" }, calls);
+        foreach (string bad in new[] { valid.Replace("\"provider\":", "\"apiKey\":\"synthetic_key\",\"provider\":"), valid.Replace("\"7.123456789012\"", "7.123456789012") }) {
+            response = bad;
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.GetFinanceMarketDataAsync(CancellationToken.None))).Error);
+        }
+    }
+    [Fact]
     public async Task AnnualReadPreservesExactMoneyFutureUnknownsAndRejectsUnboundedOrConfusedContracts()
     {
         var months = Enumerable.Range(1, 12).Select(m => new FinanceMonth($"2026-{m:D2}", m > 10 ? "FUTURE" : "OBSERVED",

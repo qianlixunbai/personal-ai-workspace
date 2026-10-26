@@ -89,8 +89,11 @@ public sealed class WorkspaceBridgeTests
     {
         using var f = new Fixture();
         foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, new { userId = 2 }, new { confirmed = true }, "{}", new object[0] })
-            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "finance.overview", "finance.budgets", "finance.portfolio", "finance.dashboard" })
+            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "native.openMarketDataSettings", "finance.marketData", "finance.overview", "finance.budgets", "finance.portfolio", "finance.dashboard" })
                 await f.Receive(f.Request(method, payload: value));
+        foreach (object value in new object[] { new { positionId = "", apiKey = "synthetic_key" }, new { positionId = "1", userId = 2 }, new { positionId = "../1" }, new { symbol = "AAPL" }, new { positionId = 1 }, new { positionId = "9223372036854775808" } })
+            await f.Receive(f.Request("finance.marketRefresh", payload: value));
+        await f.Receive(f.Request("finance.marketConfiguration", payload: new { apiKey = "synthetic_key" }));
         foreach (object value in new object[] { new { year = 2026, userId = 2 }, new { year = 1899 }, new { year = 2200 }, new { year = "2026" }, new { year = 2026.5 }, new { } })
             await f.Receive(f.Request("finance.annual", payload: value));
         foreach (object value in new object[] { new { accountId = "1", userId = 2 }, new { accountId = "../3" }, new { accountId = "9223372036854775808" }, new { accountId = 1 } })

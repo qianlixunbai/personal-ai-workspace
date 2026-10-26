@@ -1,0 +1,13 @@
+{
+  "result": "PASS",
+  "environment": "Actual M1 packaged Runtime + existing Native Gate + bound synthetic PostgreSQL",
+  "provider": "NOT_RUN",
+  "checks": [
+    "default disabled; refresh returns DISABLED",
+    "native HTTP configuration never returns credential",
+    "actual DPAPI CurrentUser encryption and readback with synthetic canary",
+    "explicit consent required even with saved key",
+    "actual read-only SQL Positions/Portfolio remain available",
+    "canary file removed; original unconfigured state restored"
+  ]
+}

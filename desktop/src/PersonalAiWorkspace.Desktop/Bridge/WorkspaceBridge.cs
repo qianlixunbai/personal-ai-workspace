@@ -11,7 +11,7 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop.Bridge;
 
-internal enum NativeWorkspaceEntry { LegacyAssistant, Conversations, Memory, BrowserPairing, MemoryBackup, WorkspaceBackup, CredentialFlow, KnowledgeBackup, DatabaseSettings, FinanceBinding }
+internal enum NativeWorkspaceEntry { LegacyAssistant, Conversations, Memory, BrowserPairing, MemoryBackup, WorkspaceBackup, CredentialFlow, KnowledgeBackup, DatabaseSettings, FinanceBinding, MarketDataSettings }
 internal enum ShellRuntimeState { Available, Unavailable }
 internal enum ShellCredentialState { Ready, Missing, Invalid, Unavailable }
 internal sealed record ShellStatus(int BridgeVersion, string ApplicationVersion, ShellRuntimeState Runtime,
@@ -45,6 +45,7 @@ internal interface IWorkspaceNativeActions
     Task<FinanceAsset> FinanceAssetAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinancePositionPage> FinancePositionsAsync(FinancePositionQuery query, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<FinancePositionDetail> FinancePositionAsync(string id, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
+    Task<FinanceMarketStatus> FinanceMarketDataAsync(string? positionId, CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     Task<StorageStartupStatus> StorageStartupStatusAsync(CancellationToken cancellation) => throw new DesktopException(DesktopError.RuntimeUnavailable);
     event Action<StorageStartupStatus>? StorageStartupChanged { add { } remove { } }
     Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation);
@@ -91,7 +92,8 @@ internal sealed class WorkspaceBridge : IDisposable
             ["native.openKnowledgeBackup"] = NativeWorkspaceEntry.KnowledgeBackup,
             ["native.openCredentialFlow"] = NativeWorkspaceEntry.CredentialFlow,
             ["native.openDatabaseSettings"] = NativeWorkspaceEntry.DatabaseSettings,
-            ["native.openFinanceBinding"] = NativeWorkspaceEntry.FinanceBinding
+            ["native.openFinanceBinding"] = NativeWorkspaceEntry.FinanceBinding,
+            ["native.openMarketDataSettings"] = NativeWorkspaceEntry.MarketDataSettings
         });
 
     internal WorkspaceBridge(WorkspaceContentPolicy policy, IWorkspaceNativeActions native, Action<string> send)
@@ -202,6 +204,8 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (method == "finance.annual") result = await native.FinanceAnnualAsync(payload.GetProperty("year").GetInt32(), cancellation);
             else if (method == "finance.dashboard") result = await native.FinanceDashboardAsync(cancellation);
             else if (method == "finance.portfolio") result = await native.FinancePortfolioAsync(cancellation);
+            else if (method == "finance.marketData") result = await native.FinanceMarketDataAsync(null, cancellation);
+            else if (method == "finance.marketRefresh") result = await native.FinanceMarketDataAsync(payload.GetProperty("positionId").GetString()!, cancellation);
             else if (method == "finance.budgets") result = await native.FinanceBudgetsAsync(cancellation);
             else if (method == "finance.list") result = await native.FinanceAccountsAsync(payload.GetProperty("page").GetInt32(), payload.GetProperty("size").GetInt32(), payload.GetProperty("status").GetString()!, payload.GetProperty("sort").GetString()!, cancellation);
             else if (method == "finance.get") result = await native.FinanceAccountAsync(payload.GetProperty("accountId").GetString()!, cancellation);
@@ -366,6 +370,9 @@ internal sealed class WorkspaceBridge : IDisposable
 
     private static bool ValidPayload(string method, JsonElement payload)
     {
+        if (method == "finance.marketData") return Fields(payload);
+        if (method == "finance.marketRefresh") return Fields(payload, "positionId") && payload.GetProperty("positionId").ValueKind == JsonValueKind.String
+            && (payload.GetProperty("positionId").GetString() == "" || RuntimeClient.ValidFinanceId(payload.GetProperty("positionId").GetString()!));
         if(VisionMethods.Contains(method)) return method switch {
             "vision.submit"=>Fields(payload,"handle","question")&&Text(payload,"handle",36,out var imageHandle)&&CanonicalId(imageHandle)
                 &&Text(payload,"question",1000,out var question)&&!string.IsNullOrWhiteSpace(question)&&Encoding.UTF8.GetByteCount(question)<=4096,

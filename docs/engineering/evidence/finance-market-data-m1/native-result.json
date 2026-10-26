@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "package": "Finance Market Data M1 Development-only",
+  "checks": [
+    "actual final CMD/WPF/WebView2/Java/SQL boot",
+    "Portfolio source count 7, coverage PARTIAL preserved",
+    "native market configuration opens; network toggle Off; no Key",
+    "Position detail and original D2 comparison chart visible",
+    "manual quote action disabled without consent/key",
+    "non-US position clearly unsupported",
+    "normal tray exit and final package reopen"
+  ],
+  "realProvider": "NOT_RUN",
+  "d2HistoricalNativeAcceptance": "PARTIAL"
+}

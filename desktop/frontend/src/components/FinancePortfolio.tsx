@@ -3,6 +3,7 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePortfolio as Portfolio } from '../bridge/financePortfolio'
 import { FinanceDonut } from './FinanceCharts'
+import { FinanceMarketData } from './FinanceMarketData'
 import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，组合统计读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
@@ -46,6 +47,7 @@ export function FinancePortfolio({ bridge, enabled, openSettings, navigate, inva
       <button className="secondary" onClick={openSettings}>Finance 配置与身份绑定</button>
     </section>
     {error && <div className="error" role="alert"><p>{error}</p><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button></div>}
+    <FinanceMarketData bridge={bridge} enabled={enabled} updated={() => { void refresh() }} />
     {value && r && <>
       <div className="finance-analysis-grid">
         {value.statusDistribution && <FinanceDonut title="持仓状态分布" value={value.statusDistribution} note="当前用户全部交易驱动持仓；选择 OPEN / CLOSED 进入对应持仓与历史。" onSelect={key => { if (key === 'OPEN' || key === 'CLOSED') navigate({ source: 'portfolio', target: 'investments', query: { status: key, accountId: '', instrumentId: '', cursor: '', size: 10 } }) }} />}

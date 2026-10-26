@@ -3,6 +3,7 @@ import { isFinanceDashboard, type FinanceDashboard } from './financeDashboard'
 import { batchId, isImportQuery, isImportPage, isImportSegment, type FinanceImportPage, type FinanceImportSegment } from './financeImports'
 import { isFinanceHistoryQuery, isFinanceHistoryPage, isFinanceHistoryDetail, isFinanceHistoryTimeline, type FinanceHistoryQuery, type FinanceHistoryPage, type FinanceHistoryDetail, type FinanceHistoryTimeline } from './financeHistory'
 import { isFinancePortfolio, type FinancePortfolio } from './financePortfolio'
+import { isFinanceMarketStatus, type FinanceMarketStatus } from './financeMarketData'
 import { businessMethods, conversationMethods, memoryMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
 import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob } from './knowledge'
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
@@ -84,6 +85,11 @@ export class WorkspaceClient {
   }
   financeDashboard() { return this.request('finance.dashboard') as Promise<FinanceDashboard> }
   financePortfolio() { return this.request('finance.portfolio') as Promise<FinancePortfolio> }
+  financeMarketData() { return this.request('finance.marketData') as Promise<FinanceMarketStatus> }
+  financeMarketRefresh(positionId = '') {
+    if (positionId !== '' && !financeId(positionId)) return Promise.reject(new BridgeError('InvalidRequest', '持仓 ID 无效。'))
+    return this.request('finance.marketRefresh', { positionId }) as Promise<FinanceMarketStatus>
+  }
   financeOverview() { return this.request('finance.overview') as Promise<FinanceOverview> }
   financeBudgets() { return this.request('finance.budgets') as Promise<FinanceBudgetAvailability> }
   financeAccounts(query: FinanceQuery) {
@@ -179,7 +185,7 @@ export class WorkspaceClient {
   previewKnowledge(documentId: string, sourceRevision: string, offset: number) { return this.request('knowledge.preview', { documentId, sourceRevision, offset }) as Promise<KnowledgePreview> }
   private request(method: Method, payload: unknown = {}): Promise<unknown> {
     if (!this.port || !this.session) return Promise.reject(new Error('工作区尚未连接。请从原生窗口重新打开。'))
-    if (!['shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.imports', 'finance.importReceipt', 'finance.overview', 'finance.annual', 'finance.dashboard', 'finance.budgets', 'finance.portfolio', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', 'finance.assets', 'finance.asset', 'finance.positions', 'finance.position', 'finance.history', 'finance.historyDetail', 'finance.historyTimeline', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
+    if (!['finance.marketData', 'finance.marketRefresh', 'shell.bootstrap', 'shell.refreshStatus', 'storage.status', 'storage.startupStatus', 'finance.imports', 'finance.importReceipt', 'finance.overview', 'finance.annual', 'finance.dashboard', 'finance.budgets', 'finance.portfolio', 'finance.list', 'finance.get', 'finance.transactions', 'finance.transaction', 'finance.assets', 'finance.asset', 'finance.positions', 'finance.position', 'finance.history', 'finance.historyDetail', 'finance.historyTimeline', ...nativeMethods, ...businessMethods, ...conversationMethods, ...memoryMethods, ...knowledgeMethods, ...webFetchMethods, ...modelMethods, ...visionMethods].includes(method) || this.pending.size >= 8)
       return Promise.reject(new Error('操作暂时不可用，请稍后重试。'))
     const requestId = crypto.randomUUID()
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
@@ -256,6 +262,7 @@ export class WorkspaceClient {
         : pending.method === 'finance.annual' ? isFinanceAnnual(data.result, pending.year)
         : pending.method === 'finance.dashboard' ? isFinanceDashboard(data.result)
         : pending.method === 'finance.portfolio' ? isFinancePortfolio(data.result)
+        : pending.method === 'finance.marketData' || pending.method === 'finance.marketRefresh' ? isFinanceMarketStatus(data.result)
         : pending.method === 'finance.position' ? isFinancePositionDetail(data.result) && data.result.positionId === pending.id
         : pending.method === 'finance.positions' ? pending.positionQuery && isFinancePositionPage(data.result, pending.positionQuery)
         : pending.method === 'finance.asset' ? isFinanceAsset(data.result) && data.result.id === pending.id

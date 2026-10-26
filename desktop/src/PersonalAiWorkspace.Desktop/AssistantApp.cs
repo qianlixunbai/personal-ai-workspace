@@ -220,6 +220,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         => ReadFinanceAsync(() => runtime.GetFinanceDashboardAsync(cancellation), cancellation);
     Task<FinancePortfolio> IWorkspaceNativeActions.FinancePortfolioAsync(CancellationToken cancellation)
         => ReadFinanceAsync(() => runtime.GetFinancePortfolioAsync(cancellation), cancellation);
+    Task<FinanceMarketStatus> IWorkspaceNativeActions.FinanceMarketDataAsync(string? positionId, CancellationToken cancellation)
+        => ReadFinanceAsync(() => positionId is null ? runtime.GetFinanceMarketDataAsync(cancellation) : runtime.RefreshFinanceMarketDataAsync(positionId, cancellation), cancellation);
     Task<FinanceBudgetAvailability> IWorkspaceNativeActions.FinanceBudgetsAsync(CancellationToken cancellation)
         => ReadFinanceAsync(() => runtime.GetFinanceBudgetsAsync(cancellation), cancellation);
     Task<FinanceAccountPage> IWorkspaceNativeActions.FinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken cancellation)
@@ -293,7 +295,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     {
         cancellation.ThrowIfCancellationRequested();
         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
-        if (entry is NativeWorkspaceEntry.DatabaseSettings or NativeWorkspaceEntry.FinanceBinding)
+        if (entry is NativeWorkspaceEntry.DatabaseSettings or NativeWorkspaceEntry.FinanceBinding or NativeWorkspaceEntry.MarketDataSettings)
         {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
             if (acceptance is not null && runtimeOwner is not null && !databaseSettingsOpen && workspace is not null)
@@ -306,7 +308,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                     {
                         cancellation.ThrowIfCancellationRequested();
                         if (exitRequested || Busy) throw new InvalidOperationException("Native surface unavailable.");
-                        Window dialog = entry == NativeWorkspaceEntry.FinanceBinding
+                        Window dialog = entry == NativeWorkspaceEntry.MarketDataSettings
+                            ? new MarketDataSettingsWindow(runtime, lifetime.Token) { Owner = workspace }
+                            : entry == NativeWorkspaceEntry.FinanceBinding
                             ? new FinanceBindingWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace }
                             : new DatabaseSettingsWindow(acceptance, runtimeOwner, lifetime.Token) { Owner = workspace };
                         using var registration = cancellation.Register(() => Dispatcher.BeginInvoke(() => dialog.Close()));

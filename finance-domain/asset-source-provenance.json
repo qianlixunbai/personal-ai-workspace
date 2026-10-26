@@ -1,7 +1,7 @@
 {
   "sourceRepository": "personal-finance-OS",
   "sourceCommit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
-  "policy": "One-time read-only source copy. No provider/refresh wiring; queries use original default TTLs. No build dependency on frozen repository.",
+  "policy": "One-time source copy; no build dependency on frozen repository. M1 adds Workspace-owned provider/cache wiring and source-time freshness. The local valuation market guard adaptation is recorded below; original source hash is retained.",
   "files": [
     {
       "sourcePath": "backend/src/main/java/com/financeos/module/asset/entity/Asset.java",
@@ -14,8 +14,8 @@
       "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/service/ReferenceValuationService.java",
       "workspacePath": "finance-domain/src/main/java/com/financeos/module/asset/valuation/service/ReferenceValuationService.java",
       "sourceSha256": "0aad2f451f34142e1394f4dacf134c91074dbbb8c38d9f12bb81ef98d66dbe8f",
-      "workspaceSha256": "0aad2f451f34142e1394f4dacf134c91074dbbb8c38d9f12bb81ef98d66dbe8f",
-      "adaptation": "none; byte-for-byte copy"
+      "workspaceSha256": "71e44de2632aa6f9e416071006e7b0872d914c159752299439425f36c33ab72c",
+      "adaptation": "M1: reject cross-market symbol collisions at the existing valuation entry; no financial formula changes"
     },
     {
       "sourcePath": "backend/src/main/java/com/financeos/module/asset/valuation/dto/ReferenceValuationResponse.java",

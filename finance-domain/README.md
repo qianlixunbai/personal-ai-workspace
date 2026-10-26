@@ -1,5 +1,7 @@
 # Finance Module — Read-only Integration
 
+2026-10-26：M1 在 Workspace 应用层接入 Twelve Data、原生许可/联网确认与独立 DPAPI 行情缓存，Finance PostgreSQL 保持只读。复用 Quote/FX/ReferenceValuation/Portfolio，仅在本地 `ReferenceValuationService.calculate` 增加市场匹配校验，防止批量同名跨市场误估；原公式不变，来源与本地适配哈希见 [asset-source-provenance.json](asset-source-provenance.json)。冻结来源仓库、账本、Receipt 和迁移未改。真实 Provider **NOT RUN**，D2 历史 **PARTIAL** 不变，详见 [M1 报告](../docs/engineering/FINANCE-MARKET-DATA-M1-REPORT.md)。仅 Development-only。
+
 2026-10-24：F-next-8 原字节迁入逻辑投资交易列表、详情与审计查询及其 DTO/Mapper 依赖。Workspace 使用受信 Finance GET 与 Typed Bridge 展示 Investment History、修正关系、历史 Receipt 和分组不可变事实；保留来源 Cursor、UTC Instant `[from,to)` 和精确十进制字符串。没有装配投资写服务或 Replay 命令，原 migrations 未改。来源哈希见 [investment-source-provenance.json](investment-source-provenance.json)，实际 Windows 交付与验证见 [F-next-8 报告](../docs/engineering/FINANCE-F-NEXT-8-REPORT.md)。仅 Development-only。
 
 2026-10-24：F-next-7 原字节迁入 `InvestmentPortfolioQueryService` 与 `InvestmentPortfolioResponse`，复用已迁入的 Mapper、统计 Row、Quote/FX 和估值服务。Portfolio Summary 读取当前绑定用户全部交易驱动持仓，账务金额沿用 CNY 投影；估值保留覆盖数、PARTIAL / STALE / UNAVAILABLE 与 warnings。来源哈希继续记录在 [investment-source-provenance.json](investment-source-provenance.json)，独立 Windows 客户端和本轮实际验证见 [F-next-7 报告](../docs/engineering/FINANCE-F-NEXT-7-REPORT.md)。仅 Development-only。

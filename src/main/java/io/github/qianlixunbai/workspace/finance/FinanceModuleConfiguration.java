@@ -38,19 +38,23 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
+        FinanceMarketDataStore financeMarketDataStore() { return new FinanceMarketDataStore(java.time.Clock.systemUTC()); }
+
+        @Bean
+        FinanceMarketDataQueries financeMarketDataQueries(FinanceAccountQueries identity, FinanceInvestmentQueries positions, FinanceMarketDataStore store) {
+            return new FinanceMarketDataQueries(identity, positions, store, new TwelveDataClient(store.clock));
+        }
+
+        @Bean
         com.financeos.module.asset.marketdata.service.MarketQuoteQueryService financeQuoteQueries(
-                com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper mapper) {
-            return new com.financeos.module.asset.marketdata.service.MarketQuoteQueryService(mapper,
-                    new com.financeos.module.asset.marketdata.config.MarketDataProperties(), java.time.Clock.systemUTC());
+                com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper mapper, FinanceMarketDataStore store) {
+            return FinanceMarketDataQueries.quotes(mapper, store);
         }
 
         @Bean
         com.financeos.module.asset.valuation.service.ReferenceValuationService financeReferenceValuations(
-                com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper mapper) {
-            var clock = java.time.Clock.systemUTC();
-            var rates = new com.financeos.module.asset.marketdata.fx.service.ExchangeRateQueryService(mapper,
-                    new com.financeos.module.asset.marketdata.fx.config.FxDataProperties(), clock);
-            return new com.financeos.module.asset.valuation.service.ReferenceValuationService(rates, clock);
+                com.financeos.module.asset.marketdata.fx.mapper.ExchangeRateMapper mapper, FinanceMarketDataStore store) {
+            return new com.financeos.module.asset.valuation.service.ReferenceValuationService(FinanceMarketDataQueries.rates(mapper, store), store.clock);
         }
 
         @Bean

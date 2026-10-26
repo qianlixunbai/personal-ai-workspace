@@ -79,6 +79,10 @@ public class ReferenceValuationService {
     }
 
     public ReferenceValuationResponse calculate(Asset asset, MarketQuoteSnapshotResponse quote, ExchangeRate rate) {
+        // Batch lookup is keyed by symbol; a listing in another market must never borrow this quote.
+        if (quote != null && (asset.getMarket() == null || !asset.getMarket().equalsIgnoreCase(quote.market()))) {
+            quote = null; rate = null;
+        }
         Instant calculatedAt = clock.instant();
         List<ReferenceValuationWarning> warnings = new ArrayList<>();
         if (asset.getQuantity() == null || asset.getQuantity().signum() < 0) {

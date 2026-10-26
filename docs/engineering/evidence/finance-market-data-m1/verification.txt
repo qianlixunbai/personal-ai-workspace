@@ -1,0 +1,40 @@
+2026-10-26 Asia/Shanghai. Development-only; actual Provider NOT RUN; D2 historical native acceptance PARTIAL.
+
+ACTUALLY EXECUTED
+PASS .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest,FinanceAccountQueriesTest,FinanceRouteSecurityTest -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m1-java.log
+PASS final focused rerun after market guard and quote precision boundary:
+  .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m1-final-java.log
+  HTTP/files/Mapper are deterministic substitutes. Original ReferenceValuationService and InvestmentPortfolioQueryService are real.
+PASS npm test -- src/components/FinanceMarketData.test.tsx src/pages/FinancePage.test.tsx
+  .verification/finance-m1-react.log
+PASS dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.MarketData|FullyQualifiedName~RuntimeClientTests.PortfolioKeeps|FullyQualifiedName~RuntimeClientTests.AnnualRead|FullyQualifiedName~WorkspaceBridgeTests.PayloadMustBeExactlyEmpty
+  .verification/finance-m1-desktop.log
+PASS npm run build (TypeScript, Vite production assets, asset manifest).
+  .verification/finance-m1-frontend-build.log; JS 509.35 kB exceeds default warning threshold, no build error.
+PASS .\mvnw.cmd -B -ntp -pl workspace-application -am -DskipTests package
+  .verification/finance-m1-final-runtime-package.log; prepare-package identity + actual JAR audit.
+PASS Profile Debug win-x64 dotnet publish with Mmf3ProfileAcceptanceBuild=true, Mmf3AcceptanceBuild=false, FrontendSkipBuild=true, fixed TrustedDevelopmentManifest.
+  .verification/finance-m1-final-package.log; .verification/finance-m1-runtime-sources.local.json.
+PASS new launcher -CheckOnly, actual CMD-equivalent pwsh launcher, actual WPF/WebView2 + Java + existing synthetic PostgreSQL.
+  Original Native Gate, profile/config/binary pins and Finance binding retained.
+  Native status/default-off configuration window, Position detail/manual refresh disabled, non-US unsupported, source Portfolio partial and D2 chart visible.
+  Normal tray exit, final package reopen, final normal tray exit, owned Runtime listener released.
+  native-result.json, native-portfolio.png. This is a focused M1 native flow, not completion of D2's remaining matrix.
+PASS final packaged actual Native Bearer HTTP/DPAPI smoke with SYNTHETIC canary and enabled=false.
+  .verification/finance-m1-http-dpapi.ps1; http-dpapi-result.json.
+  No real Provider request. Actual local read-only SQL for Positions/Portfolio; actual DPAPI CurrentUser encryption/decryption.
+  Verified new canary ciphertext hash before removing only that test-created file; restored no-Key state.
+PASS new package source/payload, asset-source-provenance and five historic package payload manifests.
+  package-hashes.json; old F-next-10/Phase1/VisualRedesign/D1/D2 untouched.
+PASS git diff --check; frozen source personal-finance-OS c6c87a0627b746e70a45b1c7896f63defd76a810, clean.
+
+NOT EXECUTED
+Real Twelve Data request, real licensed API key/entitlement/network coverage, real financial-account data.
+Java/Desktop/Frontend full suites; full browser, IME, stress, native zoom/window/theme matrix; whole-machine reboot.
+D2 historical native acceptance completion. Production GO not granted. No merge/tag/release.
+
+Historical D2 evidence is inherited context only and is not counted as an executed M1 gate.
+Binary build identity is cc1c1847a0eb15632086d76fe6092cbdc4b0f0fd + sourceDirty=true, with exact built source/payload hashes.
+Final source commit follows documentation/evidence and is reported separately; no false claim of a clean rebuild at final SHA.

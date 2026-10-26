@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## Finance Market Data M1（2026-10-26）
+
+已接入 Twelve Data 美股/ETF、USD/CNY 的显式刷新、原生 Key 配置、DPAPI 私有缓存及原 Java 参考估值；默认不联网。需要用户自行提供具有展示/缓存许可的 Key，真实 Provider 验证 **NOT RUN**。独立 Windows Development-only 包与实际聚焦验证见 [M1 工程报告](docs/engineering/FINANCE-MARKET-DATA-M1-REPORT.md)，选型与许可核对见 [行情研究](docs/design/FINANCE-MARKET-DATA-REFERENCE.md)。D2 原生验收历史 **PARTIAL** 保留；未授予 Production GO。
+
 ## F-next-10 后工程清理（2026-10-24）
 
 后续 UI 调研候选基线为 `codex/workspace-post-fnext10-cleanup`，直接继承已验收的 `codex/finance-f-next-10 @ f09d1bd1f883db8740cef8336a78e9a3a4123270`。旧分支与八个 B4A6 未追踪文件已完成安全备份和退役；清单、恢复入口与验证边界见 [工程清理报告](docs/engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md)。下方 B4A6 保留说明属于清理前的历史记录。当前仍为 Development-only，未授予 Production GO。

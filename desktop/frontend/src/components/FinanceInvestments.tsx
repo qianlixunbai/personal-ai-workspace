@@ -3,6 +3,7 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePositionDetail, FinancePositionPage, FinancePositionQuery, PositionCachedReference } from '../bridge/financeInvestments'
 import { FinanceHoldingsChart } from './FinanceCharts'
+import { FinanceMarketData } from './FinanceMarketData'
 import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const initial: FinancePositionQuery = { status: 'OPEN', accountId: '', instrumentId: '', cursor: '', size: 10 }
@@ -77,6 +78,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory,
       <button className="secondary" onClick={openSettings}>Finance 配置与身份绑定</button>
     </section>
     {error && <div className="error" role="alert"><p>{error}</p><div className="finance-toolbar"><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button><button disabled={!enabled || working} onClick={() => { void refresh({ ...query, cursor: '' }, null, []) }}>返回持仓首页</button></div></div>}
+    <FinanceMarketData bridge={bridge} enabled={enabled} position={detail} updated={() => { void refresh() }} />
     {list && <FinanceHoldingsChart value={list} onSelect={id => { void refresh(query, id) }} />}
     {list && <section className="card" aria-label="持仓列表">
       {list.records.length ? <div className="finance-table-scroll" tabIndex={0} aria-label="持仓表格，可横向滚动"><table>
