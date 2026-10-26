@@ -66,8 +66,11 @@ final class MassiveClient {
             // JSON number scale is representation, not economic precision. Remove zeros without rounding.
             BigDecimal decimal = value.decimalValue().stripTrailingZeros();
             if (decimal.signum() <= 0) throw new Failure("INVALID_DATA", stage, Reason.PRICE_SIGN);
-            if (decimal.scale() > (fx ? 12 : 8)) throw new Failure("INVALID_DATA", stage, Reason.PRICE_SCALE);
-            if (decimal.precision() > 32 || decimal.scale() < -20 || decimal.precision() - decimal.scale() > 20)
+            if (!fx && decimal.scale() > 8) throw new Failure("INVALID_DATA", stage, Reason.PRICE_SCALE);
+            // Forex docs specify no decimal-place cap. Bound magnitude and plain text before expansion.
+            long integerDigits = (long) decimal.precision() - decimal.scale();
+            long plainLength = Math.max(1, integerDigits) + (decimal.scale() > 0 ? 1L + decimal.scale() : 0);
+            if ((!fx && decimal.precision() > 32) || decimal.scale() < -20 || integerDigits > 20 || fx && plainLength > 128)
                 throw new Failure("INVALID_DATA", stage, Reason.PRICE_RANGE);
             String price = decimal.toPlainString();
             String exchange = "FOREX";

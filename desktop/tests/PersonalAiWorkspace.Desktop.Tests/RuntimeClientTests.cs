@@ -40,6 +40,14 @@ public sealed class RuntimeClientTests
         var saved = await client.ConfigureFinanceMarketDataAsync("synthetic_key", CancellationToken.None);
         Assert.True(saved.Enabled); Assert.Equal("PERSONAL_DISPLAY_ONLY", saved.LicenseStatus); Assert.Null(saved.Fx);
         Assert.Equal(new[] { "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/configuration" }, calls);
+        foreach (string exactPrice in new[] { "7." + string.Concat(Enumerable.Repeat("123456789", 5)), "0." + new string('0', 125) + "1" }) {
+            response = JsonSerializer.Serialize(shown with { Fx = shown.Fx! with { Price = exactPrice } }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.Equal(exactPrice, (await client.RefreshFinanceMarketDataAsync("", CancellationToken.None)).Fx!.Price);
+        }
+        foreach (string invalidPrice in new[] { "0." + new string('0', 126) + "1", "100000000000000000000", "0", "NaN" }) {
+            response = JsonSerializer.Serialize(shown with { Fx = shown.Fx! with { Price = invalidPrice } }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => client.RefreshFinanceMarketDataAsync("", CancellationToken.None))).Error);
+        }
         foreach (string bad in new[] { valid.Replace("\"provider\":", "\"apiKey\":\"synthetic_key\",\"provider\":"), valid.Replace("\"7.123456789012\"", "7.123456789012"),
             valid.Replace("\"valuation\":false", "\"valuation\":true"), valid.Replace("\"MASSIVE\"", "\"TWELVE_DATA\"") }) {
             response = bad;

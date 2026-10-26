@@ -15,7 +15,7 @@ const instant = (v: unknown) => typeof v === 'string' && v.length <= 40 && v.end
 function sample(v: unknown, fx: boolean): boolean {
   return v === null || isObject(v) && exactFields(v, ['symbol', 'price', 'time', 'fetchedAt', 'exchange', 'date', 'timeZone'])
     && typeof v.symbol === 'string' && (fx ? v.symbol === 'USD/CNY' : /^[A-Z][A-Z0-9.-]{0,14}$/.test(v.symbol))
-    && typeof v.price === 'string' && (fx ? /^[0-9]{1,20}(?:\.[0-9]{1,12})?$/ : /^[0-9]{1,20}(?:\.[0-9]{1,8})?$/).test(v.price) && /[1-9]/.test(v.price)
+    && typeof v.price === 'string' && v.price.length <= 128 && (fx ? /^[0-9]{1,20}(?:\.[0-9]+)?$/ : /^[0-9]{1,20}(?:\.[0-9]{1,8})?$/).test(v.price) && /[1-9]/.test(v.price)
     && instant(v.time) && instant(v.fetchedAt) && typeof v.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.date) && !Number.isNaN(Date.parse(v.date))
     && (fx ? v.timeZone === 'UTC' && v.exchange === 'FOREX' : v.timeZone === 'America/New_York' && ['XNAS', 'XNYS', 'ARCX', 'XASE', 'BATS', 'IEXG'].includes(v.exchange as string))
 }

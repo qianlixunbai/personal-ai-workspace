@@ -80,7 +80,7 @@ public sealed partial class RuntimeClient
         string symbol = String(s, "symbol"), price = String(s, "price"), time = String(s, "time"), fetched = String(s, "fetchedAt"),
             exchange = String(s, "exchange"), date = String(s, "date"), zone = String(s, "timeZone");
         if (!(fx ? symbol == "USD/CNY" : Regex.IsMatch(symbol, @"\A[A-Z][A-Z0-9.-]{0,14}\z"))
-            || !Regex.IsMatch(price, fx ? @"\A[0-9]{1,20}(?:\.[0-9]{1,12})?\z" : @"\A[0-9]{1,20}(?:\.[0-9]{1,8})?\z")
+            || price.Length > 128 || !Regex.IsMatch(price, fx ? @"\A[0-9]{1,20}(?:\.[0-9]+)?\z" : @"\A[0-9]{1,20}(?:\.[0-9]{1,8})?\z")
             || !price.Any(c => c is >= '1' and <= '9') || !MarketInstant(time) || !MarketInstant(fetched)
             || !DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _)
             || (fx ? zone != "UTC" || exchange != "FOREX" : zone != "America/New_York" || exchange is not ("XNAS" or "XNYS" or "ARCX" or "XASE" or "BATS" or "IEXG"))) throw Invalid();

@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class FinanceMarketDataTest {
+    private static final String EXACT_FX = "7." + "123456789".repeat(5);
     static final class Time extends Clock {
         Instant now = Instant.parse("2026-10-26T14:00:00Z");
         public ZoneId getZone() { return ZoneOffset.UTC; }
@@ -40,14 +41,20 @@ class FinanceMarketDataTest {
             boolean fx = symbol.equals("USD/CNY");
             String ticker = fx ? "C:USDCNY" : symbol;
             var client = new MassiveClient(time, (p, k) -> p.startsWith("/v3/") ? reply(metadata("ETF", "ARCX"))
-                    : reply(bars(ticker, fx ? "7.1234567890120000000000" : "100.12345678000000000000", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
-            assertEquals(fx ? "7.123456789012" : "100.12345678", client.fetch(symbol, fx ? "FX" : "ETF", "synthetic_key", () -> "READY").price());
-            var excessive = new MassiveClient(time, (p, k) -> reply(bars(ticker, fx ? "7.1234567890121" : "100.123456781", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
+                    : reply(bars(ticker, fx ? EXACT_FX + "000" : "100.12345678000000000000", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
+            assertEquals(fx ? EXACT_FX : "100.12345678", client.fetch(symbol, fx ? "FX" : "ETF", "synthetic_key", () -> "READY").price());
+            var excessive = new MassiveClient(time, (p, k) -> reply(bars(ticker, fx ? "1e-127" : "100.123456781", fx ? "2026-10-23T00:00:00Z" : "2026-10-23T04:00:00Z")));
             var failure = assertThrows(MassiveClient.Failure.class, () -> excessive.fetch(symbol, fx ? "FX" : "ETF", "synthetic_key", () -> "READY"));
             assertEquals("INVALID_DATA", failure.code);
             assertEquals(fx ? MassiveClient.Stage.FOREX_BARS : MassiveClient.Stage.STOCK_BARS, failure.diagnostic.stage());
-            assertEquals(MassiveClient.Reason.PRICE_SCALE, failure.diagnostic.reason());
+            assertEquals(fx ? MassiveClient.Reason.PRICE_RANGE : MassiveClient.Reason.PRICE_SCALE, failure.diagnostic.reason());
             assertEquals("INVALID_DATA", failure.getMessage()); // No upstream content or credential in errors.
+        }
+        var boundary = new MassiveClient(time, (p, k) -> reply(bars("C:USDCNY", "1e-126", "2026-10-23T00:00:00Z")));
+        assertEquals("0." + "0".repeat(125) + "1", boundary.fetch("USD/CNY", "FX", "synthetic_key", () -> "READY").price());
+        for (String invalid : List.of("-1", "0", "1e20", "NaN")) {
+            var rejected = new MassiveClient(time, (p, k) -> reply(bars("C:USDCNY", invalid, "2026-10-23T00:00:00Z")));
+            assertThrows(MassiveClient.Failure.class, () -> rejected.fetch("USD/CNY", "FX", "synthetic_key", () -> "READY"));
         }
         var fx = new MassiveClient(time, (p, k) -> reply(bars("C:USDCNY", "7.1", "2026-10-23T00:00:00Z").replace("\"adjusted\":false", "\"adjusted\":true")));
         assertEquals(MassiveClient.Reason.ADJUSTMENT_FLAG, assertThrows(MassiveClient.Failure.class,
@@ -69,7 +76,7 @@ class FinanceMarketDataTest {
             requests.add(path); assertEquals("synthetic_key", key);
             assertFalse(path.contains("key")); assertFalse(path.contains("2.25"));
             if (path.contains("C:USDCNY")) return deniedFx[0] ? new MassiveClient.Reply(403, new byte[0])
-                    : reply(bars("C:USDCNY", "7.123456789012", "2026-10-23T00:00:00Z"));
+                    : reply(bars("C:USDCNY", EXACT_FX, "2026-10-23T00:00:00Z"));
             return path.startsWith("/v3/") ? reply(metadata("ETF", "ARCX")) : reply(bars("SPY", "100.12345678", "2026-10-23T04:00:00Z"));
         });
         var queries = new FinanceMarketDataQueries(identity, positions, store, provider);
@@ -83,11 +90,11 @@ class FinanceMarketDataTest {
         assertEquals(List.of("/v2/aggs/ticker/SPY/range/1/day/2026-10-12/2026-10-25?adjusted=false&sort=desc&limit=14", "/v3/reference/tickers/SPY?date=2026-10-23"), requests);
         assertTrue(quote.rights().display()); assertTrue(quote.rights().displayMemory());
         assertFalse(quote.rights().persistence()); assertFalse(quote.rights().offline()); assertFalse(quote.rights().valuation());
-        assertEquals("7.123456789012", queries.refresh("").fx().price());
+        assertEquals(EXACT_FX, queries.refresh("").fx().price());
         assertNull(queries.status().quote()); assertNull(queries.status().fx()); // Status/reopen never replay market responses.
         assertNull(new FinanceMarketDataQueries(identity, positions, new FinanceMarketDataStore(time, file, () -> "SYNTHETIC"), provider).status().quote());
         String persisted = new String(file.bytes, StandardCharsets.UTF_8);
-        assertFalse(persisted.contains("100.12345678")); assertFalse(persisted.contains("7.123456789012")); assertFalse(persisted.contains("SPY"));
+        assertFalse(persisted.contains("100.12345678")); assertFalse(persisted.contains(EXACT_FX)); assertFalse(persisted.contains("SPY"));
         assertFalse(queries.status().toString().contains("synthetic_key"));
         var quotes = FinanceMarketDataQueries.quotes(mock(MarketQuoteMapper.class), store);
         var rates = FinanceMarketDataQueries.rates(mock(ExchangeRateMapper.class), store);
