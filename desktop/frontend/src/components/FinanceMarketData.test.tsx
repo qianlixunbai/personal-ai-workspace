@@ -24,10 +24,12 @@ it('enables personal EOD display, keeps calculations closed and discards late se
     await reply(shown)
     expect(screen.getByText('100.12345678 USD')).toBeTruthy(); expect(screen.getByText(/2026-10-23 \/ America\/New_York/)).toBeTruthy()
     expect(screen.getByText(/报价不进入持仓人民币估值/)).toBeTruthy()
-    const fx = { symbol: 'USD/CNY', price: '', time: '2026-10-23T00:00:00Z', fetchedAt: '2026-10-26T14:00:00Z', exchange: 'FOREX', date: '2026-10-23', timeZone: 'UTC' }
+    const fx = { symbol: 'USD/CNY', price: '', time: '2026-10-20T00:00:00Z', fetchedAt: '2026-10-26T14:00:00Z', exchange: 'FOREX', date: '2026-10-20', timeZone: 'UTC' }
     for (const price of ['7.' + '123456789'.repeat(5), '0.' + '0'.repeat(125) + '1']) {
       click('主动刷新 USD/CNY'); await reply({ ...shown, quote: null, fx: { ...fx, price } })
       expect(screen.getByText(`1 USD = ${price} CNY`)).toBeTruthy()
+      expect(screen.getByText(/2026-10-20 \/ UTC/)).toBeTruthy(); expect(screen.getByText(/2026-10-20T00:00:00Z \/ 2026-10-26T14:00:00Z/)).toBeTruthy()
+      expect(screen.getByText(/成功获取不代表最新行情/)).toBeTruthy()
     }
     for (const price of ['0.' + '0'.repeat(126) + '1', '100000000000000000000', '0', 'NaN']) {
       click('主动刷新 USD/CNY'); await reply({ ...shown, quote: null, fx: { ...fx, price } })

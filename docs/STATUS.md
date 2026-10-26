@@ -1,5 +1,9 @@
 # Personal AI Workspace — Current Status
 
+## Current Market Data M1.2 closing（2026-10-27）
+
+M1.2 在个人非商业显示范围内完成；用户提供的真实 Windows 人工验收报告 AAPL、SPY 和 USD/CNY 成功。USD/CNY 参考日期较早的原因尚未查明，界面已明确提示返回成功不代表最新行情。D2 原生验收仍 PARTIAL，Workspace Production GO 未授予。建议暂停市场数据开发，下一阶段转向 V1 Vision Foundation。证据归属、限制及新开发包详见 [M1.2 收尾](engineering/FINANCE-MARKET-DATA-M12-CLOSING.md)。
+
 ## Current PostgreSQL Desktop development closing（2026-10-22）
 
 **开发源码收尾；final 无参数自动进入 PostgreSQL 已获用户人工确认；同一 final 的完整物理托盘退出/重新启动人工流程仍 PENDING。Production GO 未授予。**

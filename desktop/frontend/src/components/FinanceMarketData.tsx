@@ -41,7 +41,7 @@ export function FinanceMarketData({ bridge, enabled, position }: { bridge: Works
   return <section className="card" aria-label="真实行情与汇率" aria-busy={busy}>
     <div className="card-heading"><h3>免费日终行情 · Massive</h3><span className="shell-badge">{value?.providerValidation === 'RESPONSE_VALIDATED' ? '本次响应已校验' : value?.providerValidation === 'NOT_VALIDATED' ? '本次未取得有效报价' : '本次 Provider · NOT RUN'}</span></div>
     <p>个人非商业、仅本人屏幕显示已开放。先读取配置状态，或配置免费 Basic Key，再主动刷新；报价不进入持仓人民币估值，不持久缓存，不支持离线回看。</p>
-    <p className="hint">美股 / ETF 使用纽约交易日期，Basic 在纽约午夜后提供前一日数据；周末、节假日回看最近 14 天。FX 为 UTC 日参考价。以下服务商数据与原 Finance 合成旧缓存分开显示。</p>
+    <p className="hint">美股 / ETF 使用纽约交易日期，Basic 在纽约午夜后提供前一日数据；周末、节假日回看最近 14 天。FX 参考日期按 UTC 显示。以下服务商数据与原 Finance 合成旧缓存分开显示。</p>
     <div className="finance-toolbar">
       <button className="secondary" disabled={!enabled || busy || !runtime.current} onClick={() => { void run('configure') }}>配置行情服务</button>
       <button className="secondary" disabled={!enabled || busy || !runtime.current} onClick={() => { void run('read') }}>读取配置状态</button>
@@ -57,6 +57,7 @@ export function FinanceMarketData({ bridge, enabled, position }: { bridge: Works
         <div><dt>{v.symbol} · Massive 真实日终参考</dt><dd>{v.symbol === 'USD/CNY' ? `1 USD = ${v.price} CNY` : `${v.price} USD`}</dd></div>
         <div><dt>{v.symbol === 'USD/CNY' ? '参考日期' : '交易日期'} / 时区 / 来源</dt><dd>{v.date} / {v.timeZone} / Massive · {v.exchange} · 未复权日线 close</dd></div>
         <div><dt>日线窗口起点 / 本次获取时间（UTC）</dt><dd>{v.time} / {v.fetchedAt}</dd></div>
+        <div><dt>新鲜度</dt><dd>返回的日线可能较早，成功获取不代表最新行情；请以参考日期为准。</dd></div>
       </dl>)}
       {!value.quote && !value.fx && <p>尚无本次可展示的服务商报价；原 Finance 旧缓存请在持仓详情查看来源和时间。</p>}</>}
     {error && <p className="error" role="alert">{error} 结果未知时请先读取状态，不要重复刷新。</p>}
