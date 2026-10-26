@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## Finance Market Data M1.1（2026-10-26）
+
+小范围改进合成数据/旧缓存标识、行情操作说明、Portfolio 警告汇总和超大金额可读性。**展示与缓存许可尚未核验，真实 Provider 请求和 Twelve Data 缓存展示保持服务端锁定；保存 Key、旧版许可勾选不能解锁。** 独立 Windows 开发包、实际验证与剩余事项见 [M1.1 报告](docs/engineering/FINANCE-MARKET-DATA-M11-REPORT.md)。下方 M1 记录保留历史语境；D2 历史原生验收 PARTIAL、Development-only 和无 Production GO 均不变。
+
 ## Finance Market Data M1（2026-10-26）
 
 已接入 Twelve Data 美股/ETF、USD/CNY 的显式刷新、原生 Key 配置、DPAPI 私有缓存及原 Java 参考估值；默认不联网。需要用户自行提供具有展示/缓存许可的 Key，真实 Provider 验证 **NOT RUN**。独立 Windows Development-only 包与实际聚焦验证见 [M1 工程报告](docs/engineering/FINANCE-MARKET-DATA-M1-REPORT.md)，选型与许可核对见 [行情研究](docs/design/FINANCE-MARKET-DATA-REFERENCE.md)。D2 原生验收历史 **PARTIAL** 保留；未授予 Production GO。

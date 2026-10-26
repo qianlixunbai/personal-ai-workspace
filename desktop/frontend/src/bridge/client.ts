@@ -314,7 +314,7 @@ export class WorkspaceClient {
         : pending.method === 'operations.copyResult' ? isObject(data.result) && exactFields(data.result, ['copied']) && data.result.copied === true
         : isObject(data.result) && exactFields(data.result, ['opened']) && data.result.opened === true
       if (valid) {
-        pending.resolve(data.result); return
+        pending.resolve((pending.method === 'finance.marketData' || pending.method === 'finance.marketRefresh') && isObject(data.result) && data.result.licenseStatus !== 'UNVERIFIED' ? { ...data.result, enabled: false, fx: null, licenseStatus: 'UNVERIFIED', providerValidation: 'NOT_RUN', result: 'LICENSE_UNVERIFIED' } : data.result); return
       }
     } else if (data.ok === false && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'error'])
       && isSafeError(data.error)) {

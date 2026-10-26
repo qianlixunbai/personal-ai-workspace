@@ -1,0 +1,63 @@
+{
+  "result": "PASS",
+  "packages": [
+    {
+      "name": "PersonalAiWorkspace-finance-fnext10-development-20261024",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-phase1-development-20261025",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-ui-visual-redesign-development",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-ux-d1-development",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-visual-analytics-d2-development",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-market-data-m1-development",
+      "payload": "PASS"
+    },
+    {
+      "name": "PersonalAiWorkspace-finance-market-data-m11-development",
+      "payload": "PASS"
+    }
+  ],
+  "sourceCommit": "3eb0e8023065ef8b8f9fa3083593990b8d8f812b",
+  "sourceDirty": true,
+  "sourceFilesMatch": true,
+  "investmentProvenanceMatch": true,
+  "files": [
+    {
+      "path": "runtime/personal-ai-workspace.jar",
+      "sha256": "48c43cdb7dc4ca1e2eb6c528950fc4e904346161d4a3bc31118812499f067a4d"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.exe",
+      "sha256": "754f838371054254705fe27f1ec9eb668db54bb8c0a44122bf0b437007ab5b6f"
+    },
+    {
+      "path": "PersonalAiWorkspace.Desktop.dll",
+      "sha256": "a9acd8792bf220b390e144ac7b39baec8df2a71c51227ce2026ca45b6eb69348"
+    },
+    {
+      "path": "PersonalAiWorkspace.Core.dll",
+      "sha256": "885916e2165ab1d508c3bd84d35111f088008388dec91453a34a45d8197aba7d"
+    },
+    {
+      "path": "Open-Workspace-Finance-Market-Data-M11.cmd",
+      "sha256": "6a090ac9138fc782f507536b9780d6c3ed51d588f0d075aaa75b4f4154a1c3aa"
+    },
+    {
+      "path": "BUILD-INFO.json",
+      "sha256": "3501709a815375a313cda54b5be1d0f83a3ccc715ff412d4721554e8e1541f24"
+    }
+  ]
+}

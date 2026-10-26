@@ -34,8 +34,9 @@ class FinanceMarketDataTest {
                 + "\",\"close\":\"100.12345678\",\"timestamp\":" + time.getEpochSecond() + "}";
     }
     @Test void manualRefreshReusesSourceValuationAndKeepsOfflineStaleCacheQuotaAndOwnership() throws Exception {
-        var time = new Time(); var file = new File(); var store = new FinanceMarketDataStore(time, file);
+        var time = new Time(); var file = new File(); var store = new FinanceMarketDataStore(time, file, true);
         var identity = mock(FinanceAccountQueries.class);
+        when(identity.dataContext()).thenReturn("SYNTHETIC");
         when(identity.query(any())).thenAnswer(i -> ((Function<Long, ?>) i.getArgument(0)).apply(1L));
         var positions = mock(FinanceInvestmentQueries.class);
         when(positions.position(1)).thenReturn(new FinanceInvestmentQueries.Detail("1", "TRANSACTION_DRIVEN", null,
@@ -56,9 +57,17 @@ class FinanceMarketDataTest {
         assertThrows(IllegalArgumentException.class, () -> store.configure(true, false, "synthetic_key", 24));
         queries.configure(true, true, "synthetic_key", 24);
         assertThrows(WorkspaceException.class, () -> queries.refresh("2")); assertEquals("UNSUPPORTED", queries.refresh("3").result()); assertTrue(requests.isEmpty());
+        var unreviewed = new FinanceMarketDataStore(time, file);
+        var blocked = new FinanceMarketDataQueries(identity, positions, unreviewed, provider);
+        assertEquals("LICENSE_UNVERIFIED", blocked.refresh("1").result());
+        assertFalse(blocked.status().enabled()); assertTrue(requests.isEmpty());
+        assertEquals("UNVERIFIED", blocked.status().licenseStatus());
         assertEquals("UPDATED", queries.refresh("1").result()); assertEquals(2, requests.size());
         assertTrue(requests.getFirst().contains("country=United%20States&type=ETF"));
         assertEquals("7.123456789012", queries.status().fx().rate());
+        assertNull(blocked.status().fx()); assertTrue(unreviewed.samples().isEmpty());
+        assertNull(FinanceMarketDataQueries.quotes(mock(MarketQuoteMapper.class), unreviewed).findCachedUsQuote("SPY"));
+        assertNull(FinanceMarketDataQueries.rates(mock(ExchangeRateMapper.class), unreviewed).find("USD", "CNY"));
         assertEquals("CACHED", queries.refresh("1").result()); assertEquals(2, requests.size());
         var quotes = FinanceMarketDataQueries.quotes(mock(MarketQuoteMapper.class), store);
         var rates = FinanceMarketDataQueries.rates(mock(ExchangeRateMapper.class), store);
@@ -77,8 +86,9 @@ class FinanceMarketDataTest {
         time.now = time.now.plusSeconds(3700); offline[0] = true;
         assertEquals("PROVIDER_FAILED", queries.refresh("1").result());
         assertEquals(expected, valuations.calculateAll(List.of(asset), quotes.findCachedUsQuotes(List.of("SPY"))).get(1L).baseCurrencyMarketValue());
+        assertTrue(portfolio.get(1L).referenceValuation().warnings().stream().allMatch(w -> w.positionId() != null));
         assertEquals("STALE", quotes.findCachedUsQuote("SPY").freshness().name()); assertEquals("STALE", queries.status().fx().freshness());
-        var restarted = new FinanceMarketDataStore(time, file);
+        var restarted = new FinanceMarketDataStore(time, file, true);
         assertNotNull(restarted.sample("SPY")); assertEquals(3, restarted.read().requests().size());
         assertFalse(queries.status().toString().contains("synthetic_key"));
         queries.configure(false, false, "", 24); assertEquals("DISABLED", queries.refresh("1").result()); assertEquals(3, requests.size());
@@ -91,12 +101,12 @@ class FinanceMarketDataTest {
             var failure = assertThrows(TwelveDataClient.Failure.class, () -> new TwelveDataClient(time, (p, k) -> reply(body)).fetch("SPY", "ETF", "synthetic_key"));
             assertFalse(failure.toString().contains("synthetic_key"));
         }
-        var file = new File(); var store = new FinanceMarketDataStore(time, file); store.configure(true, true, "synthetic", 24);
+        var file = new File(); var store = new FinanceMarketDataStore(time, file, true); store.configure(true, true, "synthetic", 24);
         for (int i = 0; i < 8; i++) assertEquals("READY", store.reserve());
-        store = new FinanceMarketDataStore(time, file); assertEquals("RATE_LIMITED", store.reserve());
+        store = new FinanceMarketDataStore(time, file, true); assertEquals("RATE_LIMITED", store.reserve());
         store.configure(true, true, "replacement", 24); assertEquals("RATE_LIMITED", store.reserve());
         time.now = time.now.plusSeconds(61); assertEquals("READY", store.reserve());
-        store.throttle(); assertEquals("RATE_LIMITED", new FinanceMarketDataStore(time, file).reserve());
+        store.throttle(); assertEquals("RATE_LIMITED", new FinanceMarketDataStore(time, file, true).reserve());
         time.now = time.now.plusSeconds(61);
         store.put(new FinanceMarketDataStore.Sample("SPY", "10", time.now.toString(), time.now.toString(), "ARCX"));
         store.put(new FinanceMarketDataStore.Sample("SPY", "9", time.now.minusSeconds(1).toString(), time.now.toString(), "ARCX"));

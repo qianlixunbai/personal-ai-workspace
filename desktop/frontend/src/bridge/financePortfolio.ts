@@ -1,13 +1,15 @@
 import { isFinanceDistribution, type FinanceDistribution } from './financeAnalytics'
 import { exactFields, isObject } from './contracts'
+import { financeId } from './finance'
 import type { PositionWarning } from './financeInvestments'
 
+export interface PortfolioWarning extends PositionWarning { positionId?: string | null; symbol?: string | null }
 export interface FinancePortfolio {
   statusDistribution?: FinanceDistribution; coverageDistribution?: FinanceDistribution
   currency: 'CNY'; positionCount: number; openPositionCount: number; closedPositionCount: number
   openTotalCost: string; cumulativeRealizedProfitLoss: string
   referenceValuation: { baseCurrency: 'CNY'; value: string | null; valuedPositionCount: number; totalOpenPositionCount: number
-    freshness: 'FRESH' | 'STALE' | 'PARTIAL' | 'UNAVAILABLE'; warnings: PositionWarning[] }
+    freshness: 'FRESH' | 'STALE' | 'PARTIAL' | 'UNAVAILABLE'; warnings: PortfolioWarning[] }
 }
 const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 2147483647
 const amount = (v: unknown) => typeof v === 'string' && /^-?[0-9]{1,60}\.[0-9]{2}$/.test(v)
@@ -22,6 +24,6 @@ export function isFinancePortfolio(v: unknown): v is FinancePortfolio {
     && r.baseCurrency === 'CNY' && count(r.valuedPositionCount) && r.totalOpenPositionCount === v.openPositionCount && r.valuedPositionCount <= v.openPositionCount
     && (r.valuedPositionCount === 0 ? r.value === null && r.freshness === 'UNAVAILABLE'
       : amount(r.value) && (r.valuedPositionCount < v.openPositionCount ? r.freshness === 'PARTIAL' : r.freshness === 'FRESH' || r.freshness === 'STALE'))
-    && Array.isArray(r.warnings) && r.warnings.every(w => isObject(w) && exactFields(w, ['code', 'component'])
+    && Array.isArray(r.warnings) && r.warnings.every(w => isObject(w) && (exactFields(w, ['code', 'component']) || exactFields(w, ['code', 'component', 'positionId', 'symbol']) && (w.positionId === null || financeId(w.positionId)) && (w.symbol === null || typeof w.symbol === 'string' && w.symbol.length <= 30))
       && ['INVALID_INPUT', 'QUOTE_MISSING', 'QUOTE_STALE', 'FX_MISSING', 'FX_STALE'].includes(w.code as string) && ['VALUATION', 'QUOTE', 'FX'].includes(w.component as string))
 }

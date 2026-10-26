@@ -18,6 +18,7 @@ public record InvestmentPortfolioResponse(
         }
     }
 
-    public record Warning(String code, String component) {
+    public record Warning(String code, String component, String positionId, String symbol) {
+        public Warning(String code, String component) { this(code, component, null, null); }
     }
 }

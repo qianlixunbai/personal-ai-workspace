@@ -4,13 +4,14 @@ import type { FinanceOverview } from '../bridge/finance'
 import type { FinancePositionDetail, FinancePositionPage, FinancePositionQuery, PositionCachedReference } from '../bridge/financeInvestments'
 import { FinanceHoldingsChart } from './FinanceCharts'
 import { FinanceMarketData } from './FinanceMarketData'
+import { FinanceAmount, FinanceDataContext, quoteSource } from './FinanceAmount'
 import { invalidFinanceIdentity, type FinanceIntent } from '../pages/financeNavigation'
 
 const initial: FinancePositionQuery = { status: 'OPEN', accountId: '', instrumentId: '', cursor: '', size: 10 }
 const states = { READY: '当前绑定身份已验证', DISABLED: 'Finance 已关闭或尚未配置。', NOT_BOUND: '尚未确认 Finance 用户，请完成原生身份绑定。', BINDING_INVALID: 'Finance 绑定或数据集已改变，持仓读取已拒绝。', UNAVAILABLE: 'Finance 数据库暂时不可用，请检查连接后重试。' }
 const freshness = { FRESH: '缓存有效', STALE: '缓存已过期', PARTIAL: '输入不完整', UNAVAILABLE: '暂无可用估值' }
 const warnings = { INVALID_INPUT: '数量无效，不能估值。', QUOTE_MISSING: '未提供可用参考行情。', QUOTE_STALE: '参考行情已过期。', FX_MISSING: '缺少换算汇率，CNY 参考值未知。', FX_STALE: '参考汇率已过期。' }
-const amount = (v: string | null, currency = '') => v === null ? '未知 / 未提供' : `${v}${currency ? ` ${currency}` : ''}`
+const amount = (v: string | null, currency = '') => <FinanceAmount value={v} currency={currency} />
 
 export function FinanceInvestments({ bridge, enabled, openSettings, openHistory, intent, invalidateNavigation }: { bridge: WorkspaceClient; enabled: boolean; openSettings: () => void; openHistory?: (id: string, query: FinancePositionQuery) => void; intent?: Extract<FinanceIntent, { target: 'investments' }> | undefined; invalidateNavigation?: () => void }) {
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
@@ -78,6 +79,7 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory,
       <button className="secondary" onClick={openSettings}>Finance 配置与身份绑定</button>
     </section>
     {error && <div className="error" role="alert"><p>{error}</p><div className="finance-toolbar"><button disabled={!enabled || working} onClick={() => { void refresh() }}>重试</button><button disabled={!enabled || working} onClick={() => { void refresh({ ...query, cursor: '' }, null, []) }}>返回持仓首页</button></div></div>}
+    <FinanceDataContext context={overview?.dataContext} />
     <FinanceMarketData bridge={bridge} enabled={enabled} position={detail} updated={() => { void refresh() }} />
     {list && <FinanceHoldingsChart value={list} onSelect={id => { void refresh(query, id) }} />}
     {list && <section className="card" aria-label="持仓列表">
@@ -116,9 +118,9 @@ export function FinanceInvestments({ bridge, enabled, openSettings, openHistory,
 function CachedReference({ value: r }: { value: PositionCachedReference }) {
   return <section aria-label="持仓缓存市场参考估值"><h3>缓存市场参考估值 · {freshness[r.freshness]}</h3><dl className="finance-summary">
     <div><dt>行情单价 / 币种</dt><dd className="finance-amount">{amount(r.quotePrice, r.quoteCurrency ?? '')}</dd></div>
-    <div><dt>行情来源 / 报价时间 / 获取时间（UTC）</dt><dd>{r.quoteProvider ?? '未提供'} / {r.quoteTime ?? '未提供'} / {r.quoteFetchedAt ?? '未提供'}</dd></div>
+    <div><dt>行情来源 / 报价时间 / 获取时间（UTC）</dt><dd>{quoteSource(r.quoteProvider)} / {r.quoteTime ?? '未提供'} / {r.quoteFetchedAt ?? '未提供'}</dd></div>
     <div><dt>参考汇率</dt><dd>{r.fxRate === null ? '未知 / 未提供' : `1 ${r.fxBaseCurrency} = ${r.fxRate} ${r.fxQuoteCurrency}`}</dd></div>
-    <div><dt>汇率来源 / 报价时间 / 获取时间（UTC）</dt><dd>{r.fxProvider ?? '未提供'} / {r.fxRateTime ?? '未提供'} / {r.fxFetchedAt ?? '未提供'}</dd></div>
+    <div><dt>汇率来源 / 报价时间 / 获取时间（UTC）</dt><dd>{quoteSource(r.fxProvider)} / {r.fxRateTime ?? '未提供'} / {r.fxFetchedAt ?? '未提供'}</dd></div>
     <div><dt>CNY 市场参考值</dt><dd className="finance-amount">{amount(r.baseCurrencyValue, r.baseCurrency)}</dd></div>
   </dl>{r.warnings.length > 0 && <p role="status">{r.warnings.map(w => `${warnings[w.code]} [${w.component}]`).join(' ')}</p>}
     <p className="hint">投资账务事实 ≠ 人工价格估值 ≠ 缓存市场参考估值。缓存价格与汇率仅供参考，过期仍明确标识。来源未提供原币参考市值及估值计算时间，不在前端推算。</p>

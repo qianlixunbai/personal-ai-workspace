@@ -5,7 +5,7 @@ import { Port } from '../test/fixtures'
 import { FinanceMarketData } from './FinanceMarketData'
 
 afterEach(cleanup)
-it('requires an explicit action, handles stale offline cache and clears late results on session loss', async () => {
+it('keeps unreviewed licenses locked and suppresses old M1 provider cache across sessions', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   let updates = 0
   const value = { provider: 'TWELVE_DATA', enabled: false, keyConfigured: false, retentionHours: 24, result: 'IDLE', fx: null }
@@ -19,11 +19,13 @@ it('requires an explicit action, handles stale offline cache and clears late res
     await reply({ opened: true }); expect(port.sent.at(-1)).toMatchObject({ method: 'finance.marketData', payload: {} }); await reply(value)
     expect(screen.getByText(/外部请求关闭 · 未配置 Key/)).toBeTruthy()
     click('查看行情状态与缓存汇率'); await reply({ ...value, enabled: true, keyConfigured: true })
-    click('主动刷新 USD/CNY'); expect(port.sent.at(-1)).toMatchObject({ method: 'finance.marketRefresh', payload: { positionId: '' } })
+    const sentBefore = port.sent.length
+    click('主动刷新 USD/CNY'); expect(port.sent).toHaveLength(sentBefore)
+    click('查看行情状态与缓存汇率')
     const stale = { ...value, enabled: true, keyConfigured: true, result: 'PROVIDER_FAILED', fx: { rate: '7.123456789012', time: '2026-10-23T14:00:00Z', fetchedAt: '2026-10-23T14:00:01Z', freshness: 'STALE' } }
-    await reply(stale); expect(screen.getByText('1 USD = 7.123456789012 CNY · 已过期')).toBeTruthy(); expect(updates).toBe(1)
-    click('主动刷新 USD/CNY'); const late = port.sent.length - 1
+    await reply(stale); expect(screen.queryByText(/1 USD =/)).toBeNull(); expect(updates).toBe(0)
+    click('查看行情状态与缓存汇率'); const late = port.sent.length - 1
     await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(late, stale) })
-    expect(screen.queryByText(/1 USD =/)).toBeNull(); expect(updates).toBe(1)
+    expect(screen.queryByText(/1 USD =/)).toBeNull(); expect(updates).toBe(0)
   } finally { view.unmount(); bridge.dispose() }
 })

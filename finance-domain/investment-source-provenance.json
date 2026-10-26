@@ -1,7 +1,7 @@
 {
   "repository": "qianlixunbai/Personal-Finance-OS",
   "commit": "c6c87a0627b746e70a45b1c7896f63defd76a810",
-  "policy": "Unmodified source bytes; explicit read-only wiring and Workspace transport adapter",
+  "policy": "Original frozen source hashes retained. M1.1 locally adds position IDs and symbols to portfolio warning transport; no valuation formula or ledger changes.",
   "files": [
     {
       "source": "backend/src/main/java/com/financeos/common/BusinessException.java",
@@ -91,12 +91,16 @@
     {
       "source": "backend/src/main/java/com/financeos/module/investment/read/service/InvestmentPortfolioQueryService.java",
       "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/service/InvestmentPortfolioQueryService.java",
-      "sha256": "428c356a5698ed275d508a7c38b4f3b20f7a15029509f2a4bccd73f24226a7b4"
+      "sha256": "5a5f0cf225a04aefc4faba31c157215ed09c529be3c31634fdd7af5353882e95",
+      "sourceSha256": "428c356a5698ed275d508a7c38b4f3b20f7a15029509f2a4bccd73f24226a7b4",
+      "adaptation": "M1.1: preserve warning cause and attach owning position ID/symbol for UI grouping"
     },
     {
       "source": "backend/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
       "destination": "finance-domain/src/main/java/com/financeos/module/investment/read/dto/InvestmentPortfolioResponse.java",
-      "sha256": "ac3acd1ab827585073c20e787df5be9dc4de54be09a045961e04fe925935f87d"
+      "sha256": "2162ffbed4408ef8856b85ea1318e182d5d41f22797ec252e327c69de10aad36",
+      "sourceSha256": "ac3acd1ab827585073c20e787df5be9dc4de54be09a045961e04fe925935f87d",
+      "adaptation": "M1.1: preserve warning cause and attach owning position ID/symbol for UI grouping"
     },
     {
       "sha256": "b67a4313ffe4c3316580a47ac3b56537b2fbc808622c286f12e0ee40a7dc5faa",

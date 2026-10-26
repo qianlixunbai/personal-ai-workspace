@@ -71,6 +71,15 @@ final class FinanceIdentityRepository {
         return jdbc.queryForObject("SELECT username FROM public.users WHERE id=?", String.class, userId);
     }
 
+    String dataContext() {
+        Boolean synthetic = jdbc.queryForObject("""
+                SELECT datname ~ '^fnext1_finance_[a-f0-9]{12}$'
+                  AND pg_catalog.shobj_description(oid, 'pg_database') = 'FNEXT1_SYNTHETIC_' || right(datname,12)
+                FROM pg_catalog.pg_database WHERE datname=current_database()
+                """, Boolean.class);
+        return Boolean.TRUE.equals(synthetic) ? "SYNTHETIC" : "UNVERIFIED";
+    }
+
     static String digest(String... parts) {
         try {
             MessageDigest hash = MessageDigest.getInstance("SHA-256");

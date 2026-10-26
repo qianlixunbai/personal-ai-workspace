@@ -6,7 +6,10 @@ namespace PersonalAiWorkspace.Core;
 public sealed record FinancePortfolio(string Currency, int PositionCount, int OpenPositionCount, int ClosedPositionCount,
     string OpenTotalCost, string CumulativeRealizedProfitLoss, FinancePortfolioReference ReferenceValuation, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceDistribution? StatusDistribution = null, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] FinanceDistribution? CoverageDistribution = null);
 public sealed record FinancePortfolioReference(string BaseCurrency, string? Value, int ValuedPositionCount,
-    int TotalOpenPositionCount, string Freshness, FinancePositionWarning[] Warnings);
+    int TotalOpenPositionCount, string Freshness, FinancePortfolioWarning[] Warnings);
+public sealed record FinancePortfolioWarning(string Code, string Component,
+    string? PositionId = null,
+    string? Symbol = null);
 
 public sealed partial class RuntimeClient
 {
@@ -33,7 +36,7 @@ public sealed partial class RuntimeClient
                 || String(Property(r, "coverageDistribution"), "total") != open.ToString(System.Globalization.CultureInfo.InvariantCulture)) throw Invalid();
         }
         return new("CNY", count, open, closed, PortfolioAmount(r, "openTotalCost"), PortfolioAmount(r, "cumulativeRealizedProfitLoss"),
-            new("CNY", value, valued, total, state, PositionWarnings(v, int.MaxValue)),
+            new("CNY", value, valued, total, state, PortfolioWarnings(v)),
             analytics ? Property(r, "statusDistribution").Deserialize<FinanceDistribution>(HistoryJson) : null,
             analytics ? Property(r, "coverageDistribution").Deserialize<FinanceDistribution>(HistoryJson) : null);
     }
@@ -43,5 +46,20 @@ public sealed partial class RuntimeClient
         string value = String(r, key);
         if (!Regex.IsMatch(value, @"\A-?[0-9]{1,60}\.[0-9]{2}\z")) throw Invalid();
         return value;
+    }
+    private static FinancePortfolioWarning[] PortfolioWarnings(JsonElement root) {
+        var values = Property(root, "warnings");
+        if (values.ValueKind != JsonValueKind.Array) throw Invalid();
+        return values.EnumerateArray().Select(w => {
+        bool linked = w.TryGetProperty("positionId", out _);
+        if (linked) MemoryFields(w, "code", "component", "positionId", "symbol");
+        else MemoryFields(w, "code", "component");
+        string code = String(w, "code"), component = String(w, "component");
+        if (code is not ("INVALID_INPUT" or "QUOTE_MISSING" or "QUOTE_STALE" or "FX_MISSING" or "FX_STALE") || component is not ("VALUATION" or "QUOTE" or "FX")) throw Invalid();
+        string? id = linked && Property(w, "positionId").ValueKind != JsonValueKind.Null ? String(w, "positionId") : null;
+        string? symbol = linked && Property(w, "symbol").ValueKind != JsonValueKind.Null ? String(w, "symbol") : null;
+        if (id is not null && !ValidFinanceId(id) || symbol?.Length > 30) throw Invalid();
+        return new FinancePortfolioWarning(code, component, id, symbol);
+    }).ToArray();
     }
 }

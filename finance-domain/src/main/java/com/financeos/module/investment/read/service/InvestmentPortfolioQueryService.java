@@ -66,7 +66,7 @@ public class InvestmentPortfolioQueryService {
             }
             stale |= valuation.valuationFreshness() == ReferenceValuationFreshness.STALE;
             for (ReferenceValuationWarning warning : valuation.warnings()) {
-                warnings.add(new InvestmentPortfolioResponse.Warning(warning.code(), warning.component()));
+                warnings.add(new InvestmentPortfolioResponse.Warning(warning.code(), warning.component(), position.getId().toString(), position.getSymbol()));
             }
         }
         String freshness = valued == 0 ? ReferenceValuationFreshness.UNAVAILABLE.name()

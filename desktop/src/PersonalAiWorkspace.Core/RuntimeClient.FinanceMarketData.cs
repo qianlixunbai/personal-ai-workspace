@@ -5,7 +5,8 @@ using System.Text.RegularExpressions;
 namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceMarketFx(string Rate, string Time, string FetchedAt, string Freshness);
-public sealed record FinanceMarketStatus(string Provider, bool Enabled, bool KeyConfigured, int RetentionHours, string Result, FinanceMarketFx? Fx);
+public sealed record FinanceMarketStatus(string Provider, bool Enabled, bool KeyConfigured, int RetentionHours, string Result, FinanceMarketFx? Fx,
+    string LicenseStatus = "UNVERIFIED", string ProviderValidation = "NOT_RUN", string DataContext = "UNVERIFIED");
 
 public sealed partial class RuntimeClient
 {
@@ -29,13 +30,15 @@ public sealed partial class RuntimeClient
         using var body = await SendAsync(method, "/api/v1/finance/market-data" + path, payload, true, HttpStatusCode.OK, token,
             endpointErrorMap: FinanceError, maximumResponse: 8192, requestTimeout: TimeSpan.FromSeconds(30));
         var r = body.RootElement;
-        MemoryFields(r, "provider", "enabled", "keyConfigured", "retentionHours", "result", "fx");
+        bool reviewedContract = r.TryGetProperty("licenseStatus", out _);
+        if (reviewedContract) MemoryFields(r, "provider", "enabled", "keyConfigured", "retentionHours", "result", "fx", "licenseStatus", "providerValidation", "dataContext");
+        else MemoryFields(r, "provider", "enabled", "keyConfigured", "retentionHours", "result", "fx");
         string result = String(r, "result");
         string baseResult = result.StartsWith("PARTIAL_", StringComparison.Ordinal) ? result[8..] : result;
         if (String(r, "provider") != "TWELVE_DATA" || Property(r, "enabled").ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || Property(r, "keyConfigured").ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || MemoryInteger(r, "retentionHours") is < 1 or > 168
-            || baseResult is not ("IDLE" or "SAVED" or "UPDATED" or "CACHED" or "DISABLED" or "UNSUPPORTED" or "RATE_LIMITED" or "ACCESS_DENIED" or "PROVIDER_FAILED" or "IDENTITY_MISMATCH" or "INVALID_DATA")) throw Invalid();
+            || baseResult is not ("IDLE" or "SAVED" or "UPDATED" or "CACHED" or "DISABLED" or "UNSUPPORTED" or "RATE_LIMITED" or "ACCESS_DENIED" or "PROVIDER_FAILED" or "IDENTITY_MISMATCH" or "INVALID_DATA" or "LICENSE_UNVERIFIED")) throw Invalid();
         var f = Property(r, "fx"); FinanceMarketFx? fx = null;
         if (f.ValueKind != JsonValueKind.Null)
         {
@@ -47,7 +50,11 @@ public sealed partial class RuntimeClient
         }
         bool enabled = Property(r, "enabled").GetBoolean(), configured = Property(r, "keyConfigured").GetBoolean();
         if (enabled && !configured) throw Invalid();
-        return new("TWELVE_DATA", enabled, configured, MemoryInteger(r, "retentionHours"), result, fx);
+        // Old M1 consent has no reviewed rights evidence; suppress its data too.
+        if (!reviewedContract) return new("TWELVE_DATA", false, configured, MemoryInteger(r, "retentionHours"), "LICENSE_UNVERIFIED", null);
+        string license = String(r, "licenseStatus"), validation = String(r, "providerValidation"), context = String(r, "dataContext");
+        if (license != "UNVERIFIED" || validation != "NOT_RUN" || context is not ("SYNTHETIC" or "UNVERIFIED") || enabled || fx is not null) throw Invalid();
+        return new("TWELVE_DATA", false, configured, MemoryInteger(r, "retentionHours"), result, null, license, validation, context);
     }
     private static bool MarketInstant(string s) => s.Length <= 40 && s.EndsWith('Z') && DateTimeOffset.TryParse(s, out _);
 }

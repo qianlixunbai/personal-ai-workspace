@@ -20,13 +20,15 @@ final class FinanceMarketDataQueries {
         this.identity = identity; this.positions = positions; this.store = store; this.provider = provider;
     }
     record Fx(String rate, String time, String fetchedAt, String freshness) { }
-    record Status(String provider, boolean enabled, boolean keyConfigured, int retentionHours, String result, Fx fx) { }
+    record Status(String provider, boolean enabled, boolean keyConfigured, int retentionHours, String result, Fx fx,
+                  String licenseStatus, String providerValidation, String dataContext) { }
     Status status() { identity.query(user -> true); return status("IDLE"); }
     private Status status(String result) {
         try {
             var s = store.read(); var fx = store.sample("USD/CNY");
-            return new Status("TWELVE_DATA", s.enabled(), !s.apiKey().isEmpty(), s.retentionHours(), result,
-                    fx == null ? null : new Fx(fx.price(), fx.time(), fx.fetchedAt(), store.fresh(fx, 60) ? "FRESH" : "STALE"));
+            return new Status("TWELVE_DATA", s.enabled() && store.verifiedLicense, !s.apiKey().isEmpty(), s.retentionHours(), result,
+                    fx == null ? null : new Fx(fx.price(), fx.time(), fx.fetchedAt(), store.fresh(fx, 60) ? "FRESH" : "STALE"),
+                    store.verifiedLicense ? "TEST_FIXTURE" : "UNVERIFIED", "NOT_RUN", identity.dataContext());
         } catch (IOException invalid) { throw unavailable(); }
     }
     synchronized Status configure(boolean enabled, boolean licensed, String key, int hours) {
@@ -52,6 +54,7 @@ final class FinanceMarketDataQueries {
         try {
             var s = store.read();
             if (!s.enabled()) return status("DISABLED");
+            if (!store.verifiedLicense) return status("LICENSE_UNVERIFIED");
             String result = fetch(symbol, type);
             // FX shares the same quota; preserve successful quote when FX fails.
             if (!positionId.isEmpty() && Set.of("UPDATED", "CACHED").contains(result)) {
@@ -78,15 +81,18 @@ final class FinanceMarketDataQueries {
     static MarketQuoteQueryService quotes(com.financeos.module.asset.marketdata.mapper.MarketQuoteMapper mapper, FinanceMarketDataStore store) {
         return new MarketQuoteQueryService(mapper, new com.financeos.module.asset.marketdata.config.MarketDataProperties(), store.clock) {
             @Override public Map<String, MarketQuoteSnapshotResponse> findCachedUsQuotes(Collection<String> symbols) {
-                var result = new HashMap<>(super.findCachedUsQuotes(symbols));
+                var result = new HashMap<String, MarketQuoteSnapshotResponse>();
+                if ("SYNTHETIC".equals(store.dataContext.get())) {
+                    super.findCachedUsQuotes(symbols).forEach((symbol, q) -> {
+                        if (!isTwelveData(q.provider())) result.put(symbol, new MarketQuoteSnapshotResponse(q.symbol(), q.market(), q.currency(),
+                                q.price(), q.quoteTime(), q.fetchedAt(), "SYNTHETIC_LEGACY", q.freshness()));
+                    });
+                }
                 var normalized = symbols.stream().map(this::normalizeSymbol).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
                 if (normalized.isEmpty()) return result;
                 try { for (var sample : store.samples()) if (normalized.contains(sample.symbol())) result.put(sample.symbol(), snapshot(sample)); }
                 catch (IOException invalid) { throw unavailable(); }
                 return result;
-            }
-            private FinanceMarketDataStore.Sample cached(String symbol) {
-                try { return store.sample(symbol); } catch (IOException invalid) { throw unavailable(); }
             }
             private MarketQuoteSnapshotResponse snapshot(FinanceMarketDataStore.Sample s) {
                 return new MarketQuoteSnapshotResponse(s.symbol(), "US", "USD", new BigDecimal(s.price()), Instant.parse(s.time()),
@@ -94,7 +100,7 @@ final class FinanceMarketDataQueries {
             }
             @Override public MarketQuoteSnapshotResponse findCachedUsQuote(String symbol) {
                 String normalized = normalizeSymbol(symbol); if (normalized == null) return null;
-                var sample = cached(normalized); return sample == null ? super.findCachedUsQuote(symbol) : snapshot(sample);
+                return findCachedUsQuotes(List.of(normalized)).get(normalized);
             }
             @Override public MarketQuoteFreshness freshnessOf(MarketQuote q) {
                 if (q == null || q.getFetchedAt() == null) return MarketQuoteFreshness.NEVER_FETCHED;
@@ -116,10 +122,15 @@ final class FinanceMarketDataQueries {
                         }
                     } catch (IOException invalid) { throw unavailable(); }
                 }
-                return super.find(base, quote);
+                var legacy = super.find(base, quote);
+                if (legacy == null || !"SYNTHETIC".equals(store.dataContext.get()) || isTwelveData(legacy.getProvider())) return null;
+                legacy.setProvider("SYNTHETIC_LEGACY"); return legacy;
             }
             @Override public List<ExchangeRate> findAll(List<String> bases, String quote) {
-                var result = new ArrayList<>(super.findAll(bases, quote));
+                var result = new ArrayList<ExchangeRate>();
+                if ("SYNTHETIC".equals(store.dataContext.get())) for (var rate : super.findAll(bases, quote)) {
+                    if (!isTwelveData(rate.getProvider())) { rate.setProvider("SYNTHETIC_LEGACY"); result.add(rate); }
+                }
                 if (bases.contains("USD") && "CNY".equals(normalize(quote))) {
                     var rate = find("USD", "CNY");
                     if (rate != null) { result.removeIf(r -> "USD".equals(r.getBaseCurrency())); result.add(rate); }
@@ -132,5 +143,8 @@ final class FinanceMarketDataQueries {
                         || !store.clock.instant().isBefore(r.getRateTime().plusSeconds(3600)) ? ExchangeRateFreshness.STALE : super.freshnessOf(r);
             }
         };
+    }
+    private static boolean isTwelveData(String provider) {
+        return provider != null && provider.toUpperCase(Locale.ROOT).replace("_", "").replace(" ", "").contains("TWELVEDATA");
     }
 }

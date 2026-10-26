@@ -132,7 +132,7 @@ it('keeps source portfolio amounts and coverage exact, clears snapshots, and ret
   const portfolio = { currency: 'CNY', positionCount: 6, openPositionCount: 5, closedPositionCount: 1,
     openTotalCost: '9007199254741011.42', cumulativeRealizedProfitLoss: '-2.00',
     referenceValuation: { baseCurrency: 'CNY', value: '6305039478318695.21', valuedPositionCount: 2, totalOpenPositionCount: 5,
-      freshness: 'PARTIAL', warnings: [{ code: 'QUOTE_STALE', component: 'QUOTE' }, { code: 'FX_MISSING', component: 'FX' }] } }
+      freshness: 'PARTIAL', warnings: [{ code: 'QUOTE_STALE', component: 'QUOTE', positionId: '11', symbol: 'SPY' }, { code: 'QUOTE_STALE', component: 'QUOTE', positionId: '13', symbol: 'QQQ' }, { code: 'FX_MISSING', component: 'FX', positionId: '13', symbol: 'QQQ' }] } }
   const reply = async (value: unknown) => { await act(async () => { port.reply(port.sent.length - 1, value) }) }
   const view = render(<FinancePage bridge={bridge} enabled openSettings={() => {}} />)
   try {
@@ -143,7 +143,9 @@ it('keeps source portfolio amounts and coverage exact, clears snapshots, and ret
     expect(screen.getByText('9007199254741011.42 CNY')).toBeTruthy()
     expect(screen.getByText('6305039478318695.21 CNY')).toBeTruthy()
     expect(screen.getByText('2 / 5')).toBeTruthy(); expect(screen.getByText(/不能作为完整组合总市值/)).toBeTruthy()
-    expect(screen.getByText(/QUOTE_STALE \/ QUOTE/)).toBeTruthy()
+    expect(screen.getByText('查看 QUOTE_STALE/QUOTE 完整详情')).toBeTruthy()
+    expect(screen.getByText(/参考行情已过期，估值包含过期信息。 · 2 项持仓/)).toBeTruthy()
+    expect(screen.getByText('9,007,199,254,741,011.42 CNY')).toBeTruthy()
     const position = { positionId: '11', positionMode: 'TRANSACTION_DRIVEN', account: { id: '6', displayName: 'Synthetic brokerage', type: 'BROKERAGE', status: 'ACTIVE' }, instrument: { id: '11', name: 'Synthetic position', symbol: 'SYN', market: 'US', assetClass: 'STOCK', quoteCurrency: 'USD', status: 'ACTIVE' }, quantity: '9007199254740993.12345678', averageCost: '1.00', totalCost: '9007199254740993.12', cumulativeRealizedProfitLoss: '1.00', status: 'OPEN', referenceValuation: { baseCurrency: 'CNY', value: null, freshness: 'UNAVAILABLE', warnings: [] } }
     const positions = { records: [position], nextCursor: null, hasMore: false, size: 10 }
     const detail = { ...position, manualReference: { currentPrice: null, marketValue: null }, referenceValuation: { accountingTruth: false, quotePrice: null, quoteCurrency: null, quoteTime: null, quoteFetchedAt: null, quoteProvider: null, fxRate: null, fxBaseCurrency: null, fxQuoteCurrency: null, fxRateTime: null, fxFetchedAt: null, fxProvider: null, baseCurrency: 'CNY', baseCurrencyValue: null, freshness: 'UNAVAILABLE', warnings: [] } }

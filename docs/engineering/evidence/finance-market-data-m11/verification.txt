@@ -1,0 +1,51 @@
+2026-10-26 Asia/Shanghai. M1.1 Development-only. No real Provider calls; license UNVERIFIED, Provider NOT_RUN.
+
+ACTUALLY EXECUTED
+PASS .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest,FinanceAccountQueriesTest -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m11-java.log. Existing classes extended; no new test class.
+  Deterministic file/Transport/Mapper fixtures; real valuation and portfolio services.
+  Old enabled/licensed intent cannot authorize; provider caches cannot return or participate in valuations without reviewed rights.
+  Existing parser, exact decimal, cross-market, stale/offline and quota evidence retained.
+PASS npm test -- src/components/FinanceMarketData.test.tsx src/pages/FinancePage.test.tsx
+  .verification/finance-m11-react.log.
+  License lock, legacy contract downgrade, late session results, original finance/annual flows, grouped warnings and exact formatted/original amounts.
+  Initial null-valuation copy regression failed; original unknown semantics restored, then focused command passed.
+PASS dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.MarketData|FullyQualifiedName~RuntimeClientTests.PortfolioKeeps|FullyQualifiedName~RuntimeClientTests.AnnualRead|FullyQualifiedName~WorkspaceBridgeTests.PayloadMustBeExactlyEmpty
+  .verification/finance-m11-desktop.log.
+PASS final related C# rerun after warning parser contract adjustment:
+  same command with filter FullyQualifiedName~RuntimeClientTests.MarketData|FullyQualifiedName~RuntimeClientTests.PortfolioKeeps
+  .verification/finance-m11-desktop-final.log.
+PASS npm run build; .verification/finance-m11-build.log (default >500 kB main chunk warning retained).
+PASS Maven -DskipTests package; actual JAR identity audit; .verification/finance-m11-package-java.log.
+PASS Profile Debug win-x64 publish with original trusted manifest/pins, FrontendSkipBuild=true.
+  .verification/finance-m11-publish.log; .verification/finance-m11-package.ps1 (local packaging script, no historical output overwrite).
+PASS M1.1 launcher -CheckOnly; actual CMD-equivalent launcher, final WPF/WebView2 + Java + original bound synthetic PostgreSQL.
+  Database marker identifies Synthetic Finance; native config cannot grant rights; Provider NOT_RUN and lock visible.
+  Actual Portfolio 2/6 partial coverage preserved; QUOTE_STALE 3 and QUOTE_MISSING 3 grouped by linked position IDs.
+  Full QUOTE_STALE detail expanded, linked position #11 opened via original identity-checked query.
+  Actual old quote and FX labelled SYNTHETIC_LEGACY; 8-place quantity and exact large CNY amounts grouped, originals expandable.
+  Normal tray exit, final package reopen, final normal exit with 18765 released.
+  native-result.json; native-portfolio.png; native-warnings.png.
+PASS actual Native HTTP/DPAPI canary; .verification/finance-m11-http-dpapi.ps1.
+  Original M1 enabled/licensed=true intent does not authorize requests or display.
+  Actual DPAPI CurrentUser and atomic overwrite, blank-key preservation, no response credential, actual read-only SQL.
+  Only newly created unchanged-hash canary file removed; original no-Key state restored.
+  http-dpapi-result.json. Provider NOT_RUN; these are local authenticated requests only.
+PASS package source/payload hashes and investment provenance; package-hashes.json.
+PASS six historical package payload manifests: F-next-10, Phase1, VisualRedesign, D1, D2, M1.
+PASS frozen Finance OS still c6c87a0627b746e70a45b1c7896f63defd76a810, clean.
+PASS git diff --check.
+
+NOT EXECUTED
+Real provider, account entitlement approval, paid authorization, real financial-account data, external market HTTP.
+Java/Desktop/Frontend full suites, full browser/IME/window/zoom/stress matrices, whole-machine reboot.
+D2 historical native matrix completion. Its PARTIAL state remains unchanged. No Production GO.
+
+Sources checked with local files and built-in web search; no Firecrawl.
+Basic non-display and Grow display wording are plan descriptions, not account-specific authorization evidence.
+No universal cache duration confirmed. No self-reported plan, key, or checkbox is accepted as an actual license.
+Quote symbol/MIC/currency/type/close/timestamp and USD/CNY rate/timestamp have deterministic parser evidence only.
+Official FX documentation inspected; no claim of actual schema/network/entitlement smoke.
+
+Binary identity: baseline 3eb0e8023065ef8b8f9fa3083593990b8d8f812b + sourceDirty=true with exact input/payload hashes.
+The final source commit is separate; no clean-rebuild-at-final-SHA claim.

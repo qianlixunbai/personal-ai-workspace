@@ -11,7 +11,7 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class RuntimeClientTests
 {
     [Fact]
-    public async Task MarketDataUsesFixedNativeRoutesPreservesExactFxAndRejectsSecretBearingResponses()
+    public async Task MarketDataRequiresReviewedLicenseAndRejectsSecretBearingResponses()
     {
         string valid = """{"provider":"TWELVE_DATA","enabled":true,"keyConfigured":true,"retentionHours":24,"result":"UPDATED","fx":{"rate":"7.123456789012","time":"2026-10-26T14:00:00Z","fetchedAt":"2026-10-26T14:00:01Z","freshness":"FRESH"}}""";
         string response = valid;
@@ -25,8 +25,11 @@ public sealed class RuntimeClientTests
             }
             return Response(HttpStatusCode.OK, response);
         }), () => Token);
-        Assert.Equal("7.123456789012", (await client.RefreshFinanceMarketDataAsync("", CancellationToken.None)).Fx!.Rate);
-        await client.ConfigureFinanceMarketDataAsync(true, true, "synthetic_key", 24, CancellationToken.None);
+        var legacy = await client.RefreshFinanceMarketDataAsync("", CancellationToken.None);
+        Assert.False(legacy.Enabled); Assert.Null(legacy.Fx); Assert.Equal("LICENSE_UNVERIFIED", legacy.Result);
+        response = """{"provider":"TWELVE_DATA","enabled":false,"keyConfigured":true,"retentionHours":24,"result":"SAVED","fx":null,"licenseStatus":"UNVERIFIED","providerValidation":"NOT_RUN","dataContext":"SYNTHETIC"}""";
+        var saved = await client.ConfigureFinanceMarketDataAsync(false, false, "synthetic_key", 24, CancellationToken.None);
+        Assert.False(saved.Enabled); Assert.Equal("UNVERIFIED", saved.LicenseStatus);
         Assert.Equal(new[] { "POST /api/v1/finance/market-data/refresh", "POST /api/v1/finance/market-data/configuration" }, calls);
         foreach (string bad in new[] { valid.Replace("\"provider\":", "\"apiKey\":\"synthetic_key\",\"provider\":"), valid.Replace("\"7.123456789012\"", "7.123456789012") }) {
             response = bad;

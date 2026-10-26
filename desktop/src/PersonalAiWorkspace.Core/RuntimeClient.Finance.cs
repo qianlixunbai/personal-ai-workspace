@@ -7,7 +7,7 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed record FinanceAccount(string Id, string Name, string Type, string Currency, string Balance, string Status);
 public sealed record FinanceBalance(string Currency, string Balance);
-public sealed record FinanceOverview(string State, FinanceAccount? Account, FinanceBalance? CnyBalance, string? Username, string? AccountCount);
+public sealed record FinanceOverview(string State, FinanceAccount? Account, FinanceBalance? CnyBalance, string? Username, string? AccountCount, string DataContext = "UNVERIFIED");
 public sealed record FinanceAccountPage(FinanceAccount[] Items, int Page, int Size, string Total, string Status, string Sort);
 public sealed record FinanceBudgetAvailability(string State);
 
@@ -26,7 +26,10 @@ public sealed partial class RuntimeClient
     {
         using var body = await FinanceJson("/overview", token);
         var root = body.RootElement;
-        MemoryFields(root, "state", "account", "cnyBalance", "username", "accountCount");
+        string dataContext = root.TryGetProperty("dataContext", out _) ? String(root, "dataContext") : "UNVERIFIED";
+        if (root.TryGetProperty("dataContext", out _)) MemoryFields(root, "state", "account", "cnyBalance", "username", "accountCount", "dataContext");
+        else MemoryFields(root, "state", "account", "cnyBalance", "username", "accountCount");
+        if (dataContext is not ("SYNTHETIC" or "UNVERIFIED")) throw Invalid();
         string state = String(root, "state");
         var account = Property(root, "account"); var total = Property(root, "cnyBalance");
         if (state != "READY")
@@ -41,7 +44,7 @@ public sealed partial class RuntimeClient
         if (String(total, "currency") != "CNY" || username.Length is < 1 or > 256) throw Invalid();
         var parsed = account.ValueKind == JsonValueKind.Null ? null : ParseFinanceAccount(account);
         if (parsed is not null && parsed.Currency != "CNY") throw Invalid();
-        return new("READY", parsed, new("CNY", FinanceAmount(total)), username, FinanceCount(root, "accountCount"));
+        return new("READY", parsed, new("CNY", FinanceAmount(total)), username, FinanceCount(root, "accountCount"), dataContext);
     }
 
     public async Task<FinanceAccountPage> ListFinanceAccountsAsync(int page, int size, string status, string sort, CancellationToken token)

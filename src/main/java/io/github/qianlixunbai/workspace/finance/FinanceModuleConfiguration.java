@@ -38,7 +38,9 @@ public class FinanceModuleConfiguration {
         }
 
         @Bean
-        FinanceMarketDataStore financeMarketDataStore() { return new FinanceMarketDataStore(java.time.Clock.systemUTC()); }
+        FinanceMarketDataStore financeMarketDataStore(FinanceIdentityRepository identities) {
+            return new FinanceMarketDataStore(java.time.Clock.systemUTC(), identities::dataContext);
+        }
 
         @Bean
         FinanceMarketDataQueries financeMarketDataQueries(FinanceAccountQueries identity, FinanceInvestmentQueries positions, FinanceMarketDataStore store) {

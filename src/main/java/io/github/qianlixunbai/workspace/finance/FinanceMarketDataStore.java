@@ -22,15 +22,23 @@ final class FinanceMarketDataStore {
         @Override public String toString() { return "MarketData[private]"; }
     }
     private final FilePort file;
+    // No production license evidence has been reviewed. UI consent and a saved key cannot grant data rights.
+    final boolean verifiedLicense;
+    final java.util.function.Supplier<String> dataContext;
     final Clock clock;
-    FinanceMarketDataStore(Clock clock) {
+    FinanceMarketDataStore(Clock clock, java.util.function.Supplier<String> dataContext) {
         this(clock, new FilePort() {
             private final TrustedMarketDataFile file = new TrustedMarketDataFile();
             public byte[] read() throws IOException { return file.read(); }
             public void write(byte[] bytes) throws IOException { file.write(bytes); }
-        });
+        }, false, dataContext);
     }
-    FinanceMarketDataStore(Clock clock, FilePort file) { this.clock = clock; this.file = file; }
+    FinanceMarketDataStore(Clock clock, FilePort file) { this(clock, file, false); }
+    // Package-private deterministic fixture seam; production wiring never supplies a license grant.
+    FinanceMarketDataStore(Clock clock, FilePort file, boolean verifiedFixture) { this(clock, file, verifiedFixture, () -> "SYNTHETIC"); }
+    private FinanceMarketDataStore(Clock clock, FilePort file, boolean verifiedLicense, java.util.function.Supplier<String> dataContext) {
+        this.clock = clock; this.file = file; this.verifiedLicense = verifiedLicense; this.dataContext = dataContext;
+    }
     synchronized State read() throws IOException {
         byte[] bytes = file.read();
         if (bytes == null) return new State(1, false, false, "", 24, List.of(), List.of(), Instant.EPOCH.toString());
@@ -69,11 +77,13 @@ final class FinanceMarketDataStore {
         return samples().stream().filter(v -> v.symbol.equals(symbol)).findFirst().orElse(null);
     }
     synchronized List<Sample> samples() throws IOException {
+        if (!verifiedLicense) return List.of(); // Also suppress existing M1 provider caches and derived valuations.
         State s = read(); var kept = retained(s, s.retentionHours);
         if (kept.size() != s.samples.size()) write(new State(1, s.enabled, s.licensed, s.apiKey, s.retentionHours, kept, s.requests, s.blockedUntil));
         return kept;
     }
     synchronized void put(Sample sample) throws IOException {
+        if (!verifiedLicense) throw new IOException("LICENSE_UNVERIFIED");
         State s = read(); var samples = new ArrayList<>(retained(s, s.retentionHours));
         var old = samples.stream().filter(v -> v.symbol.equals(sample.symbol)).findFirst().orElse(null);
         if (old != null && Instant.parse(old.time).isAfter(Instant.parse(sample.time))) return;
@@ -85,6 +95,7 @@ final class FinanceMarketDataStore {
     synchronized String reserve() throws IOException {
         State s = read(); Instant now = clock.instant();
         if (!s.enabled || !s.licensed || s.apiKey.isEmpty()) return "DISABLED";
+        if (!verifiedLicense) return "LICENSE_UNVERIFIED";
         var requests = s.requests.stream().filter(t -> Instant.parse(t).isAfter(now.minus(Duration.ofDays(1)))).toList();
         if (now.isBefore(Instant.parse(s.blockedUntil)) || requests.size() >= 800
                 || requests.stream().filter(t -> Instant.parse(t).isAfter(now.minusSeconds(60))).count() >= 8) return "RATE_LIMITED";

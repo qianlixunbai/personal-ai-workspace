@@ -43,9 +43,14 @@ public final class FinanceAccountQueries {
         @Override public String toString() { return "FinanceAccount[private]"; }
     }
 
-    public record Overview(String state, AccountView account, CnyBalance cnyBalance, String username, String accountCount) {
+    public record Overview(String state, AccountView account, CnyBalance cnyBalance, String username, String accountCount, String dataContext) {
+        public Overview(String state, AccountView account, CnyBalance cnyBalance, String username, String accountCount) {
+            this(state, account, cnyBalance, username, accountCount, "UNVERIFIED");
+        }
         @Override public String toString() { return "FinanceOverview[private]"; }
     }
+
+    String dataContext() { return query(user -> identities.dataContext()); }
 
     public Overview overview() {
         return query(userId -> {
@@ -56,7 +61,7 @@ public final class FinanceAccountQueries {
             return new Overview("READY", account == null ? null : new AccountView(account.getId().toString(), account.getName(),
                     account.getType(), account.getCurrency(), account.getBalance().toPlainString(), account.getStatus()),
                     new CnyBalance("CNY", accounts.sumBalanceByUser(userId).toPlainString()),
-                    identities.username(userId), Long.toString(listing.count(userId, "ALL")));
+                    identities.username(userId), Long.toString(listing.count(userId, "ALL")), identities.dataContext());
         });
     }
 

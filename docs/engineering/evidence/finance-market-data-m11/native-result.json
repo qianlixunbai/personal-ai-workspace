@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "provider": "NOT_RUN",
+  "license": "UNVERIFIED",
+  "checks": [
+    "actual final packaged Native Gate + WPF/WebView2 + real read-only PostgreSQL",
+    "database marker identifies Synthetic Finance",
+    "default license lock and explicit NOT_RUN visible",
+    "grouped QUOTE_STALE 3 and QUOTE_MISSING 3 with actual position IDs",
+    "full warning details expand and open bound position #11",
+    "old quote and FX labelled SYNTHETIC_LEGACY",
+    "large values grouped without Number conversion; exact originals retained",
+    "native settings has no self declaration unlock",
+    "server rejects enabled/licensed self declaration; DPAPI canary cleaned"
+  ]
+}

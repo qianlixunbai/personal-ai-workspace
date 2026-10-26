@@ -6,7 +6,7 @@ export function isFinanceBudgetAvailability(value: unknown): value is FinanceBud
 }
 
 export interface FinanceAccount { id: string; name: string; type: string; currency: string; balance: string; status: 'ACTIVE' | 'INACTIVE' }
-export interface FinanceOverview { state: 'READY' | 'DISABLED' | 'NOT_BOUND' | 'BINDING_INVALID' | 'UNAVAILABLE'; account: FinanceAccount | null; cnyBalance: { currency: 'CNY'; balance: string } | null; username: string | null; accountCount: string | null }
+export interface FinanceOverview { dataContext?: 'SYNTHETIC' | 'UNVERIFIED'; state: 'READY' | 'DISABLED' | 'NOT_BOUND' | 'BINDING_INVALID' | 'UNAVAILABLE'; account: FinanceAccount | null; cnyBalance: { currency: 'CNY'; balance: string } | null; username: string | null; accountCount: string | null }
 export interface FinanceQuery { page: number; size: number; status: 'ALL' | 'ACTIVE' | 'INACTIVE'; sort: 'ID_ASC' | 'ID_DESC' | 'NAME_ASC' }
 export interface FinanceAccountPage extends FinanceQuery { items: FinanceAccount[]; total: string }
 const amount = (value: unknown): value is string => typeof value === 'string' && /^-?[0-9]{1,30}(?:\.[0-9]{1,8})?$/.test(value)
@@ -30,7 +30,7 @@ export function isFinanceAccountPage(value: unknown): value is FinanceAccountPag
     && new Set(value.items.map(item => item.id)).size === value.items.length
 }
 export function isFinanceOverview(value: unknown): value is FinanceOverview {
-  if (!object(value) || !fields(value, ['state', 'account', 'cnyBalance', 'username', 'accountCount'])) return false
+  if (!object(value) || !(fields(value, ['state', 'account', 'cnyBalance', 'username', 'accountCount']) || fields(value, ['state', 'account', 'cnyBalance', 'username', 'accountCount', 'dataContext']) && ['SYNTHETIC', 'UNVERIFIED'].includes(value.dataContext as string))) return false
   if (value.state !== 'READY') return ['DISABLED', 'NOT_BOUND', 'BINDING_INVALID', 'UNAVAILABLE'].includes(value.state as string)
     && value.account === null && value.cnyBalance === null && value.username === null && value.accountCount === null
   const total = value.cnyBalance
