@@ -2,6 +2,8 @@
 
 ## Finance Market Data M1.2（2026-10-26）
 
+2026-10-27：补充 INVALID_DATA 最小修复——价格无损去尾随零后按原精度边界校验，新增严格白名单的阶段/原因诊断；不放宽身份、日期或许可守卫。独立修复启动器与实际聚焦证据见 [INVALID_DATA 报告](docs/engineering/FINANCE-MARKET-DATA-M12-INVALID-DATA-REPORT.md)。用户已报告旧包 AAPL 真实成功；本轮未使用真实 Key，修复效果仍待 SPY / USD/CNY 人工复验。
+
 Massive Basic 免费日终行情接入：本人非商业屏幕显示开放，支持 AAPL / SPY 固定入口、US/USD 股票和 ETF 持仓逐项刷新及 USD/CNY 独立刷新。报价显示来源、日期、时区和获取时间，不进入持久行情缓存或持仓派生估值。Key 仅在原生窗口经 DPAPI 保存；实际免费账号及真实接口仍 **LIVE PROVIDER NOT RUN**。选型、接口与分用途权限依据见 [M1.2 调研](docs/design/FINANCE-MARKET-DATA-M12-REFERENCE.md)，独立启动器与实际验证见 [M1.2 交付报告](docs/engineering/FINANCE-MARKET-DATA-M12-REPORT.md)。D2 历史 PARTIAL、Development-only 和无 Production GO 均不变。
 
 ## Finance Market Data M1.1（2026-10-26）

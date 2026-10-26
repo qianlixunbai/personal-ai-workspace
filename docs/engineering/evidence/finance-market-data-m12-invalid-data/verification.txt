@@ -1,0 +1,39 @@
+2026-10-26 / 2026-10-27 Asia/Shanghai. M1.2 INVALID_DATA correction.
+Baseline 1a70ecf792f097184e116d22c8d090434fe68684; implementation e236c50dd4c2fced6df1b6642dab55c07789844e.
+LIVE PROVIDER NOT RUN. User reported earlier AAPL live success; that is historical user evidence only.
+No real Massive key read/used. No market/account API requests. No Firecrawl or subagents.
+
+ACTUALLY EXECUTED
+PASS proxy git fetch --prune origin.
+Initial deterministic reproduction FAILED as expected on old production code:
+  .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest#equivalentJsonPriceRepresentationsDoNotLosePrecision -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m12-invalid-data-probe.log
+  Exception INVALID_DATA for mathematically equivalent synthetic JSON price with trailing zeros.
+PASS after correction:
+  .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+  JAVA_HOME=D:\MC\JAVA\JAVA21; .verification/finance-m12-invalid-data-java.log
+  Existing important ownership/rights/legacy valuation/quota tests reused; one representation regression added.
+PASS frontend, desktop/frontend:
+  npm test -- src/components/FinanceMarketData.test.tsx
+  .verification/finance-m12-invalid-data-react.log
+PASS Desktop:
+  dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.MarketData
+  .verification/finance-m12-invalid-data-desktop.log
+PASS production build, not tests:
+  npm run build; .verification/finance-m12-invalid-data-build.log
+  .\mvnw.cmd -B -ntp -DskipTests package; actual runtime JAR audit included
+  .verification/finance-m12-invalid-data-package-java.log
+  .verification/finance-m12-invalid-data-package.ps1 -> independent Profile Debug win-x64 publish
+  .verification/finance-m12-invalid-data-publish.log
+PASS Open-Workspace-Finance-Market-Data-M12-Fix.ps1 -CheckOnly
+  .verification/finance-m12-invalid-data-checkonly.log
+PASS new package source=e236c50..., sourceDirty=false, source file hashes match.
+PASS M1/M11/M12/new fix payload manifests; package-hashes.json.
+PASS frozen Finance OS c6c87a0627b746e70a45b1c7896f63defd76a810 clean; finance-domain unchanged.
+PASS git diff --check and staged diff checks.
+
+NOT EXECUTED
+Live stock/ETF/FX provider validation, actual Key use, native UI refresh, actual account/market response collection.
+Full Java/Desktop/Frontend suites, full browser/IME/stress/native matrices, D2 historical completion, Windows reboot.
+No production readiness claim. D2 remains PARTIAL. No license/ledger/Receipt/migration/key-storage changes.
+No claim that the original screenshot's exact production root cause is confirmed; next enum diagnostic identifies the branch.

@@ -1,0 +1,22 @@
+[
+  {
+    "package": "PersonalAiWorkspace-finance-market-data-m1-development",
+    "payload": "PASS",
+    "manifestSha256": "5d16a7086426449bdf4b0b28d314749f5c60b55f1e545218a08085c5245a7e6a"
+  },
+  {
+    "package": "PersonalAiWorkspace-finance-market-data-m11-development",
+    "payload": "PASS",
+    "manifestSha256": "3501709a815375a313cda54b5be1d0f83a3ccc715ff412d4721554e8e1541f24"
+  },
+  {
+    "package": "PersonalAiWorkspace-finance-market-data-m12-development",
+    "payload": "PASS",
+    "manifestSha256": "f6167d3360b76c538d474e88f3f7a685e3e2aab075093716c64d53a9cbebc45f"
+  },
+  {
+    "package": "PersonalAiWorkspace-finance-market-data-m12-fix-development",
+    "payload": "PASS",
+    "manifestSha256": "196d97bad1bad44821caa91d4276130205c345da13fd6c078c4c02bce98c2f8c"
+  }
+]
