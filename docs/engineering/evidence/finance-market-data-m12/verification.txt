@@ -1,0 +1,51 @@
+2026-10-26 Asia/Shanghai. M1.2 Development-only. LIVE PROVIDER NOT RUN.
+Implementation commit: 466544405bef589c86f4008994312f5124e452c0. Package sourceDirty=false.
+
+ACTUALLY EXECUTED - PASS
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 fetch --prune origin
+Java with JAVA_HOME=D:\MC\JAVA\JAVA21:
+  .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest,FinanceAccountQueriesTest -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m12-java.log
+  After adding the distinct synthetic legacy valuation invariant, reran only FinanceMarketDataTest.
+  .verification/finance-m12-java-final.log
+Frontend in desktop/frontend:
+  npm test -- src/components/FinanceMarketData.test.tsx src/pages/FinancePage.test.tsx
+  .verification/finance-m12-react.log
+  npm run build; .verification/finance-m12-build.log
+Desktop:
+  dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.MarketData|FullyQualifiedName~RuntimeClientTests.PortfolioKeeps|FullyQualifiedName~WorkspaceBridgeTests.PayloadMustBeExactlyEmpty
+  .verification/finance-m12-desktop.log
+  After adding referenceSymbol rejection payloads, reran only WorkspaceBridgeTests.PayloadMustBeExactlyEmpty.
+  .verification/finance-m12-bridge-final.log
+Build, not tests:
+  .\mvnw.cmd -B -ntp -DskipTests clean package
+  pwsh -NoProfile -File scripts/package-windows.ps1 -AuditRuntimeJar target/personal-ai-workspace-0.1.0.jar
+  .verification/finance-m12-package-java.log
+  .verification/finance-m12-package.ps1: existing trusted Profile Debug win-x64 publish and independent launcher.
+  .verification/finance-m12-publish-final.log
+  Open-Workspace-Finance-Market-Data-M12.ps1 -CheckOnly; then actual launch.
+Actual Windows UI:
+  Native Gate + WPF/WebView2 + Java + existing bound synthetic PostgreSQL.
+  Original Portfolio charts and synthetic context visible; Massive native PasswordBox, no rights checkbox.
+  Fixed AAPL refresh from Positions reaches actual KEY_REQUIRED response; no credentials or external HTTP.
+  Normal tray exit -> actual new CMD reopen -> normal tray exit; 18765 released.
+  .verification/finance-m12-native-finish.ps1 / .log; native-result.json and screenshots.
+Integrity:
+  M1, M1.1, M1.2 payload manifest validation; package-hashes.json.
+  Frozen Finance OS c6c87a0627b746e70a45b1c7896f63defd76a810 clean; finance-domain unchanged.
+  git diff --check and staged diff checks.
+
+FAILURES CORRECTED / BOUNDARIES
+Initial React auto-read added unexpected requests; restored explicit status read and focused tests passed.
+C# xUnit2013 assertion analyzer fixed; a concurrent frontend dist rebuild caused one copy error, serial rerun passed.
+Packaging README $0 interpolation corrected; only verified task-created partial output resumed.
+Native initial owned-dialog selector failed; read-only hierarchy inspection found it under the main window.
+Automatic approval review rejected the credential-input/local authenticated HTTP/canary-cleanup script before execution.
+Reason returned only: blocked by policy. Actual credential save/readback NOT RUN; no canary file created.
+
+NOT EXECUTED
+Live Massive stock/ETF/FX HTTP, real account entitlement validation, actual DPAPI save/readback this round.
+Full Java/Desktop/Frontend suites, full browser/IME/stress matrices, whole-Windows reboot, real financial-account data.
+D2 historical native completion. D2 remains PARTIAL; no Production GO.
+Historical M1.1 DPAPI readback is historical evidence only, not a new successful execution.
+No Firecrawl, subagents, paid service, broker/trade, ledger/Receipt/migration changes, main merge, tag or release.

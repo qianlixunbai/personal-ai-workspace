@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "environment": "Actual M1.2 package, Native Gate, WPF/WebView2, Java, bound synthetic PostgreSQL",
+  "liveProvider": "NOT_RUN",
+  "actualCredentialSave": "NOT_RUN - automatic approval review rejected canary script before execution",
+  "checks": [
+    "Portfolio original charts, synthetic provenance and PARTIAL valuation visible",
+    "native Massive settings has PasswordBox, no license checkbox",
+    "Positions fixed AAPL refresh through Bridge/Runtime returns KEY_REQUIRED without a key",
+    "no provider price or synthetic price misrepresented as Massive live response",
+    "normal tray exit -> actual CMD reopen -> normal exit; Runtime listener released"
+  ],
+  "d2Historical": "PARTIAL",
+  "wholeWindowsReboot": "NOT_RUN"
+}
