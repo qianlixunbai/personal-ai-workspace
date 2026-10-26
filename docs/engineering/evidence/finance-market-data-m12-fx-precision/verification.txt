@@ -1,0 +1,37 @@
+2026-10-27 Asia/Shanghai. M1.2 FX precision correction.
+Baseline a732aee52c1fc21ecaa5361eb1d1fd662b601036.
+Implementation 18e967434e784733826300431b96efae6ba24cc3; package sourceDirty=false.
+Real USD/CNY NOT VERIFIED. No real Key read/used, no real market/account API requests, no Firecrawl or subagents.
+User-reported AAPL/SPY live success and FOREX_BARS/PRICE_SCALE are historical user evidence only.
+
+ACTUALLY EXECUTED - PASS
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 fetch --prune origin
+JAVA_HOME=D:\MC\JAVA\JAVA21:
+  .\mvnw.cmd -B -ntp -pl workspace-application -am -Dtest=FinanceMarketDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+  .verification/finance-m12-fx-precision-java.log
+Desktop:
+  dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --no-restore -p:FrontendSkipBuild=true --filter FullyQualifiedName~RuntimeClientTests.MarketData
+  .verification/finance-m12-fx-precision-desktop.log
+Frontend in desktop/frontend:
+  npm test -- src/components/FinanceMarketData.test.tsx
+  .verification/finance-m12-fx-precision-react.log
+Production build, NOT test execution:
+  npm run build; .verification/finance-m12-fx-precision-build.log
+  .\mvnw.cmd -B -ntp -DskipTests package; actual runtime JAR identity audit included
+  .verification/finance-m12-fx-precision-package-java.log
+  .verification/finance-m12-fx-precision-package.ps1 -> independent Profile Debug win-x64 publish
+  .verification/finance-m12-fx-precision-publish.log
+Launcher:
+  Open-Workspace-Finance-Market-Data-M12-FX-Precision.ps1 -CheckOnly
+  .verification/finance-m12-fx-precision-checkonly.log
+Integrity:
+  New clean implementation source/source-file/payload hashes matched.
+  M1/M11/M12/previous fix/new FX precision package manifests matched; package-hashes.json.
+  Frozen Finance OS c6c87a0627b746e70a45b1c7896f63defd76a810 clean; finance-domain unchanged.
+  git diff --check and staged diff checks.
+
+NOT EXECUTED
+Actual Key use, live USD/CNY/AAPL/SPY, new package native UI/manual refresh, real account/market response capture.
+Full Java/Desktop/Frontend suites, full browser/IME/stress/native matrices, D2 historical completion, Windows reboot.
+No rounding, truncation, float/double conversion, persistent quote cache, derived valuation, ledger/Receipt/migration changes.
+No Production GO. Real FX remains NOT VERIFIED pending user's new-package manual success.
