@@ -123,6 +123,50 @@ class VisionIdentityTest {
         serverPin.set("b".repeat(64));
         assertThrows(IOException.class,()->OllamaVisionEnvironment.validateRole(instance,runner,false,server,42,windows,verified));
     }
+    @Test void sharedIdentityBindsServerModulesAndEffectiveEnvironment() throws Exception {
+        Path dist=Path.of("D:/shared-fixture"),windows=Path.of("C:/Windows");
+        var parent=Map.of("OLLAMA_CONTEXT_LENGTH","8192","PATH",dist.toString());
+        var child=new HashMap<>(parent);child.put("LLAMA_MEDIA_MARKER","<__ollama_media_"+"a".repeat(32)+"__>");
+        var server=new OllamaVisionEnvironment.ProcessState(dist.resolve("ollama.exe"),List.of("serve"),dist,parent,9);
+        var runner=new OllamaVisionEnvironment.ProcessState(dist.resolve("lib/ollama/llama-server.exe"),
+                List.of("-c","8192","--port","12345"),dist,child,10);
+        var maps=Map.of(10L,Map.of(1L,server.image()),11L,Map.of(2L,runner.image()));
+        var snapshot=new OllamaVisionEnvironment.Snapshot("generation",server.arguments(),runner.arguments(),maps.get(11L),
+                Map.of(10L,server,11L,runner),maps);
+        var modules=OllamaVisionEnvironment.class.getDeclaredMethod("sharedModules",OllamaVisionEnvironment.Snapshot.class,
+                long.class,long.class,Path.class,Path.class);modules.setAccessible(true);
+        assertDoesNotThrow(()->modules.invoke(null,snapshot,10L,11L,dist,windows));
+        var injected=new OllamaVisionEnvironment.Snapshot(snapshot.generation(),server.arguments(),runner.arguments(),snapshot.modules(),snapshot.roles(),
+                Map.of(10L,Map.of(1L,server.image(),3L,Path.of("C:/ProgramData/obs-studio-hook/graphics-hook64.dll")),11L,maps.get(11L)));
+        assertInstanceOf(IOException.class,assertThrows(java.lang.reflect.InvocationTargetException.class,
+                ()->modules.invoke(null,injected,10L,11L,dist,windows)).getCause());
+        var preprocessing=OllamaVisionEnvironment.class.getDeclaredMethod("sharedPreprocessing",OllamaVisionEnvironment.Snapshot.class,
+                String.class,long.class,long.class);preprocessing.setAccessible(true);
+        Object original=preprocessing.invoke(null,snapshot,"a".repeat(64),10L,11L);
+        // A newly generated delimiter is equivalent across generations, but a real image
+        // preprocessing override or server-side option cannot reuse the reviewed identity.
+        child.put("LLAMA_MEDIA_MARKER","<__ollama_media_"+"b".repeat(32)+"__>");
+        var fresh=new OllamaVisionEnvironment.ProcessState(runner.image(),runner.arguments(),dist,child,10);
+        var freshSnapshot=new OllamaVisionEnvironment.Snapshot("next-generation",server.arguments(),runner.arguments(),snapshot.modules(),
+                Map.of(10L,server,11L,fresh),maps);
+        assertEquals(original,preprocessing.invoke(null,freshSnapshot,"a".repeat(64),10L,11L));
+        child.put("LLAMA_ARG_IMAGE_MIN_TOKENS","2048");
+        var overridden=new OllamaVisionEnvironment.ProcessState(runner.image(),runner.arguments(),dist,child,10);
+        var changed=new OllamaVisionEnvironment.Snapshot("generation",server.arguments(),runner.arguments(),snapshot.modules(),
+                Map.of(10L,server,11L,overridden),maps);
+        assertNotEquals(original,preprocessing.invoke(null,changed,"a".repeat(64),10L,11L));
+        var parentOverride=new HashMap<>(parent);parentOverride.put("OLLAMA_CONTEXT_LENGTH","4096");
+        var changedServer=new OllamaVisionEnvironment.ProcessState(server.image(),server.arguments(),dist,parentOverride,9);
+        var changedParent=new OllamaVisionEnvironment.Snapshot("generation",server.arguments(),runner.arguments(),snapshot.modules(),
+                Map.of(10L,changedServer,11L,runner),maps);
+        assertNotEquals(original,preprocessing.invoke(null,changedParent,"a".repeat(64),10L,11L));
+        child.put("LLAMA_MEDIA_MARKER","unreviewed-delimiter");
+        var invalid=new OllamaVisionEnvironment.ProcessState(runner.image(),runner.arguments(),dist,child,10);
+        var invalidSnapshot=new OllamaVisionEnvironment.Snapshot("generation",server.arguments(),runner.arguments(),snapshot.modules(),
+                Map.of(10L,server,11L,invalid),maps);
+        assertInstanceOf(IOException.class,assertThrows(java.lang.reflect.InvocationTargetException.class,
+                ()->preprocessing.invoke(null,invalidSnapshot,"a".repeat(64),10L,11L)).getCause());
+    }
     @Test void roleEnvironmentAndIdentityRemainBoundToTheAdmittedSource() throws Exception {
         Path root=Path.of("D:/role-fixture"),dist=root.resolve("dist"),models=root.resolve("models"),windows=Path.of("C:/Windows");
         var instance=new OllamaVisionEnvironment.Instance(){

@@ -655,6 +655,59 @@ final class OllamaVisionEnvironment {
         if(!before.equals(after))throw new IOException();
         return new Sample(after,payload);
     }
+    private static SortedMap<String,Path> sharedModules(Snapshot snapshot,long serverPid,long runnerPid,Path installation,Path windows)throws IOException {
+        if(snapshot.roles().size()!=2 || snapshot.roleModules().size()!=2
+                || !snapshot.roles().keySet().equals(Set.of(serverPid,runnerPid))
+                || !snapshot.roles().keySet().equals(snapshot.roleModules().keySet()))throw new IOException();
+        SortedMap<String,Path> paths=new TreeMap<>();
+        for(var role:Map.of("server",serverPid,"runner",runnerPid).entrySet()) {
+            for(Path path:snapshot.roleModules().get(role.getValue()).values()) {
+                if(!path.startsWith(installation)) {
+                    if(path.startsWith(windows.resolve("System32")) || path.startsWith(windows.resolve("WinSxS")))continue;
+                    throw new IOException("SHARED_EXTERNAL_MODULE");
+                }
+                if(paths.size()>=64 || paths.put(role.getKey()+"/"+installation.relativize(path),path)!=null)throw new IOException();
+            }
+        }
+        if(paths.isEmpty())throw new IOException();
+        return paths;
+    }
+    private static SortedMap<String,String> sharedEnvironment(ProcessState state,boolean runner)throws IOException {
+        SortedMap<String,String> values=new TreeMap<>();
+        // Fixed native sources read these option/backend/loader namespaces. Unknown options
+        // within them remain bound; unrelated account credentials are not policy material.
+        var prefixes=List.of("OLLAMA_","LLAMA_","GGML_","MTMD_","CLIP_","GGUF_","CUDA_","HIP_","HSA_",
+                "ROCR_","NVIDIA_","VK_","LD_","DYLD_","OMP_","KMP_","DISABLE_LAYER_");
+        for(var entry:state.environment().entrySet()) {
+            String key=entry.getKey(),value=entry.getValue();
+            if(key.equals("LLAMA_MEDIA_MARKER")) {
+                if(!runner || !value.matches("<__ollama_media_(?:[a-f0-9]{32}|[1-9][0-9]{0,18}_[0-9]{1,19})__>"))throw new IOException();
+                // The exact value still participates in both stable snapshots. Only a
+                // well-formed generated delimiter is normalized across runner generations.
+                value="<generated-per-runner>";
+            }
+            if(prefixes.stream().anyMatch(key::startsWith)
+                    || Set.of("PATH","SYSTEMROOT","WINDIR","__COMPAT_LAYER","DISABLE_VULKAN_OBS_CAPTURE").contains(key))
+                values.put(key,value);
+        }
+        if(runner && !values.containsKey("LLAMA_MEDIA_MARKER"))throw new IOException();
+        return values;
+    }
+    private static String sharedPreprocessing(Snapshot snapshot,String payload,long serverPid,long runnerPid)throws Exception {
+        ProcessState server=snapshot.roles().get(serverPid),runner=snapshot.roles().get(runnerPid);
+        if(server==null || runner==null || runner.parent()!=serverPid || !server.arguments().equals(snapshot.serviceArguments())
+                || !runner.arguments().equals(snapshot.runnerArguments()))throw new IOException();
+        List<String> args=new ArrayList<>(),values=snapshot.runnerArguments();
+        for(int i=0;i<values.size();i++) {
+            String value=values.get(i);if(value.length()>16384)throw new IOException();
+            if(value.equals("--port")) {
+                if(++i>=values.size() || !values.get(i).matches("[1-9][0-9]{0,4}") || Integer.parseInt(values.get(i))>65535)throw new IOException();
+            } else args.add(value);
+        }
+        return hash(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(List.of(VisionTokenBudget.POLICY,payload,args,
+                List.of(server.image().toString(),server.cwd().toString(),sharedEnvironment(server,false)),
+                List.of(runner.image().toString(),runner.cwd().toString(),sharedEnvironment(runner,true)))));
+    }
     static OllamaProvider.VisionContext currentContext(int port,String identity,Cancellation cancellation) {
         if(REVIEWED_TOKEN_POLICIES.isEmpty()) return null;
         long deadline=System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos();
@@ -690,23 +743,21 @@ final class OllamaVisionEnvironment {
                     IdentityReader reader=new IdentityReader() {
                         public Snapshot snapshot() throws Exception {
                             check(cancellation,deadline);server.check();runner.check();
-                            List<String> serve=List.of(arguments(server.handle)),args=List.of(arguments(runner.handle));
-                            if(!serve.equals(List.of("serve")))throw new IOException();
-                            Map<Long,Path> modules=modules(api,runner.handle);
-                            // Read argv and process identity again around enumeration, on the same handles.
+                            ProcessState serve=state(server.handle),child=state(runner.handle);
+                            if(!serve.arguments().equals(List.of("serve")) || child.parent()!=service.pid())throw new IOException();
+                            Map<Long,Path> serverModules=modules(api,server.handle),runnerModules=modules(api,runner.handle);
+                            // Bind both processes' full state and module maps to the same held handles.
                             server.check();runner.check();
-                            if(listener(port).pid()!=service.pid() || !serve.equals(List.of(arguments(server.handle))) || !args.equals(List.of(arguments(runner.handle))))throw new IOException();
+                            if(listener(port).pid()!=service.pid() || !serve.equals(state(server.handle)) || !child.equals(state(runner.handle)))throw new IOException();
                             check(cancellation,deadline);
-                            return new Snapshot(server.generation()+"/"+runner.generation(),serve,args,modules);
+                            return new Snapshot(server.generation()+"/"+runner.generation(),serve.arguments(),child.arguments(),runnerModules,
+                                    Map.of(service.pid(),serve,runner.process.pid(),child),Map.of(service.pid(),serverModules,runner.process.pid(),runnerModules));
                         }
                         public String hashModules(Snapshot snapshot,Cancellation cancel,long until) throws Exception {
                             SortedMap<String,String> hashes=new TreeMap<>();
-                            for(Path path:snapshot.modules().values()) {
+                            for(var entry:sharedModules(snapshot,service.pid(),runner.process.pid(),installation,windows).entrySet()) {
+                                Path path=entry.getValue();
                                 check(cancel,until);
-                                if(!path.startsWith(installation)) {
-                                    if(path.startsWith(windows.resolve("System32")) || path.startsWith(windows.resolve("WinSxS")))continue;
-                                    throw new IOException();
-                                }
                                 for(Path parent=path;parent!=null;parent=parent.getParent()) {
                                     int attributes=com.sun.jna.platform.win32.Kernel32.INSTANCE.GetFileAttributes(parent.toString());
                                     if(attributes==-1 || (attributes&0x400)!=0)throw new IOException();
@@ -716,7 +767,7 @@ final class OllamaVisionEnvironment {
                                 // snapshot and policy lookup, rather than releasing it after hashing.
                                 var file=new HeldFile(path,false);pinned.add(file);
                                 String sha=file.hash(Files.size(path),null,cancel,until);
-                                if(hashes.put(installation.relativize(path).toString(),sha)!=null)throw new IOException();
+                                hashes.put(entry.getKey(),sha);
                             }
                             if(hashes.isEmpty())throw new IOException();
                             return hash(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(hashes));
@@ -724,14 +775,8 @@ final class OllamaVisionEnvironment {
                     };
                     Sample sample=sample(reader,cancellation,deadline);
                     for(var file:pinned){check(cancellation,deadline);file.check();}
-                    List<String> args=new ArrayList<>();List<String> values=sample.snapshot().runnerArguments();
-                    for(int i=0;i<values.size();i++) {
-                        String value=values.get(i);if(value.length()>16384)return null;
-                        if(value.equals("--port")) {if(++i>=values.size() || !values.get(i).matches("[1-9][0-9]{0,4}") || Integer.parseInt(values.get(i))>65535)return null;continue;}
-                        args.add(value);
-                    }
                     String payload=sample.payload();
-                    String preprocessing=hash(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(List.of(VisionTokenBudget.POLICY,payload,args)));
+                    String preprocessing=sharedPreprocessing(sample.snapshot(),payload,service.pid(),runner.process.pid());
                     String template=hash(("renderer=qwen3.5|"+serverHash+"|"+OllamaVisionAdmission.CONFIG).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     var evidence=REVIEWED_TOKEN_POLICIES.get(payload+"/"+preprocessing+"/"+template);
                     check(cancellation,deadline);
