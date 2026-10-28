@@ -17,7 +17,7 @@ internal sealed class NativeCopyPort(IntPtr foreground, IntPtr focus, IntPtr own
     {
         get
         {
-            foreach (int key in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C, 0x54 })
+            foreach (int key in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C, 0x51, 0x54 })
                 if ((Native.GetAsyncKeyState(key) & 0x8000) != 0) return false;
             return true;
         }

@@ -26,6 +26,7 @@ public static class ControlledCopy
     public static async Task<CopyResult> CaptureAsync(SelectionResult proof, ICopyPort port, CancellationToken cancellationToken)
     {
         if (proof.Status != SelectionStatus.Unsupported || !proof.CopyAllowed) return new(proof, "");
+        cancellationToken.ThrowIfCancellationRequested();
         // A protected/untrusted/empty/timed-out UIA result can never authorize Copy.
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         while (!port.ModifiersReleased && elapsed.ElapsedMilliseconds < 700)
@@ -35,6 +36,7 @@ public static class ControlledCopy
         var snapshot = await port.SnapshotAsync(cancellationToken);
         if (snapshot is null || !snapshot.Supported)
             return new(proof, "复制备用仅支持空或纯文本剪贴板；当前剪贴板保持不动，请手动输入。");
+        cancellationToken.ThrowIfCancellationRequested();
         if (!port.SendCopy(snapshot.Sequence)) return new(new(SelectionStatus.Failed), "未能安全发送 Copy；请手动输入。");
         uint copied = snapshot.Sequence;
         string? text = null;

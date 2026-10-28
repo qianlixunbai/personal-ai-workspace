@@ -19,7 +19,9 @@ public sealed class SelectionAndLifecycleTests
         public bool OtherOwner { get; set; }
         public string? NewText { get; set; } = "new-private-selection";
         public bool CancelDuringRead { get; set; }
-        public Task<ClipboardSnapshot?> SnapshotAsync(CancellationToken cancellationToken) => Task.FromResult(Saved);
+        public CancellationTokenSource? CancelAfterSnapshot { get; set; }
+        public Task<ClipboardSnapshot?> SnapshotAsync(CancellationToken cancellationToken)
+        { CancelAfterSnapshot?.Cancel(); return Task.FromResult(Saved); }
         public bool SendCopy(uint expectedSequence) { Copies++; Sequence = AfterCopy; return true; }
         public bool ExpectedCopy(uint before, uint observed) => SelectionRules.FreshClipboard(before, observed, Sequence, !OtherOwner, ContextStable);
         public Task<string?> ReadFreshAsync(uint before, uint observed, CancellationToken cancellationToken)
@@ -91,6 +93,10 @@ public sealed class SelectionAndLifecycleTests
     [Fact]
     public async Task ClipboardReadCancellationStillAttemptsRestore()
     {
+        using var cancelled = new CancellationTokenSource();
+        var untouched = new CopyPort { CancelAfterSnapshot = cancelled };
+        await Assert.ThrowsAsync<OperationCanceledException>(() => ControlledCopy.CaptureAsync(CopyProof, untouched, cancelled.Token));
+        Assert.Equal(0, untouched.Copies);
         var port = new CopyPort { CancelDuringRead = true };
         await Assert.ThrowsAsync<OperationCanceledException>(() => ControlledCopy.CaptureAsync(CopyProof, port, CancellationToken.None));
         Assert.Equal(1, port.Restores);
@@ -142,7 +148,7 @@ public sealed class SelectionAndLifecycleTests
 
     private sealed class Controller : IAssistantController
     {
-        public bool Busy => false;
+        public bool Busy { get; set; }
         public bool Exiting => false;
         public int Cancels { get; private set; }
         public Task SubmitAsync() => Task.CompletedTask;
@@ -151,6 +157,56 @@ public sealed class SelectionAndLifecycleTests
         public Task ImportCredentialAsync(string path) => Task.CompletedTask;
         public void ForgetCredential() { }
     }
+
+    [Fact]
+    public Task SelectionSurvivesActionSwitchesButCloseAndNewCaptureDiscardItsContext() => Sta(() =>
+    {
+        var controller = new Controller();
+        var window = new AssistantWindow(controller);
+        window.Show();
+        const string original = "private-selected-text 原文";
+        window.SetCapturedText(original);
+        int version = window.ContentVersion;
+        window.ResultText.Text = "old-result";
+        window.ActionSelector.SelectedIndex = 1;
+        Assert.Equal(original, window.CreateInput().Text);
+        Assert.Empty(window.ResultText.Text);
+        window.ActionSelector.SelectedIndex = 2;
+        Assert.Contains("请解释", window.CreateInput().Text);
+        window.QuestionText.Text = "作者的理由是什么？";
+        Assert.Contains(window.QuestionText.Text, window.CreateInput().Text);
+        Assert.EndsWith(original, window.CreateInput().Text);
+        Assert.Equal(version, window.ContentVersion);
+        window.InputText.Text = new string('x', 4000);
+        Assert.Equal(DesktopError.InvalidRequest, Assert.Throws<DesktopException>(() => window.CreateInput()).Error);
+        Assert.Equal(4000, window.InputText.Text.Length);
+        window.SelectTranslate();
+        Assert.Equal(4000, window.CreateInput().Text.Length);
+
+        controller.Busy = true;
+        window.SetBusy(true);
+        window.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+            System.Windows.PresentationSource.FromVisual(window), 0, System.Windows.Input.Key.Escape)
+            { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent });
+        Assert.False(window.IsVisible);
+        Assert.Equal(1, controller.Cancels);
+        Assert.True(window.ContentVersion > version);
+        Assert.Empty(window.InputText.Text);
+        Assert.Empty(window.QuestionText.Text);
+        Assert.Empty(window.ResultText.Text);
+        controller.Busy = false;
+        window.SetBusy(false);
+        window.Show();
+        window.ClearText();
+        window.SetCapturedText("second-selection");
+        window.ActionSelector.SelectedIndex = 2;
+        Assert.EndsWith("second-selection", window.CreateInput().Text);
+        Assert.DoesNotContain(original, window.CreateInput().Text);
+        Assert.DoesNotContain("作者的理由", window.CreateInput().Text);
+        window.Close();
+        window.InputText.Text = "manual question";
+        Assert.Equal("manual question", window.CreateInput().Text);
+    });
 
     internal static Task Sta(Action action)
     {

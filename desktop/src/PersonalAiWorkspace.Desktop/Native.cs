@@ -6,6 +6,9 @@ namespace PersonalAiWorkspace.Desktop;
 internal static class Native
 {
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out WindowRect rect);
+    [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    [StructLayout(LayoutKind.Sequential)] internal struct WindowRect { internal int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] internal static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
     [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);

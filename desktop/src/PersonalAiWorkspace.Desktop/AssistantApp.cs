@@ -30,9 +30,11 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private Forms.ContextMenuStrip? trayMenu;
     private HwndSource? messages;
     private HotkeyRegistration? hotkey;
+    private HotkeyRegistration? quickActionsHotkey;
     private AssistantOperation? operation;
     private Task? activeOperation;
     private Task? activeCapture;
+    private CancellationTokenSource? captureCancellation;
     private bool capturing;
     private bool exitRequested;
     private bool cleanedUp;
@@ -108,14 +110,21 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         messages = new HwndSource(new HwndSourceParameters("Personal AI Assistant messages")
         { ParentWindow = new IntPtr(-3), WindowStyle = 0, Width = 0, Height = 0 });
         messages.AddHook(WindowMessage);
+        bool enableHotkeys = true;
 #if MMF3_ACCEPTANCE && DEBUG
-        if (acceptance is null)
+        enableHotkeys = acceptance is null;
+#if MMF3_PROFILE_ACCEPTANCE
+        enableHotkeys |= runtimeOwner is not null;
 #endif
-        try { hotkey = new HotkeyRegistration(messages.Handle); }
-        catch (InvalidOperationException failure) { window.HotkeyText.Text = failure.Message; }
-#if MMF3_ACCEPTANCE && DEBUG
-        if (acceptance is not null) window.HotkeyText.Text = Mmf3AcceptanceLaunch.Label + " · hotkey disabled";
 #endif
+        if (enableHotkeys)
+        {
+            try { hotkey = new HotkeyRegistration(messages.Handle); }
+            catch (InvalidOperationException failure) { window.HotkeyText.Text = failure.Message; }
+            try { quickActionsHotkey = new HotkeyRegistration(messages.Handle, id: HotkeyRegistration.QuickActionsId); }
+            catch (InvalidOperationException failure) { window.HotkeyText.Text += "\n" + failure.Message; }
+        }
+        else window.HotkeyText.Text = "Isolated acceptance · hotkeys disabled";
         trayMenu = new Forms.ContextMenuStrip();
         trayMenu.Items.Add("Open Personal AI Workspace", null, (_, _) => Dispatcher.Invoke(ShowWorkspace));
         trayMenu.Items.Add("Quick Assistant / Quick Translate", null, (_, _) => Dispatcher.Invoke(ShowAssistant));
@@ -148,14 +157,14 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     private IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == 0x0312 && wParam.ToInt32() == HotkeyRegistration.Id)
+        if (message == 0x0312 && (wParam.ToInt32() == HotkeyRegistration.Id || wParam.ToInt32() == HotkeyRegistration.QuickActionsId))
         {
             handled = true;
             if (!Busy && !exitRequested)
             {
                 // Capture foreground before showing/activating our own window.
                 IntPtr foreground = Native.GetForegroundWindow();
-                activeCapture = CaptureAsync(foreground);
+                activeCapture = CaptureAsync(foreground, wParam.ToInt32() == HotkeyRegistration.Id, Forms.Cursor.Position);
             }
         }
         return IntPtr.Zero;
@@ -346,9 +355,13 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         }
         return Task.CompletedTask;
     }
-    private async Task CaptureAsync(IntPtr foreground)
+    private async Task CaptureAsync(IntPtr foreground, bool quickTranslate, System.Drawing.Point anchor)
     {
+        window.ClearText();
         window.SelectTranslate();
+        int version = window.ContentVersion;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        captureCancellation = cancellation;
         capturing = true;
         window.SetBusy(true);
         window.ResultText.Clear();
@@ -356,24 +369,32 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         window.StatusText.Text = "正在获取主动选区…";
         try
         {
-            if (foreground == IntPtr.Zero || foreground == new WindowInteropHelper(window).Handle)
+            Native.GetWindowThreadProcessId(foreground, out uint processId);
+            if (foreground == IntPtr.Zero || processId == Environment.ProcessId)
             { ShowAssistant(); window.StatusText.Text = "请在其他应用选中文字，或在此手动输入。"; return; }
-            var selection = await SelectionWorker.CaptureAsync(foreground, lifetime.Token);
+            var selection = await SelectionWorker.CaptureAsync(foreground, cancellation.Token);
             string notice = "";
             if (selection.Status == SelectionStatus.Unsupported && selection.CopyAllowed && window.AllowCopyFallback)
             {
                 var copied = await ControlledCopy.CaptureAsync(selection,
-                    new NativeCopyPort(foreground, new IntPtr(selection.FocusWindow), messages!.Handle), lifetime.Token);
+                    new NativeCopyPort(foreground, new IntPtr(selection.FocusWindow), messages!.Handle), cancellation.Token);
                 selection = copied.Selection;
                 notice = copied.Notice;
             }
-            if (exitRequested) return;
+            if (exitRequested || cancellation.IsCancellationRequested || window.ContentVersion != version) return;
             ShowAssistant();
+            window.PositionNear(anchor);
             if (selection.Status == SelectionStatus.Success)
             {
-                window.InputText.Text = selection.Text!;
+                window.SetCapturedText(selection.Text!);
                 capturing = false;
-                await SubmitAsync();
+                if (quickTranslate) await SubmitAsync();
+                else
+                {
+                    window.SetBusy(false);
+                    window.StatusText.Text = "选区已捕获 · 选择翻译、总结或 Ask AI 解释/提问。";
+                    window.ActionSelector.Focus();
+                }
             }
             else
             {
@@ -382,17 +403,31 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                 window.StatusText.Text = notice.Length > 0 ? notice : SelectionText.For(selection.Status);
             }
         }
-        catch (OperationCanceledException) { if (!exitRequested) window.StatusText.Text = "Selection cancelled。"; }
-        catch (Exception) { if (!exitRequested) { ShowAssistant(); window.StatusText.Text = SelectionText.For(SelectionStatus.Failed); } }
-        finally { capturing = false; if (!exitRequested) window.SetBusy(Busy); }
+        catch (OperationCanceledException) { }
+        catch (Exception)
+        {
+            if (!exitRequested && window.ContentVersion == version)
+            { ShowAssistant(); window.StatusText.Text = SelectionText.For(SelectionStatus.Failed); }
+        }
+        finally
+        {
+            captureCancellation = null;
+            capturing = false;
+            if (!exitRequested) window.SetBusy(Busy);
+        }
     }
     public async Task SubmitAsync()
     {
         if (Busy || exitRequested) return;
         if (window.MemoryNeedsReview) { window.StatusText.Text = ErrorText.For(DesktopError.MemorySelectionStale); return; }
-        var input = new AssistantInput(window.SelectedAction, window.InputText.Text, window.SelectedLanguage);
-        try { input.Validate(); }
-        catch (DesktopException error) { window.StatusText.Text = error.Message; return; }
+        AssistantInput input;
+        try { input = window.CreateInput(); }
+        catch (DesktopException error)
+        {
+            window.StatusText.Text = error.Error == DesktopError.InvalidRequest
+                ? "输入超出当前操作预算或为空；请缩短原文/问题。选区未被截断。" : error.Message;
+            return;
+        }
         var current = new AssistantOperation(runtime);
         operation = current;
         window.ResultText.Clear();
@@ -403,10 +438,12 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     private async Task RunOperationAsync(AssistantOperation current, AssistantInput input)
     {
+        int version = window.ContentVersion;
         try
         {
             var result = await current.RunAsync(input, task =>
             {
+                if (exitRequested || window.ContentVersion != version) return;
                 window.StatusText.Text = task.Status switch
                 {
                     TaskState.QUEUED => "Queued：等待本机 Runtime 执行…",
@@ -415,26 +452,41 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                     _ => ErrorText.For(task.Error ?? DesktopError.InternalError)
                 };
             }, lifetime.Token, window.MemoryReferences);
-            if (result.Status == TaskState.SUCCEEDED) window.ResultText.Text = result.Result!;
+            if (!exitRequested && window.ContentVersion == version && result.Status == TaskState.SUCCEEDED)
+                window.ResultText.Text = result.Result!;
         }
         catch (DesktopException error)
         {
+            if (exitRequested || window.ContentVersion != version) return;
             window.StatusText.Text = current.AdmissionOutcomeUnknown ? ErrorText.For(DesktopError.OutcomeUnknown) : error.Message;
             if (!current.Accepted) window.MemoryAdmissionFailed(error.Error);
         }
-        catch (OperationCanceledException) { window.StatusText.Text = "应用关闭中；取消已尽力发送，未确认的 Runtime 状态不能视为已取消。"; }
-        catch (Exception) { window.StatusText.Text = ErrorText.For(DesktopError.InternalError); }
+        catch (OperationCanceledException)
+        {
+            if (!exitRequested && window.ContentVersion == version)
+                window.StatusText.Text = "取消已尽力发送，未确认的 Runtime 状态不能视为已取消。";
+        }
+        catch (Exception)
+        { if (!exitRequested && window.ContentVersion == version) window.StatusText.Text = ErrorText.For(DesktopError.InternalError); }
         finally
         {
             operation = null;
-            window.MemoryOperationEnded(current.Accepted);
+            if (window.ContentVersion == version) window.MemoryOperationEnded(current.Accepted);
             if (!exitRequested) window.SetBusy(Busy);
             if (!window.IsVisible) window.ClearText();
         }
     }
     public void CancelOperation()
     {
-        if (capturing) { window.StatusText.Text = "选区与备用复制均有有限等待；等待捕获结束或从托盘退出。"; return; }
+        if (!Busy) return;
+        window.ClearText();
+        if (capturing)
+        {
+            captureCancellation?.Cancel();
+            window.StatusText.Text = "捕获已取消；正在完成受控剪贴板清理。";
+            window.CancelButton.IsEnabled = false;
+            return;
+        }
         if (operation is null) return;
         operation.RequestCancel();
         window.StatusText.Text = "Cancelling：正在向 Runtime 请求取消…";
@@ -584,6 +636,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         window.CloseBrowserPairing();
         window.CloseWorkspaceBackup();
         hotkey?.Dispose();
+        quickActionsHotkey?.Dispose();
+        captureCancellation?.Cancel();
         operation?.RequestCancel();
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
         lifetime.Cancel();
@@ -617,6 +671,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         runtimeOwner?.Dispose();
 #endif
         hotkey?.Dispose();
+        quickActionsHotkey?.Dispose();
         messages?.RemoveHook(WindowMessage);
         messages?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.Dispose(); }

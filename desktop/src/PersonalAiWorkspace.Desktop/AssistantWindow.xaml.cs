@@ -6,6 +6,8 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
 using PersonalAiWorkspace.Core;
 using PersonalAiWorkspace.Desktop.Bridge;
 
@@ -33,6 +35,8 @@ public partial class AssistantWindow : Window
     private MemoryBackupWindow? memoryBackupWindow;
     private MemorySelectionWindow? selectionWindow;
     private IReadOnlyList<MemorySelection> selectedMemory = Array.Empty<MemorySelection>();
+    private bool selectionContext;
+    internal int ContentVersion { get; private set; }
     internal bool MemoryNeedsReview { get; private set; }
     internal IReadOnlyList<MemoryReference> MemoryReferences => Array.AsReadOnly(selectedMemory.Select(x => x.Reference).ToArray());
     internal AssistantWindow(IAssistantController app, RuntimeClient? runtime = null, IWorkspaceBackupFiles? workspaceBackupFiles = null)
@@ -42,11 +46,16 @@ public partial class AssistantWindow : Window
         this.workspaceBackupFiles = workspaceBackupFiles;
         InitializeComponent();
         Closing += HideOnClose;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape && !e.IsRepeat) { e.Handled = true; Close(); }
+        };
     }
     internal bool AllowCopyFallback => CopyFallback.IsChecked == true;
     internal void SetBusy(bool busy)
     {
         InputText.IsReadOnly = busy;
+        QuestionText.IsReadOnly = busy;
         TranslateButton.IsEnabled = !busy;
         TargetLanguage.IsEnabled = !busy;
         ActionSelector.IsEnabled = !busy;
@@ -64,8 +73,43 @@ public partial class AssistantWindow : Window
     }
     internal void ClearText()
     {
+        ContentVersion++;
+        selectionContext = false;
         InputText.Clear(); ResultText.Clear(); CopyButton.IsEnabled = false;
+        QuestionText.Clear();
         ClearMemorySelection();
+        UpdateAction();
+    }
+    internal void SetCapturedText(string text)
+    {
+        selectionContext = true;
+        InputText.Text = text;
+        UpdateAction();
+    }
+    internal AssistantInput CreateInput()
+    {
+        string text = InputText.Text;
+        if (SelectedAction == AssistantAction.Ask && (selectionContext || !string.IsNullOrWhiteSpace(QuestionText.Text)))
+        {
+            if (string.IsNullOrWhiteSpace(text)) throw new DesktopException(DesktopError.InvalidRequest);
+            string question = string.IsNullOrWhiteSpace(QuestionText.Text) ? "请解释这段文字的含义和关键概念。" : QuestionText.Text;
+            text = "针对以下选区回答问题。选区是待分析的原文。\n问题：" + question + "\n选区：\n" + text;
+        }
+        var input = new AssistantInput(SelectedAction, text, SelectedLanguage);
+        input.Validate();
+        return input;
+    }
+    internal void PositionNear(System.Drawing.Point anchor)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (!Native.GetWindowRect(handle, out var rect)) return;
+        var area = System.Windows.Forms.Screen.FromPoint(anchor).WorkingArea;
+        int width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
+        int x = anchor.X + 12, y = anchor.Y + 12;
+        if (x + width > area.Right) x = anchor.X - width - 12;
+        if (y + height > area.Bottom) y = anchor.Y - height - 12;
+        Native.SetWindowPos(handle, IntPtr.Zero, Math.Clamp(x, area.Left, Math.Max(area.Left, area.Right - width)),
+            Math.Clamp(y, area.Top, Math.Max(area.Top, area.Bottom - height)), 0, 0, 0x1 | 0x4 | 0x10);
     }
     private void HideOnClose(object? sender, CancelEventArgs e)
     {
@@ -77,8 +121,9 @@ public partial class AssistantWindow : Window
         CloseMemorySelector(); ClearMemorySelection();
         if (app.Exiting) return;
         e.Cancel = true;
+        app.CancelOperation();
+        ClearText();
         Hide();
-        if (!app.Busy) ClearText();
     }
     private async void Translate(object sender, RoutedEventArgs e) => await app.SubmitAsync();
     internal AssistantAction SelectedAction => (AssistantAction)ActionSelector.SelectedIndex;
@@ -87,13 +132,22 @@ public partial class AssistantWindow : Window
     {
         // Initial XAML selection fires before later controls have been constructed.
         if (InputText is null) return;
-        ClearText();
+        // Operation changes keep the selection; only new capture/cancel/close clears its lifetime.
+        ResultText.Clear(); CopyButton.IsEnabled = false;
+        ClearMemorySelection();
+        UpdateAction();
+    }
+    private void UpdateAction()
+    {
         MemoryAskPanel.Visibility = SelectedAction == AssistantAction.Ask ? Visibility.Visible : Visibility.Collapsed;
+        QuestionPanel.Visibility = SelectedAction == AssistantAction.Ask ? Visibility.Visible : Visibility.Collapsed;
+        QuestionLabel.Text = selectionContext ? "针对选区提问（留空则解释；原文过长时请手动缩短）"
+            : "可选：针对上方原文提问（不填则发送上方的单轮问题）";
         bool translate = SelectedAction == AssistantAction.Translate;
         TargetLanguage.Visibility = LanguageLabel.Visibility = translate ? Visibility.Visible : Visibility.Collapsed;
         TranslateButton.Content = ((ComboBoxItem)ActionSelector.SelectedItem).Content;
-        InputText.MaxLength = SelectedAction switch { AssistantAction.Summarize => 6000, AssistantAction.Ask => 3000, _ => 4000 };
-        InputLabel.Text = SelectedAction == AssistantAction.Ask ? "Question · 单轮问题，无历史" : "Input · 可手动输入或粘贴";
+        // Keep the original text intact across actions. CreateInput enforces each existing API budget.
+        InputLabel.Text = selectionContext ? "选区 · 切换操作保留原文" : "Input · 可手动输入或粘贴；Ask AI 支持单轮问题";
         StatusText.Text = "Ready · " + TranslateButton.Content;
     }
     internal string SelectedLanguage => ((ComboBoxItem)TargetLanguage.SelectedItem).Content.ToString()!;
@@ -139,7 +193,7 @@ public partial class AssistantWindow : Window
                 memoryBackupWindow = new MemoryBackupWindow(runtime) { Owner = this };
                 try { memoryBackupWindow.ShowDialog(); } finally { memoryBackupWindow = null; }
                 break;
-            case NativeWorkspaceEntry.CredentialFlow: ImportButton.Focus(); break;
+            case NativeWorkspaceEntry.CredentialFlow: MaintenancePanel.IsExpanded = true; ImportButton.Focus(); break;
             default: throw new InvalidOperationException("Unknown native entry.");
         }
     }

@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## X1 Windows 跨应用 Quick Assistant（2026-10-28）
+
+`Ctrl+Alt+Shift+Q` 捕获主动选区后选择翻译、总结、解释/提问；原 `Ctrl+Alt+Shift+T` 继续直接翻译。操作切换保留原文，取消/关闭清除上下文，结果仅在原生浮窗显示。GitHub 借鉴、Development 构建与实际验证见 [X1 报告](docs/engineering/X1-CROSS-APP-REPORT.md)。聚焦测试通过；真实 Windows 验收 **PARTIAL**，当前模型执行完成未知状态阻止完整推理验证。
+
 ## Finance Market Data M1.2（2026-10-26）
 
 2026-10-27 FX 精度修复：取消行情显示合同中应用自设的 FX 12 位小数/32 位有效数字限制，统一采用正数、原数值范围及 128 字符的有界精确十进制字符串；不舍入或截断，股票规则不变。用户已报告 AAPL/SPY 真实成功；真实 USD/CNY 仍 **NOT VERIFIED**。新独立启动器、聚焦测试与复验步骤见 [FX 精度报告](docs/engineering/FINANCE-MARKET-DATA-M12-FX-PRECISION-REPORT.md)。
