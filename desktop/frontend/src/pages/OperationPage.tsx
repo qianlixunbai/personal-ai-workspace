@@ -1,21 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { OperationView, SelectedMemory, ShellStatus } from '../bridge/contracts'
-import { StatusPanel } from '../components/StatusPanel'
 import { VisionPanel } from '../components/VisionPanel'
 
 type Phase = 'Idle' | 'Validating' | 'Submitting' | 'Queued' | 'Running' | 'Cancelling' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut' | 'OutcomeUnknown'
 const terminal = (operation: OperationView) => !['QUEUED', 'RUNNING'].includes(operation.status)
 const phases = { QUEUED: 'Queued', RUNNING: 'Running', SUCCEEDED: 'Succeeded', FAILED: 'Failed', CANCELLED: 'Cancelled', TIMED_OUT: 'TimedOut' } as const
 const statusText: Record<Phase, string> = {
-  Idle: 'Idle · 等待输入', Validating: 'Validating · 检查输入', Submitting: 'Submitting · 正在提交',
-  Queued: 'Queued · 等待本机执行', Running: 'Running · 正在本机执行',
-  Cancelling: 'Cancelling · 已请求取消；这不保证 GPU 立即停止', Succeeded: 'Succeeded · 已完成',
-  Failed: 'Failed · 操作失败', Cancelled: 'Cancelled · 已取消；这不保证 GPU 立即停止',
-  TimedOut: 'TimedOut · 已超出执行时间预算', OutcomeUnknown: 'Outcome unknown · 未确认执行结果；不会自动重发',
+  Idle: '', Validating: '正在检查输入…', Submitting: '正在提交…',
+  Queued: '正在排队…', Running: '正在生成…',
+  Cancelling: '已请求取消，模型可能仍在处理。', Succeeded: '已完成',
+  Failed: '操作未完成', Cancelled: '已取消，模型可能仍在处理。',
+  TimedOut: '处理超时', OutcomeUnknown: '执行结果待确认，不会自动重发。',
 }
 
-export function OperationPage({ kind, bridge, enabled, status, visible = true }: {
+export function OperationPage({ kind, bridge, enabled, visible = true }: {
   kind: 'assistant' | 'translate'; bridge: WorkspaceClient; enabled: boolean; status: ShellStatus | null; visible?: boolean
 }) {
   const [text, setText] = useState('')
@@ -79,7 +78,7 @@ export function OperationPage({ kind, bridge, enabled, status, visible = true }:
     locked.current = true
     const current = ++generation.current
     setPhase('Validating'); setError(''); setNotice(''); setOperation(null)
-    if (invalid) { locked.current = false; setPhase('Failed'); setError('请输入非空文本，并检查字符与 UTF-8 字节预算。'); return }
+    if (invalid) { locked.current = false; setPhase('Failed'); setError('请输入内容，或缩短文字后重试。'); return }
     setPhase('Submitting')
     try {
       const accepted = kind === 'translate' ? await bridge.submitTranslate(text, language)
@@ -132,23 +131,24 @@ export function OperationPage({ kind, bridge, enabled, status, visible = true }:
   }
   return <>
     <section className="card operation-card" aria-labelledby={`${kind}-editor-title`}>
-      <div className="card-heading"><h2 id={`${kind}-editor-title`}>{kind === 'assistant' ? '问答与摘要' : '翻译文本'}</h2></div>
+      <div className="card-heading"><h2 id={`${kind}-editor-title`}>{kind === 'assistant' ? '问答与摘要' : '翻译文本'}</h2><span className="quiet-label">本机处理</span></div>
       {kind === 'assistant' ? <>
-        <label htmlFor="assistant-mode">操作</label><select id="assistant-mode" value={mode} disabled={busy} onChange={event => {
-          generation.current++; setMode(event.target.value as 'Ask' | 'Summarize'); setMemories([]); setStale(false)
+        <div className="operation-modes" role="group" aria-label="助手操作">{(['Ask', 'Summarize'] as const).map(value => <button key={value} disabled={busy} aria-pressed={mode === value} onClick={() => {
+          if (mode === value) return
+          generation.current++; setMode(value); setMemories([]); setStale(false)
           setOperation(null); setPhase('Idle'); setError(''); setNotice('')
-        }}><option value="Ask">Ask</option><option value="Summarize">Summarize</option></select>
-        <p className="hint">{mode === 'Ask' ? '每次问答独立执行。需要上下文时，由你逐次选择 Memory。' : '将当前文本整理为摘要。'}</p>
+        }}>{value === 'Ask' ? '问一问' : '总结文字'}</button>)}</div>
+        <p className="hint">{mode === 'Ask' ? '每次独立回答。需要连续交流？请打开侧栏「对话」。' : '粘贴原文，提取要点。'}</p>
         {mode === 'Ask' && <div className="memory-choice"><button className="secondary" onClick={() => { void choose() }} disabled={!enabled || busy}>
-          {memories.length ? 'Review / Change Memory…' : 'Use Memory…'}</button>
-          <button className="secondary" onClick={() => { setMemories([]); setStale(false); setError('') }} disabled={busy || !memories.length}>Clear Memory</button>
-          <span>{memories.length ? `${memories.length} selected` : 'No Memory'}</span>
-          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · Revision {memory.revision}</li>)}</ol>}
-          {stale && <p role="alert">Selection stale · 重新选择或清除 Memory 后再提交。</p>}</div>}
+          {memories.length ? '更换记忆…' : '选择记忆…'}</button>
+          {memories.length > 0 && <button className="secondary" onClick={() => { setMemories([]); setStale(false); setError('') }} disabled={busy}>清除记忆</button>}
+          <span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
+          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
+          {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>}
       </> : <><label htmlFor="translate-language">目标语言</label><select id="translate-language" value={language} disabled={busy} onChange={event => setLanguage(event.target.value)}>
-        <option value="zh-CN">中文 · zh-CN</option><option value="en">English · en</option><option value="ja">日本語 · ja</option></select></>}
+        <option value="zh-CN">简体中文</option><option value="en">英语</option><option value="ja">日语</option></select></>}
       <label htmlFor={`${kind}-input`}>{action === 'Ask' ? '问题' : action === 'Summarize' ? '待摘要文本' : '待翻译文本'}</label>
-      <textarea ref={editor} id={`${kind}-input`} value={text} readOnly={busy} autoComplete="off" spellCheck={false}
+      <textarea ref={editor} id={`${kind}-input`} value={text} readOnly={busy} autoComplete="off" spellCheck={false} placeholder={action === 'Ask' ? '有什么想了解的？' : '在这里粘贴原文…'}
         aria-describedby={`${kind}-input-help`} onChange={event => setText(event.target.value)}
         onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
         onKeyDown={event => {
@@ -156,17 +156,17 @@ export function OperationPage({ kind, bridge, enabled, status, visible = true }:
             event.preventDefault(); void submit()
           }
         }} />
-      <p className="hint" id={`${kind}-input-help`}>Enter / Shift+Enter 换行；Ctrl+Enter 提交。拼音选词期间不会提交。<br />
-        {text.length} / {charLimit} UTF-16 · {utf8Bytes} / {byteLimit} UTF-8 bytes</p>
-      <div className="operation-actions"><button className="primary" disabled={!enabled || busy || invalid || stale} onClick={() => { void submit() }}>Submit {action}</button>
-        <button className="secondary" disabled={!enabled || !operation || terminal(operation) || phase === 'Cancelling'} onClick={() => { void cancel() }}>Cancel</button></div>
-      <p className="execution-status" role="status" aria-live="polite">{statusText[phase]}</p>
+      <div className="composer-meta" id={`${kind}-input-help`}><span>Enter 换行 · Ctrl+Enter 发送</span><span>{text.length} / {charLimit} 字符</span></div>
+      {text.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
+      <details className="input-details"><summary>输入限制</summary><p className="hint">{text.length} / {charLimit} UTF-16 · {utf8Bytes} / {byteLimit} UTF-8 字节。拼音选词期间不会发送。</p></details>
+      <div className="operation-actions"><button className="primary" disabled={!enabled || busy || invalid || stale} onClick={() => { void submit() }}>{action === 'Ask' ? '发送问题' : action === 'Summarize' ? '生成摘要' : '开始翻译'}</button>
+        {active && <button className="secondary" disabled={!enabled || !operation || terminal(operation) || phase === 'Cancelling'} onClick={() => { void cancel() }}>取消</button>}</div>
+      {phase !== 'Idle' && <p className="execution-status" role="status" aria-live="polite">{statusText[phase]}</p>}
       {error && <p role="alert" className="error">{error}</p>}
     </section>
     {operation?.status === 'SUCCEEDED' && <section className="card result-card" aria-labelledby={`${kind}-result-title`}>
-      <div className="card-heading"><h2 id={`${kind}-result-title`}>结果</h2><button className="secondary" onClick={() => { void copy() }} disabled={copying}>Copy result</button></div>
+      <div className="card-heading"><h2 id={`${kind}-result-title`}>结果</h2><button className="secondary" onClick={() => { void copy() }} disabled={copying}>复制结果</button></div>
       <pre className="operation-result" dir="auto">{operation.result}</pre><p role="status">{notice}</p></section>}
-    {kind === 'assistant' && <VisionPanel bridge={bridge} enabled={enabled && visible} />}
-    {visible && <section className="card compact-card"><h2>本机状态</h2><StatusPanel status={status} /></section>}
+    {kind === 'assistant' && <details className="advanced-section"><summary>图片问答 · 验收暂停</summary><VisionPanel bridge={bridge} enabled={enabled && visible} /></details>}
   </>
 }

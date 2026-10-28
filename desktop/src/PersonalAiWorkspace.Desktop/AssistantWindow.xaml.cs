@@ -141,16 +141,15 @@ public partial class AssistantWindow : Window
     {
         MemoryAskPanel.Visibility = SelectedAction == AssistantAction.Ask ? Visibility.Visible : Visibility.Collapsed;
         QuestionPanel.Visibility = SelectedAction == AssistantAction.Ask ? Visibility.Visible : Visibility.Collapsed;
-        QuestionLabel.Text = selectionContext ? "针对选区提问（留空则解释；原文过长时请手动缩短）"
-            : "可选：针对上方原文提问（不填则发送上方的单轮问题）";
+        QuestionLabel.Text = selectionContext ? "想了解什么？留空则解释原文" : "附加问题（可选）";
         bool translate = SelectedAction == AssistantAction.Translate;
         TargetLanguage.Visibility = LanguageLabel.Visibility = translate ? Visibility.Visible : Visibility.Collapsed;
         TranslateButton.Content = ((ComboBoxItem)ActionSelector.SelectedItem).Content;
         // Keep the original text intact across actions. CreateInput enforces each existing API budget.
-        InputLabel.Text = selectionContext ? "选区 · 切换操作保留原文" : "Input · 可手动输入或粘贴；Ask AI 支持单轮问题";
-        StatusText.Text = "Ready · " + TranslateButton.Content;
+        InputLabel.Text = selectionContext ? "选中的文字" : SelectedAction == AssistantAction.Ask ? "问题或原文" : "原文";
+        StatusText.Text = selectionContext ? "已取得选区，选择操作后开始。" : "输入文字后开始。";
     }
-    internal string SelectedLanguage => ((ComboBoxItem)TargetLanguage.SelectedItem).Content.ToString()!;
+    internal string SelectedLanguage => ((ComboBoxItem)TargetLanguage.SelectedItem).Tag.ToString()!;
     private void Cancel(object sender, RoutedEventArgs e) => app.CancelOperation();
     private async void CheckRuntime(object sender, RoutedEventArgs e) => await app.CheckHealthAsync();
     private async void ImportCredential(object sender, RoutedEventArgs e)
@@ -167,7 +166,7 @@ public partial class AssistantWindow : Window
     {
         if (ResultText.Text.Length == 0) return;
         try { Clipboard.SetText(ResultText.Text); StatusText.Text = "结果已复制到系统剪贴板。"; }
-        catch (ExternalException) { StatusText.Text = "Clipboard unavailable：请稍后重试复制。"; }
+        catch (ExternalException) { StatusText.Text = "剪贴板暂不可用，请稍后重试复制。"; }
     }
     private void CloseToTray(object sender, RoutedEventArgs e) => Close();
     private void PairBrowser(object sender, RoutedEventArgs e)
@@ -243,9 +242,10 @@ public partial class AssistantWindow : Window
     private void RenderMemorySelection()
     {
         if (MemoryCountText is null) return;
-        MemoryCountText.Text = $"Memory: {selectedMemory.Count} selected" + (MemoryNeedsReview ? " · Review required" : "");
+        MemoryCountText.Text = selectedMemory.Count == 0 ? "未选择记忆" : $"本次使用 {selectedMemory.Count} 条记忆";
+        if (MemoryNeedsReview) MemoryCountText.Text += " · 已变更，请重新选择";
         MemorySelectionText.Text = string.Join("\n", selectedMemory.Select(x => $"{x.Title} · {x.Type} · Revision {x.Revision}"));
-        UseMemoryButton.Content = selectedMemory.Count == 0 ? "Use Memory…" : "Review / Change Memory…";
+        UseMemoryButton.Content = selectedMemory.Count == 0 ? "选择记忆…" : "更换记忆…";
         SetBusy(app.Busy);
     }
     private void UseMemory(object sender, RoutedEventArgs e)

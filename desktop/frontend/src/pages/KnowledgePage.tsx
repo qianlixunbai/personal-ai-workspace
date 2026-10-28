@@ -77,22 +77,23 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     setTimeout(() => { if (epoch === generation.current && pick === selection.current) window.document.querySelector<HTMLPreElement>('.knowledge-detail pre')?.focus() }, 0)
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
-    <div className="card card-heading memory-toolbar"><div><h2>参考来源</h2><p className="hint">明确导入 · 私有源副本 · 独立版本 · 本机确定性处理</p></div><div className="conversation-actions">
+    <div className="card card-heading memory-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
       <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入 TXT / Markdown</button>
-      <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>Knowledge Backup…</button></div></div>
-    <p className="hint">Workspace Backup v1 只包含 Memory + Conversation。Knowledge 文档使用独立 Knowledge Backup；源文件、数据库和备份均为受 OS 账户权限保护的明文。</p>
+      <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
+    <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
     <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} />
-    <KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={openHit} />
+    <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={openHit} /></details>
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>
-        <label htmlFor="knowledge-status">生命周期</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">ACTIVE · 使用中</option><option value="ARCHIVED">ARCHIVED · 已归档</option></select>
+        <label htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
         <button disabled={!enabled || busy} onClick={() => { void run(refreshList) }}>刷新列表</button>
         <ul>{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(() => load(d.documentId)) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
-        {list?.items.length === 0 && <p>此生命周期中没有文档。</p>}
+        {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入 TXT / Markdown」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
         <div className="pagination"><button disabled={!enabled || busy || page === 0} onClick={() => setPage(page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || !list || (page + 1) * 20 >= list.total} onClick={() => setPage(page + 1)}>下一页文档</button></div>
       </section>
       <section className="card knowledge-detail" aria-labelledby="knowledge-detail-title"><h2 id="knowledge-detail-title">{document?.title ?? '选择一个文档'}</h2>
-        {document && <><p role="status" aria-live="polite">{document.status} · {labels[document.processingState]} · metadataVersion {document.metadataVersion}</p>
+        {!document && <p className="empty-state">从左侧选择文档，查看版本与原文。</p>}
+        {document && <><p role="status" aria-live="polite">{document.status === 'ACTIVE' ? '使用中' : '已归档'} · {labels[document.processingState]}</p>
           {processing && <p role="progressbar" aria-label="Knowledge 导入处理" aria-valuetext={labels[document.processingState]}>等待完整 READY 发布；旧 READY 版本仍可预览。</p>}
           {detail.job?.errorCode && <p className="error" role="alert">本次处理未完成：{detail.job.errorCode}。已存在的 READY 版本保持可用；可显式重新选择文件导入。</p>}
           {stale && <p role="alert">请刷新详情确认当前状态后再修改；不会自动重试。</p>}

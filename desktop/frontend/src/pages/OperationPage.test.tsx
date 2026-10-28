@@ -19,32 +19,32 @@ function page(kind: 'assistant' | 'translate' = 'assistant') {
 }
 async function reply(port: Port, value: unknown, index = port.sent.length - 1) { await act(async () => { port.reply(index, value) }) }
 async function choose(port: Port) {
-  fireEvent.click(screen.getByRole('button', { name: 'Use Memory…' }))
+  fireEvent.click(screen.getByRole('button', { name: '选择记忆…' }))
   expect(port.sent.at(-1)?.method).toBe('assistant.selectMemories')
   await reply(port, { changed: true, selectedMemoryRefs: [memory] })
 }
 it('displays explicit title as text, keeps decimal revision exact, clears selection immediately after admission and next Ask has zero memories', async () => {
   const { port, input } = page(); await choose(port)
   expect(screen.getByText(memory.title).querySelector('img')).toBeNull()
-  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: 'Submit Ask' }))
+  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
   expect(port.sent.at(-1)?.payload).toEqual({ mode: 'Ask', text: 'synthetic', selectedMemoryRefs: [{ memoryId: memory.memoryId, revision: memory.revision, position: 0 }] })
-  await reply(port, result); expect(screen.getByText('No Memory')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'Submit Ask' })); expect((port.sent.at(-1)?.payload as { selectedMemoryRefs: unknown[] }).selectedMemoryRefs).toEqual([])
+  await reply(port, result); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '发送问题' })); expect((port.sent.at(-1)?.payload as { selectedMemoryRefs: unknown[] }).selectedMemoryRefs).toEqual([])
   await reply(port, result)
 })
 it('retains stale selection and blocks submit until explicit reselect or clear', async () => {
   const { port, input } = page(); await choose(port)
-  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: 'Submit Ask' }))
+  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
   const request = port.sent.at(-1)!
   await act(async () => { port.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'MemorySelectionStale', message: 'Review selected Memory.' } }) })
-  expect(screen.getByText(memory.title)).toBeTruthy(); expect(screen.getByRole('button', { name: 'Submit Ask' }).hasAttribute('disabled')).toBe(true)
-  fireEvent.click(screen.getByRole('button', { name: 'Clear Memory' })); expect(screen.getByRole('button', { name: 'Submit Ask' }).hasAttribute('disabled')).toBe(false)
+  expect(screen.getByText(memory.title)).toBeTruthy(); expect(screen.getByRole('button', { name: '发送问题' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: '清除记忆' })); expect(screen.getByRole('button', { name: '发送问题' }).hasAttribute('disabled')).toBe(false)
 })
 it('POST timeout displays Outcome unknown without resend and retains unconfirmed Memory selection', async () => {
   vi.useFakeTimers(); const { port, input } = page(); await choose(port)
-  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: 'Submit Ask' }))
+  fireEvent.change(input, { target: { value: 'synthetic' } }); fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
   await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
-  expect(screen.getByText(/Outcome unknown ·/)).toBeTruthy(); expect(screen.getByText(memory.title)).toBeTruthy()
+  expect(screen.getByText(/执行结果待确认，不会自动重发/)).toBeTruthy(); expect(screen.getByText(memory.title)).toBeTruthy()
   expect(port.sent.filter(x => x.method === 'assistant.submit')).toHaveLength(1)
 })
 it('Enter and Ctrl+Enter during composition never submit; committed composition supports Ctrl+Enter and normal multiline paste', async () => {
@@ -59,7 +59,7 @@ it('Enter and Ctrl+Enter during composition never submit; committed composition 
 it('route change keeps a bounded composer and accepted task without resubmit/cancel; session rotation clears state and never replays', async () => {
   const port = new Port(); const bridge = new WorkspaceClient(port); clients.push(bridge); render(<App bridge={bridge} />)
   await act(async () => { port.session(); port.reply(0) })
-  fireEvent.change(screen.getByLabelText('问题'), { target: { value: 'synthetic route text' } }); fireEvent.click(screen.getByRole('button', { name: 'Submit Ask' })); await reply(port, queued)
+  fireEvent.change(screen.getByLabelText('问题'), { target: { value: 'synthetic route text' } }); fireEvent.click(screen.getByRole('button', { name: '发送问题' })); await reply(port, queued)
   await act(async () => { location.hash = '#/translate'; window.dispatchEvent(new Event('hashchange')) })
   await act(async () => { location.hash = '#/assistant'; window.dispatchEvent(new Event('hashchange')) })
   expect((screen.getByLabelText('问题') as HTMLTextAreaElement).value).toBe('synthetic route text')

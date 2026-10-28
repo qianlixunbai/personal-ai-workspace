@@ -3,15 +3,15 @@
   font-size: 14px;
   font-synthesis: none;
   color-scheme: light;
-  --canvas: #eff5ff;
+  --canvas: #f3f3f3;
   --surface: #ffffff;
-  --rail: #f5f9ff;
-  --text: #14244b;
-  --text-muted: #60749a;
-  --border: #dce7f7;
-  --accent: #2467ed;
-  --accent-soft: #e3edff;
-  --primary-fill: #2467ed;
+  --rail: #eeeeee;
+  --text: #202020;
+  --text-muted: #626262;
+  --border: #dedede;
+  --accent: #005fb8;
+  --accent-soft: #e5edf5;
+  --primary-fill: #005fb8;
   --primary-text: #ffffff;
   --success: #00866b;
   --warning: #8a5300;
@@ -21,9 +21,9 @@
   --expense-line: #ee507c;
   --hero-start: #e6f0ff;
   --hero-end: #cbdfff;
-  --surface-raised: #f6f9ff;
-  --card-shadow: 0 4px 20px #3466a607;
-  --accent-shadow: 0 6px 20px #2868ec26;
+  --surface-raised: #fafafa;
+  --card-shadow: 0 1px 2px #00000004;
+  --accent-shadow: 0 1px 2px #00000010;
   --unknown: #5b6473;
   /* Compatibility with existing page styles; theme storage remains unchanged. */
   --bg: var(--canvas);
@@ -31,23 +31,23 @@
   --active: var(--accent-soft);
   --focus: var(--accent);
   --radius-control: 8px;
-  --radius-card: 14px;
-  --sidebar-width: 228px;
-  --page-gutter: 24px;
+  --radius-card: 8px;
+  --sidebar-width: 200px;
+  --page-gutter: 32px;
   --content-width: 1680px;
 }
 
 :root[data-theme=dark] {
   color-scheme: dark;
-  --canvas: #071426;
-  --surface: #0e2037;
-  --rail: #08182c;
+  --canvas: #202020;
+  --surface: #2b2b2b;
+  --rail: #1c1c1c;
   --text: #edf4ff;
-  --text-muted: #a2b8d9;
-  --border: #213b5c;
-  --accent: #62a9ff;
-  --accent-soft: #10356d;
-  --primary-fill: #2879ff;
+  --text-muted: #bfbfbf;
+  --border: #454545;
+  --accent: #75baff;
+  --accent-soft: #323f4d;
+  --primary-fill: #005fb8;
   --primary-text: #ffffff;
   --success: #24ddbc;
   --warning: #f1ca7c;
@@ -57,7 +57,7 @@
   --expense-line: #ff5c89;
   --hero-start: #091c39;
   --hero-end: #0c3267;
-  --surface-raised: #142a46;
+  --surface-raised: #303030;
   --card-shadow: 0 5px 24px #00000012, inset 0 1px 0 #b3d9ff04;
   --accent-shadow: 0 0 22px #1675ff30;
   --unknown: #b9c2cf;

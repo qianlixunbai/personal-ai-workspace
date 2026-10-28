@@ -25,7 +25,7 @@ it('explicit K3 flow guards both IME controls, renders plain answer, opens admit
   const storage = vi.spyOn(Storage.prototype, 'setItem'), port = new AnswerService(); port.document.currentReadyRevision = '2'
   const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
   const view = render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ })
-  const question = screen.getByLabelText('问题 / Question'), query = screen.getByLabelText('回答检索关键词 / Retrieval Keywords')
+  const question = screen.getByLabelText('想了解什么'), query = screen.getByLabelText('回答检索关键词')
   fireEvent.change(question, { target: { value: '原始问题？' } }); fireEvent.change(query, { target: { value: '预算' } })
   expect(port.sent.some(r => r.method === 'knowledge.answerSubmit')).toBe(false)
   for (const input of [question, query]) {

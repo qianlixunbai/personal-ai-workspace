@@ -148,43 +148,44 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
   const disabled = !enabled || busy
   return <div className="memory-page">
     <div className="card-heading memory-toolbar"><p className="hint">手动保存 · 明确选择 · 无自动记忆</p><div>
-      <button className="secondary" disabled={disabled} onClick={openBackup}>Memory Backup / Restore</button>{' '}
+      <button className="secondary" disabled={disabled} onClick={openBackup}>备份与恢复…</button>{' '}
     </div></div>
     <div className="memory-layout">
-      <section className="card memory-list" aria-labelledby="memory-list-title"><h2 id="memory-list-title">Memory 列表</h2>
+      <section className="card memory-list" aria-labelledby="memory-list-title"><h2 id="memory-list-title">我的记忆</h2>
         <form onSubmit={event => { event.preventDefault(); if (!disabled && !listLoading) searchNow() }}>
-          <label htmlFor="memory-search">搜索 Memory</label><input id="memory-search" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} autoComplete="off"
+          <label htmlFor="memory-search">搜索记忆</label><input id="memory-search" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} autoComplete="off"
             onKeyDown={event => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault() }} />
-          <div className="operation-actions"><button disabled={disabled || listLoading}>Search</button><button type="button" disabled={disabled || listLoading} onClick={() => { void refresh() }}>Refresh</button></div>
-        </form><p className="hint">区分大小写的字面子串搜索，匹配标题和正文。点击 Search 或按 Enter 执行。</p>
-        <div className="memory-filters"><label htmlFor="memory-status">Status</label><select id="memory-status" value={query.status} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, status: event.target.value as MemoryStatus, page: 0 }) }}>
-          <option>ACTIVE</option><option>ARCHIVED</option></select>
-          <label htmlFor="memory-filter-type">Type filter</label><select id="memory-filter-type" value={query.type ?? 'ALL'} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, type: event.target.value === 'ALL' ? null : event.target.value as MemoryType, page: 0 }) }}>
-            <option>ALL</option><option>PREFERENCE</option><option>PROJECT_NOTE</option></select></div>
+          <div className="operation-actions"><button disabled={disabled || listLoading}>搜索</button><button type="button" disabled={disabled || listLoading} onClick={() => { void refresh() }}>刷新</button></div>
+        </form><p className="hint">搜索标题和正文，区分大小写。</p>
+        <div className="memory-filters"><label htmlFor="memory-status">状态</label><select id="memory-status" value={query.status} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, status: event.target.value as MemoryStatus, page: 0 }) }}>
+          <option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
+          <label htmlFor="memory-filter-type">类型</label><select id="memory-filter-type" value={query.type ?? 'ALL'} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, type: event.target.value === 'ALL' ? null : event.target.value as MemoryType, page: 0 }) }}>
+            <option value="ALL">全部</option><option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></div>
         <ul aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id} disabled={disabled || listLoading}
-          onClick={() => { if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type} · {item.status} · Revision {item.revision}</span><span>{item.updatedAt}</span></button></li>)}</ul>
-        {!listLoading && list?.total === 0 && <p>当前条件下没有 Memory。</p>}
-        <div className="pagination" aria-label="Memory pagination"><button disabled={disabled || listLoading || !list || list.page === 0} onClick={() => { void refresh({ ...queryRef.current, page: query.page - 1 }) }}>Previous</button>
-          <span>Page {query.page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))} · {list?.total ?? 0}</span>
-          <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>Next</button></div>
+          onClick={() => { if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button></li>)}</ul>
+        {!listLoading && list?.total === 0 && <p className="empty-state">没有找到记忆。可在右侧手动保存偏好或项目笔记。</p>}
+        <div className="pagination" aria-label="Memory pagination"><button disabled={disabled || listLoading || !list || list.page === 0} onClick={() => { void refresh({ ...queryRef.current, page: query.page - 1 }) }}>上一页</button>
+          <span>{query.page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))} · {list?.total ?? 0}</span>
+          <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>
       </section>
-      <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? 'Memory editor' : 'New Memory'}</h2><button ref={newButton} disabled={disabled} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('New · 点击 Save 才会创建。'); editor.current?.focus() })}>New</button></div>
-        <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status} · MANUAL · Revision ${loaded.revision}` : 'New · 尚未保存'}{dirty && ' · 未保存'}{stale && ' · stale：需重新加载'}{missing && ' · missing：已不存在'}{unknown && ' · outcome unknown：需显式检查'}</p>
-        {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请显式 Reload 或丢弃后选择其他条目。</p>}
-        {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请显式 New 或选择其他条目。</p>}
-        {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请 Refresh 检查列表，再 Reload；新建结果不明时请先检查，再显式 New。</p>}
-        <label htmlFor="memory-editor-type">Memory type</label><select id="memory-editor-type" value={draft.type} disabled={disabled} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
-          <option>PREFERENCE</option><option>PROJECT_NOTE</option></select>
-        <label htmlFor="memory-title">Memory title</label><input ref={editor} id="memory-title" value={draft.title} disabled={disabled} autoComplete="off" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} />
-        <p className="hint">{[...draft.title].length} / 160 Unicode 字符</p>
-        <label htmlFor="memory-content">Memory content</label><textarea id="memory-content" value={draft.content} readOnly={disabled} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
-        <p className="hint">{[...draft.content].length} / 2000 Unicode 字符 · {draft.content.length} / 2000 UTF-16 单位 · {new TextEncoder().encode(draft.content).length} / 8192 UTF-8 字节。仅显式 Save，不自动保存。</p>
+      <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
+        <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
+        {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
+        {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请新建 或选择其他条目。</p>}
+        {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}
+        <label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
+          <option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select>
+        <label htmlFor="memory-title">记忆标题</label><input ref={editor} id="memory-title" value={draft.title} disabled={disabled} autoComplete="off" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} />
+        <p className="hint">{[...draft.title].length} / 160 字符</p>
+        <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
+        <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
+        <details className="input-details"><summary>输入限制</summary><p className="hint">正文 {draft.content.length} / 2000 UTF-16 单位 · {new TextEncoder().encode(draft.content).length} / 8192 UTF-8 字节。不自动保存。</p></details>
         {dirty && !validDraft(draft) && <p className="hint">标题和正文不能为空，并须符合以上 Unicode 与长度限制；原文不会被截断。</p>}
-        {loaded && <dl className="memory-metadata"><div><dt>ID</dt><dd>{loaded.id}</dd></div><div><dt>Created</dt><dd>{loaded.createdAt}</dd></div><div><dt>Updated</dt><dd>{loaded.updatedAt}</dd></div></dl>}
-        <div className="operation-actions"><button className="primary" disabled={disabled || blocked || !dirty || !validDraft(draft)} onClick={save}>Save</button>
-          <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? 'Restore' : 'Archive'}</button>
-          <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>Delete</button>
-          <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>Reload</button></div>
+        {loaded && <details className="input-details"><summary>记录详情</summary><dl className="memory-metadata"><div><dt>ID</dt><dd>{loaded.id}</dd></div><div><dt>创建时间</dt><dd>{loaded.createdAt}</dd></div><div><dt>更新时间</dt><dd>{loaded.updatedAt}</dd></div></dl></details>}
+        <div className="operation-actions"><button className="primary" disabled={disabled || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
+          <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
+          <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>
+          <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>重新加载</button></div>
       </section>
     </div>{error && <p role="alert" className="error">{error}</p>}<p role="status">{notice}</p>
     {confirmation && <ConfirmationDialog title={confirmation.title} confirmText={confirmation.confirmText} cancel={() => setConfirmation(null)} confirm={() => { const action = confirmation.action; setConfirmation(null); action() }}><p>{confirmation.text}</p></ConfirmationDialog>}

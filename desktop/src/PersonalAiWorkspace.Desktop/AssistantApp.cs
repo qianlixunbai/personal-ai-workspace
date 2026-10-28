@@ -392,7 +392,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                 else
                 {
                     window.SetBusy(false);
-                    window.StatusText.Text = "选区已捕获 · 选择翻译、总结或 Ask AI 解释/提问。";
+                    window.StatusText.Text = "已取得选区，选择操作后开始。";
                     window.ActionSelector.Focus();
                 }
             }
@@ -446,9 +446,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                 if (exitRequested || window.ContentVersion != version) return;
                 window.StatusText.Text = task.Status switch
                 {
-                    TaskState.QUEUED => "Queued：等待本机 Runtime 执行…",
-                    TaskState.RUNNING => "Running：正在本机执行 " + input.Action + "…",
-                    TaskState.SUCCEEDED => "Succeeded：" + input.Action + " 完成。",
+                    TaskState.QUEUED => "正在排队…",
+                    TaskState.RUNNING => "正在处理…",
+                    TaskState.SUCCEEDED => "已完成，可复制结果。",
                     _ => ErrorText.For(task.Error ?? DesktopError.InternalError)
                 };
             }, lifetime.Token, window.MemoryReferences);
@@ -489,7 +489,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         }
         if (operation is null) return;
         operation.RequestCancel();
-        window.StatusText.Text = "Cancelling：正在向 Runtime 请求取消…";
+        window.StatusText.Text = "正在请求取消，等待确认…";
         window.CancelButton.IsEnabled = false;
     }
     public async Task CheckHealthAsync()

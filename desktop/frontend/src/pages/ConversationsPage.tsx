@@ -186,77 +186,80 @@ export function ConversationsPage({ bridge, enabled, visible }: {
   }
   return <div className="conversations-layout">
     <section className="card conversation-list" aria-labelledby="conversation-list-title">
-      <h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>New Conversation</button>
+      <h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>新建对话</button>
       <div className="conversation-tabs" role="tablist" aria-label="会话状态">{(['ACTIVE', 'ARCHIVED'] as const).map(filter => <button key={filter} role="tab" aria-selected={status === filter}
         id={`conversation-tab-${filter}`} aria-controls="conversation-list-panel" disabled={busy} onClick={() => {
           setStatus(filter); setList(null); void chooseConversation(null)
         }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           const other = filter === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE'; setStatus(other); setList(null); void chooseConversation(null); document.getElementById(`conversation-tab-${other}`)?.focus()
-        } }} tabIndex={status === filter ? 0 : -1}>{filter}</button>)}</div>
+        } }} tabIndex={status === filter ? 0 : -1}>{filter === 'ACTIVE' ? '使用中' : '已归档'}</button>)}</div>
       <div id="conversation-list-panel" role="tabpanel" aria-labelledby={`conversation-tab-${status}`} aria-busy={listLoading}>
         {listLoading && <p>正在加载列表…</p>}
         <ul>{list?.items.map(item => <li key={item.id}><button className="conversation-select" aria-pressed={item.id === selected} disabled={busy}
-          onClick={() => { void chooseConversation(item.id) }}><bdi>{item.title}</bdi>{' '}<span>{item.status}</span></button></li>)}</ul>
-        {list?.total === 0 && <p>暂无会话。</p>}
+          onClick={() => { void chooseConversation(item.id) }}><bdi>{item.title}</bdi>{' '}<span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button></li>)}</ul>
+        {list?.total === 0 && <p>还没有对话。点击「新建对话」，开始连续交流。</p>}
       </div>
-      <div className="pagination"><button disabled={!enabled || busy || listLoading || pages[status] === 0} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] - 1 }))}>Previous</button>
+      <div className="pagination"><button disabled={!enabled || busy || listLoading || pages[status] === 0} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] - 1 }))}>上一页</button>
         <span>{pages[status] + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 10))}</span>
-        <button disabled={!enabled || busy || listLoading || !list || (pages[status] + 1) * 10 >= list.total} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] + 1 }))}>Next</button></div>
+        <button disabled={!enabled || busy || listLoading || !list || (pages[status] + 1) * 10 >= list.total} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] + 1 }))}>下一页</button></div>
     </section>
     <section className="card conversation-detail" aria-labelledby="conversation-detail-title" aria-busy={historyLoading}>
       <div className="card-heading"><h2 id="conversation-detail-title"><bdi>{detail?.conversation.title ?? '选择或新建会话'}</bdi></h2>
-        <button disabled={!enabled || busy} onClick={() => { setError(''); void loadList(); if (selected) void loadDetail(selected) }}>Refresh</button></div>
+        <button disabled={!enabled || busy} onClick={() => { setError(''); void loadList(); if (selected) void loadDetail(selected) }}>刷新</button></div>
+      {!detail && <p className="empty-state">从左侧选择对话，或新建一个对话。每次使用记忆都需要你明确选择。</p>}
       {detail && <>
-        <div className="conversation-actions"><span>{detail.conversation.status}</span>
-          <button disabled={busy} onClick={() => setTitle(detail.conversation.title)}>Rename</button>
+        <div className="conversation-actions"><span>{detail.conversation.status === 'ACTIVE' ? '使用中' : '已归档'}</span>
+          <button disabled={busy} onClick={() => setTitle(detail.conversation.title)}>重命名</button>
           <button disabled={busy} onClick={() => { void run(async (id, token) => {
             const value = detail.conversation.status === 'ACTIVE' ? await bridge.archiveConversation(id) : await bridge.unarchiveConversation(id)
             if (token !== generation.current) return
             setMemories([]); setStale(false); setStatus(value.status); setPages(previous => ({ ...previous, [value.status]: 0 }))
             await loadDetail(id); await loadList(value.status, 0)
-          }) }}>{detail.conversation.status === 'ACTIVE' ? 'Archive' : 'Unarchive'}</button>
-          <button ref={deleteButton} className="destructive" disabled={busy || !!pending} onClick={() => setDeleting(true)}>Delete</button>
+          }) }}>{detail.conversation.status === 'ACTIVE' ? '归档' : '恢复'}</button>
+          <button ref={deleteButton} className="destructive" disabled={busy || !!pending} onClick={() => setDeleting(true)}>删除</button>
         </div>
         {title !== null && <form className="conversation-rename" onSubmit={event => { event.preventDefault(); if (!isTitle(title)) return; void run(async (id, token) => {
           await bridge.renameConversation(id, title); if (token !== generation.current) return
           setTitle(null); await loadDetail(id, detail.page); await loadList()
         }) }}><label htmlFor="conversation-title">会话标题（最多 160 个 Unicode 字符）</label><input ref={renameInput} id="conversation-title" autoComplete="off" value={title} onChange={event => setTitle(event.target.value)} />
-          <button type="submit" disabled={busy || !isTitle(title)}>Save title</button><button type="button" disabled={busy} onClick={() => { setTitle(null); editor.current?.focus() }}>Cancel rename</button></form>}
-        <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>Older</button>
-          <span>History {detail.page + 1} / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} Turns</span>
-          <button disabled={busy || historyLoading || (detail.page + 1) * 10 >= detail.totalTurns} onClick={() => { void loadDetail(detail.conversation.id, detail.page + 1) }}>Newer</button></div>
+          <button type="submit" disabled={busy || !isTitle(title)}>保存标题</button><button type="button" disabled={busy} onClick={() => { setTitle(null); editor.current?.focus() }}>取消重命名</button></form>}
+        <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>更早</button>
+          <span>第 {detail.page + 1} 页 / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} 轮</span>
+          <button disabled={busy || historyLoading || (detail.page + 1) * 10 >= detail.totalTurns} onClick={() => { void loadDetail(detail.conversation.id, detail.page + 1) }}>更新</button></div>
         <div className="conversation-history" aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
-          <h3>Turn {turn.sequence} · {turn.status}</h3><h4>USER</h4><pre dir="auto">{turn.userMessage.content}</pre>
-          {turn.assistantMessage && <><h4>ASSISTANT</h4><pre dir="auto">{turn.assistantMessage.content}</pre></>}
+          <h3>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
+          {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre></>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
-          {turn.memoryReferences.length > 0 && <p>Historical Memory × {turn.memoryReferences.length}</p>}
+          {turn.memoryReferences.length > 0 && <p>本轮曾使用记忆 × {turn.memoryReferences.length}</p>}
         </article>)}{detail.totalTurns === 0 && <p>发送第一条消息开始会话。</p>}</div>
         <div className="memory-choice"><button disabled={!enabled || historyLoading || pollingError || busy || !!pending || detail.conversation.status !== 'ACTIVE'} onClick={() => { void run(async (id, token) => {
           const choice = await bridge.selectConversationMemories(id)
           if (token === generation.current && choice.changed) { setMemories(choice.selectedMemoryRefs); setStale(false) }
-        }) }}>{memories.length ? 'Review / Change Memory…' : 'Use Memory…'}</button>
+        }) }}>{memories.length ? '更换记忆…' : '选择记忆…'}</button>
           <button disabled={busy || !memories.length && !stale} onClick={() => { void run(async (id, token) => {
             await bridge.clearConversationMemories(id); if (token === generation.current) { setMemories([]); setStale(false) }
-          }) }}>Clear Memory</button><span>{memories.length ? `${memories.length} selected` : 'No Memory'}</span>
-          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · Revision {memory.revision}</li>)}</ol>}
-          {stale && <p role="alert">Needs review · 重新选择或清除 Memory 后再发送。</p>}</div>
+          }) }}>清除记忆</button><span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
+          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
+          {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>
         <label htmlFor="conversation-input">会话消息</label><textarea id="conversation-input" ref={editor} value={draft} readOnly={busy || detail.conversation.status !== 'ACTIVE'} autoComplete="off" spellCheck={false}
           aria-describedby="conversation-input-help" onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
           onKeyDown={event => { if (event.key === 'Enter' && event.ctrlKey && !composing.current && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); send() } }} />
-        <p id="conversation-input-help" className="hint">Enter 换行；Ctrl+Enter 发送。拼音选词期间不会提交。{draft.length} / 3000 UTF-16 · {bytes} / 5632 UTF-8 bytes</p>
-        <div className="conversation-send"><button className="primary" disabled={!sendAllowed || invalid} onClick={send}>Send</button>
+        <p id="conversation-input-help" className="hint">Enter 换行 · Ctrl+Enter 发送 · {draft.length} / 3000 字符</p>
+        {draft.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
+        <details className="input-details"><summary>输入限制</summary><p className="hint">{draft.length} / 3000 UTF-16 · {bytes} / 5632 UTF-8 字节。拼音选词期间不会发送。</p></details>
+        <div className="conversation-send"><button className="primary" disabled={!sendAllowed || invalid} onClick={send}>发送</button>
           <button disabled={!pending?.canCancel || busy} onClick={() => { void run(async (id, token) => {
             try { await bridge.cancelConversationPending(id, pending!.turnId); if (token === generation.current) setNotice('已请求取消；等待持久终态。') }
             finally { if (token === generation.current) await loadDetail(id) }
-          }) }}>Cancel pending</button></div>
-        <p className="conversation-execution" role="status" aria-live="polite">{pending ? 'PENDING · 正在本机执行' : '无待执行 Turn'}</p>
+          }) }}>取消生成</button></div>
+        <p className="conversation-execution" role="status" aria-live="polite">{pending ? '正在生成…' : ''}</p>
       </>}
       {error && <p className="error" role="alert">{error}</p>}<p role="status">{notice}</p>
     </section>
     <dialog ref={deleteDialog} className="conversation-delete" aria-labelledby="conversation-delete-title" onCancel={event => { event.preventDefault(); if (!busy) setDeleting(false) }}>
       <h2 id="conversation-delete-title">永久删除会话</h2><p><bdi>{detail?.conversation.title}</bdi></p><p>删除后无法从当前 Workspace 恢复。</p>
-      <button ref={cancelDelete} disabled={busy} onClick={() => setDeleting(false)}>Cancel</button>
+      <button ref={cancelDelete} disabled={busy} onClick={() => setDeleting(false)}>取消</button>
       <button className="destructive" disabled={busy} onClick={() => { void run(async (id, token) => {
         await bridge.deleteConversation(id); if (token !== generation.current) return
         selectedRef.current = null; await chooseConversation(null); await loadList(); newButton.current?.focus()

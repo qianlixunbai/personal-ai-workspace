@@ -47,7 +47,7 @@ public partial class MainWorkspaceWindow : Window
         Loaded += async (_, _) =>
         {
             await Host.InitializeAsync();
-            if (Host.IsReady && !closed) { Fallback.Visibility = Visibility.Collapsed; NativeAssistantButton.Visibility = Visibility.Collapsed; }
+            if (Host.IsReady && !closed) Fallback.Visibility = Visibility.Collapsed;
         };
         Closing += CloseSafely;
     }

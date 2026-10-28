@@ -1,5 +1,9 @@
 # Personal AI Workspace
 
+## UI/UX 产品成熟度升级（2026-10-28）
+
+`codex/workspace-ui-maturity` 继承 X1 `8b00f74`，完成中文导航、助手/资料页层级、模型状态与设置分组、原生快速助手精简。竞品对比、Windows 渲染前后图、实际聚焦验证和独立 Development 构建见 [UI/UX 交付报告](docs/engineering/UI-MATURITY-REPORT.md)。未调用真实模型；X1 的 uncertainty 与前台切换阻塞继续独立保留，Windows 验收仍为 PARTIAL。
+
 ## X1 Windows 跨应用 Quick Assistant（2026-10-28）
 
 `Ctrl+Alt+Shift+Q` 捕获主动选区后选择翻译、总结、解释/提问；原 `Ctrl+Alt+Shift+T` 继续直接翻译。操作切换保留原文，取消/关闭清除上下文，结果仅在原生浮窗显示。GitHub 借鉴、Development 构建与实际验证见 [X1 报告](docs/engineering/X1-CROSS-APP-REPORT.md)。聚焦测试通过；真实 Windows 验收 **PARTIAL**，当前模型执行完成未知状态阻止完整推理验证。
