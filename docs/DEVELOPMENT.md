@@ -1,6 +1,6 @@
 # Development Guide
 
-适用：Windows x64、`main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617` 的 **Development-only** 路径。本文命令经脚本／工程配置静态核对；本轮未重新执行构建、启动或真实验收。
+适用：当前 main 的 Windows x64 **Development-only** 路径。环境与命令的历史源码核验基线为 `12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；文档现代化与 Closing 随 main 发布，最新主线提交见 [当前状态](STATUS.md)。本文命令仅经脚本／工程配置静态核对，本次 Closing 未重新执行构建、启动或真实验收。
 
 [文档索引](README.md) · [当前阻塞](STATUS.md) · [架构](architecture/current-architecture.md)
 

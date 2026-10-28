@@ -2,8 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
-源码主线基线：`main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。
-54 个开发提交已 fast-forward 整合，原 12 个开发分支已清理；本轮文档在独立开发分支交付，不自动合并 main。文档提交 SHA 以 Git history 为准，不自引用尚未生成的提交。
+历史源码核验基线：`12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；文档现代化候选：`95ba76a0f244037fd01a38e366da8f524908a418`。两者均为固定历史记录，不代表最新 main HEAD。
+当前发布主线为 [main](https://github.com/qianlixunbai/personal-ai-workspace/commits/main/)：新版 README、文档体系与 Closing 修订通过 fast-forward 纳入主线；最新提交以该记录为准。原 54 个开发提交完整保留，原 12 个开发分支已清理，文档开发分支继续保留；本次仅完成文档发布，不升级产品验收。
 
 [文档索引](README.md) · [开发指南](DEVELOPMENT.md) · [架构](architecture/current-architecture.md) · [路线图](roadmap/V1-ROADMAP.md)
 
@@ -42,7 +42,8 @@ Finance Budgets 明确为 **UNSUPPORTED**；不提供预算统计或写入。财
 - **历史实际执行**：各工程／里程碑报告中的聚焦测试、构建、Windows fixture、数据库／模型结果，仅对应其记录的提交、环境与包。
 - **用户人工报告**：M1.2 AAPL / SPY / USD/CNY，以及 F-next-10 的验收确认，按原报告归属保留；不改称本轮由代理实际运行。
 - **UI 截图**：真实 Windows WPF / WebView2 渲染，采用隔离合成 UI fixture，不证明当前真实模型成功或用户数据流程通过。
-- **本轮执行**：文档与 owning code 静态交叉核对、链接／锚点／截图隐私审查、Git 与远端状态核验。详见 [文档整理报告](engineering/DOCUMENTATION-MODERNIZATION-REPORT.md)。
+- **文档现代化历史核验（`95ba76a`）**：文档与 owning code 静态交叉核对、链接／锚点／截图隐私审查、Git 与远端状态核验。详见 [原始文档整理报告](engineering/DOCUMENTATION-MODERNIZATION-REPORT.md)，其开发分支交付状态仅记录当时语境。
+- **本次 Closing**：仅同步当前文档的主线发布状态，检查 Markdown 链接／图片路径、关键状态与 Git 差异，并正常发布 main；不重写历史快照或原始交付报告。
 - **本轮未执行**：生产测试、完整 Windows 验收、GPU / 模型 / Provider / 数据库操作、构建和打包。开发指南中的命令是经源码核对的操作说明，不是本轮执行记录。
 
 ## 仍需完成的验收

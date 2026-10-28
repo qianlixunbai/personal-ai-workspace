@@ -1,6 +1,6 @@
 # 当前架构
 
-核对日期：2026-10-28。源码基线 `main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。
+核对日期：2026-10-28。历史源码核验基线 `12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；当前 main 另包含文档现代化与 Closing 提交，最新主线状态见 [STATUS](../STATUS.md)。本次只同步文档发布状态，模块关系与安全合同未变。
 
 **Development-only；Vision BLOCKED；X1 Windows Acceptance PARTIAL；尚未 Production GO。**
 

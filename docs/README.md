@@ -1,6 +1,6 @@
 # Documentation
 
-当前源码基线：`main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617`（2026-10-28）。**Development-only，尚未 Production GO。**
+历史源码核验基线：`12dce0765dcdb89b75fd605c2b4fc7bf5db00617`（2026-10-28）。文档现代化与 Closing 随 main 发布，最新主线提交见 [当前状态](STATUS.md)。**Development-only，尚未 Production GO。**
 
 ## 从这里开始
 

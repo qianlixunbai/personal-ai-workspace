@@ -1,6 +1,6 @@
 # V1 Roadmap
 
-2026-10-28，源码基线 `main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。
+2026-10-28，历史源码核验基线 `12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。文档现代化与 Closing 随 main 发布；最新主线提交与固定核验基线的区别见 [当前状态](../STATUS.md)。
 
 [当前状态](../STATUS.md) 定义已核对的产品事实；本页区分已有源码、待验收事项与未来规划。**Development-only，尚未 Production GO。** 规划不构成实施、外部调用、真实数据迁移或发布授权。
 
@@ -21,7 +21,7 @@
 | Finance F-next-1–10 | 从冻结来源迁入受控只读切片、总览与统计 | [能力盘点](../engineering/FINANCE-REMAINING-CAPABILITIES.md)、[F-next-10](../engineering/FINANCE-F-NEXT-10-REPORT.md)、[人工确认归属](../engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md) |
 | D2 / M1–M1.2 | 财务图表、行情显示边界、Massive 参考日线 | [D2](../engineering/FINANCE-VISUAL-ANALYTICS-D2-REPORT.md)、[M1.2 closing](../engineering/FINANCE-MARKET-DATA-M12-CLOSING.md)；D2 PARTIAL 仍保留 |
 | X1 / UI maturity | 跨应用快速助手源码、中文导航与资料／设置层级 | [X1](../engineering/X1-CROSS-APP-REPORT.md)、[UI maturity](../engineering/UI-MATURITY-REPORT.md)；X1 Windows Acceptance PARTIAL |
-| Git 整合与文档 | 54 个提交进入 main、旧开发分支清理；本轮整理文档入口 | 源码基线保持 `12dce07`；本轮文档仅交付独立开发分支 |
+| Git 整合与文档 | 54 个开发提交进入 main、旧开发分支清理；新版 README、文档体系与 Closing fast-forward 发布 | 历史源码核验基线为 `12dce07`；当前 main 另包含文档提交，开发分支保留 |
 
 ## 当前未关闭的工作
 
