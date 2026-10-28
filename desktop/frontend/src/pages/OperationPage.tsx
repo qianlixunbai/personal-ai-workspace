@@ -129,22 +129,19 @@ export function OperationPage({ kind, bridge, enabled, visible = true }: {
     catch (problem) { if (current === generation.current) setError(problem instanceof BridgeError ? problem.message : '结果复制暂时不可用。') }
     finally { if (current === generation.current) setCopying(false) }
   }
+  const actions = <div className="operation-actions"><button className="primary" disabled={!enabled || busy || invalid || stale} onClick={() => { void submit() }}>{action === 'Ask' ? '发送问题' : action === 'Summarize' ? '生成摘要' : '开始翻译'}</button>
+    {active && <button className="secondary" disabled={!enabled || !operation || terminal(operation) || phase === 'Cancelling'} onClick={() => { void cancel() }}>取消</button>}</div>
   return <>
-    <section className="card operation-card" aria-labelledby={`${kind}-editor-title`}>
-      <div className="card-heading"><h2 id={`${kind}-editor-title`}>{kind === 'assistant' ? '问答与摘要' : '翻译文本'}</h2><span className="quiet-label">本机处理</span></div>
+    <section className={`card operation-card${kind === 'assistant' ? ` assistant-task assistant-task-${mode.toLowerCase()}` : ''}`} aria-labelledby={`${kind}-editor-title`}>
+      {kind === 'translate' && <div className="card-heading"><h2 id="translate-editor-title">翻译文本</h2><span className="quiet-label">本机处理</span></div>}
       {kind === 'assistant' ? <>
+        <div className="assistant-task-heading"><h2 id="assistant-editor-title" className="sr-only">问答与摘要</h2>
         <div className="operation-modes" role="group" aria-label="助手操作">{(['Ask', 'Summarize'] as const).map(value => <button key={value} disabled={busy} aria-pressed={mode === value} onClick={() => {
           if (mode === value) return
           generation.current++; setMode(value); setMemories([]); setStale(false)
           setOperation(null); setPhase('Idle'); setError(''); setNotice('')
-        }}>{value === 'Ask' ? '问一问' : '总结文字'}</button>)}</div>
+        }}>{value === 'Ask' ? '问一问' : '总结文字'}</button>)}</div><span className="quiet-label">本机处理 · 单次任务</span></div>
         <p className="hint">{mode === 'Ask' ? '每次独立回答。需要连续交流？请打开侧栏「对话」。' : '粘贴原文，提取要点。'}</p>
-        {mode === 'Ask' && <div className="memory-choice"><button className="secondary" onClick={() => { void choose() }} disabled={!enabled || busy}>
-          {memories.length ? '更换记忆…' : '选择记忆…'}</button>
-          {memories.length > 0 && <button className="secondary" onClick={() => { setMemories([]); setStale(false); setError('') }} disabled={busy}>清除记忆</button>}
-          <span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
-          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
-          {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>}
       </> : <><label htmlFor="translate-language">目标语言</label><select id="translate-language" value={language} disabled={busy} onChange={event => setLanguage(event.target.value)}>
         <option value="zh-CN">简体中文</option><option value="en">英语</option><option value="ja">日语</option></select></>}
       <label htmlFor={`${kind}-input`}>{action === 'Ask' ? '问题' : action === 'Summarize' ? '待摘要文本' : '待翻译文本'}</label>
@@ -158,9 +155,17 @@ export function OperationPage({ kind, bridge, enabled, visible = true }: {
         }} />
       <div className="composer-meta" id={`${kind}-input-help`}><span>Enter 换行 · Ctrl+Enter 发送</span><span>{text.length} / {charLimit} 字符</span></div>
       {text.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
+      {kind === 'assistant' && <div className="assistant-task-toolbar">
+        {mode === 'Ask' && <div className="memory-choice"><button className="secondary" onClick={() => { void choose() }} disabled={!enabled || busy}>
+          {memories.length ? '更换记忆…' : '选择记忆…'}</button>
+          {memories.length > 0 && <button className="secondary" onClick={() => { setMemories([]); setStale(false); setError('') }} disabled={busy}>清除记忆</button>}
+          <span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
+          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
+          {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>}
+        {actions}
+      </div>}
       <details className="input-details"><summary>输入限制</summary><p className="hint">{text.length} / {charLimit} UTF-16 · {utf8Bytes} / {byteLimit} UTF-8 字节。拼音选词期间不会发送。</p></details>
-      <div className="operation-actions"><button className="primary" disabled={!enabled || busy || invalid || stale} onClick={() => { void submit() }}>{action === 'Ask' ? '发送问题' : action === 'Summarize' ? '生成摘要' : '开始翻译'}</button>
-        {active && <button className="secondary" disabled={!enabled || !operation || terminal(operation) || phase === 'Cancelling'} onClick={() => { void cancel() }}>取消</button>}</div>
+      {kind === 'translate' && actions}
       {phase !== 'Idle' && <p className="execution-status" role="status" aria-live="polite">{statusText[phase]}</p>}
       {error && <p role="alert" className="error">{error}</p>}
     </section>

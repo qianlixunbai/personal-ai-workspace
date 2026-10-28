@@ -61,7 +61,7 @@ export function FinancePage({ bridge, enabled, openSettings }: { bridge: Workspa
   return <div className="finance-layout">
     <nav className="finance-navigation" aria-label="Finance 视图">
       {financeGroups.map(group => <div className="finance-nav-group" key={group.label}><p className="nav-group-label">{group.label}</p>
-        {group.items.map(item => <button key={item.id} aria-label={`${item.name} · ${item.label}`} aria-current={view === item.id ? 'page' : undefined} aria-pressed={view === item.id} onClick={() => selectView(item.id)}><Icon name={item.id} /><span className="finance-nav-copy"><span>{item.id === 'budgets' ? '预算' : item.label}</span><small aria-hidden="true">{item.name}{item.id === 'budgets' ? ' · UNSUPPORTED' : ''}</small></span></button>)}
+        {group.items.map(item => <button key={item.id} aria-label={`${item.name} · ${item.label}`} aria-current={view === item.id ? 'page' : undefined} aria-pressed={view === item.id} onClick={() => selectView(item.id)}><Icon name={item.id} /><span className="finance-nav-copy">{item.label}</span></button>)}
       </div>)}
     </nav>
     <label className="finance-picker">选择 Finance 页面<select value={view} onChange={event => selectView(event.target.value as FinanceView)}>
