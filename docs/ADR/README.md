@@ -1,6 +1,8 @@
 # Architecture Decision Records
 
-记录已经采用的架构决策，不作为执行 roadmap；Accepted 不等于已实施，实施状态见 STATUS。
+记录已经采用的架构决策，不作为执行 roadmap；Accepted 不等于已实施。当前实施、验收与阻塞以 [STATUS](../STATUS.md)、[当前架构](../architecture/current-architecture.md) 及实际源码为准。
+
+2026-10-28 索引同步：ADR 正文保留原批准日期与历史状态；尤其 ADR-014 / ADR-015 的 NOT STARTED 只属于批准时快照，不能覆盖后续 W1A / MMF 源码和报告。返回 [文档索引](../README.md)。
 
 | ADR | 状态 | 决策 |
 | --- | --- | --- |
@@ -17,5 +19,5 @@
 | [ADR-011](ADR-011-knowledge-domain-storage-ingestion-recovery.md) | Accepted | Knowledge 独立 ownership、private sources/schema、deterministic ingestion/revision/locator、publication/reconciliation、独立 backup/restore；既有 Architecture Guard K0 approval |
 | [ADR-012](ADR-012-deterministic-lexical-retrieval.md) | Accepted | K2 deterministic lexical retrieval、独立 derived FTS5/BM25 index、fingerprint freshness、bounded rebuild、native-only/privacy；Architecture Guard K2 approval |
 | [ADR-013](ADR-013-grounded-knowledge-answer-citations.md) | Accepted | K3 CLOSED — GO；explicit native-only knowledge-answer、question + lexical query、atomic immutable evidence admission、ranked full-chunk prefix、strict JSON / Runtime-owned answer-level citations；Architecture Guard IMPLEMENTATION / SOURCE CLOSING REVIEW APPROVED — GO |
-| [ADR-014](ADR-014-controlled-web-access.md) | Accepted | W1 Architecture APPROVED — GO；implementation NOT STARTED；explicit native-only Search/Fetch、WPF approval、Runtime PublicWebTransport / DNS pinning、ephemeral frozen Web evidence、local synthesis / Runtime citations；next W1A，publication closing review APPROVED — GO；formal publication COMPLETE（本 closing commit 发布到 main 时生效） |
-| [ADR-015](ADR-015-active-model-management.md) | Accepted | Architecture Guard Final Review APPROVED — GO；blockers 0；Runtime-owned ONE Active Model、legacy bootstrap、local-only admission、switch/lease/uncertainty guard、native exact-intent confirmation、Browser cache consistency；implementation NOT STARTED，Windows/Browser acceptance NOT PERFORMED；架构批准不授权实施 |
+| [ADR-014](ADR-014-controlled-web-access.md) | Accepted | Native-only Web、原生确认、公共传输 / DNS pinning 和临时证据合同；后续 [W1A Fetch 已实现](../milestones/W1A-CLOSING-REPORT.md)，W1 整体未关闭，Search / Web Answer 未作为产品交付 |
+| [ADR-015](ADR-015-active-model-management.md) | Accepted | Runtime-owned ONE Active Model、来源准入、lease / switch / uncertainty 与原生确认；后续 [MMF-3 Development-only closing](../engineering/MMF-3-CLOSING-RECORD.md) 已有历史证据，当前 X1 uncertainty / PARTIAL 不变 |

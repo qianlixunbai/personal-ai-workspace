@@ -1,5 +1,7 @@
 # ADR-014 — Controlled Web Access
 
+> 2026-10-28 阅读说明：以下日期、NOT STARTED 与批准范围保留为原架构快照。后续 W1A Fetch 已实现，W1 整体未关闭；当前实施见 [STATUS](../STATUS.md) 和 [W1A 报告](../milestones/W1A-CLOSING-REPORT.md)，不据此将 Search / Web Answer 宣传为可用。
+
 Status: Accepted
 
 Date: 2026-10-07 (Asia/Shanghai)

@@ -1,5 +1,15 @@
 # Finance Module — Read-only Integration
 
+## 当前范围（2026-10-28）
+
+源码基线 `main @ 12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。F-next-1–10 的绑定身份与只读账户、流水、资产、持仓、Portfolio、投资历史、导入回执、Dashboard / Analytics 已集成到 Workspace Shared Runtime；不是另一个必须运行的 Finance 服务。Budgets 为 UNSUPPORTED，账本写服务、导入创建／确认和独立 Finance AI Analyst 未迁入。
+
+Workspace 应用层 M1.2 当前提供显式 Massive 日线显示；用户报告 AAPL、SPY、USD/CNY 人工成功，获取成功不保证最新。该显示不进入持久缓存、离线回放或派生估值。以下 Twelve Data / NOT RUN 等段落保留原阶段语境，不能覆盖 [M1.2 收尾](../docs/engineering/FINANCE-MARKET-DATA-M12-CLOSING.md)。
+
+默认 Finance / Flyway 关闭，数据源、绑定身份、只读事务和来源哈希边界不变；仍为 Development-only，D2 原生验收 PARTIAL、Workspace 尚未 Production GO。当前事实见 [STATUS](../docs/STATUS.md)、[架构](../docs/architecture/current-architecture.md)、[能力盘点](../docs/engineering/FINANCE-REMAINING-CAPABILITIES.md) 和 [文档索引](../docs/README.md)。
+
+## 阶段交付历史
+
 2026-10-26：M1.1 为 Portfolio 警告附加服务端持仓 ID/代码，由界面按原因汇总并跳转现有详情，不改变估值计算。两个本地适配文件及冻结原始哈希见 [investment-source-provenance.json](investment-source-provenance.json)。Workspace 在许可未核验时拒绝真实行情请求及 Provider 缓存估值，仅已核验合成库的旧参考缓存继续显示为合成数据；金融账本、Receipt、迁移和来源仓库未改。详见 [M1.1 报告](../docs/engineering/FINANCE-MARKET-DATA-M11-REPORT.md)。
 
 2026-10-26：M1 在 Workspace 应用层接入 Twelve Data、原生许可/联网确认与独立 DPAPI 行情缓存，Finance PostgreSQL 保持只读。复用 Quote/FX/ReferenceValuation/Portfolio，仅在本地 `ReferenceValuationService.calculate` 增加市场匹配校验，防止批量同名跨市场误估；原公式不变，来源与本地适配哈希见 [asset-source-provenance.json](asset-source-provenance.json)。冻结来源仓库、账本、Receipt 和迁移未改。真实 Provider **NOT RUN**，D2 历史 **PARTIAL** 不变，详见 [M1 报告](../docs/engineering/FINANCE-MARKET-DATA-M1-REPORT.md)。仅 Development-only。
@@ -19,7 +29,7 @@
 Windows 绑定发布改为复用 Win32 文件身份，保留 CREATE_NEW / 不静默重绑；Finance 默认关闭，普通启动不迁移。
 详见 [F-next-1 实现与验收报告](../docs/engineering/FINANCE-F-NEXT-1-REPORT.md)。以下 F2.3-A2 等内容保留为历史证据，不代表本轮重新执行。
 
-## F2.3-A2 当前结果（2026-10-17）
+## F2.3-A2 历史结果（2026-10-17）
 
 真实 PostgreSQL 17.11 测试库 `personal_ai_workspace_test` 已从空库用 Flyway 12.4.0
 完整初始化 V1–V21。原始 SQL 的一次性副本与 SHA-256 见

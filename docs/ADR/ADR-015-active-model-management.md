@@ -1,5 +1,7 @@
 # ADR-015 — Active Model Management Foundation
 
+> 2026-10-28 阅读说明：下方 NOT STARTED / NOT PERFORMED 属于原批准时快照，合同与历史证据保留。后续实现见 [MMF-3 closing](../engineering/MMF-3-CLOSING-RECORD.md)，当前状态见 [STATUS](../STATUS.md)；X1 PARTIAL、MODEL_EXECUTION_UNCERTAIN 和 Development-only 不因历史 GO 而解除。
+
 Status: Accepted
 
 Date: 2026-10-08 (Asia/Shanghai)
