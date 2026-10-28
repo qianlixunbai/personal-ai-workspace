@@ -77,7 +77,7 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     setTimeout(() => { if (epoch === generation.current && pick === selection.current) window.document.querySelector<HTMLPreElement>('.knowledge-detail pre')?.focus() }, 0)
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
-    <div className="card card-heading memory-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
+    <div className="card-heading memory-toolbar knowledge-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
       <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入 TXT / Markdown</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
     <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
@@ -85,9 +85,9 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={openHit} /></details>
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>
-        <label htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
-        <button disabled={!enabled || busy} onClick={() => { void run(refreshList) }}>刷新列表</button>
-        <ul>{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(() => load(d.documentId)) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
+        <div className="knowledge-list-tools"><label className="sr-only" htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
+          <button disabled={!enabled || busy} onClick={() => { void run(refreshList) }}>刷新列表</button></div>
+        <ul tabIndex={0} aria-label="文档列表">{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(() => load(d.documentId)) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
         {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入 TXT / Markdown」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
         <div className="pagination"><button disabled={!enabled || busy || page === 0} onClick={() => setPage(page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || !list || (page + 1) * 20 >= list.total} onClick={() => setPage(page + 1)}>下一页文档</button></div>
       </section>
@@ -97,15 +97,15 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
           {processing && <p role="progressbar" aria-label="Knowledge 导入处理" aria-valuetext={labels[document.processingState]}>等待完整 READY 发布；旧 READY 版本仍可预览。</p>}
           {detail.job?.errorCode && <p className="error" role="alert">本次处理未完成：{detail.job.errorCode}。已存在的 READY 版本保持可用；可显式重新选择文件导入。</p>}
           {stale && <p role="alert">请刷新详情确认当前状态后再修改；不会自动重试。</p>}
+          <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { setRevision(e.target.value); setPreview(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
+            <button disabled={!enabled || busy || !revision} onClick={() => { offsets.current = []; void showPreview(0) }}>预览源文本</button></div>
+          {preview && <section aria-label="纯文本预览"><p className="knowledge-location">{preview.locators.map(l => `${l.type} · 行 ${l.startLine}–${l.endLine}${l.heading ? ` · ${l.heading}` : ''}`).join('')} · 文本偏移 {preview.offset}</p><pre tabIndex={0}>{preview.text}</pre>
+            <div className="pagination"><button disabled={busy || offsets.current.length === 0} onClick={() => { const previous = offsets.current.pop()!; void showPreview(previous) }}>上一页文本</button><button disabled={busy || preview.nextOffset === null} onClick={() => { offsets.current = [...offsets.current.slice(-255), preview.offset]; void showPreview(preview.nextOffset!) }}>下一页文本</button></div></section>}
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(() => load(document.documentId)) }}>刷新详情</button>
             <button disabled={!enabled || busy || processing || stale || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
             <button disabled={!enabled || busy || processing || stale} onClick={() => { void mutation(document.status === 'ACTIVE' ? 'archive' : 'restore') }}>{document.status === 'ACTIVE' ? '归档' : '恢复'}</button>
             <button className="destructive" disabled={!enabled || busy || processing || stale} onClick={() => setConfirmDelete(true)}>物理删除…</button>
             {processing && document.requestId && <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.cancelKnowledgeImport(document.documentId, document.requestId!); await load(document.documentId) }) }}>取消导入</button>}</div>
-          <label htmlFor="knowledge-revision">已发布源版本</label><select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { setRevision(e.target.value); setPreview(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select>
-          <button disabled={!enabled || busy || !revision} onClick={() => { offsets.current = []; void showPreview(0) }}>预览源文本</button>
-          {preview && <section aria-label="纯文本预览"><p className="knowledge-location">{preview.locators.map(l => `${l.type} · 行 ${l.startLine}–${l.endLine}${l.heading ? ` · ${l.heading}` : ''}`).join('')} · 文本偏移 {preview.offset}</p><pre tabIndex={0}>{preview.text}</pre>
-            <div className="pagination"><button disabled={busy || offsets.current.length === 0} onClick={() => { const previous = offsets.current.pop()!; void showPreview(previous) }}>上一页文本</button><button disabled={busy || preview.nextOffset === null} onClick={() => { offsets.current = [...offsets.current.slice(-255), preview.offset]; void showPreview(preview.nextOffset!) }}>下一页文本</button></div></section>}
         </>}
       </section>
     </div>

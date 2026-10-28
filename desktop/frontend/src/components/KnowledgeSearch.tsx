@@ -35,16 +35,16 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }:
   }
   const rebuild = async () => { const epoch = ++generation.current; setBusy(true); setResult(null); setError(''); try { const s = await bridge.rebuildKnowledgeSearch(); if (epoch === generation.current) setStatus(s) } catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '索引重建暂时不可用。') } finally { if (epoch === generation.current) setBusy(false) } }
   return <section className="card knowledge-search" aria-labelledby="knowledge-search-title">
-    <h2 id="knowledge-search-title">查找资料</h2><p className="hint">输入关键词，查找使用中的文档。</p>
-    <form onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void search() }}><label htmlFor="knowledge-search-query">检索关键词</label>
-      <input id="knowledge-search-query" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setError('') }} />
-      <button type="submit" disabled={!enabled || busy || !query.trim()}>检索</button></form>
-    <p role="status" aria-live="polite">索引：{status ? labels[status.state] : '等待状态'}{busy ? ' · 正在处理' : ''}</p>
+    <div className="knowledge-search-tools"><h2 id="knowledge-search-title">查找资料</h2><p id="knowledge-search-help" className="sr-only">输入关键词，查找使用中的文档。</p>
+    <form onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void search() }}><label className="sr-only" htmlFor="knowledge-search-query">检索关键词</label>
+      <input id="knowledge-search-query" placeholder="检索关键词" aria-describedby="knowledge-search-help" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setError('') }} />
+      <button type="submit" disabled={!enabled || busy || !query.trim()}>检索</button></form></div>
+    <div className="knowledge-search-meta"><p role="status" aria-live="polite">索引：{status ? labels[status.state] : '等待状态'}{busy ? ' · 正在处理' : ''}</p>
     {status?.state === 'BUILDING' && <p role="progressbar" aria-label="关键词索引重建">索引正在重建，完成后请显式检索。</p>}
-    <details className="input-details"><summary>检索说明与索引维护</summary><p className="hint">所有关键词需出现在同一片段中；只检索当前可用版本，关键词仅保留在本页。</p><button disabled={!enabled || busy} onClick={() => { void rebuild() }}>重建关键词索引</button></details>
+    <details className="input-details"><summary>检索说明与索引维护</summary><p className="hint">所有关键词需出现在同一片段中；只检索当前可用版本，关键词仅保留在本页。</p><button disabled={!enabled || busy} onClick={() => { void rebuild() }}>重建关键词索引</button></details></div>
     {error && <p role="alert" className="error">{error}</p>}
     {result && <><h3 ref={results} tabIndex={-1}>检索结果 · {result.hits.length}</h3>{result.hits.length === 0 && <p>没有满足全部关键词的当前来源。</p>}
-      <ol>{result.hits.map(hit => <li key={`${hit.documentId}/${hit.sourceRevision}/${hit.startOffset}`}>
+      <ol tabIndex={0} aria-label="检索结果列表">{result.hits.map(hit => <li key={`${hit.documentId}/${hit.sourceRevision}/${hit.startOffset}`}>
         <h4>{hit.title}</h4><p className="knowledge-location">{hit.sourceType} · 源版本 {hit.sourceRevision} · 行 {hit.startLine}–{hit.endLine} · 文本偏移 {hit.startOffset}–{hit.endOffset}{hit.heading ? ` · ${hit.heading}` : ''}</p>
         <p className="knowledge-snippet"><Highlight hit={hit} /></p><button disabled={!enabled || busy} onClick={() => { void open(hit) }}>打开此位置</button>
       </li>)}</ol></>}

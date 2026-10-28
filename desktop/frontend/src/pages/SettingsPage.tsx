@@ -15,10 +15,10 @@ export function SettingsPage({ bridge, status, busy, open, refresh }: {
 }) {
   return <div className="settings-page">
     <ModelManagement bridge={bridge} enabled={!!status && !busy} />
-    <section className="card" aria-labelledby="shortcuts-title"><h2 id="shortcuts-title">快速助手</h2>
+    <details className="settings-group"><summary>快速助手<span>全局快捷键与选区操作</span></summary><section className="card" aria-labelledby="shortcuts-title"><h2 id="shortcuts-title">快捷键</h2>
       <div className="shortcut-row"><span>选中文字后选择翻译、总结或解释</span><kbd>Ctrl + Alt + Shift + Q</kbd></div>
       <div className="shortcut-row"><span>直接翻译选中的文字</span><kbd>Ctrl + Alt + Shift + T</kbd></div>
-      <p className="hint">也可从托盘打开。Esc 关闭浮窗并清除本次内容；结果需要手动复制。</p></section>
+      <p className="hint">也可从托盘打开。Esc 关闭浮窗并清除本次内容；结果需要手动复制。</p></section></details>
     <details id="settings-connection" className="settings-group"><summary>连接与存储<span>本机服务、数据库与凭据</span></summary>
       <section className="card"><div className="card-heading"><h2 id="settings-status-title" tabIndex={-1}>本机运行状态</h2><button className="secondary" onClick={refresh} disabled={busy || !status}>刷新状态</button></div>
         <StatusPanel status={status} /><p className="hint">服务连接成功不代表模型已就绪。</p>
@@ -97,13 +97,12 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
       <div><dt>远端执行</dt><dd>{s?.uncertain ? '完成未知；AI、切换与释放 STOP' : s ? '无 unresolved guard；不证明其他客户端空闲' : 'Unknown'}</dd></div>
       <div><dt>Recovery generation</dt><dd>{s?.recoveryGeneration ?? '尚未核对'}</dd></div>
     </dl></details>
-    {!!snapshot?.catalog?.models.length && <><label className="model-picker">本地模型 <select value={handle} disabled={disabled || !snapshot?.catalog} onChange={event => setHandle(event.target.value)}>
+    {!!snapshot?.catalog?.models.length && <><div className="model-controls"><label className="model-picker">本地模型 <select value={handle} disabled={disabled || !snapshot?.catalog} onChange={event => setHandle(event.target.value)}>
       <option value="">选择已安装的模型</option>{snapshot?.catalog?.models.map(model => <option key={model.handle} value={model.handle}>{model.model} · {model.runner}</option>)}
     </select></label>
-    {selected && <details className="input-details"><summary>所选模型详情</summary><p className="hint">本地来源已核验 · 上下文 {selected.contextLimit} · 图片能力尚未验收</p><p className="hint">{selected.runner} · {selected.digest}</p></details>}
-    <div className="card-heading">
       <button className="primary" disabled={disabled || !selected || !idle || s?.uncertain} onClick={() => { void mutate('SWITCH', handle) }}>切换模型…</button>
     </div>
+    {selected && <details className="input-details"><summary>所选模型详情</summary><p className="hint">本地来源已核验 · 上下文 {selected.contextLimit} · 图片能力尚未验收</p><p className="hint">{selected.runner} · {selected.digest}</p></details>}
     <p className="hint">加载可能影响其他共享客户端的模型驻留，每次操作都需要原生窗口确认。</p></>}
     {snapshot?.catalog?.models.length === 0 && <p className="hint">没有通过当前安全检查的本地模型。</p>}
     <details className="advanced-section"><summary>高级模型操作与恢复</summary>

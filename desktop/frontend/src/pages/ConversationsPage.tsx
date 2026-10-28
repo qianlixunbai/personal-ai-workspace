@@ -186,7 +186,7 @@ export function ConversationsPage({ bridge, enabled, visible }: {
   }
   return <div className="conversations-layout">
     <section className="card conversation-list" aria-labelledby="conversation-list-title">
-      <h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>新建对话</button>
+      <div className="card-heading"><h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>新建对话</button></div>
       <div className="conversation-tabs" role="tablist" aria-label="会话状态">{(['ACTIVE', 'ARCHIVED'] as const).map(filter => <button key={filter} role="tab" aria-selected={status === filter}
         id={`conversation-tab-${filter}`} aria-controls="conversation-list-panel" disabled={busy} onClick={() => {
           setStatus(filter); setList(null); void chooseConversation(null)
@@ -226,13 +226,20 @@ export function ConversationsPage({ bridge, enabled, visible }: {
         <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>更早</button>
           <span>第 {detail.page + 1} 页 / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} 轮</span>
           <button disabled={busy || historyLoading || (detail.page + 1) * 10 >= detail.totalTurns} onClick={() => { void loadDetail(detail.conversation.id, detail.page + 1) }}>更新</button></div>
-        <div className="conversation-history" aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
+        <div className="conversation-history" tabIndex={0} aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
           <h3>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
           {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre></>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
           {turn.memoryReferences.length > 0 && <p>本轮曾使用记忆 × {turn.memoryReferences.length}</p>}
         </article>)}{detail.totalTurns === 0 && <p>发送第一条消息开始会话。</p>}</div>
+        <div className="conversation-composer">
+        <label htmlFor="conversation-input">会话消息</label><textarea id="conversation-input" ref={editor} value={draft} readOnly={busy || detail.conversation.status !== 'ACTIVE'} autoComplete="off" spellCheck={false}
+          aria-describedby="conversation-input-help" onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
+          onKeyDown={event => { if (event.key === 'Enter' && event.ctrlKey && !composing.current && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); send() } }} />
+        <p id="conversation-input-help" className="hint">Enter 换行 · Ctrl+Enter 发送 · {draft.length} / 3000 字符</p>
+        {draft.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
+        <div className="conversation-composer-toolbar">
         <div className="memory-choice"><button disabled={!enabled || historyLoading || pollingError || busy || !!pending || detail.conversation.status !== 'ACTIVE'} onClick={() => { void run(async (id, token) => {
           const choice = await bridge.selectConversationMemories(id)
           if (token === generation.current && choice.changed) { setMemories(choice.selectedMemoryRefs); setStale(false) }
@@ -242,17 +249,14 @@ export function ConversationsPage({ bridge, enabled, visible }: {
           }) }}>清除记忆</button><span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
           {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
           {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>
-        <label htmlFor="conversation-input">会话消息</label><textarea id="conversation-input" ref={editor} value={draft} readOnly={busy || detail.conversation.status !== 'ACTIVE'} autoComplete="off" spellCheck={false}
-          aria-describedby="conversation-input-help" onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
-          onKeyDown={event => { if (event.key === 'Enter' && event.ctrlKey && !composing.current && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); send() } }} />
-        <p id="conversation-input-help" className="hint">Enter 换行 · Ctrl+Enter 发送 · {draft.length} / 3000 字符</p>
-        {draft.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
-        <details className="input-details"><summary>输入限制</summary><p className="hint">{draft.length} / 3000 UTF-16 · {bytes} / 5632 UTF-8 字节。拼音选词期间不会发送。</p></details>
         <div className="conversation-send"><button className="primary" disabled={!sendAllowed || invalid} onClick={send}>发送</button>
           <button disabled={!pending?.canCancel || busy} onClick={() => { void run(async (id, token) => {
             try { await bridge.cancelConversationPending(id, pending!.turnId); if (token === generation.current) setNotice('已请求取消；等待持久终态。') }
             finally { if (token === generation.current) await loadDetail(id) }
           }) }}>取消生成</button></div>
+        </div>
+        <details className="input-details"><summary>输入限制</summary><p className="hint">{draft.length} / 3000 UTF-16 · {bytes} / 5632 UTF-8 字节。拼音选词期间不会发送。</p></details>
+        </div>
         <p className="conversation-execution" role="status" aria-live="polite">{pending ? '正在生成…' : ''}</p>
       </>}
       {error && <p className="error" role="alert">{error}</p>}<p role="status">{notice}</p>
