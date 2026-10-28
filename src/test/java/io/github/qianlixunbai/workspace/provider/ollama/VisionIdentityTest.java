@@ -1,5 +1,8 @@
 package io.github.qianlixunbai.workspace.provider.ollama;
 
+import io.github.qianlixunbai.workspace.capability.vision.VisionTokenBudget;
+import io.github.qianlixunbai.workspace.common.ErrorCode;
+import io.github.qianlixunbai.workspace.common.WorkspaceException;
 import io.github.qianlixunbai.workspace.task.Cancellation;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -66,13 +69,36 @@ class VisionIdentityTest {
                 child.getOutputStream().close();assertTrue(child.waitFor(5,java.util.concurrent.TimeUnit.SECONDS));assertEquals(0,child.exitValue());
                 assertInstanceOf(IOException.class,assertThrows(java.lang.reflect.InvocationTargetException.class,()->check.invoke(held)).getCause());
             }
-            assertNull(OllamaVisionEnvironment.currentContext(0,"fixture",new Cancellation())); // Empty reviewed policy never reaches NativeGate/network.
         } finally {
             if(child.isAlive()){child.destroyForcibly();assertTrue(child.waitFor(5,java.util.concurrent.TimeUnit.SECONDS));}
         }
     }
     public static final class NativeFixture {
         public static void main(String[] args) throws Exception {System.out.println("READY");System.out.flush();System.in.read();}
+    }
+    @Test void reviewedVisionPolicyBindsOnlyApprovedChildAndTuple() throws Exception {
+        String identity="qwen3.5:4b/llamacpp/96f38c742e0a10e194b237d2ffb8b55925ebfeed9d27df72688f565e773569e7";
+        String payload="a96cfee97137af1a40095ce2cb588b7a7ba768cf00851680b0991fcb65004fc8";
+        String preprocessing="5864d22b4d6489f43edcbe4542c02a35e0588c5dd41977f659506b50563517af";
+        String template="2d965ad8913863ddd9a9e334f881c70f326ac79368b1b129076e71c1f65f4267";
+        String key=payload+"/"+preprocessing+"/"+template;
+        var field=OllamaVisionEnvironment.class.getDeclaredField("REVIEWED_TOKEN_POLICIES");field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var policies=(Map<String,VisionTokenBudget.Evidence>)field.get(null);
+        var expected=new VisionTokenBudget.Evidence(identity,payload,preprocessing,template,
+                "v1-png-rgb-white-square-1024-context-8192",4096,256,1024,512);
+        assertEquals(Map.of(key,expected),policies);
+        var proof=policies.get(key);
+        VisionTokenBudget.verify(proof,identity,payload,preprocessing,template,"Describe the image.");
+        String wrongChild=OllamaVisionAdmission.MODEL+"/"+OllamaVisionAdmission.RUNNER+"/"+OllamaVisionAdmission.GGML;
+        assertEquals(ErrorCode.MODEL_UNAVAILABLE,assertThrows(WorkspaceException.class,
+                ()->VisionTokenBudget.verify(proof,wrongChild,payload,preprocessing,template,"Describe the image.")).error().code());
+        for(int component=0;component<3;component++) {
+            var changed=new ArrayList<>(List.of(payload,preprocessing,template));changed.set(component,"0".repeat(64));
+            assertNull(policies.get(String.join("/",changed)));
+            assertEquals(ErrorCode.MODEL_UNAVAILABLE,assertThrows(WorkspaceException.class,
+                    ()->VisionTokenBudget.verify(proof,identity,changed.get(0),changed.get(1),changed.get(2),"Describe the image.")).error().code());
+        }
     }
     @Test void exactProjectorFitRequiresVerifiedCopyAndPinnedSourceBranch() throws Exception {
         Path root=Path.of("D:/fit-fixture"),dist=root.resolve("dist"),models=root.resolve("models"),windows=Path.of("C:/Windows");

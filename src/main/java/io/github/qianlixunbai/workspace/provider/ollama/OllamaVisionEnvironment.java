@@ -25,9 +25,17 @@ final class OllamaVisionEnvironment {
             OllamaVisionAdmission.LANGUAGE,2722261504L,OllamaVisionAdmission.PROJECTOR,675568512L,
             "7339fa418c9ad3e8e12e74ad0fd26a9cc4be8703f9c110728a992b193be85cb2",11355L,
             "9371364b27a52acac9d87f88bd93c9db1174d8d6ec57f6888925cdc1788871ff",65L);
-    // Source-reviewed policy data only. No current native payload/preprocessing/template proof was
-    // supplied by the approval pack, so production has no positive entry. Never infer one from show.
-    private static final Map<String,VisionTokenBudget.Evidence> REVIEWED_TOKEN_POLICIES=Map.of();
+    // One Development-only shared 0.40.6 tuple approved by V1-VISION-NATIVE-PROVENANCE-POLICY-REVIEW.md.
+    // Actual model, modules and preprocessing must still match; never infer policy evidence from show.
+    private static final Map<String,VisionTokenBudget.Evidence> REVIEWED_TOKEN_POLICIES=Map.of(
+            "a96cfee97137af1a40095ce2cb588b7a7ba768cf00851680b0991fcb65004fc8/"
+                    +"5864d22b4d6489f43edcbe4542c02a35e0588c5dd41977f659506b50563517af/"
+                    +"2d965ad8913863ddd9a9e334f881c70f326ac79368b1b129076e71c1f65f4267",
+            new VisionTokenBudget.Evidence(OllamaVisionAdmission.MODEL+"/"+OllamaVisionAdmission.RUNNER+"/"+OllamaVisionAdmission.CHILD,
+                    "a96cfee97137af1a40095ce2cb588b7a7ba768cf00851680b0991fcb65004fc8",
+                    "5864d22b4d6489f43edcbe4542c02a35e0588c5dd41977f659506b50563517af",
+                    "2d965ad8913863ddd9a9e334f881c70f326ac79368b1b129076e71c1f65f4267",
+                    VisionTokenBudget.POLICY,4096,256,1024,512));
     private OllamaVisionEnvironment() {}
     record Pin(long bytes, String sha256) {}
     interface Instance {
