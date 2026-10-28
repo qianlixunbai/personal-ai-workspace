@@ -141,6 +141,7 @@
 | [GITHUB-OPEN-SOURCE-EVALUATION.md](engineering/GITHUB-OPEN-SOURCE-EVALUATION.md) | PERSONAL AI WORKSPACE GITHUB OPEN SOURCE EVALUATION |
 | [T0-TEST-SUITE-SLIMMING.md](engineering/T0-TEST-SUITE-SLIMMING.md) | T0 — Test Suite Slimming |
 | [UI-MATURITY-REPORT.md](engineering/UI-MATURITY-REPORT.md) | Workspace 产品成熟度 / UI-UX 升级 |
+| [UI-POLISH-REPORT.md](engineering/UI-POLISH-REPORT.md) | UI Polish & Visual Consistency |
 | [W1A-1-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-1-IMPLEMENTATION-CANDIDATE.md) | W1A-1 Runtime Secure Fetch implementation candidate |
 | [W1A-2-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-2-IMPLEMENTATION-CANDIDATE.md) | W1A-2 Native Approval + Typed Bridge implementation candidate |
 | [WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md](engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md) | Workspace Post F-next-10 Engineering Cleanup |
