@@ -144,6 +144,7 @@
 | [UI-POLISH-REPORT.md](engineering/UI-POLISH-REPORT.md) | UI Polish & Visual Consistency |
 | [UI-LAYOUT-REFINEMENT-P0-REPORT.md](engineering/UI-LAYOUT-REFINEMENT-P0-REPORT.md) | Assistant / Finance 布局优化 P0 |
 | [UI-LAYOUT-REFINEMENT-P1-REPORT.md](engineering/UI-LAYOUT-REFINEMENT-P1-REPORT.md) | Conversations / Memory / Knowledge / Settings 布局优化 P1 |
+| [UI-EXPERIENCE-P2-REPORT.md](engineering/UI-EXPERIENCE-P2-REPORT.md) | 六页最终体验审查 P2、短窗历史修复与待人工验收 |
 | [W1A-1-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-1-IMPLEMENTATION-CANDIDATE.md) | W1A-1 Runtime Secure Fetch implementation candidate |
 | [W1A-2-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-2-IMPLEMENTATION-CANDIDATE.md) | W1A-2 Native Approval + Typed Bridge implementation candidate |
 | [WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md](engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md) | Workspace Post F-next-10 Engineering Cleanup |

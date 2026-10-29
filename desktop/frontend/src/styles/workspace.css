@@ -249,7 +249,7 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .conversation-actions > span { color: var(--muted); margin-right: auto; }
 .conversation-detail > .pagination { margin: 8px 0; }
 .conversation-detail textarea { width: 100%; min-height: 88px; resize: vertical; box-sizing: border-box; font: inherit; padding: 8px 10px; margin-top: 6px; }
-.conversation-history { max-height: clamp(120px, calc(100vh - 510px), 420px); overflow-y: auto; overflow-wrap: anywhere; border-block: 1px solid var(--border); }
+.conversation-history { max-height: clamp(220px, calc(100vh - 510px), 420px); overflow-y: auto; overflow-wrap: anywhere; border-block: 1px solid var(--border); }
 .conversation-turn { border-bottom: 1px solid var(--border); padding: 10px 0; }
 .conversation-turn:last-child { border-bottom: 0; }
 .conversation-turn h3 { font-size: 12px; margin-bottom: 8px; color: var(--muted); }
