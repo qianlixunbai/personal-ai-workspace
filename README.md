@@ -10,11 +10,11 @@
   <a href="docs/README.md">全部文档</a>
 </p>
 
-> **Development-only。** 当前 X1 Windows Acceptance 为 **PARTIAL**，`MODEL_EXECUTION_UNCERTAIN` 仍未解决，Vision 为 **BLOCKED**。尚无已核验的 GitHub CI PASS，尚未取得 Production GO；仓库未提供正式 Release 或安装器。
+> **Development-only。** 当前 X1 Windows Acceptance 为 **PARTIAL**，Vision 为 **BLOCKED**。此前 uncertainty 已解除并有一次文本问答成功记录；最新开发包重启后的记录为 **NotValidated**，不能继承旧进程的 Ready。尚无已核验的 GitHub CI PASS，尚未取得 Production GO；仓库未提供正式 Release 或安装器。详见 [Runtime 核对与 X1 准备](docs/engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md)。
 
-![Windows 助手工作区：中文导航、问答与摘要、显式记忆选择](docs/design/ui-maturity/assistant-after.png)
+![Assistant 浅色主题：单次问答、显式记忆选择与结果阅读](docs/design/ui-experience-p2/assistant-1280x800-light.png)
 
-*2026-10-28，本机 Windows WPF / WebView2 的真实渲染捕获。截图使用隔离合成 UI fixture；“服务已连接”等模拟状态不代表真实 Runtime、模型或完整端到端验收通过。*
+*2026-10-29，UI Polish / P0 / P1 / P2 完成后的真实 WPF / WebView2 渲染，使用隔离合成 UI fixture。图中连接、完成、财务金额及模型告警均为演示状态，不代表当前 Runtime、真实模型或端到端验收通过。*
 
 ## 可以做什么
 
@@ -35,18 +35,30 @@
 
 ## Windows 客户端
 
+**Conversations · 深色主题**：会话列表、历史阅读与输入分区，记忆按次显式选择。点击图片查看原始分辨率。
+
+![Conversations 深色主题：合成长历史、独立输入区和显式记忆选择](docs/design/ui-experience-p2/conversations-1280x800-dark.png)
+
 <table>
   <tr>
-    <td width="66%"><img src="docs/design/ui-maturity/knowledge-after.png" alt="知识库：原生导入、词法检索和文档列表" width="820"></td>
-    <td width="34%"><img src="docs/design/ui-maturity/quick-actions-after.png" alt="WPF 快速助手：合成选区和空结果" width="420"></td>
+    <td width="50%"><a href="docs/design/ui-experience-p2/memory-1280x800-light.png"><img src="docs/design/ui-experience-p2/memory-1280x800-light.png" alt="Memory 浅色主题：合成记忆列表与手动编辑" width="630"></a></td>
+    <td width="50%"><a href="docs/design/ui-experience-p2/knowledge-1280x800-dark.png"><img src="docs/design/ui-experience-p2/knowledge-1280x800-dark.png" alt="Knowledge 深色主题：合成资料管理、源版本与原文阅读" width="630"></a></td>
   </tr>
   <tr>
-    <td>资料页：导入、检索、预览和显式知识问答。</td>
-    <td>原生快速助手：选区优先，结果需手动复制。</td>
+    <td><strong>Memory · 记忆管理</strong>：搜索、手动编辑与版本保护。</td>
+    <td><strong>Knowledge · 资料与原文</strong>：文档列表、源版本及纯文本预览。</td>
+  </tr>
+  <tr>
+    <td><a href="docs/design/ui-experience-p2/finance-1280x800-dark.png"><img src="docs/design/ui-experience-p2/finance-1280x800-dark.png" alt="Finance 深色主题：合成财务总览、收支趋势与支出结构" width="630"></a></td>
+    <td><a href="docs/design/ui-experience-p2/settings-1280x800-dark.png"><img src="docs/design/ui-experience-p2/settings-1280x800-dark.png" alt="Settings 深色主题：模型管理、合成 uncertainty 告警及设置分组" width="630"></a></td>
+  </tr>
+  <tr>
+    <td><strong>Finance · 财务仪表盘</strong>：只读总览、趋势与结构；金额和身份均为合成。</td>
+    <td><strong>Settings · 模型与设置</strong>：重要状态独立显示；此图演示 uncertainty 告警。</td>
   </tr>
 </table>
 
-以上为同一轮真实 Windows 渲染捕获，使用合成／空数据，快速助手结果为空；没有展示或暗示真实模型成功。来源和历史验证范围见 [UI 成熟度报告](docs/engineering/UI-MATURITY-REPORT.md)。
+以上六页为原始 PNG，未裁剪、拼接或生成界面；不含真实用户财务、记忆、凭据或个人文档。缩略图可点击查看原图。截图来源、与最新开发包的资源对应及隐私核查见 [展示核对记录](docs/engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md)，交互验证与物理验收边界见 [P2 报告](docs/engineering/UI-EXPERIENCE-P2-REPORT.md)。原生跨应用快速助手仍以 [X1 报告](docs/engineering/X1-CROSS-APP-REPORT.md) 的 PARTIAL 结论为准。
 
 ## 架构与技术栈
 
@@ -98,8 +110,8 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 
 ## 开发状态与限制
 
-- **X1 Windows Acceptance — PARTIAL**：缺少真实模型成功与完整跨应用物理流程证据。
-- **MODEL_EXECUTION_UNCERTAIN**：不得用刷新、清除文件或伪造终态绕过。
+- **X1 Windows Acceptance — PARTIAL**：已有一次文本问答成功的历史记录，完整跨应用选区到结果与物理流程仍待验收。
+- **Runtime Ready 需重新验证**：最新开发包重启后为 NotValidated；用户需通过原生界面重新验证加载。历史 uncertainty 已解除；若再次出现，仍不得绕过 guard。
 - **Vision — BLOCKED**：源码候选和无模型 fixture 不等于图片推理可用。
 - **Development-only / 尚未 Production GO**：无正式安装器、代码签名或自动更新。
 - **尚无已核验的 GitHub CI PASS**：历史本机验证不是当前提交的 CI 通过记录。

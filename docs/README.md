@@ -20,7 +20,7 @@
 
 当前事实先核对源码，再结合 STATUS 和最近的专属报告。ADR 的 Accepted 是决定状态，报告的 GO 只在其记录范围内有效；历史本机 PASS、用户人工报告、无模型 fixture 与当前 CI／真实 Windows 验收是不同证据。
 
-**X1 Windows Acceptance PARTIAL、MODEL_EXECUTION_UNCERTAIN、Vision BLOCKED、尚无已核验的 GitHub CI PASS** 仍保留。源码整合与文档更新不关闭这些关卡。
+**X1 Windows Acceptance PARTIAL、Vision BLOCKED、尚无已核验的 GitHub CI PASS** 仍保留。2026-10-30 [展示与 Runtime 核对](engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md) 区分已解除的历史 uncertainty、重启后的 NotValidated 与当前未运行的 Runtime；旧报告保留原始语境。源码整合与文档更新不关闭验收关卡。
 
 下列为完整 Markdown 导航。工程／里程碑／设计／审计正文按原日期与基线保留，旧分支名称仅作历史定位。完整本地 ignored 日志、包、Token 和数据库不随此导航发布。
 
@@ -145,6 +145,7 @@
 | [UI-LAYOUT-REFINEMENT-P0-REPORT.md](engineering/UI-LAYOUT-REFINEMENT-P0-REPORT.md) | Assistant / Finance 布局优化 P0 |
 | [UI-LAYOUT-REFINEMENT-P1-REPORT.md](engineering/UI-LAYOUT-REFINEMENT-P1-REPORT.md) | Conversations / Memory / Knowledge / Settings 布局优化 P1 |
 | [UI-EXPERIENCE-P2-REPORT.md](engineering/UI-EXPERIENCE-P2-REPORT.md) | 六页最终体验审查 P2、短窗历史修复与待人工验收 |
+| [GITHUB-SHOWCASE-RUNTIME-READINESS.md](engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md) | 六页 GitHub 展示、只读 Runtime 快照与 X1 最小准备 |
 | [W1A-1-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-1-IMPLEMENTATION-CANDIDATE.md) | W1A-1 Runtime Secure Fetch implementation candidate |
 | [W1A-2-IMPLEMENTATION-CANDIDATE.md](engineering/W1A-2-IMPLEMENTATION-CANDIDATE.md) | W1A-2 Native Approval + Typed Bridge implementation candidate |
 | [WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md](engineering/WORKSPACE-POST-FNEXT10-CLEANUP-REPORT.md) | Workspace Post F-next-10 Engineering Cleanup |
