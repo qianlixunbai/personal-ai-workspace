@@ -47,11 +47,52 @@ it('explicit K3 flow guards both IME controls, renders plain answer, opens admit
   expect((question as HTMLTextAreaElement).value).toBe(''); expect((query as HTMLInputElement).value).toBe(''); expect(screen.queryByText('打开引用来源')).toBeNull()
   expect(storage).not.toHaveBeenCalled(); expect(location.href).not.toContain('预算'); expect(location.href).not.toContain(port.document.documentId)
 })
-it('lost K3 submission is OutcomeUnknown without replay and extra result fields are rejected', async () => {
+it('K3 running model identity failure restores input without an answer, citations or replay', async () => {
+  const port = new AnswerService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ })
+  vi.useFakeTimers(); port.hold = true
+  const question = screen.getByLabelText('想了解什么') as HTMLTextAreaElement, query = screen.getByLabelText('回答检索关键词') as HTMLInputElement
+  const submit = screen.getByRole('button', { name: '基于知识回答' }) as HTMLButtonElement
+  fireEvent.change(question, { target: { value: 'question' } }); fireEvent.change(query, { target: { value: 'budget' } })
+  const running: KnowledgeAnswerTask = { ...port.answer(), status: 'RUNNING', result: null }
+  await act(async () => { fireEvent.click(submit); port.reply(port.sent.length - 1, running) })
+  expect(screen.getByText('正在生成回答')).toBeTruthy(); expect(submit.disabled).toBe(true)
+  expect(question.disabled).toBe(true); expect(query.disabled).toBe(true)
+  await act(async () => vi.advanceTimersByTimeAsync(1000))
+  expect(port.sent.at(-1)).toMatchObject({ method: 'knowledge.answerGet', payload: { taskId: running.taskId } })
+  const failed: KnowledgeAnswerTask = { ...running, status: 'FAILED', error: { code: 'ModelIdentityChanged', message: '模型 identity/digest 已改变；保持暂停，请重新核对。' } }
+  await act(async () => port.reply(port.sent.length - 1, failed))
+  expect(screen.getByText('回答失败')).toBeTruthy(); expect(screen.getByRole('alert').textContent).toBe(failed.error!.message)
+  expect(screen.queryByText('正在生成回答')).toBeNull(); expect(screen.queryByRole('button', { name: '取消知识回答' })).toBeNull()
+  expect(screen.queryByText(port.answer().result!.answer)).toBeNull(); expect(screen.queryByRole('heading', { name: '引用来源' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '打开引用来源' })).toBeNull()
+  expect(submit.disabled).toBe(false); expect(question.disabled).toBe(false); expect(query.disabled).toBe(false)
+  const sent = port.sent.length
+  await act(async () => vi.advanceTimersByTimeAsync(15001))
+  expect(port.sent).toHaveLength(sent); expect(port.sent.filter(r => r.method === 'knowledge.answerSubmit')).toHaveLength(1)
+  await act(async () => { fireEvent.click(submit); port.reply(port.sent.length - 1, failed) })
+  expect(port.sent.filter(r => r.method === 'knowledge.answerSubmit')).toHaveLength(2)
+  expect(screen.getByText('回答失败')).toBeTruthy(); expect(screen.getByRole('alert').textContent).toBe(failed.error!.message)
+  expect(submit.disabled).toBe(false)
+})
+it('lost K3 submission is OutcomeUnknown without replay and task contracts stay strict', async () => {
   vi.useFakeTimers(); const port = new AnswerService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session(); port.hold = true
   const pending = bridge.submitKnowledgeAnswer('question', 'budget').catch(e => e)
   await vi.advanceTimersByTimeAsync(15001); expect((await pending).code).toBe('OutcomeUnknown'); expect(port.sent.filter(r => r.method === 'knowledge.answerSubmit')).toHaveLength(1)
   const answer = port.answer(); expect(isKnowledgeAnswerTask(answer)).toBe(true)
   expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, sourceDigest: 'private' } })).toBe(false)
   expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, citations: [] } })).toBe(false)
+  const citation = answer.result!.citations[0]!
+  expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, citations: [{ ...citation, sourceDigest: 'private' }] } })).toBe(false)
+  expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, citations: [{ ...citation, locator: { ...citation.locator, endOffset: citation.endOffset - 1 } }] } })).toBe(false)
+  const failed = { ...answer, status: 'FAILED', result: null, error: { code: 'ModelIdentityChanged', message: '请检查模型安全状态。' } }
+  for (const code of ['ModelStateUnavailable', 'ModelIdentityChanged', 'ModelExecutionUncertain']) {
+    expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, code } })).toBe(true)
+  }
+  for (const code of ['UnknownFailure', 'ModelSwitchConflict', 'ModelSelectionRevisionConflict', 'ModelConfigurationInvalid', 'QueueFull']) {
+    expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, code } })).toBe(false)
+  }
+  expect(isKnowledgeAnswerTask({ ...failed, sourceDigest: 'private' })).toBe(false)
+  expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, phase: 'EXECUTION' } })).toBe(false)
+  expect(isKnowledgeAnswerTask({ ...failed, result: answer.result })).toBe(false)
 })

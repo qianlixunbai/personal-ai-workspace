@@ -20,5 +20,5 @@ export function isKnowledgeAnswerTask(v: unknown): v is KnowledgeAnswerTask {
   }
   if (v.result !== null) return false
   if (v.status === 'QUEUED' || v.status === 'RUNNING') return v.error === null
-  return isSafeError(v.error) && (v.status === 'CANCELLED' ? v.error.code === 'Cancelled' : v.status === 'TIMED_OUT' ? v.error.code === 'TimedOut' : ['ProviderUnavailable', 'ModelUnavailable', 'ProviderResponseInvalid', 'PolicyDenied', 'InvalidRequest', 'InternalError'].includes(v.error.code))
+  return isSafeError(v.error) && (v.status === 'CANCELLED' ? v.error.code === 'Cancelled' : v.status === 'TIMED_OUT' ? v.error.code === 'TimedOut' : ['ProviderUnavailable', 'ModelUnavailable', 'ModelStateUnavailable', 'ModelIdentityChanged', 'ModelExecutionUncertain', 'ProviderResponseInvalid', 'PolicyDenied', 'InvalidRequest', 'InternalError'].includes(v.error.code))
 }
