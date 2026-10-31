@@ -3,6 +3,8 @@
 2026-10-28（Asia/Shanghai）。**IMPLEMENTED / DEVELOPMENT BUILD READY；WINDOWS ACCEPTANCE PARTIAL。**
 基线 `ad0913dcf3c6ea918ad83665c2cdf0e7c90995b3`，入场工作区干净；交付分支 `codex/x1-cross-app-assistant`，最终源码身份以该分支 Git HEAD 为准。没有 Production GO。
 
+2026-10-31 聚焦真实验收更新：用户物理 Q → 记事本选区 → 总结，以及物理 T → 直接翻译均 **PASS**；两条路径都有独立 Runtime UUID / `SUCCEEDED` / 完成时间、实际模型结果和主动复制核对，见 [本轮独立记录](X1-REAL-E2E-ACCEPTANCE-20261031.md)。关闭后的来源窗口独立核验 **BLOCKED**：收口时原记事本进程已不存在，不能确认关闭瞬间的焦点与选区保留。下文保留 2026-10-28 的历史执行事实；IME、取消、迟到结果、DPI / 混合多屏等未在新一轮执行，X1 整体仍 **WINDOWS ACCEPTANCE PARTIAL**。Vision BLOCKED、Development-only、无已核验 CI PASS、尚未 Production GO。
+
 ## 使用与复用
 
 - 其他应用主动选中文字 → **Ctrl+Alt+Shift+Q** → 在原生浮窗选择翻译、总结或解释/提问，再点击执行。Q 不自动提交模型任务。
@@ -54,3 +56,8 @@ Q 捕获的真实证据来自本轮较早候选；最后的提示/焦点/清理�
 独立目录、framework-dependent Development-only 构建，依赖本机 .NET 10 Windows Desktop / Native helper runtime、WebView2 和现有受信本地 JDK/JAR；不是可分发的完整 portable bundle。没有替换旧包。
 无参数启动沿用现有开发 Profile 选择/记忆及完整原生安全校验；所有默认数据库和模型状态均保留。模型处于上述 uncertain 状态时 AI 请求继续被拒绝。
 构建身份、文件 hash 与本机前提另存于该目录 `X1-build.json` / `README-X1.txt`，不包含 token 或数据。后续 docs-only 提交不触发重建。
+
+
+## 2026-10-31 Windows 交互 P2 补充
+
+[本轮 P2 记录](X1-WINDOWS-INTERACTION-P2-20261031.md)在新的独立记事本进程上取得鼠标 X、物理 Esc、来源焦点、正文 / 选区保留及对应剪贴板检查 PASS。此前来源进程退出导致的 BLOCKED 保留为历史事实。真实 IME 流程因用户确认主动发送 nihao 并收到真实回复而停止：至少一次新增推理，零新增推理约束未满足，IME 仍 BLOCKED / NOT TESTED；未判作自动误发。T 提示仅有独立分支的一行源码修复及聚焦验证，受信包未覆盖，未重复真实 T。X1 PARTIAL、Vision BLOCKED、Development-only、无已核验 CI PASS、尚未 Production GO 保持。

@@ -433,6 +433,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         window.ResultText.Clear();
         window.CopyButton.IsEnabled = false;
         window.SetBusy(true);
+        window.StatusText.Text = "正在提交请求…";
         activeOperation = RunOperationAsync(current, input);
         await activeOperation;
     }
