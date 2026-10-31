@@ -61,3 +61,5 @@ Q 捕获的真实证据来自本轮较早候选；最后的提示/焦点/清理�
 ## 2026-10-31 Windows 交互 P2 补充
 
 [本轮 P2 记录](X1-WINDOWS-INTERACTION-P2-20261031.md)在新的独立记事本进程上取得鼠标 X、物理 Esc、来源焦点、正文 / 选区保留及对应剪贴板检查 PASS。此前来源进程退出导致的 BLOCKED 保留为历史事实。真实 IME 流程因用户确认主动发送 nihao 并收到真实回复而停止：至少一次新增推理，零新增推理约束未满足，IME 仍 BLOCKED / NOT TESTED；未判作自动误发。T 提示仅有独立分支的一行源码修复及聚焦验证，受信包未覆盖，未重复真实 T。X1 PARTIAL、Vision BLOCKED、Development-only、无已核验 CI PASS、尚未 Production GO 保持。
+
+同日 15:37 收口取得新的独立物理证据：微软拼音候选 / 中文上屏及普通 Enter 换行 PASS；组合态 Ctrl+Enter 仅隔离模拟 PASS，物理 NOT TESTED。本次用户确认没有发送，未观察到新增真实任务；历史主动发送及零推理约束 FAIL 不改写。未重跑 Q/T、X/Esc 或来源焦点验收，完整 IME / X1 仍未关闭，详见 P2 文末最新记录。

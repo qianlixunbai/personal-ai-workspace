@@ -2,6 +2,8 @@
 
 2026-10-31，Asia/Shanghai。基线 `main @ 2b579ae798a5c2ce1739a255536d17afbd46dcb3`；工作分支 `codex/x1-windows-interaction-p2-20261031`。以下原 P2 执行记录中的 HEAD / 未提交状态截至 15:24；后续收口另列。
 
+**15:37 最新聚焦结果：微软拼音候选 / 中文上屏 PASS；普通 Enter 换行 PASS；组合态 Ctrl+Enter 隔离模拟 PASS、物理 NOT TESTED。** 本次收口用户确认没有发送，未观察到新增真实任务。原 P2 主动发送及零新增推理约束 FAIL 的历史事实保留；这不是全部 IME / X1 验收通过，详见文末。
+
 **X 关闭、物理 Esc、来源焦点、原文 / 选区保留和对应剪贴板检查 PASS；真实 IME 验收 BLOCKED。** IME 过程中用户确认主动发送了 `nihao`，得到真实回复，因此本轮“零新增真实推理”约束未满足，不能宣称整个 P2 通过。未再要求重试。
 
 上一轮 [真实 Q/T E2E](X1-REAL-E2E-ACCEPTANCE-20261031.md) 的 Q / T PASS 保留；本轮没有重跑总结或翻译。X1 总体仍 **PARTIAL**；Vision **BLOCKED**；**Development-only**；**无已核验 CI PASS**；**尚未 Production GO**。
@@ -93,3 +95,26 @@ IME 本轮未取得完整通过证据，零新增推理目标未满足；X1 PART
 - `closing-before-runtime.json`（15:30:16）：沿用原受信 Desktop PID `17960` / Runtime PID `24012` 及原 Profile，health UP；PostgreSQL `TRUSTED_LOCAL / CONNECTED`；Configured / Active 身份、selection revision `0` 和 recovery generation 未变，Ready、`uncertain=false`、`validationRequired=false`、`switching=false`，四项执行计数均为 0。只读 GET，未重复 VALIDATE。
 
 本次没有新增长期测试、修改测试 / harness 源码或执行全套回归。Git 只执行当前开发分支的普通 Commit / Push，不合并 main，不创建 Tag / Release，不改写历史。物理 IME 验收尚待下阶段独立操作证据，不能由本节编译或模拟结果升级为 PASS。
+
+## 15:37 真实微软拼音聚焦验收与最终收口
+
+第一阶段提交 `01ddefbbbdf7badfce25b2188275287a383cca98` 已普通 Push；`git ls-remote` 独立确认远端开发分支指向该提交，main 仍为原基线。本节是其后的文档补充，不新增生产改动。
+
+继续沿用同一受信 Desktop / Runtime 和原 Profile，由用户本人在真实 Workspace `assistant-input` 操作；没有代按、设置文本、点击发送或在 Ready 工作区试按 Ctrl+Enter。用户中途询问“要发送吗”，已立即明确“不发送”；此提问不等于发生了提交。
+
+| 项目 | 本次结论 | 取得的证据及范围 |
+| --- | --- | --- |
+| 微软拼音真实候选窗口 | PASS（本场景） | `15:34:53.009` 截图 `ime-screen-153452993-2.png` 显示输入中的 `ni`、组合下划线及含“你”等候选的窗口；窗口位于输入光标下方、输入框内，未见错位或裁切。用户随后明确确认使用微软拼音候选选择。不是仅凭 keyboard layout 判定。 |
+| 中文候选选择及上屏 | PASS（本场景） | `15:34:53.650` 截图 `ime-screen-153453631-3.png` 和 UIA 均记录实际上屏“你好”，输入仍可编辑。用户答复“是，用空格、数字或鼠标选候选”；没有进一步区分该选项内的具体手势，不声称执行了候选态 Enter。实际上屏结果不是预写的通过条件。 |
+| 普通 Enter 换行 | PASS（本场景） | `15:37:09.863` 截图 `ime-screen-153709843-2.png` 显示光标进入下一行；UIA 从实际 ` zhongwen` 变为 ` zhongwen\n`。用户确认“已换到下一行，可以继续输入，没有发送”。未取得第二行继续输入中文的独立记录，不扩充为完整连续多行中文编辑验收。 |
+| 组合态 Ctrl+Enter | 模拟 PASS；物理 NOT TESTED | 复用本次 15:30 的隔离 mock Bridge 用例；未冒险触发真实请求，也不将此证据冒称物理键盘通过。 |
+| 异常提交 / 组合文字丢失 / 焦点异常 | 本场景未观察到 | 候选态和上屏截图正常；输入时 UIA 记录输入框持有焦点，用户离开 Workspace 回复聊天的前台切换单独记录。未观察到新 task UUID、重复提交或新结果；原有“已完成”及结果在输入前已显示，不能当作本次新任务。观察有间隙，不承诺任意输入流程无异常。 |
+| 本次收口新增真实推理 | 未报告或观察到 | 用户确认没有发送，代理提交数为 0；有界 HTTP 元数据观察仅在内存提取白名单任务 UUID，本次没有命中，不保存原始流 / 凭据 / 请求正文。此结论限于本次观察与用户确认；原 P2 至少一次新增推理及零推理约束 FAIL 不改写。 |
+
+本节原始证据沿用 `.verification/x1-p2-closing-20261031/`：`ime-observations.jsonl`、`screen-captures.jsonl`、上述截图、`user-confirmation.json` 和带 SHA-256 的 `evidence-manifest.json`。只读观察器已停止，未关闭受信客户端、Runtime、Ollama 或用户记事本。
+
+最终只读状态 `closing-final-runtime.json`（15:37:43.743 +08:00）：health UP；原 PostgreSQL `TRUSTED_LOCAL / CONNECTED`、Workspace `V1_V2_READY`、Knowledge `READY`、`errorCode=NONE`。Configured / Active 仍为 `qwen3.5:4b / llamacpp / 96f38c742e0a10e194b237d2ffb8b55925ebfeed9d27df72688f565e773569e7`，Ready、`uncertain=false`、`validationRequired=false`、`switching=false`，reserved / queued / executing / draining 全为 0；selection revision / recovery generation / 进程代次均未变。`loaded=FALSE` 原样保留，不以 Ready 改写它。
+
+`closing-trusted-package.json` 重新核对当前包 EXE、Desktop/Core DLL、Java EXE、JAR 均匹配原 `8df87ab` 清单；`closing-configuration-pins.json` 确认原 Workspace / Finance 配置 hash 未变。没有 VALIDATE、模型管理、服务重启或数据库 / Profile / Native Gate 修改，没有覆盖受信包。文档补充后不重跑已通过的测试、编译或打包。
+
+仍未完成：物理组合态 Ctrl+Enter、候选态 Enter 专项、连续多行中文编辑、真实取消 / 运行中关闭与迟到响应、受控 Copy fallback / 多格式恢复、其他应用及 DPI / 混合多屏等。建议本分支仅作为 Development-only 小修复与准确验收记录合并，不能据此关闭 X1 或宣称 Production GO；本次没有执行合并。**X1 PARTIAL、Vision BLOCKED、Development-only、无已核验 CI PASS、尚未 Production GO。**
