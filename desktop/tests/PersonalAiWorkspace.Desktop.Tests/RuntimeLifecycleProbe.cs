@@ -17,6 +17,7 @@ public static partial class RuntimeLifecycleProbe
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args is ["--x1-execution-lifecycle-fixture"]) return RunX1ExecutionLifecycleFixture();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         if (args is ["--x1-selection-fixture"]) return RunX1SelectionFixture();
         if (args is ["--prepare-profile"])

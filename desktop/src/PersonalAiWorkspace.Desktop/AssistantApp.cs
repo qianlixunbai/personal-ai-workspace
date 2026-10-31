@@ -32,6 +32,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private HotkeyRegistration? hotkey;
     private HotkeyRegistration? quickActionsHotkey;
     private AssistantOperation? operation;
+    private int operationContentVersion;
     private Task? activeOperation;
     private Task? activeCapture;
     private CancellationTokenSource? captureCancellation;
@@ -439,12 +440,12 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     private async Task RunOperationAsync(AssistantOperation current, AssistantInput input)
     {
-        int version = window.ContentVersion;
+        operationContentVersion = window.ContentVersion;
         try
         {
             var result = await current.RunAsync(input, task =>
             {
-                if (exitRequested || window.ContentVersion != version) return;
+                if (exitRequested || window.ContentVersion != operationContentVersion) return;
                 window.StatusText.Text = task.Status switch
                 {
                     TaskState.QUEUED => "正在排队…",
@@ -453,26 +454,26 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                     _ => ErrorText.For(task.Error ?? DesktopError.InternalError)
                 };
             }, lifetime.Token, window.MemoryReferences);
-            if (!exitRequested && window.ContentVersion == version && result.Status == TaskState.SUCCEEDED)
+            if (!exitRequested && window.ContentVersion == operationContentVersion && result.Status == TaskState.SUCCEEDED)
                 window.ResultText.Text = result.Result!;
         }
         catch (DesktopException error)
         {
-            if (exitRequested || window.ContentVersion != version) return;
+            if (exitRequested || window.ContentVersion != operationContentVersion) return;
             window.StatusText.Text = current.AdmissionOutcomeUnknown ? ErrorText.For(DesktopError.OutcomeUnknown) : error.Message;
             if (!current.Accepted) window.MemoryAdmissionFailed(error.Error);
         }
         catch (OperationCanceledException)
         {
-            if (!exitRequested && window.ContentVersion == version)
+            if (!exitRequested && window.ContentVersion == operationContentVersion)
                 window.StatusText.Text = "取消已尽力发送，未确认的 Runtime 状态不能视为已取消。";
         }
         catch (Exception)
-        { if (!exitRequested && window.ContentVersion == version) window.StatusText.Text = ErrorText.For(DesktopError.InternalError); }
+        { if (!exitRequested && window.ContentVersion == operationContentVersion) window.StatusText.Text = ErrorText.For(DesktopError.InternalError); }
         finally
         {
             operation = null;
-            if (window.ContentVersion == version) window.MemoryOperationEnded(current.Accepted);
+            if (window.ContentVersion == operationContentVersion) window.MemoryOperationEnded(current.Accepted);
             if (!exitRequested) window.SetBusy(Busy);
             if (!window.IsVisible) window.ClearText();
         }
@@ -489,6 +490,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             return;
         }
         if (operation is null) return;
+        // Keep this operation's confirmation eligible; closing advances ContentVersion again.
+        operationContentVersion = window.ContentVersion;
         operation.RequestCancel();
         window.StatusText.Text = "正在请求取消，等待确认…";
         window.CancelButton.IsEnabled = false;
