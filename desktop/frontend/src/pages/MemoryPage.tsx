@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
-import { emptyMemory, validDraft, validQuery } from '../bridge/memory'
+import { emptyMemory, validContent, validDraft, validQuery } from '../bridge/memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
+export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void) => boolean
 const message = (problem: unknown) => problem instanceof BridgeError ? problem.message : 'Memory 暂时不可用，请显式刷新或重新加载。'
 type Confirmation = { title: string; text: string; confirmText: string; action: () => void } | null
-export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup }: {
+export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDraft, openBackup }: {
   bridge: WorkspaceClient; enabled: boolean; visible: boolean; registerLeave: (guard: MemoryLeaveGuard) => () => void
+  registerDraft?: (receive: MemoryDraftReceiver) => () => void
   openBackup: () => void
 }) {
   const [query, setQuery] = useState<MemoryQuery>({ query: '', status: 'ACTIVE', type: null, page: 0 })
@@ -16,6 +19,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
   const [list, setList] = useState<MemoryList | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
+  const [fromConversation, setFromConversation] = useState(false)
   const [stale, setStale] = useState(false)
   const [missing, setMissing] = useState(false)
   const [unknown, setUnknown] = useState(false)
@@ -38,13 +42,13 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
   const dirty = draft.type !== baseline.type || draft.title !== baseline.title || draft.content !== baseline.content
   const blocked = stale || missing || unknown
   useEffect(() => {
-    if (!busy && !confirmation && focusNext.current) {
+    if (visible && !busy && !confirmation && focusNext.current) {
       (focusNext.current === 'editor' ? editor.current : newButton.current)?.focus(); focusNext.current = null
     }
-  }, [busy, confirmation])
+  }, [busy, confirmation, visible])
   const loadEditor = (item: MemoryItem | null) => {
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
-    setStale(false); setMissing(false); setUnknown(false); setError('')
+    setStale(false); setMissing(false); setUnknown(false); setError(''); setFromConversation(false)
   }
   useEffect(() => {
     if (!bridge.ready || dirty === signalledDirty.current) return
@@ -64,6 +68,16 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
   useEffect(() => registerLeave(leave => requestDiscard(() => {
     loadEditor(null); setNotice('已丢弃本地修改。'); leave()
   })), [registerLeave, dirty, confirmation, busy])
+  useEffect(() => registerDraft?.((incoming, accepted) => {
+    if (!enabled || actionLock.current || confirmation) return false
+    const token = generation.current
+    requestDiscard(() => {
+      if (token !== generation.current) return
+      loadEditor(null); setDraft(incoming); setFromConversation(true); setNotice(''); focusNext.current = 'editor'
+      accepted()
+    })
+    return true
+  }), [registerDraft, enabled, dirty, confirmation, busy])
   const fetchList = async (view = queryRef.current) => {
     const token = ++listGeneration.current
     setListLoading(true)
@@ -170,6 +184,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
           <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>
       </section>
       <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
+        {fromConversation && <p className="hint">已从对话填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。</p>}
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
         {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请新建 或选择其他条目。</p>}
@@ -180,6 +195,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
             <p className="hint">{[...draft.title].length} / 160 字符</p></div></div>
         <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
         <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
+        {fromConversation && !validContent(draft.content) && <p role="alert" className="error">对话原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
         <div className="operation-actions"><button className="primary" disabled={disabled || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
           <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
           <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>
@@ -189,6 +205,6 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, openBackup
         {loaded && <details className="input-details"><summary>记录详情</summary><dl className="memory-metadata"><div><dt>ID</dt><dd>{loaded.id}</dd></div><div><dt>创建时间</dt><dd>{loaded.createdAt}</dd></div><div><dt>更新时间</dt><dd>{loaded.updatedAt}</dd></div></dl></details>}
       </section>
     </div>{error && <p role="alert" className="error">{error}</p>}<p role="status">{notice}</p>
-    {confirmation && <ConfirmationDialog title={confirmation.title} confirmText={confirmation.confirmText} cancel={() => setConfirmation(null)} confirm={() => { const action = confirmation.action; setConfirmation(null); action() }}><p>{confirmation.text}</p></ConfirmationDialog>}
+    {confirmation && createPortal(<ConfirmationDialog title={confirmation.title} confirmText={confirmation.confirmText} cancel={() => setConfirmation(null)} confirm={() => { const action = confirmation.action; setConfirmation(null); action() }}><p>{confirmation.text}</p></ConfirmationDialog>, document.body)}
   </div>
 }

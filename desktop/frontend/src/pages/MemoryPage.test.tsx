@@ -1,9 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryPage } from './MemoryPage'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
 import { MemoryService, memoryItem } from '../test/memoryFixtures'
+import { conversation, history as conversationHistory, uuid } from '../test/conversationFixtures'
+import { Port } from '../test/fixtures'
 const clients: WorkspaceClient[] = []
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
@@ -18,6 +20,111 @@ async function setup(port = new MemoryService()) {
   return { port, bridge, title: screen.getByLabelText('记忆标题') as HTMLInputElement, content: screen.getByLabelText('记忆内容') as HTMLTextAreaElement }
 }
 const edit = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } })
+class ConversationMemoryService extends MemoryService {
+  detail = conversationHistory()
+  postMessage(request: unknown) {
+    const method = (request as { method: string }).method
+    if (!method.startsWith('conversations.')) { super.postMessage(request); return }
+    Port.prototype.postMessage.call(this, request)
+    const index = this.sent.length - 1
+    queueMicrotask(() => {
+      if (method === 'conversations.list') this.reply(index, { items: [conversation], total: 1, page: 0, limit: 10 })
+      else if (method === 'conversations.get') this.reply(index, this.detail)
+      else if (method === 'conversations.clearMemories') this.reply(index, { cleared: true })
+    })
+  }
+}
+async function setupConversationDraft(port = new ConversationMemoryService()) {
+  history.replaceState(null, '', '#/conversations')
+  const bridge = new WorkspaceClient(port); clients.push(bridge)
+  render(<App bridge={bridge} />); await act(async () => port.session())
+  await screen.findByRole('article')
+  return { port, bridge, title: screen.getByLabelText('记忆标题') as HTMLInputElement, content: screen.getByLabelText('记忆内容') as HTMLTextAreaElement }
+}
+const chooseMessage = async (role: 'USER' | 'ASSISTANT') => {
+  const turn = screen.getByRole('article')
+  await act(async () => fireEvent.click(within(turn).getAllByRole('button', { name: '保存为记忆草稿' })[role === 'USER' ? 0 : 1]!))
+}
+const openConversations = async () => { await act(async () => fireEvent.click(screen.getByRole('link', { name: '对话' }))) }
+it('hands USER and ASSISTANT history through App into the existing editor, and creates exactly once only after an edited Save', async () => {
+  const port = new ConversationMemoryService()
+  const original = '  Synthetic 用户 <script>instruction</script>\r\n\u0001\u202e  '
+  port.detail.turns[0]!.userMessage.content = original
+  port.detail.turns[0]!.assistantMessage!.content = '  Synthetic assistant <img onerror=x>\n请审阅  '
+  const { title, content } = await setupConversationDraft(port)
+  edit(screen.getByLabelText('会话消息'), 'Synthetic unsubmitted input')
+  await chooseMessage('USER')
+  expect(location.hash).toBe('#/memory'); expect(title.value).toBe(''); expect(content.value).toBe(original.replace('\r\n', '\n'))
+  expect((screen.getByLabelText('记忆类型') as HTMLSelectElement).value).toBe('PROJECT_NOTE')
+  expect(screen.getByText(/已从对话填入草稿；尚未保存/)).toBeTruthy()
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
+  edit(title, 'Synthetic reviewed title'); edit(screen.getByLabelText('记忆类型'), 'PREFERENCE')
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存' })); fireEvent.click(screen.getByRole('button', { name: '保存' })) })
+  expect(port.sent.filter(x => x.method === 'memory.create').map(x => x.payload)).toEqual([{ type: 'PREFERENCE', title: 'Synthetic reviewed title', content: original }])
+  expect(screen.queryByText(/已从对话填入草稿；尚未保存/)).toBeNull()
+  await openConversations(); await screen.findByRole('article'); await chooseMessage('ASSISTANT')
+  expect(title.value).toBe(''); expect(content.value).toBe(port.detail.turns[0]!.assistantMessage!.content)
+  expect((screen.getByLabelText('记忆类型') as HTMLSelectElement).value).toBe('PROJECT_NOTE')
+  expect(screen.getByText(/助手回复可能不准确/)).toBeTruthy(); expect(document.querySelector('script,img')).toBeNull()
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+  expect(port.sent.some(x => x.method === 'conversations.send' || x.method === 'conversations.selectMemories')).toBe(false)
+})
+it('protects a dirty retained hidden editor, supports cancel and explicit discard, and preserves the normal leave guard', async () => {
+  const { port, title, content } = await setupConversationDraft()
+  // Both pages stay mounted: seed the retained hidden editor to exercise its ownership boundary.
+  edit(title, 'Synthetic retained title'); edit(content, 'Synthetic retained body'); edit(screen.getByLabelText('记忆类型'), 'PREFERENCE')
+  await chooseMessage('ASSISTANT')
+  expect(location.hash).toBe('#/conversations'); expect(screen.getByRole('dialog').closest('[hidden]')).toBeNull()
+  await click('取消')
+  expect(title.value).toBe('Synthetic retained title'); expect(content.value).toBe('Synthetic retained body')
+  expect(location.hash).toBe('#/conversations'); expect(port.sent.some(x => x.method === 'memory.create')).toBe(false)
+  await chooseMessage('ASSISTANT'); await click('丢弃并继续')
+  expect(location.hash).toBe('#/memory'); expect(title.value).toBe(''); expect(content.value).toBe('Synthetic answer 1')
+  await openConversations(); await click('取消'); expect(location.hash).toBe('#/memory'); expect(content.value).toBe('Synthetic answer 1')
+  await openConversations(); await click('丢弃并继续'); expect(location.hash).toBe('#/conversations'); expect(content.value).toBe('')
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+})
+it('retains complete over-limit Unicode history and enforces existing validation before manual Save', async () => {
+  const port = new ConversationMemoryService(), original = '😀'.repeat(1001)
+  port.detail.turns[0]!.assistantMessage!.content = original
+  const { title, content } = await setupConversationDraft(port); await chooseMessage('ASSISTANT'); edit(title, 'Synthetic reviewed')
+  expect(content.value).toBe(original); expect(screen.getByRole('alert').textContent).toContain('原文已完整保留')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  edit(content, 'Synthetic invalid\ud800')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.some(x => x.method === 'memory.create')).toBe(false)
+  edit(content, 'Synthetic reviewed content'); await click('保存')
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+  await openConversations(); await screen.findByRole('article'); port.detail = conversationHistory(1, 0, 'PENDING'); await click('刷新')
+  expect(screen.queryByRole('button', { name: '保存为记忆草稿' })).toBeNull()
+  port.detail = conversationHistory(1, 0, 'FAILED'); await click('刷新')
+  expect(screen.getAllByRole('button', { name: '保存为记忆草稿' })).toHaveLength(1)
+  await chooseMessage('USER'); expect(content.value).toBe('Synthetic user 1')
+})
+it('isolates session rotation and late reads, refuses handoff during editor operations, and never replays an unknown create', async () => {
+  const { port, bridge, title, content } = await setupConversationDraft()
+  edit(title, 'Synthetic old session'); edit(content, 'Synthetic old draft'); await chooseMessage('USER')
+  await act(async () => port.session(uuid(901)))
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(content.value).toBe(''); expect(title.value).toBe('')
+  expect(location.hash).toBe('#/conversations'); await screen.findByRole('article')
+  await act(async () => fireEvent.click(screen.getByRole('link', { name: '记忆' })))
+  await screen.findByRole('button', { name: /Synthetic Memory 1/ })
+  await openConversations(); await screen.findByRole('article')
+  let resolveRead: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { resolveRead = resolve }))
+  // Start a retained hidden editor read; a busy visible editor already blocks normal navigation.
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: /Synthetic Memory 1/, hidden: true })))
+  await chooseMessage('ASSISTANT')
+  expect(location.hash).toBe('#/conversations'); expect(content.value).toBe('')
+  expect(screen.getByText('请先完成记忆编辑器中的操作，再重试。')).toBeTruthy()
+  await act(async () => port.session(uuid(902))); await screen.findByRole('article'); await chooseMessage('ASSISTANT')
+  await act(async () => resolveRead({ ...memoryItem(), content: 'Synthetic late old read' }))
+  expect(content.value).toBe('Synthetic answer 1'); expect(title.value).toBe('')
+  edit(title, 'Synthetic uncertain draft'); port.error = 'OutcomeUnknown'; await click('保存')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  await click('刷新'); expect(content.value).toBe('Synthetic answer 1')
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+})
 it('creates only with Save, adopts canonical snapshot, signals dirty transitions and updates exact decimal revision', async () => {
   const { port, title, content } = await setup(); edit(title, 'Synthetic new'); edit(content, '  Synthetic exact\nbody  ')
   await act(async () => {}); expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)

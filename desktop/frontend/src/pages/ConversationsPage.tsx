@@ -11,8 +11,8 @@ const failureText: Record<FailureCode, string> = {
 const safeText = (problem: unknown) => problem instanceof BridgeError ? problem.message : '工作区暂时不可用，请刷新后检查。'
 type Pending = { turnId: string; canCancel: boolean } | null
 
-export function ConversationsPage({ bridge, enabled, visible }: {
-  bridge: WorkspaceClient; enabled: boolean; visible: boolean
+export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
+  bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string) => void
 }) {
   const [status, setStatus] = useState<ConversationStatus>('ACTIVE')
   const [pages, setPages] = useState({ ACTIVE: 0, ARCHIVED: 0 })
@@ -51,6 +51,13 @@ export function ConversationsPage({ bridge, enabled, visible }: {
   const sendAllowed = enabled && !busy && !historyLoading && !pending && !pollingError && !stale && detail?.conversation.status === 'ACTIVE'
   const bytes = new TextEncoder().encode(draft).length
   const invalid = !draft.trim() || draft.length > 3000 || bytes > 5632
+  const saveMemoryDraft = (messageId: string) => {
+    if (!enabled || !visible || actionLock.current || historyLoading) return
+    const turn = detailRef.current?.turns.find(item => item.status !== 'PENDING'
+      && (item.userMessage.messageId === messageId || item.assistantMessage?.messageId === messageId))
+    const message = turn?.userMessage.messageId === messageId ? turn.userMessage : turn?.assistantMessage
+    if (message) onMemoryDraft?.(message.content)
+  }
 
   const loadList = async (filter = statusRef.current, page = pagesRef.current[filter]) => {
     const token = ++listGeneration.current
@@ -234,7 +241,9 @@ export function ConversationsPage({ bridge, enabled, visible }: {
         <p className="hint">模型按预算选用近期已完成轮次，持久历史不等于本次模型上下文。历史回复也可能包含先前记忆中的信息。</p>
         <div className="conversation-history" tabIndex={0} aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
           <h3>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
-          {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre></>}
+          {onMemoryDraft && turn.status !== 'PENDING' && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.userMessage.messageId)}>保存为记忆草稿</button>}
+          {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre>
+            {onMemoryDraft && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.assistantMessage!.messageId)}>保存为记忆草稿</button>}</>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
           {admission?.conversationId === detail.conversation.id && admission.turnId === turn.turnId ? <div>

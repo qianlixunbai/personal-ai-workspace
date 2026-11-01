@@ -5,7 +5,8 @@ import { pages, pageFromHash } from './navigation'
 import { readTheme, saveTheme } from './theme'
 import { SettingsPage } from '../pages/SettingsPage'
 import { MemoryPage } from '../pages/MemoryPage'
-import type { MemoryLeaveGuard } from '../pages/MemoryPage'
+import type { MemoryDraftReceiver, MemoryLeaveGuard } from '../pages/MemoryPage'
+import { emptyMemory } from '../bridge/memory'
 import { OperationPage } from '../pages/OperationPage'
 import { ConversationsPage } from '../pages/ConversationsPage'
 import { FinancePage } from '../pages/FinancePage'
@@ -25,6 +26,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const heading = useRef<HTMLHeadingElement>(null)
   const pageRef = useRef(page); pageRef.current = page
   const leaveMemory = useRef<MemoryLeaveGuard>(leave => leave())
+  const receiveMemoryDraft = useRef<MemoryDraftReceiver>(() => false)
   const focusRuntime = useRef(false)
   const showRuntime = () => {
     const group = document.getElementById('settings-connection')
@@ -32,6 +34,13 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     document.getElementById('settings-status-title')?.focus()
   }
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
+  const registerDraft = useCallback((receive: MemoryDraftReceiver) => { receiveMemoryDraft.current = receive; return () => { receiveMemoryDraft.current = () => false } }, [])
+  const draftFromConversation = (content: string) => {
+    const token = generation.current
+    if (!receiveMemoryDraft.current({ ...emptyMemory(), content }, () => {
+      if (token === generation.current) navigate('memory')
+    })) setNotice('请先完成记忆编辑器中的操作，再重试。')
+  }
   const navigate = (next: typeof page, runtime = false) => {
     if (next === pageRef.current) {
       if (runtime) showRuntime()
@@ -115,8 +124,8 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}
-        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} /></div>
-        <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
+        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} onMemoryDraft={draftFromConversation} /></div>
+        <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} registerDraft={registerDraft} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
         <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} /></div>
         {page === 'finance' && <FinancePage bridge={bridge} enabled={!!status && !busy} openSettings={() => navigate('settings')} />}
         {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
