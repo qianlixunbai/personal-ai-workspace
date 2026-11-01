@@ -28,6 +28,7 @@ public sealed class WorkspaceConversationsTests
         internal Guid CreatedId = Id;
         internal TaskCompletionSource? Hold, HoldGet;
         internal readonly List<int> Counts = [];
+        internal long[] AdmittedSequences = [1];
         internal object Metadata(Guid? id = null) => new { id = id ?? Id, title = Title, status = Status, createdAt = "2026-10-04T00:00:00Z", updatedAt = "2026-10-04T00:00:01Z" };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -71,7 +72,7 @@ public sealed class WorkspaceConversationsTests
                 var refs = body.RootElement.GetProperty("memories"); Counts.Add(refs.GetArrayLength());
                 if (refs.GetArrayLength() > 0) Assert.Equal(long.MaxValue, refs[0].GetProperty("revision").GetInt64());
                 if (Stale) return Error("MEMORY_SELECTION_STALE", HttpStatusCode.Conflict);
-                var reply = Reply(new { conversationId = Id, turnId = TurnId, taskId = TaskId, status = "QUEUED", memoryCount = refs.GetArrayLength(), admittedSequences = new[] { 1 }, inputCharacters = 12, inputBytes = 12 }, HttpStatusCode.Accepted);
+                var reply = Reply(new { conversationId = Id, turnId = TurnId, taskId = TaskId, status = "QUEUED", memoryCount = refs.GetArrayLength(), admittedSequences = AdmittedSequences, inputCharacters = 12, inputBytes = 12 }, HttpStatusCode.Accepted);
                 reply.Headers.Location = new Uri($"/api/v1/tasks/{TaskId:D}", UriKind.Relative); return reply;
             }
             if (request.Method == HttpMethod.Delete)
@@ -163,8 +164,17 @@ public sealed class WorkspaceConversationsTests
         using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
         Assert.Equal(long.MaxValue.ToString(), f.Last.GetProperty("result").GetProperty("selectedMemoryRefs")[0].GetProperty("revision").GetString());
         await f.Send(Fixture.Refs()); Assert.True(f.Last.GetProperty("ok").GetBoolean()); Assert.DoesNotContain("taskId", f.Sent.Last());
-        await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); await f.Send(); Assert.Equal(new[] { 1, 0 }, f.Handler.Counts);
+        var receipt = f.Last.GetProperty("result");
+        Assert.Equal(new[] { "accepted", "conversationId", "turnId", "admittedSequences", "memoryCount" }, receipt.EnumerateObject().Select(x => x.Name));
+        Assert.Equal(Id.ToString("D"), receipt.GetProperty("conversationId").GetString()); Assert.Equal(TurnId.ToString("D"), receipt.GetProperty("turnId").GetString());
+        Assert.Equal(f.Handler.AdmittedSequences, receipt.GetProperty("admittedSequences").EnumerateArray().Select(x => x.GetInt64()));
+        Assert.Equal(1, receipt.GetProperty("memoryCount").GetInt32());
+        await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
+        f.Handler.AdmittedSequences = []; await f.Send(); Assert.Equal(new[] { 1, 0 }, f.Handler.Counts);
+        Assert.Equal(0, f.Last.GetProperty("result").GetProperty("memoryCount").GetInt32());
+        Assert.Equal(0, f.Last.GetProperty("result").GetProperty("admittedSequences").GetArrayLength());
         f.Rotate(); await f.List(); await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
+        await f.Get(); Assert.DoesNotContain("admittedSequences", f.Sent.Last()); Assert.DoesNotContain("memoryCount", f.Sent.Last());
     }
     [Fact] public async Task StaleMemoryRequiresReviewAndClearRevokesPickerAuthorization()
     {

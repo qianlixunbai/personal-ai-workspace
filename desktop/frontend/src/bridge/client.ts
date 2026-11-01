@@ -41,7 +41,7 @@ const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.ar
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -217,6 +217,7 @@ export class WorkspaceClient {
         ...(typeof payload.offset === 'number' ? { offset: payload.offset } : {}),
         ...(typeof payload.operationId === 'string' ? { operationId: payload.operationId } : {}),
         ...(typeof payload.conversationId === 'string' ? { conversationId: payload.conversationId } : {}),
+        ...(method === 'conversations.send' && Array.isArray(payload.selectedMemoryRefs) ? { memoryCount: payload.selectedMemoryRefs.length } : {}),
         ...(typeof payload.memoryId === 'string' ? { memoryId: payload.memoryId } : {}),
         ...(typeof payload.expectedRevision === 'string' ? { expectedRevision: payload.expectedRevision } : {}),
         ...(typeof payload.type === 'string' || payload.type === null ? { type: payload.type } : {}),
@@ -305,7 +306,7 @@ export class WorkspaceClient {
         : pending.method === 'memory.editorState' ? isObject(data.result) && exactFields(data.result, ['acknowledged']) && data.result.acknowledged === true
         : pending.method === 'conversations.list' ? isConversationList(data.result) && data.result.page === pending.page && data.result.items.every(x => x.status === pending.status)
         : pending.method === 'conversations.get' ? isConversationDetail(data.result) && data.result.conversation.id === pending.conversationId && data.result.page === pending.page
-        : pending.method === 'conversations.send' ? isAdmission(data.result) && data.result.conversationId === pending.conversationId
+        : pending.method === 'conversations.send' ? isAdmission(data.result) && data.result.conversationId === pending.conversationId && data.result.memoryCount === pending.memoryCount
         : ['conversations.create', 'conversations.rename', 'conversations.archive', 'conversations.unarchive'].includes(pending.method) ? isConversation(data.result)
           && (!pending.conversationId || data.result.id === pending.conversationId)
           && (pending.method === 'conversations.archive' ? data.result.status === 'ARCHIVED' : pending.method === 'conversations.unarchive' || pending.method === 'conversations.create' ? data.result.status === 'ACTIVE' : true)

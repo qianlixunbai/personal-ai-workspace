@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ConversationsPage } from './ConversationsPage'
 import { WorkspaceClient } from '../bridge/client'
@@ -15,12 +15,14 @@ class Service extends Port {
   title = conversation.title
   error: string | null = null
   holdGet = false
+  holdSend = false
+  admittedSequences = [1]
   choiceChanged = true
   postMessage(message: unknown) {
     super.postMessage(message)
     const index = this.sent.length - 1, request = this.sent[index]!, method = String(request.method)
     const payload = request.payload as Record<string, unknown>
-    if (this.holdGet && method === 'conversations.get') return
+    if (this.holdGet && method === 'conversations.get' || this.holdSend && method === 'conversations.send') return
     queueMicrotask(() => {
       let result: unknown
       const item = { ...conversation, title: this.title, status: this.lifecycle }
@@ -32,7 +34,7 @@ class Service extends Port {
       else if (method === 'conversations.selectMemories') result = { changed: this.choiceChanged, selectedMemoryRefs: this.choiceChanged ? [memory] : [] }
       else if (method === 'conversations.send') {
         if (this.error) { this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: this.error, message: `Safe ${this.error}` } }); return }
-        this.turns++; this.state = 'PENDING'; result = { accepted: true, conversationId: payload.conversationId, turnId: uuid(this.turns + 100) }
+        this.turns++; this.state = 'PENDING'; result = { accepted: true, conversationId: payload.conversationId, turnId: uuid(this.turns + 100), admittedSequences: this.admittedSequences, memoryCount: (payload.selectedMemoryRefs as unknown[]).length }
       } else if (method === 'conversations.create') { this.turns = 0; result = item }
       else if (method === 'conversations.rename') { this.title = String(payload.title); result = { ...item, title: this.title } }
       else if (method === 'conversations.archive' || method === 'conversations.unarchive') { this.lifecycle = method === 'conversations.archive' ? 'ARCHIVED' : 'ACTIVE'; result = { ...item, status: this.lifecycle } }
@@ -49,9 +51,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clients.splice(0).forEach(x => x.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
 async function setup(config: Partial<Service> = {}) {
   const port = Object.assign(new Service(), config), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
-  render(<ConversationsPage bridge={bridge} enabled visible />)
+  const view = render(<ConversationsPage bridge={bridge} enabled visible />)
   await screen.findByLabelText('会话消息')
-  return { port, bridge, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
+  return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
 it('opens only list page zero and latest of 1000 turns, and retains only ten rendered turns while navigating history', async () => {
@@ -64,12 +66,26 @@ it('opens only list page zero and latest of 1000 turns, and retains only ten ren
   await click('下一页'); expect(port.sent.filter(x => x.method === 'conversations.list').at(-1)?.payload).toEqual({ status: 'ACTIVE', page: 1 })
 })
 it('accepted send clears exact untrimmed draft and per-turn Memory; subsequent Turn has no Memory', async () => {
-  const { port, input } = await setup(); await click('选择记忆…')
+  const { port, input } = await setup({ turns: 3, admittedSequences: [1, 3] }); await click('选择记忆…')
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  expect(screen.getAllByText('当时接纳的上下文范围未记录。')).toHaveLength(3)
   fireEvent.change(input, { target: { value: '  Synthetic中文\nuser  ' } }); await click('发送')
   expect(port.sent.find(x => x.method === 'conversations.send')?.payload).toEqual({ conversationId: conversation.id, message: '  Synthetic中文\nuser  ', selectedMemoryRefs: [{ memoryId: memory.memoryId, revision: memory.revision, position: 0 }] })
   expect(input.value).toBe(''); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy(); expect(screen.getByRole('button', { name: '发送' }).hasAttribute('disabled')).toBe(true)
-  port.state = 'SUCCEEDED'; await click('刷新'); fireEvent.change(input, { target: { value: 'Synthetic next' } }); await click('发送')
+  const receipt = screen.getByRole('heading', { name: '第 4 轮 · 生成中' }).closest('article')!
+  expect(within(receipt).getByText('本次接纳上下文：历史 2 轮 · 显式 Memory 1 条。')).toBeTruthy()
+  expect(within(receipt).getByText('第 1、3 轮（每轮包含用户消息与助手回复）。')).toBeTruthy()
+  port.state = 'FAILED'; await click('刷新')
+  expect(screen.getByText('本次接纳上下文：历史 2 轮 · 显式 Memory 1 条。')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '第 4 轮 · 失败' })).toBeTruthy()
+  port.admittedSequences = []; fireEvent.change(input, { target: { value: 'Synthetic next' } }); await click('发送')
   expect((port.sent.filter(x => x.method === 'conversations.send').at(-1)?.payload as { selectedMemoryRefs: unknown[] }).selectedMemoryRefs).toEqual([])
+  expect(screen.queryByText('本次接纳上下文：历史 2 轮 · 显式 Memory 1 条。')).toBeNull()
+  expect(screen.getByText('本次接纳上下文：历史 0 轮 · 显式 Memory 0 条。')).toBeTruthy()
+  expect(screen.getByText('未纳入历史轮次。')).toBeTruthy()
+  port.state = 'SUCCEEDED'; await click('刷新'); port.error = 'OutcomeUnknown'
+  fireEvent.change(input, { target: { value: 'Synthetic uncertain' } }); await click('发送')
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
 })
 it.each(['OutcomeUnknown'])('%s preserves draft, clears unsafe selection, refreshes history and never resends', async error => {
   const { port, input } = await setup({ error }); await click('选择记忆…'); fireEvent.change(input, { target: { value: 'Synthetic draft' } }); await click('发送')
@@ -77,6 +93,30 @@ it.each(['OutcomeUnknown'])('%s preserves draft, clears unsafe selection, refres
   expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(1)
   expect(screen.getByRole('alert').textContent).toContain(error)
   expect(port.sent.filter(x => x.method === 'conversations.get').length).toBeGreaterThan(1)
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+})
+it('clears receipts on conversation switch, reload and leaving the page, and isolates late admissions', async () => {
+  const { port, bridge, view, input } = await setup({ total: 2 })
+  fireEvent.change(input, { target: { value: 'Synthetic send' } }); await click('发送')
+  expect(screen.getByText(/本次接纳上下文/)).toBeTruthy()
+  await click('Synthetic conversation 2 2026/10/4')
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  await click('Synthetic conversation 1 2026/10/4')
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  port.state = 'SUCCEEDED'; await click('刷新'); port.holdSend = true
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'Synthetic delayed' } }); await click('发送')
+  const index = port.sent.map(x => x.method).lastIndexOf('conversations.send')
+  // A navigation invalidates the view generation while the same bridge session remains live.
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible={false} />)
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible />); await screen.findByLabelText('会话消息')
+  await act(async () => { port.reply(index, { accepted: true, conversationId: conversation.id, turnId: uuid(103), admittedSequences: [1], memoryCount: 0 }) })
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  port.holdSend = false
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'Synthetic current' } }); await click('发送')
+  expect(screen.getByText(/本次接纳上下文/)).toBeTruthy()
+  await act(async () => { port.session(uuid(909)) }); await screen.findByLabelText('会话消息')
+  expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(3)
 })
 it('stale retains metadata, requires Review or Clear and native picker Cancel preserves selection', async () => {
   const { port, input } = await setup({ error: 'MemorySelectionStale' }); await click('选择记忆…')

@@ -178,7 +178,11 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
             posting = true;
             var accepted = await runtime.SubmitConversationTurnAsync(id, message, memories, CancellationToken.None);
             consume = true;
-            return new { accepted = true, conversationId = accepted.ConversationId, turnId = accepted.TurnId };
+            return new
+            {
+                accepted = true, conversationId = accepted.ConversationId, turnId = accepted.TurnId,
+                admittedSequences = accepted.AdmittedSequences, memoryCount = accepted.MemoryCount
+            };
         }
         catch (DesktopException error)
         {

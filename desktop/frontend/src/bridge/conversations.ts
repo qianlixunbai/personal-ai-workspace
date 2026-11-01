@@ -14,7 +14,7 @@ export interface Turn {
   memoryReferences: HistoricalMemory[]; canCancel: boolean
 }
 export interface ConversationDetail { conversation: Conversation; turns: Turn[]; totalTurns: number; page: number; limit: 10 }
-export interface ConversationAdmission { accepted: true; conversationId: string; turnId: string }
+export interface ConversationAdmission { accepted: true; conversationId: string; turnId: string; admittedSequences: number[]; memoryCount: number }
 export const conversationResponseBytes = 1024 * 1024
 const integer = (value: unknown, max: number): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
 const unicode = (value: string) => !value.includes('\0') && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value)
@@ -81,5 +81,9 @@ export function isConversationDetail(value: unknown): value is ConversationDetai
     && value.turns.every(turn => turn.status !== 'PENDING' || turn.sequence === value.totalTurns)
 }
 export function isAdmission(value: unknown): value is ConversationAdmission {
-  return isObject(value) && exactFields(value, ['accepted', 'conversationId', 'turnId']) && value.accepted === true && isId(value.conversationId) && isId(value.turnId)
+  if (!isObject(value) || !exactFields(value, ['accepted', 'conversationId', 'turnId', 'admittedSequences', 'memoryCount'])
+    || value.accepted !== true || !isId(value.conversationId) || !isId(value.turnId) || !integer(value.memoryCount, 4)) return false
+  const sequences = value.admittedSequences
+  return Array.isArray(sequences) && sequences.length <= 1000
+    && sequences.every((sequence, index) => integer(sequence, 1000) && sequence > 0 && (index === 0 || sequence > sequences[index - 1]!))
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { SelectedMemory } from '../bridge/contracts'
 import { isTitle } from '../bridge/conversations'
-import type { ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
+import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
 
 const failureText: Record<FailureCode, string> = {
   EXECUTION_INTERRUPTED: 'Runtime 重启中断了执行。', PROVIDER_UNAVAILABLE: '本机 Ollama 不可用。', MODEL_UNAVAILABLE: '本机模型不可用。',
@@ -19,6 +19,7 @@ export function ConversationsPage({ bridge, enabled, visible }: {
   const [list, setList] = useState<ConversationList | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<ConversationDetail | null>(null)
+  const [admission, setAdmission] = useState<ConversationAdmission | null>(null)
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
   const [memories, setMemories] = useState<SelectedMemory[]>([])
@@ -104,7 +105,7 @@ export function ConversationsPage({ bridge, enabled, visible }: {
     const old = selectedRef.current
     const token = ++generation.current
     selectedRef.current = id; detailRef.current = null; actionLock.current = false; composing.current = false
-    setSelected(id); setDetail(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
+    setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
     setTitle(null); setDeleting(false); setBusy(false); setError(''); setNotice(''); setPollingError(false); setHistoryLoading(!!id)
     try {
       if (old) await bridge.clearConversationMemories(old)
@@ -114,11 +115,13 @@ export function ConversationsPage({ bridge, enabled, visible }: {
     if (id) await loadDetail(id)
   }
   useEffect(() => {
+    // Admission is only a receipt in this view, never reconstructed from durable history.
+    setAdmission(null); actionLock.current = false; setBusy(false); setNotice('')
     const reset = () => {
       generation.current++; listGeneration.current++; selectedRef.current = null; detailRef.current = null
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
-      setSelected(null); setDetail(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
+      setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
       setTitle(null); setDeleting(false); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
       composing.current = false
       if (visible && bridge.ready) void loadList('ACTIVE', 0)
@@ -155,10 +158,11 @@ export function ConversationsPage({ bridge, enabled, visible }: {
   const send = () => {
     if (!sendAllowed || invalid || composing.current) return
     void run(async (id, token) => {
-      setNotice('Submitting…')
+      setAdmission(null); setNotice('Submitting…')
       try {
-        await bridge.sendConversation(id, draft, memories.map(({ memoryId, revision, position }) => ({ memoryId, revision, position })))
+        const accepted = await bridge.sendConversation(id, draft, memories.map(({ memoryId, revision, position }) => ({ memoryId, revision, position })))
         if (token !== generation.current) return
+        setAdmission(accepted)
         setDraft(''); setMemories([]); setStale(false); setNotice('已接受；正在读取持久历史。')
       } catch (problem) {
         if (token !== generation.current) return
@@ -167,6 +171,7 @@ export function ConversationsPage({ bridge, enabled, visible }: {
           setMemories([]); setStale(false)
           try { await bridge.clearConversationMemories(id) } catch { /* Host also consumes uncertain selections. */ }
         }
+        if (token !== generation.current) return
         setError(safeText(problem)); setNotice('草稿已保留；请检查持久历史，不会自动重发。')
       }
       if (token === generation.current) { await loadDetail(id); await loadList() }
@@ -226,12 +231,18 @@ export function ConversationsPage({ bridge, enabled, visible }: {
         <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>更早</button>
           <span>第 {detail.page + 1} 页 / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} 轮</span>
           <button disabled={busy || historyLoading || (detail.page + 1) * 10 >= detail.totalTurns} onClick={() => { void loadDetail(detail.conversation.id, detail.page + 1) }}>更新</button></div>
+        <p className="hint">模型按预算选用近期已完成轮次，持久历史不等于本次模型上下文。历史回复也可能包含先前记忆中的信息。</p>
         <div className="conversation-history" tabIndex={0} aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
           <h3>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
           {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre></>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
-          {turn.memoryReferences.length > 0 && <p>本轮曾使用记忆 × {turn.memoryReferences.length}</p>}
+          {admission?.conversationId === detail.conversation.id && admission.turnId === turn.turnId ? <div>
+            <p>本次接纳上下文：历史 {admission.admittedSequences.length} 轮 · 显式 Memory {admission.memoryCount} 条。</p>
+            {admission.admittedSequences.length > 0 ? <details><summary>查看纳入的历史轮次</summary><p>第 {admission.admittedSequences.join('、')} 轮（每轮包含用户消息与助手回复）。</p></details> : <p className="hint">未纳入历史轮次。</p>}
+            <p className="hint">这是请求接纳时的范围，不代表执行成功；仅临时保留最近一次接纳信息，离开或重载后不保留。</p>
+          </div> : <p className="hint">当时接纳的上下文范围未记录。</p>}
+          {turn.memoryReferences.length > 0 && <p>持久记录的显式 Memory 选择：{turn.memoryReferences.length} 条（不代表接纳成功）。</p>}
         </article>)}{detail.totalTurns === 0 && <p>发送第一条消息开始会话。</p>}</div>
         <div className="conversation-composer">
         <label htmlFor="conversation-input">会话消息</label><textarea id="conversation-input" ref={editor} value={draft} readOnly={busy || detail.conversation.status !== 'ACTIVE'} autoComplete="off" spellCheck={false}
