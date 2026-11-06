@@ -152,13 +152,14 @@ public final class UnifiedPostgresqlBackup {
      * No plaintext database archive, ZIP or Knowledge copy is created by this path.
      */
     Manifest stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip) throws Exception {
-        return stream(source,knowledgeRoot,writersStopped,zip,2,null);
+        return stream(source,knowledgeRoot,writersStopped,zip,2,null).manifest();
     }
-    Manifest streamWorkspace(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,String logicalId) throws Exception {
+    record Streamed(Manifest manifest,String manifestSha256,long databaseOid) {}
+    Streamed streamWorkspace(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,String logicalId) throws Exception {
         require(logicalId!=null&&logicalId.equals(UUID.fromString(logicalId).toString()));
         return stream(source,knowledgeRoot,writersStopped,zip,3,logicalId);
     }
-    private Manifest stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,int version,String logicalId) throws Exception {
+    private Streamed stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,int version,String logicalId) throws Exception {
         boolean workspaceOnly=version==3;
         require(writersStopped&&syntheticDatabase(source.database));
         knowledgeRoot=knowledgeRoot.toAbsolutePath().normalize();privatePath(knowledgeRoot,true);
@@ -215,8 +216,10 @@ public final class UnifiedPostgresqlBackup {
                 workspaceOnly?WorkspaceV3Catalog.SCOPE:null,workspaceOnly?WorkspaceV3Catalog.EXCLUDED:null);
             byte[] json=JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest);require(json.length<=4*1024*1024);
             zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();
-            zip.putNextEntry(new ZipEntry("BACKUP_COMPLETE"));zip.write(HexFormat.of().formatHex(sha256().digest(json)).getBytes(StandardCharsets.US_ASCII));zip.closeEntry();
-            sql(db,"ROLLBACK");return manifest;
+            String manifestDigest=HexFormat.of().formatHex(sha256().digest(json));
+            zip.putNextEntry(new ZipEntry("BACKUP_COMPLETE"));zip.write(manifestDigest.getBytes(StandardCharsets.US_ASCII));zip.closeEntry();
+            long databaseOid=scalar(db,"SELECT oid FROM pg_database WHERE datname=current_database()");
+            sql(db,"ROLLBACK");return new Streamed(manifest,manifestDigest,databaseOid);
         }finally{
             IOException closeFailure=null;
             for(var pin:pins)try{pin.close();}catch(IOException failure){if(closeFailure==null)closeFailure=failure;}

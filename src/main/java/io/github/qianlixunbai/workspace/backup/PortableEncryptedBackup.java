@@ -52,16 +52,26 @@ public final class PortableEncryptedBackup {
         private final UnifiedPostgresqlBackup.Manifest manifest;
         private final String sourceDatabase;
         private final int sourcePort;
-        private WorkspaceBackup(Path encrypted,Completion completion,UnifiedPostgresqlBackup.Manifest manifest,UnifiedPostgresqlBackup.Endpoint source){
+        private final String manifestSha256;
+        private final long sourceDatabaseOid;
+        private WorkspaceBackup(Path encrypted,Completion completion,UnifiedPostgresqlBackup.Manifest manifest,UnifiedPostgresqlBackup.Endpoint source,
+                String manifestSha256,long sourceDatabaseOid){
             this.encrypted=encrypted;this.completion=completion;this.manifest=manifest;sourceDatabase=source.database();sourcePort=source.port();
+            this.manifestSha256=manifestSha256;this.sourceDatabaseOid=sourceDatabaseOid;
         }
         Completion completion(){return completion;}
         UnifiedPostgresqlBackup.Manifest manifest(){return manifest;}
         String sourceDatabase(){return sourceDatabase;}
         int sourcePort(){return sourcePort;}
+        String manifestSha256(){return manifestSha256;}
+        long sourceDatabaseOid(){return sourceDatabaseOid;}
     }
     WorkspaceBackup backupWorkspace(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase) throws IOException {
         return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,UUID.randomUUID().toString());
+    }
+    WorkspaceBackup backupWorkspace(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase,String logicalId) throws IOException {
+        // Still reaches the synthetic-only source admission. A logical ID grants no authority.
+        return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,logicalId);
     }
     private WorkspaceBackup backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase,String logicalId) throws IOException {
         String stage="DIRECT_BACKUP_ADMISSION";
@@ -72,9 +82,11 @@ public final class PortableEncryptedBackup {
             directory(encrypted);write(encrypted.resolve("ENCRYPTED_BACKUP_INCOMPLETE"),new byte[0]);
             Path pending=encrypted.resolve(PAYLOAD+".pending");write(pending,new byte[0]);stage="DIRECT_SNAPSHOT_STREAM";
             var manifest=new UnifiedPostgresqlBackup.Manifest[1];
+            var streamed=new UnifiedPostgresqlBackup.Streamed[1];
             try(var file=FileChannel.open(pending,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
                 encryptZip(Channels.newOutputStream(file),passphrase,logicalId==null?STREAM_LITERAL:WORKSPACE_LITERAL,zip->{
-                    manifest[0]=logicalId==null?plain.stream(source,root,writersStopped,zip):plain.streamWorkspace(source,root,writersStopped,zip,logicalId);
+                    if(logicalId==null)manifest[0]=plain.stream(source,root,writersStopped,zip);
+                    else {streamed[0]=plain.streamWorkspace(source,root,writersStopped,zip,logicalId);manifest[0]=streamed[0].manifest();}
                 });file.force(true);
             }
             require(!Thread.currentThread().isInterrupted());
@@ -82,7 +94,8 @@ public final class PortableEncryptedBackup {
             var result=new Completion(FORMAT,logicalId==null?2:3,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",PAYLOAD,
                 Files.size(encrypted.resolve(PAYLOAD)),digest(encrypted.resolve(PAYLOAD)));
             stage="COMPLETION_PUBLICATION";publish(encrypted.resolve(COMPLETE),UnifiedPostgresqlBackup.JSON.writeValueAsBytes(result));
-            return new WorkspaceBackup(encrypted,result,manifest[0],source);
+            return new WorkspaceBackup(encrypted,result,manifest[0],source,
+                streamed[0]==null?null:streamed[0].manifestSha256(),streamed[0]==null?0:streamed[0].databaseOid());
         }catch(Exception failure){throw rejected(stage,failure);}
         finally{clear(passphrase);}
     }
