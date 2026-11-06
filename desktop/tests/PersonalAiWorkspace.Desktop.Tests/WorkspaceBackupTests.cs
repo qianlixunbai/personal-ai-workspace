@@ -103,7 +103,7 @@ public sealed class WorkspaceBackupTests
         int calls=0;using var client=new RuntimeClient(new Handler((_,_)=>{calls++;return Task.FromResult(Response(Metadata()));}),()=>Token);
         var files=new Files();var window=new WorkspaceBackupWindow(client,files);await window.ChooseAsync();Assert.Equal(1,calls);Assert.Equal(0,files.Targets);
         Assert.True(window.RestoreButton.IsEnabled);Assert.Contains("Turns 3",window.PreviewText.Text);await window.RestoreAsync();Assert.Equal(2,calls);
-        Assert.Contains("Start Runtime/Desktop",window.StatusText.Text);Assert.DoesNotContain(files.Target!,window.StatusText.Text);Safe(window.StatusText.Text);window.Close();
+        Assert.Contains("No Profile was activated",window.StatusText.Text);Assert.DoesNotContain(files.Target!,window.StatusText.Text);Safe(window.StatusText.Text);window.Close();
     });
     private static Task StaAsync(Func<Task> action)
     {

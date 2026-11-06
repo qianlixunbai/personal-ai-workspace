@@ -19,6 +19,17 @@ namespace PersonalAiWorkspace.Desktop;
 // maintenance admission, READY or activation. A plan never proves stopped execution or backup trust.
 internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 {
+    internal const string InspectionArgument = "--inspect-profile-recovery-v1";
+
+    // Parse before deriving any Known Folder, opening a Profile or starting the native helper.
+    // This version exposes inspection only; paths, credentials and mutation actions are invalid.
+    internal static string ParseInspectionRequest(string[] args)
+    {
+        if (args.Length != 2 || args[0] != InspectionArgument) throw Stop();
+        RequireHex(args[1], 32);
+        return args[1];
+    }
+
     private const int MaximumRecordBytes = 16384;
     private readonly string applicationRoot;
     private readonly List<IDisposable> held = new();

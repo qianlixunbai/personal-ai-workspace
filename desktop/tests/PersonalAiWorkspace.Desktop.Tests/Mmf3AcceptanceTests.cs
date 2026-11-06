@@ -16,6 +16,23 @@ public sealed class Mmf3AcceptanceTests
     [Fact]
     public async Task RuntimeExitEvidenceNeverAuthorizesMaintenanceOrHidesInterruptedOwners()
     {
+        // The same entry handler used before normal startup rejects malformed/versioned requests
+        // before Known Folder/Profile/helper access. The reporter never opens an actual window.
+        string requestId = new string('a', 32);
+        Assert.Equal(requestId, ProfileRecoveryCoordinator.ParseInspectionRequest(
+            [ProfileRecoveryCoordinator.InspectionArgument, requestId])); // Pure syntax; no admission.
+        foreach (string[] args in new[] { Array.Empty<string>(), new[] { ProfileRecoveryCoordinator.InspectionArgument },
+            new[] { "--inspect-profile-recovery-v2", requestId },
+            new[] { ProfileRecoveryCoordinator.InspectionArgument, requestId.ToUpperInvariant() },
+            new[] { ProfileRecoveryCoordinator.InspectionArgument, "../" + requestId },
+            new[] { ProfileRecoveryCoordinator.InspectionArgument, requestId, "--restore" },
+            new[] { ProfileRecoveryCoordinator.InspectionArgument, requestId, "--root", @"C:\arbitrary" } })
+        {
+            string? message = null;
+            Assert.Equal(2, Program.InspectRecoveryMaintenance(args, value => message = value));
+            Assert.Contains("INVALID_REQUEST", message);
+            Assert.DoesNotContain(requestId, message);
+        }
         // Only newly created private surrogate folders and one hidden, stdin-controlled cmd
         // child. No Profile Known Folder/helper, Java, model, database or existing process access.
         string app = Path.Combine(Path.GetTempPath(), "paw-recovery-runtime-" + Guid.NewGuid().ToString("N"));

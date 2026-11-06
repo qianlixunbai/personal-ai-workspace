@@ -13,6 +13,13 @@ internal static class Program
             return SelectionWorker.Run(new IntPtr(window));
         if (args.Length > 0 && args[0] is "--clipboard-snapshot" or "--clipboard-read" or "--clipboard-restore")
             return NativeCopyPort.RunWorker(args[0], args);
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        // A maintenance request is terminal, including malformed/unknown versions and failures.
+        // Never fall through to the chooser, AssistantApp, Runtime startup or preference saving.
+        if (args.Length > 0 && args[0].StartsWith("--inspect-profile-recovery", StringComparison.Ordinal))
+            return InspectRecoveryMaintenance(args, message => MessageBox.Show(message,
+                "Personal AI Workspace · 恢复维护检查", MessageBoxButton.OK, MessageBoxImage.Information));
+#endif
 #if MMF3_ACCEPTANCE && DEBUG
         Mmf3AcceptanceLaunch acceptance;
         try
@@ -103,6 +110,39 @@ internal static class Program
         return result;
     }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    internal static int InspectRecoveryMaintenance(string[] args, Action<string> report)
+    {
+        string id;
+        try { id = ProfileRecoveryCoordinator.ParseInspectionRequest(args); }
+        catch (System.IO.IOException)
+        {
+            report("请求无效（INVALID_REQUEST）。只接受 " + ProfileRecoveryCoordinator.InspectionArgument +
+                " 和一个 32 位小写十六进制 Profile ID。\n\n未读取 Profile，未启动工作区。");
+            return 2;
+        }
+        try
+        {
+            var authority = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
+            // Stay on the STA entry thread: the existing mutex is thread-owned. Keep its scope
+            // and all Profile/file pins until the result dialog closes; inspection grants nothing.
+            using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(authority);
+            var inspection = coordinator.InspectMaintenancePrerequisites();
+            report("维护状态：BLOCKED（" + inspection.Blocker + "）。\n\n" +
+                "已核对登记的直属 Runtime 退出观察，但旧版本、未登记进程及外部数据库客户端的停止状态尚未证明。\n\n" +
+                "本次仅检查，未启动工作区，也未备份、恢复或激活。完整 PostgreSQL Profile 恢复仍未开放。");
+            return 3;
+        }
+        catch (Exception)
+        {
+            // Do not expose paths, helper output, records or exception messages. A lock conflict,
+            // absent/partial history, unknown guard or failed admission is not a stopped Profile.
+            report("维护状态：BLOCKED（INSPECTION_UNAVAILABLE）。\n\n" +
+                "无法完整核对受信 Profile、独占访问或退出记录。运行中的工作请在原工作流处理；其余情况请保留现有登记和文件。\n\n" +
+                "未启动工作区，未执行备份、恢复或激活；不会通过清除记录、修复权限或停止进程来继续。");
+            return 4;
+        }
+    }
+
     private static Mmf3AcceptanceLaunch? ResolveDevelopmentProfile(string[] args)
     {
         bool choose = args is [DevelopmentWorkspaceSelection.ChooseArgument];

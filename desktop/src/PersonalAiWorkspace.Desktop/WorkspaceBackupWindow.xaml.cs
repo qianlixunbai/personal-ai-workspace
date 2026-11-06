@@ -89,7 +89,7 @@ public partial class WorkspaceBackupWindow : Window
         selected?.Dispose();selected=null;metadata=null;PreviewText.Text="No validated file selected.";
         var file=files.PickBackup(this);if(file is null || closed)return;
         selected=files.OpenRead(file);var result=await runtime.ValidateWorkspaceBackupAsync(selected,lifetime.Token);
-        if(!closed){metadata=result;PreviewText.Text=Summary(result);StatusText.Text="Validated · choose Restore explicitly to publish a new Workspace.";}
+        if(!closed){metadata=result;PreviewText.Text=Summary(result);StatusText.Text="Validated logical JSON · Restore creates a new data directory where supported.";}
     });
     internal Task RestoreAsync()=>RunAsync(async()=>
     {
@@ -98,7 +98,7 @@ public partial class WorkspaceBackupWindow : Window
         var result=await runtime.RestoreWorkspaceBackupAsync(selected,target,lifetime.Token);
         if(!closed){
             if(result!=metadata)throw new DesktopException(DesktopError.WorkspaceRestoreFailed);
-            StatusText.Text="Restore complete · "+Summary(result)+"\nStart Runtime/Desktop with the restored directory to use recovered data.";
+            StatusText.Text="Logical restore complete · "+Summary(result)+"\nA new data directory was created. No Profile was activated.";
         }
     });
     private static string Summary(WorkspaceBackupMetadata m)=>$"format {m.FormatVersion} · created {m.CreatedAt}\nMemory {m.MemoryCount} · Conversations {m.ConversationCount} · Turns {m.TurnCount} · Messages {m.MessageCount}";
