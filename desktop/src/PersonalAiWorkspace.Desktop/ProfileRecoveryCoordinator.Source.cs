@@ -14,7 +14,8 @@ internal sealed partial class ProfileRecoveryCoordinator
 {
     // Consumer contract only. There is deliberately no product API to mint this receipt from
     // caller metadata, a password, a package completion marker or a maintenance inspection.
-    // The future native backup owner must freeze these source identities before backup and
+    // ReserveBackupIntent now allocates the non-authorizing ID and pins the source directories.
+    // The future backup owner must additionally bind the actual database before backup and
     // publish only after ciphertext completion AND successful temporary-role reclamation.
     // SourceSystemIdentifier + SourceDatabaseOid identify the PG17 dataset at the recorded
     // loopback port; the 48-hex native identities encode the existing Windows FILE_ID_INFO.

@@ -150,6 +150,89 @@ public sealed class Mmf3AcceptanceTests
     }
 
     [Fact]
+    public void BackupIntentPinsSyntheticSourceAndNeverAuthorizesBackupOrRecovery()
+    {
+        // New private temporary directories only. No Known Folder, real Profile, native helper,
+        // database, Knowledge content, Runtime or model process is accessed by this test.
+        string app = Path.Combine(Path.GetTempPath(), "paw-backup-intent-" + Guid.NewGuid().ToString("N"));
+        Assert.False(Path.Exists(app));
+        void DirectoryNew(string path) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(path, WindowsIdentity.GetCurrent().User!);
+        DirectoryNew(app);
+        Console.WriteLine("Synthetic backup intent fixture retained: " + app);
+        string source = Guid.NewGuid().ToString("N"), profiles = Path.Combine(app, "Profiles");
+        string root = Path.Combine(profiles, source), data = Path.Combine(root, "data");
+        DirectoryNew(profiles); DirectoryNew(root); DirectoryNew(data);
+        ProfileRecoveryCoordinator Open() => (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
+        var reserve = typeof(ProfileRecoveryCoordinator).GetMethod("ReserveBackupIntentForProfile", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        ProfileRecoveryCoordinator.BackupIntent Reserve(ProfileRecoveryCoordinator journal) =>
+            (ProfileRecoveryCoordinator.BackupIntent)reserve.Invoke(journal, [source])!;
+        string recovery = Path.Combine(app, "Recovery"), intents = Path.Combine(recovery, "source-intents");
+        ProfileRecoveryCoordinator.BackupIntent intent;
+        using (var journal = Open())
+        {
+            Assert.Throws<IOException>(() => journal.ReserveBackupIntent()); // No admitted authority in a surrogate.
+            Assert.False(Directory.Exists(recovery));
+            intent = Reserve(journal);
+            Assert.Matches("^[0-9a-f]{32}$", intent.BackupId);
+            Assert.NotEqual(source, intent.BackupId);
+            Assert.Equal(source, intent.SourceProfileId);
+            Assert.Matches("^[0-9a-f]{48}$", intent.SourceRootIdentity);
+            Assert.Matches("^[0-9a-f]{48}$", intent.SourceDataIdentity);
+            Assert.NotEqual(intent.SourceRootIdentity, intent.SourceDataIdentity);
+            Assert.Equal("BackupIntent[private]", intent.ToString());
+            Assert.Equal(intent, journal.InspectBackupIntent(intent.BackupId));
+            Assert.Throws<IOException>(() => Directory.Move(data, data + "-moved"));
+            Assert.Throws<IOException>(() => Directory.Move(root, root + "-moved"));
+            Assert.IsAssignableFrom<IOException>(Assert.Throws<TargetInvocationException>(() => Reserve(journal)).InnerException);
+            Assert.Single(Directory.GetDirectories(intents));
+            Assert.Throws<IOException>(() => journal.ReservePlan(intent.BackupId, new string('a', 64), new string('b', 64)));
+            Assert.False(Directory.Exists(Path.Combine(recovery, "sources")));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(recovery, "targets")));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(data));
+            ProfileRecoveryCoordinator.RequireOrdinaryProfile(root);
+        }
+        string directory = Path.Combine(intents, intent.BackupId), file = Path.Combine(directory, "intent.dpapi");
+        byte[] encrypted = File.ReadAllBytes(file);
+        Assert.DoesNotContain(source, System.Text.Encoding.UTF8.GetString(encrypted));
+        // Reconciliation does not require the original source to remain present or to be opened.
+        Directory.Move(profiles, profiles + "-offline");
+        using (var journal = Open())
+        {
+            Assert.Equal(intent, journal.InspectBackupIntent(intent.BackupId));
+            byte[] entropy = System.Text.Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/source-intent/v1/" + intent.BackupId);
+            foreach (var altered in new[] { intent with { State = "BACKUP_REGISTERED" },
+                intent with { BackupId = Guid.NewGuid().ToString("N") } })
+            {
+                File.WriteAllBytes(file, System.Security.Cryptography.ProtectedData.Protect(
+                    System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(altered), entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser));
+                Assert.Throws<IOException>(() => journal.InspectBackupIntent(intent.BackupId));
+            }
+            File.WriteAllBytes(file, encrypted); // Only restore this new synthetic fixture.
+            string pending = Path.Combine(directory, "intent.pending");
+            File.WriteAllText(pending, "synthetic interrupted publication");
+            Assert.Throws<IOException>(() => journal.InspectBackupIntent(intent.BackupId));
+            Assert.Equal("synthetic interrupted publication", File.ReadAllText(pending));
+            Assert.Equal(encrypted, File.ReadAllBytes(file));
+        }
+        Directory.Move(profiles + "-offline", profiles);
+        // Force failure before the new intent directory can be published. The generated identity
+        // must be recoverable from the error, and the same owner cannot silently allocate another.
+        Directory.Move(intents, intents + "-retained");
+        File.WriteAllText(intents, "synthetic malformed intent registry");
+        using var broken = Open();
+        var incomplete = Assert.IsType<ProfileRecoveryCoordinator.BackupIntentIncomplete>(
+            Assert.Throws<TargetInvocationException>(() => Reserve(broken)).InnerException);
+        Assert.Equal("PREPARING", incomplete.Attempt.State);
+        Assert.NotEqual(intent.BackupId, incomplete.Attempt.BackupId);
+        Assert.Equal(intent.SourceRootIdentity, incomplete.Attempt.SourceRootIdentity);
+        Assert.Equal(intent.SourceDataIdentity, incomplete.Attempt.SourceDataIdentity);
+        Assert.IsAssignableFrom<IOException>(Assert.Throws<TargetInvocationException>(() => Reserve(broken)).InnerException);
+        Assert.Equal("synthetic malformed intent registry", File.ReadAllText(intents));
+        Assert.False(Directory.Exists(Path.Combine(recovery, "sources")));
+    }
+
+    [Fact]
     public void RecoveryPlanIsPrivateDurableNonAuthorizingAndInterruptedCandidatesCannotStart()
     {
         // A fresh temporary surrogate application tree only; never call Parent/Root/Prepare,

@@ -15,7 +15,7 @@ using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
 
-// Plans, registered-source preflight and owned-child observations. No SQL authority, target creation,
+// Plans, source intents, registered-source preflight and owned-child observations. No SQL authority, target creation,
 // maintenance admission, READY or activation. A plan never proves stopped execution or backup trust.
 internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 {
