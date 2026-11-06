@@ -59,7 +59,8 @@ public sealed class WorkspaceBridgeTests
         var root = JsonDocument.Parse(Assert.Single(f.Sent)).RootElement;
         Assert.True(root.GetProperty("ok").GetBoolean());
         Assert.Equal("Ready", root.GetProperty("result").GetProperty("credential").GetString());
-        Assert.Equal(6, root.GetProperty("result").EnumerateObject().Count());
+        Assert.Equal(7, root.GetProperty("result").EnumerateObject().Count());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("result").GetProperty("applicationBuild").ValueKind);
         foreach (string forbidden in new[] { "bearer", "Authorization", "token", "path", "secret", "memoryContent" }) Assert.DoesNotContain(forbidden, f.Sent[0]);
     }
     [Theory]
@@ -205,6 +206,8 @@ public sealed class WorkspaceBridgeTests
         using var runtime = new RuntimeClient(new Handler(code), () => new string('t', 43));
         var status = await new WorkspaceStatusProbe(runtime, () => new string('t', 43)).ReadAsync(default);
         Assert.Equal(expected, status.Credential.ToString()); Assert.Equal(ShellRuntimeState.Available, status.Runtime);
+        string? embedded = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(WorkspaceStatusProbe).Assembly)?.InformationalVersion;
+        Assert.Equal(embedded is { Length: <= 100 } && System.Text.RegularExpressions.Regex.IsMatch(embedded, @"\A[0-9]+(?:\.[0-9]+){2,3}\+(?:[0-9a-f]{40}|[0-9a-f]{64})\z") ? embedded : null, status.ApplicationBuild);
         Assert.DoesNotContain(new string('t', 43), JsonSerializer.Serialize(status));
     }
     [Fact] public async Task MissingMalformedAndStorageFailureHaveDistinctSafeStates()

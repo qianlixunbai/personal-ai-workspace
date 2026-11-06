@@ -33,6 +33,7 @@ export const safeCodes = [
 export interface ShellStatus {
   bridgeVersion: 1
   applicationVersion: string
+  applicationBuild: string | null
   runtime: 'Available' | 'Unavailable'
   credential: 'Ready' | 'Missing' | 'Invalid' | 'Unavailable'
   webView: 'Available'
@@ -75,8 +76,9 @@ export function isOperation(value: unknown): value is OperationView {
     : value.status === 'TIMED_OUT' ? value.error.code === 'TimedOut' : !['Cancelled', 'TimedOut'].includes(value.error.code))
 }
 export function isStatus(value: unknown): value is ShellStatus {
-  return isObject(value) && exactFields(value, ['bridgeVersion', 'applicationVersion', 'runtime', 'credential', 'webView', 'nativeEntries'])
-    && value.bridgeVersion === 1 && typeof value.applicationVersion === 'string' && /^\d+(\.\d+){2,3}$/.test(value.applicationVersion)
+  return isObject(value) && exactFields(value, ['bridgeVersion', 'applicationVersion', 'applicationBuild', 'runtime', 'credential', 'webView', 'nativeEntries'])
+    && value.bridgeVersion === 1 && typeof value.applicationVersion === 'string' && (value.applicationVersion === 'Unknown' || /^\d+(\.\d+){2,3}$/.test(value.applicationVersion))
+    && (value.applicationBuild === null || typeof value.applicationBuild === 'string' && value.applicationBuild.length <= 100 && value.applicationBuild.trim() === value.applicationBuild && /^[0-9]+(?:\.[0-9]+){2,3}\+(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(value.applicationBuild))
     && ['Available', 'Unavailable'].includes(String(value.runtime))
     && ['Ready', 'Missing', 'Invalid', 'Unavailable'].includes(String(value.credential)) && value.webView === 'Available'
     && Array.isArray(value.nativeEntries) && value.nativeEntries.length <= nativeMethods.length

@@ -68,6 +68,16 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 
 [Program.cs](../desktop/src/PersonalAiWorkspace.Desktop/Program.cs) 和 [DevelopmentRuntimeOwner.cs](../desktop/src/PersonalAiWorkspace.Desktop/DevelopmentRuntimeOwner.cs) 是当前启动与 Runtime owner 的实际入口。普通 `start-workspace.cmd` 调用的 [启动脚本](../scripts/start-workspace.ps1) 当前立即拒绝正式启动，不能作为产品安装成功路径。
 
+### 在 Settings 核对本次可用性
+
+- “连接与存储”分别展示 Desktop Bridge、Java Runtime 健康检查与原生认证。下方 Runtime 启动观察复用 Desktop owner 的固定状态；观察失败只能说明暂时无法确认，不推断服务停止或擅自区分通信超时。刷新失败、存储检查未能确认 Runtime 或取得有效响应，或生命周期变化时会撤下先前的可用展示。请显式刷新运行状态，再只读检查模型。
+- “连接诊断”的构建身份只读取运行 Desktop 程序集已有的 `AssemblyInformationalVersion`，仅接受有界的版本与源码 hash；字段缺失或不符合合同显示“未取得可靠构建身份”。不读取当前 checkout 的 HEAD 或从安装路径猜测身份。内嵌身份也不证明当前源码、Runtime JAR、候选分发包、历史实机证据包完全一致，未提交源码的差异不由该字段证明。
+- “本地数据与存储”的实际 backend、PostgreSQL 连接及结构来自已认证 Runtime 的受控只读查询。连接失败不等于 PostgreSQL 停止；SQLite backend 不等于 SQLite 全部读写已验证。存储查询失败时，同一会话已确认的原生配置入口仍可使用，配置和凭据由原生窗口处理。
+- “本机模型”的 Ollama 可访问性只在 Runtime 本次目录查询成功时确认；安装、驻留、验证 Ready 和执行计数分别显示。Runtime 不可访问时保持模型未知；只有历史验证记录、mutation 后无目录快照或查询失败时，不宣称当前可用。只读刷新不执行 VALIDATE / RECOVER、不加载模型、不重放任务。
+- Desktop 只管理它直接启动并持有的开发 Runtime。关闭主窗口保留托盘；退出 Desktop 会结束直属 Runtime，必要时终止进程，不承诺所有退出均优雅。外部 Runtime、PostgreSQL 和 Ollama 不被认领、接管或停止，外部模型驻留／执行不保证随 Desktop 退出立即结束。
+
+本项是状态提示改进，不是新的服务管理器或目标 1 实机验收。Development-only、X1 PARTIAL、Vision BLOCKED 与尚未 Production GO 的边界不变。
+
 ## 分层开发与最小验证
 
 | 工作 | 可复用入口 | 使用范围 |

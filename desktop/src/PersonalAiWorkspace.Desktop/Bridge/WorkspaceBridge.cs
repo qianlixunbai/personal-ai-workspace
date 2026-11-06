@@ -15,7 +15,7 @@ internal enum NativeWorkspaceEntry { LegacyAssistant, Conversations, Memory, Bro
 internal enum ShellRuntimeState { Available, Unavailable }
 internal enum ShellCredentialState { Ready, Missing, Invalid, Unavailable }
 internal sealed record ShellStatus(int BridgeVersion, string ApplicationVersion, ShellRuntimeState Runtime,
-    ShellCredentialState Credential, string WebView, string[] NativeEntries);
+    ShellCredentialState Credential, string WebView, string[] NativeEntries, string? ApplicationBuild = null);
 internal interface IWorkspaceNativeActions
 {
     WorkspaceOperations? Operations => null;

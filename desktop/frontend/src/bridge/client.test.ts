@@ -75,7 +75,9 @@ describe('versioned bridge', () => {
     port.reply(1, { opened: true }); port.reply(0); await expect(second).resolves.toEqual({ opened: true }); await expect(first).resolves.toEqual(status)
     expect(port.sent.every(request => Object.keys(request).length === 5 && JSON.stringify(request.payload) === '{}')).toBe(true)
   })
-  it.each([{ ...status, bearer: 'forbidden' }, { ...status, credential: 'All models ready' }, { ...status, nativeEntries: ['native.fetch'] }, { ...status, bridgeVersion: 2 }])('rejects invalid safe-status responses', async invalid => {
+  it.each([{ ...status, bearer: 'forbidden' }, { ...status, credential: 'All models ready' }, { ...status, nativeEntries: ['native.fetch'] }, { ...status, bridgeVersion: 2 },
+    { ...status, applicationBuild: 'C:\\private\\profile' }, { ...status, applicationBuild: '1.0.0+' + 'a'.repeat(40) + '\n' },
+    { ...status, applicationBuild: undefined }])('rejects invalid safe-status responses', async invalid => {
     const { port, client } = connected(); const request = client.bootstrap(); const checked = expect(request).rejects.toThrow('无效响应'); port.reply(0, invalid); await checked
   })
   it('ignores wrong session, version and request then accepts the correlated reply', async () => {

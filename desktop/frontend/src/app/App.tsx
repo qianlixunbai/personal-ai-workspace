@@ -62,6 +62,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     const unsubscribe = bridge.onSession(bootstrap)
     const unsubscribeLifecycle = bridge.onStorageStartup(() => {
       const current = generation.current, request = ++statusRequest.current
+      setStatus(previous => previous ? { ...previous, runtime: 'Unavailable', credential: 'Unavailable' } : previous)
       void bridge.refreshStatus().then(result => {
         if (!disposed && current === generation.current && request === statusRequest.current) setStatus(result)
       }).catch(() => {
@@ -95,6 +96,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     const current = generation.current
     const request = method ? statusRequest.current : ++statusRequest.current
     setBusy(true); setError(''); setNotice(method ? '请在原生窗口中继续。' : '正在刷新本机状态…')
+    if (!method) setStatus(previous => previous ? { ...previous, runtime: 'Unavailable', credential: 'Unavailable' } : previous)
     try {
       if (method) await bridge.open(method)
       else { const result = await bridge.refreshStatus(); if (current === generation.current && request === statusRequest.current) setStatus(result) }
@@ -102,8 +104,14 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     } catch (problem) { if (current === generation.current) { setError(problem instanceof Error ? problem.message : '操作暂时不可用。'); setNotice('') } }
     finally { if (current === generation.current) { setBusy(false); if (method) heading.current?.focus({ preventScroll: true }) } }
   }
+  const invalidateRuntimeObservation = (runtimeReachable: boolean) => {
+    statusRequest.current++
+    setStatus(previous => previous ? { ...previous, runtime: runtimeReachable ? previous.runtime : 'Unavailable',
+      credential: previous.credential === 'Ready' ? 'Unavailable' : previous.credential } : previous)
+  }
   const current = pages.find(item => item.id === page)!
-  const runtimeLabel = status ? status.runtime === 'Available' ? '服务已连接' : '服务未连接' : '正在连接'
+  const runtimeConfirmed = status?.runtime === 'Available' && status.credential === 'Ready'
+  const runtimeLabel = status ? runtimeConfirmed ? 'Runtime 可访问' : 'Runtime 待确认' : '正在连接'
   return <div className={`workspace workspace-${page}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>跳到页面内容</a>
     <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="cube" /></span><div>个人 AI 工作区<span>Personal AI Workspace</span></div></div>
@@ -112,7 +120,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
           <Icon name={item.id} /><span className="nav-copy"><span className="nav-label">{item.label}</span></span></a>)}</div>)}</nav>
       <label className="workspace-picker">工作区页面<select value={page} onChange={event => navigate(event.target.value as typeof page)}>{pages.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <div className="sidebar-bottom">
-        <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型状态请在设置中检查`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><Icon name="status" /><span className="nav-copy"><span>{runtimeLabel}</span></span><span className={`dot ${status?.runtime === 'Available' ? 'online' : ''}`} /></button>
+        <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型状态请在设置中检查`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><Icon name="status" /><span className="nav-copy"><span>{runtimeLabel}</span></span><span className={`dot ${runtimeConfirmed ? 'online' : ''}`} /></button>
         <a className="settings-link" href="#/settings" title="设置" aria-label="设置" aria-current={page === 'settings' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('settings') }}><Icon name="settings" /><span className="nav-copy"><span className="nav-label">设置</span></span></a>
         <button className="theme-button" title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}><Icon name={theme === 'light' ? 'moon' : 'sun'} /><span className="nav-copy"><span>{theme === 'light' ? '深色模式' : '浅色模式'}</span></span></button>
         <span className="development-label">开发预览版</span></div>
@@ -128,7 +136,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
         <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} registerDraft={registerDraft} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
         <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} /></div>
         {page === 'finance' && <FinancePage bridge={bridge} enabled={!!status && !busy} openSettings={() => navigate('settings')} />}
-        {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} />}
+        {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} onRuntimeUnconfirmed={invalidateRuntimeObservation} />}
         {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status" className="operation-status">{notice}</p>}
       </div>
     </main>

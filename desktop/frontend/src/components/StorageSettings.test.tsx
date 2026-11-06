@@ -12,7 +12,7 @@ it('checks through the bridge, distinguishes prepared from active, clears failur
     connection: 'NOT_CONFIGURED', workspaceSchema: 'NOT_CHECKED', knowledgeSchema: 'NOT_CHECKED', financeEnabled: false,
     financeSchema: 'DISABLED', migration: 'EXPLICIT_APPROVAL_REQUIRED', encryptedBackup: 'MAINTENANCE_ONLY', restore: 'BLOCKED_SECURITY_REQUIREMENTS',
     securityRequirements: [...storageRequirements], errorCode: 'NONE' }
-  render(<StorageSettings bridge={bridge} enabled />)
+  render(<StorageSettings bridge={bridge} enabled onRuntimeUnconfirmed={() => {}} />)
   const check = screen.getByRole('button', { name: '重新检查存储' })
   const host = { runtime: 'AVAILABLE', failure: 'NONE', configurationTrust: 'NOT_CHECKED', canQueryStorage: true,
     configurationAction: 'TRUSTED_CONTEXT_REQUIRED', confirmationRequired: true }
@@ -23,7 +23,7 @@ it('checks through the bridge, distinguishes prepared from active, clears failur
   fireEvent.click(check); expect(port.sent[0]).toMatchObject({ method: 'storage.startupStatus', payload: {} })
   expect((check as HTMLButtonElement).disabled).toBe(true)
   await act(async () => { port.reply(0, { ...host, runtime: 'UNAVAILABLE', failure: 'STARTUP_CAUSE_UNAVAILABLE', canQueryStorage: false }) })
-  expect(screen.getByText('无法确认 Runtime 已启动；具体原因尚无受信证据')).toBeTruthy()
+  expect(screen.getByText('暂时无法确认 Runtime；本次观察未取得可靠结果')).toBeTruthy()
   expect(port.sent).toHaveLength(1); expect(screen.queryByText('SQLite')).toBeNull()
   fireEvent.click(check)
   await act(async () => { port.reply(1, host) })
@@ -37,19 +37,22 @@ it('checks through the bridge, distinguishes prepared from active, clears failur
   expect(screen.getByText('数据库结构已准备；当前尚未启用')).toBeTruthy()
   expect(screen.getByText('SQLite')).toBeTruthy()
   fireEvent.click(check)
-  await act(async () => { port.reply(5, host) })
+  await act(async () => { port.reply(5, { ...host, configurationAction: 'NATIVE_SETUP_AVAILABLE' }) })
   await act(async () => { port.emit({ version: 1, sessionId: port.sent[6]!.sessionId, requestId: port.sent[6]!.requestId,
     ok: false, error: { code: 'RuntimeUnavailable', message: 'Runtime 暂时不可用。' } }) })
   expect(screen.getByRole('alert').textContent).toContain('Runtime 暂时不可用')
   expect(screen.queryByText('可连接')).toBeNull()
+  expect(screen.queryByText('本次确认可访问并通过原生认证')).toBeNull()
+  expect((screen.getByText('打开原生数据库设置') as HTMLButtonElement).disabled).toBe(false)
   fireEvent.click(check)
-  await act(async () => { port.reply(7, host) })
+  await act(async () => { port.reply(7, { ...host, configurationAction: 'NATIVE_SETUP_AVAILABLE' }) })
   await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(8, prepared) })
   expect(screen.queryByText('可连接')).toBeNull(); expect(screen.queryByRole('alert')).toBeNull()
-  expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
+  expect(screen.queryByText('本次确认可访问并通过原生认证')).toBeNull()
+  expect((screen.getByText('原生配置尚未开放') as HTMLButtonElement).disabled).toBe(true)
   fireEvent.click(check)
   await act(async () => { port.session('33333333-3333-4333-8333-333333333333'); port.reply(9, host) })
-  expect(port.sent).toHaveLength(10); expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
+  expect(port.sent).toHaveLength(10); expect(screen.queryByText('本次确认可访问并通过原生认证')).toBeNull()
   const pending = bridge.storageStartupStatus(); const rejected = expect(pending).rejects.toMatchObject({ code: 'InvalidResponse' })
   port.reply(10, { ...host, password: 'synthetic-secret' }); await rejected
   fireEvent.click(check)
@@ -69,14 +72,14 @@ it('observes lifecycle loss and clears an earlier database snapshot without issu
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
   const host = { runtime: 'AVAILABLE', failure: 'NONE', configurationTrust: 'NOT_CHECKED', canQueryStorage: true,
     configurationAction: 'TRUSTED_CONTEXT_REQUIRED', confirmationRequired: true }
-  render(<StorageSettings bridge={bridge} enabled />)
+  render(<StorageSettings bridge={bridge} enabled onRuntimeUnconfirmed={() => {}} />)
   const notify = (result: unknown, sessionId = '11111111-1111-4111-8111-111111111111') =>
     port.emit({ type: 'storage.lifecycle', version: 1, sessionId, result })
   await act(async () => { notify({ ...host, runtime: 'STARTING', failure: 'STARTING', canQueryStorage: false }) })
   expect(screen.getByText('正在启动受控开发 Runtime')).toBeTruthy()
   expect(port.sent).toHaveLength(0)
   await act(async () => { notify(host) })
-  expect(screen.getByText('已响应并通过原生认证')).toBeTruthy()
+  expect(screen.getByText('本次确认可访问并通过原生认证')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '重新检查存储' }))
   await act(async () => { port.reply(0, host) })
   const snapshot = { checkedAt: '2026-10-18T00:00:00Z', backend: 'SQLITE', configurationTrust: 'NOT_CHECKED', postgresqlConfigured: false,
@@ -92,6 +95,6 @@ it('observes lifecycle loss and clears an earlier database snapshot without issu
   await act(async () => { notify({ ...host, runtime: 'UNAVAILABLE', failure: 'PROCESS_EXITED', canQueryStorage: false }); port.reply(3, snapshot) })
   expect(screen.queryByText('SQLite')).toBeNull()
   await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); notify(host) })
-  expect(screen.queryByText('已响应并通过原生认证')).toBeNull()
+  expect(screen.queryByText('本次确认可访问并通过原生认证')).toBeNull()
   bridge.dispose()
 })

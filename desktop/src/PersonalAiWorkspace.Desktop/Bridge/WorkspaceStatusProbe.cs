@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using PersonalAiWorkspace.Core;
@@ -32,8 +33,12 @@ internal sealed class WorkspaceStatusProbe(RuntimeClient runtime, Func<string?> 
                 ? ShellCredentialState.Invalid : error.Error == DesktopError.CredentialMissing
                 ? ShellCredentialState.Missing : ShellCredentialState.Unavailable;
         }
-        string version = typeof(WorkspaceStatusProbe).Assembly.GetName().Version?.ToString() ?? "1.0.0.0";
+        var assembly = typeof(WorkspaceStatusProbe).Assembly;
+        string version = assembly.GetName().Version?.ToString() ?? "Unknown";
+        // Read the running assembly's embedded identity, never the checkout or executable path.
+        string? build = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (build is null || build.Length > 100 || !Regex.IsMatch(build, @"\A[0-9]+(?:\.[0-9]+){2,3}\+(?:[0-9a-f]{40}|[0-9a-f]{64})\z")) build = null;
         return new(WorkspaceBridge.Version, version, reachable, credential, "Available",
-            WorkspaceBridge.NativeMethods.Keys.ToArray());
+            WorkspaceBridge.NativeMethods.Keys.ToArray(), build);
     }
 }
