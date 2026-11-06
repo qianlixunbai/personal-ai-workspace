@@ -11,6 +11,7 @@ namespace PersonalAiWorkspace.Desktop;
 
 internal sealed partial class ProfileRecoveryCoordinator
 {
+    private FileStream? maintenanceRuntimeLock;
     // Observations of one owned child, never a certificate that all writers/models stopped.
     // Immutable events retain interrupted starts and owner-forced shutdown ambiguity.
     private sealed record RuntimeObservation(int Version, string State, string ProfileId, string AttemptId,
@@ -165,6 +166,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             int count = InspectRuntimeStops(profileId);
             held.Add(runtimeLock);
             held.Add(modelLock); // Retain the exclusion until the native coordinator releases its mutex.
+            maintenanceRuntimeLock = runtimeLock;
             return new MaintenanceInspection(count);
         }
         catch { modelLock?.Dispose(); runtimeLock.Dispose(); throw; }

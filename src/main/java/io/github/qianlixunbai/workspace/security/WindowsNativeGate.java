@@ -22,6 +22,8 @@ public final class WindowsNativeGate {
         ".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6");
     private static Path admittedRoot;
     private static io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.RuntimeLease runtimeLease;
+    private static io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion maintenanceExclusion;
+    private static boolean maintenanceAttempted;
     private static FileChannel owningJarPin;
     private static Object owningJarKey;
     private static Path owningJar;
@@ -76,13 +78,29 @@ public final class WindowsNativeGate {
 
     public static synchronized Path profileRoot() throws IOException {
         admit();
-        if (admittedRoot == null) throw new IOException("Development Profile required");
+        if (admittedRoot == null || maintenanceAttempted) throw new IOException("Ordinary Development Profile required");
         io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(admittedRoot);
         // Every runtime/setup entry calls profileRoot before credentials, ADMITTED or Spring.
         // Hold until process death, not merely app.run() return or an unordered shutdown hook.
         if (runtimeLease == null)
             runtimeLease = io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.acquireRuntimeLease(admittedRoot);
         runtimeLease.requireHeld(admittedRoot); // A lost/closed lease is STOP, never silently reacquired.
+        return admittedRoot;
+    }
+
+    /** Exclusive maintenance child resource handoff after the unchanged real Native Gate.
+     * A handle/argument alone never bypasses admission or grants backup/SQL-source authority. */
+    public static synchronized io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion receiveMaintenanceExclusion(long handle) throws IOException {
+        admit();
+        if(admittedRoot==null||runtimeLease!=null||maintenanceAttempted)throw new IOException("Maintenance exclusion STOP");
+        maintenanceAttempted=true; // Failure/close cannot fall back into ordinary Runtime admission.
+        maintenanceExclusion=io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion.acceptTransferred(admittedRoot,handle);
+        return maintenanceExclusion;
+    }
+
+    public static synchronized Path maintenanceProfileRoot(io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion exclusion) throws IOException {
+        if(admittedRoot==null||exclusion==null||exclusion!=maintenanceExclusion||runtimeLease!=null)throw new IOException("Maintenance exclusion STOP");
+        exclusion.requireHeld(admittedRoot);
         return admittedRoot;
     }
 
@@ -202,6 +220,14 @@ public final class WindowsNativeGate {
     public static void requireRuntimeArguments(String[] args) throws IOException {
         if (!isWindowsPlatform()) return;
         Path root = profileRoot();
+        requireProfileArguments(args,root);
+    }
+
+    public static void requireMaintenanceArguments(String[] args,io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion exclusion) throws IOException {
+        requireProfileArguments(args,maintenanceProfileRoot(exclusion));
+    }
+
+    private static void requireProfileArguments(String[] args,Path root) throws IOException {
         List<String> expected = List.of("--server.address=127.0.0.1", "--server.port=18765",
             "--workspace.security.token-file=" + root.resolve("credentials/client-token"),
             "--workspace.data-directory=" + root.resolve("data"),
