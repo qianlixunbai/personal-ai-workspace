@@ -15,7 +15,7 @@ using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
 
-// Slice 2a plans + Slice 2b owned-child observations. No SQL/source authority, target creation,
+// Plans, registered-source preflight and owned-child observations. No SQL authority, target creation,
 // maintenance admission, READY or activation. A plan never proves stopped execution or backup trust.
 internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 {
@@ -43,7 +43,8 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 
     internal sealed record Plan(int Version, string Kind, string State, string OperationId,
         string TargetProfileId, string SourceProfileId, string BackupId, string PayloadSha256,
-        string ManifestSha256, string DatabaseName, string OwnerRole, string AppRole);
+        string ManifestSha256, string DatabaseName, string OwnerRole, string AppRole,
+        string? SourceRegistrationSha256 = null);
 
     internal sealed class ReservationIncomplete(Plan plan, Exception cause)
         : IOException("Recovery reservation result requires inspection.", cause)
@@ -89,16 +90,21 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         catch { Dispose(); throw; }
     }
 
-    internal Plan ReservePlan(string sourceProfileId, string backupId, string payloadSha256, string manifestSha256)
+    internal Plan ReservePlan(string backupId, string payloadSha256, string manifestSha256)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        // The source is taken only from the independent local registration. No source Profile/DB
+        // need be online, and the admitted maintenance authority need not be that source.
+        // Keep the receipt and its directory chain pinned until the new plan has been read back.
+        using var source = PinRegisteredSource(backupId, payloadSha256, manifestSha256);
         string operation = Guid.NewGuid().ToString("N"), target = Guid.NewGuid().ToString("N");
-        var plan = new Plan(1, "RECOVERY_PLAN_ONLY", "PREPARING", operation, target, sourceProfileId,
+        var plan = new Plan(2, "RECOVERY_PLAN_ONLY", "PREPARING", operation, target, source.Registration.SourceProfileId,
             backupId, payloadSha256, manifestSha256, "workspace_recovery_" + operation,
-            "workspace_recovery_owner_" + operation, "workspace_recovery_app_" + operation);
+            "workspace_recovery_owner_" + operation, "workspace_recovery_app_" + operation, source.Sha256);
         Validate(plan, target);
         // This method never touches the source/target Profile, database, credentials or package.
-        // The future provision owner must verify source registration and stopped execution first.
+        // This receipt preflight is NOT authentication of a selected package or proof of stopped
+        // execution. Future provision must re-pin this exact receipt and authenticate the package.
         try
         {
             if (Exists(Path.Combine(applicationRoot, "Profiles", target))) throw Stop();
@@ -171,8 +177,13 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 
     private static T ReadRecord<T>(string path, byte[] entropy) where T : class
     {
-        using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
         using var input = OpenRecord(path);
+        return ReadRecord<T>(input, entropy);
+    }
+
+    private static T ReadRecord<T>(FileStream input, byte[] entropy) where T : class
+    {
+        using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
         ValidateFileAcl(input, user.User!);
         if (input.Length is < 1 or > MaximumRecordBytes) throw Stop();
         byte[] encrypted = new byte[checked((int)input.Length)];
@@ -247,7 +258,10 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         RequireHex(plan.OperationId, 32); RequireHex(plan.TargetProfileId, 32);
         RequireHex(plan.SourceProfileId, 32); RequireHex(plan.BackupId, 32);
         RequireHex(plan.PayloadSha256, 64); RequireHex(plan.ManifestSha256, 64);
-        if (plan.Version != 1 || plan.Kind != "RECOVERY_PLAN_ONLY" || plan.State != "PREPARING"
+        // Historical v1 plans remain inspectable intentions, never registered-source authority.
+        if (plan.Version == 2) RequireHex(plan.SourceRegistrationSha256!, 64);
+        else if (plan.Version != 1 || plan.SourceRegistrationSha256 is not null) throw Stop();
+        if (plan.Kind != "RECOVERY_PLAN_ONLY" || plan.State != "PREPARING"
             || plan.TargetProfileId != target || plan.TargetProfileId == plan.SourceProfileId
             || plan.DatabaseName != "workspace_recovery_" + plan.OperationId
             || plan.OwnerRole != "workspace_recovery_owner_" + plan.OperationId

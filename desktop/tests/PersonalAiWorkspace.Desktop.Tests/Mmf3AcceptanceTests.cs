@@ -164,11 +164,64 @@ public sealed class Mmf3AcceptanceTests
         string Profile(string id) => Path.Combine(app, "Profiles", id);
         ProfileRecoveryCoordinator Open() => (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
             .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
+        void DirectoryNew(string path) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(path, WindowsIdentity.GetCurrent().User!);
+        string recovery = Path.Combine(app, "Recovery"), targets = Path.Combine(recovery, "targets");
+        string sources = Path.Combine(recovery, "sources"), sourceDirectory = Path.Combine(sources, backup);
+        string sourceFile = Path.Combine(sourceDirectory, "source.dpapi");
+        var registration = new ProfileRecoveryCoordinator.SourceRegistration(1, "WORKSPACE_BACKUP_SOURCE", "BACKUP_REGISTERED",
+            backup, source, Guid.NewGuid().ToString("D"), new string('1', 48), new string('2', 48), 123, 456, 15432,
+            "synthetic_source", "synthetic_app", "personal-ai-workspace.postgresql-encrypted-stream", 3, 17,
+            "WORKSPACE_KNOWLEDGE_ONLY", 512, new string('a', 64), new string('b', 64), "RECLAIMED");
+        byte[] sourceEntropy = System.Text.Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/source/v1/" + backup);
+        // Test-only fixture writer. The product has no API which can sign off caller-supplied
+        // metadata as a completed backup; real publication still depends on the maintenance owner.
+        void WriteSource(string json) => File.WriteAllBytes(sourceFile, System.Security.Cryptography.ProtectedData.Protect(
+            System.Text.Encoding.UTF8.GetBytes(json), sourceEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser));
+        string sourceJson = System.Text.Json.JsonSerializer.Serialize(registration);
         ProfileRecoveryCoordinator.Plan plan;
         ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(source));
         using (var journal = Open())
         {
-            plan = journal.ReservePlan(source, backup, new string('a', 64), new string('b', 64));
+            Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
+            Assert.False(Directory.Exists(recovery)); // No repair or candidate side effects on missing trust.
+            DirectoryNew(recovery); DirectoryNew(targets); DirectoryNew(sources); DirectoryNew(sourceDirectory);
+            Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
+            foreach (string altered in new[] { sourceJson.Replace("BACKUP_REGISTERED", "INCOMPLETE"),
+                sourceJson.Replace("RECLAIMED", "CREDENTIAL_CLEANUP_REQUIRED"),
+                sourceJson.Replace("WORKSPACE_KNOWLEDGE_ONLY", "FINANCE_AND_WORKSPACE"),
+                sourceJson.Replace("\"FormatVersion\":3", "\"FormatVersion\":2"),
+                sourceJson.Replace(backup, Guid.NewGuid().ToString("N")),
+                sourceJson.Replace("\"Version\":1", "\"Version\":1,\"Version\":1"),
+                sourceJson.Replace("\"Version\":1", "\"Version\":1,\"Unknown\":true"),
+                sourceJson.Replace("\"SourcePort\":15432", "\"SourcePort\":0") })
+            {
+                WriteSource(altered);
+                var failure = Record.Exception(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
+                Assert.True(failure is IOException or System.Text.Json.JsonException);
+                Assert.Empty(Directory.EnumerateFileSystemEntries(targets));
+            }
+            File.WriteAllBytes(sourceFile, [1, 2, 3]);
+            Assert.Throws<System.Security.Cryptography.CryptographicException>(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
+            WriteSource(sourceJson);
+            Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('c', 64), new string('b', 64)));
+            Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('a', 64), new string('c', 64)));
+            string sourcePending = Path.Combine(sourceDirectory, "source.pending");
+            File.WriteAllText(sourcePending, "synthetic interrupted source publication");
+            Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(targets));
+            File.Delete(sourcePending); // Only this fresh synthetic fixture; product never repairs it.
+            var pinSource = typeof(ProfileRecoveryCoordinator).GetMethod("PinRegisteredSource", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            using ((IDisposable)pinSource.Invoke(journal, [backup, new string('a', 64), new string('b', 64)])!)
+            {
+                Assert.Throws<IOException>(() => new FileStream(sourceFile, FileMode.Open, FileAccess.Write, FileShare.Read));
+                Assert.Throws<IOException>(() => File.Delete(sourceFile));
+                Assert.Throws<IOException>(() => Directory.Move(sourceDirectory, sourceDirectory + "-moved"));
+            }
+            plan = journal.ReservePlan(backup, new string('a', 64), new string('b', 64));
+            Assert.Equal(2, plan.Version);
+            Assert.Equal(source, plan.SourceProfileId);
+            Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sourceFile))), plan.SourceRegistrationSha256);
+            Assert.Equal("SourceRegistration[private]", registration.ToString());
             Assert.Equal(plan, journal.Inspect(plan.TargetProfileId));
             Assert.Throws<IOException>(() => Directory.Move(Path.Combine(app, "Recovery"), Path.Combine(app, "moved")));
             Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
@@ -191,8 +244,9 @@ public sealed class Mmf3AcceptanceTests
         string json = System.Text.Encoding.UTF8.GetString(plain);
         System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain);
         // Correct DPAPI cannot turn unknown/duplicate fields, another target or ACTIVE into authority.
-        foreach (string altered in new[] { json.Replace("PREPARING", "ACTIVE"), json.Replace("\"Version\":1", "\"Version\":2"),
-            json.Replace("\"Version\":1", "\"Version\":1,\"Version\":1"), json.Replace("\"Version\":1", "\"Version\":1,\"Unknown\":true"),
+        foreach (string altered in new[] { json.Replace("PREPARING", "ACTIVE"), json.Replace("\"Version\":2", "\"Version\":99"),
+            json.Replace("\"Version\":2", "\"Version\":2,\"Version\":2"), json.Replace("\"Version\":2", "\"Version\":2,\"Unknown\":true"),
+            json.Replace(plan.SourceRegistrationSha256!, "invalid"),
             json.Replace(plan.TargetProfileId, Guid.NewGuid().ToString("N")) })
         {
             File.WriteAllBytes(file, System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(altered), entropy,
@@ -203,6 +257,13 @@ public sealed class Mmf3AcceptanceTests
         }
         File.WriteAllBytes(file, [1, 2, 3]);
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => reopened.Inspect(plan.TargetProfileId));
+        // v1 intentions remain inspectable without a source binding, but cannot start a target.
+        var legacy = plan with { Version = 1, SourceRegistrationSha256 = null };
+        string legacyJson = System.Text.Json.JsonSerializer.Serialize(legacy).Replace(",\"SourceRegistrationSha256\":null", "");
+        File.WriteAllBytes(file, System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(legacyJson), entropy,
+            System.Security.Cryptography.DataProtectionScope.CurrentUser));
+        Assert.Equal(legacy, reopened.Inspect(plan.TargetProfileId));
+        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
         File.WriteAllBytes(file, ciphertext); // Restore only this test's synthetic record for interrupted-publication check.
         File.WriteAllText(Path.Combine(reservation, "plan.pending"), "synthetic interrupted publication");
         Assert.Throws<IOException>(() => reopened.Inspect(plan.TargetProfileId));
@@ -217,11 +278,14 @@ public sealed class Mmf3AcceptanceTests
         // This fresh surrogate has a malformed registry; no existing application files are used.
         string brokenApp = Path.Combine(Path.GetTempPath(), "paw-recovery-plan-" + Guid.NewGuid().ToString("N"));
         PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(brokenApp, WindowsIdentity.GetCurrent().User!);
-        File.WriteAllText(Path.Combine(brokenApp, "Recovery"), "synthetic malformed registry");
+        string brokenRecovery = Path.Combine(brokenApp, "Recovery"), brokenSources = Path.Combine(brokenRecovery, "sources");
+        DirectoryNew(brokenRecovery); DirectoryNew(brokenSources); DirectoryNew(Path.Combine(brokenSources, backup));
+        File.Copy(sourceFile, Path.Combine(brokenSources, backup, "source.dpapi"));
+        File.WriteAllText(Path.Combine(brokenRecovery, "targets"), "synthetic malformed targets registry");
         using var broken = (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
             .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([brokenApp]);
         var incomplete = Assert.Throws<ProfileRecoveryCoordinator.ReservationIncomplete>(() =>
-            broken.ReservePlan(source, backup, new string('a', 64), new string('b', 64)));
+            broken.ReservePlan(backup, new string('a', 64), new string('b', 64)));
         Assert.Equal("PREPARING", incomplete.Attempt.State);
         Assert.Equal(32, incomplete.Attempt.OperationId.Length);
         Assert.Equal(32, incomplete.Attempt.TargetProfileId.Length);
