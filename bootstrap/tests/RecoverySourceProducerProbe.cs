@@ -66,9 +66,10 @@ internal static class RecoverySourceProducerProbe
         File.WriteAllText(Path.Combine(isolated, "native-source-evidence.json"), JsonSerializer.Serialize(new {
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
+            protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
             personalSourceRegistration = false, productPlanRejected = true, duplicateAttemptRejected = true,
             sourceRecord = record, sourceRecordSha256 = Convert.ToHexStringLower(SHA256.HashData(original)) }));
-        Console.WriteLine("PASS: owned C# -> Java backup/role cleanup -> native ciphertext verification -> independent DPAPI publication/readback.");
+        Console.WriteLine("PASS: protected Workspace configuration -> app/admin database binding -> owned backup/role cleanup -> native configuration/ciphertext verification -> DPAPI readback.");
         Console.WriteLine("PASS: synthetic receipt cannot authorize a product plan; duplicate attempt rejected; exclusion released after child exit.");
         Console.WriteLine("Personal maintenance remains BLOCKED; real Native Gate, personal source and restore/activation were not exercised.");
     }

@@ -12,9 +12,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 
-/** Recovery preparation is not admission. No SQL, DPAPI, Spring or target provisioning here. */
+/** Recovery preparation/binding is not maintenance admission. No Spring or target provisioning. */
 public final class NativeProfileRecovery {
     private NativeProfileRecovery() {}
+
+    /** Freeze the already-admitted authority's Workspace configuration for one maintenance
+     * attempt. Full stopped-writer proof is still required before any personal backup runs. */
+    public static TrustedDatabaseConfiguration.RecoverySource freezeSource(MaintenanceExclusion exclusion) throws IOException {
+        return TrustedDatabaseConfiguration.freezeRecoverySource(exclusion);
+    }
 
     /** Cooperating processes share a read lease; native maintenance requests WRITE on the same
      * empty file. Win32 sharing excludes either side, across sessions, before credentials/SQL.

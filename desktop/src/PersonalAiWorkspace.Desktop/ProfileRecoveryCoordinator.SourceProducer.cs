@@ -22,7 +22,11 @@ internal sealed partial class ProfileRecoveryCoordinator
     private sealed record SourceChildResult(int Version, string Kind, long ChildPid, string BackupId,
         string DatabaseLogicalIdentity, string SourceSystemIdentifier, uint SourceDatabaseOid, int SourcePort,
         string SourceDatabase, string SourceRole, long PayloadBytes, string PayloadSha256,
-        string ManifestSha256, string CredentialCleanup);
+        string ManifestSha256, string CredentialCleanup, string SourceConfigurationIdentity,
+        string SourceConfigurationSha256, uint SourceApplicationRoleOid);
+
+    private sealed record BoundSyntheticSource(int Version, SourceRegistration Source,
+        string SourceConfigurationIdentity, string SourceConfigurationSha256, uint SourceApplicationRoleOid);
 
     // This is an executable development seam, not a product maintenance admission. The only
     // current Java producer is synthetic. Its records have a distinct kind, entropy AND namespace;
@@ -82,7 +86,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             if (await child.StandardOutput.BaseStream.ReadAsync(new byte[1], deadline.Token) != 0) throw Stop();
             await child.WaitForExitAsync(deadline.Token);
             await errors;
-            if (child.ExitCode != 0 || result.ChildPid != child.Id || result.Version != 1
+            if (child.ExitCode != 0 || result.ChildPid != child.Id || result.Version != 2
                 || result.Kind != "SYNTHETIC_WORKSPACE_BACKUP_RESULT" || result.BackupId != intent.BackupId
                 || result.DatabaseLogicalIdentity != intent.DatabaseLogicalIdentity || result.SourcePort == 5432
                 || result.SourceRole != "workspace_backup_src_" + intent.BackupId
@@ -96,6 +100,20 @@ internal sealed partial class ProfileRecoveryCoordinator
                 result.PayloadBytes, result.PayloadSha256, result.ManifestSha256, result.CredentialCleanup);
             ValidateSourceFields(source, intent.BackupId);
             RecheckSourceIntent(intent, root);
+            RequireHex(result.SourceConfigurationIdentity, 48); RequireHex(result.SourceConfigurationSha256, 64);
+            if (result.SourceApplicationRoleOid == 0) throw Stop();
+            // The child bound the live app/admin sessions while holding this exact file. Read
+            // and pin it independently now; no child-selected configuration path or credential.
+            using var configuration = OpenRecord(Path.Combine(root, "data", "database.dpapi"));
+            ValidateFileAcl(configuration, user.User!);
+            if (configuration.Length is < 1 or > MaximumRecordBytes
+                || !GetFileInformationByHandleEx(configuration.SafeFileHandle, 18, out SourceFileId configurationId, 24)) throw Stop();
+            byte[] configurationIdentity = new byte[24];
+            BinaryPrimitives.WriteUInt64LittleEndian(configurationIdentity, configurationId.Volume);
+            BinaryPrimitives.WriteUInt64LittleEndian(configurationIdentity.AsSpan(8), configurationId.Low);
+            BinaryPrimitives.WriteUInt64LittleEndian(configurationIdentity.AsSpan(16), configurationId.High);
+            if (Convert.ToHexStringLower(configurationIdentity) != result.SourceConfigurationIdentity
+                || Convert.ToHexStringLower(await SHA256.HashDataAsync(configuration, deadline.Token)) != result.SourceConfigurationSha256) throw Stop();
             // Parent independently pins and hashes the actual ciphertext at its own planned path.
             // Never accept a child-selected path, a package-side SHA or an outer success marker alone.
             HoldSyntheticBackupOutput(encrypted, payloads);
@@ -121,8 +139,10 @@ internal sealed partial class ProfileRecoveryCoordinator
             WindowsProfileSecurity.CreateDirectory(directory, user.User!); // No overwrite/replay.
             HoldPrivateDirectory(directory);
             byte[] entropy = SyntheticSourceEntropy(intent.BackupId);
-            PublishRecord(directory, "source", entropy, source);
-            if (ReadRecord<SourceRegistration>(Path.Combine(directory, "source.dpapi"), entropy) != source) throw Stop();
+            var bound = new BoundSyntheticSource(2, source, result.SourceConfigurationIdentity,
+                result.SourceConfigurationSha256, result.SourceApplicationRoleOid);
+            PublishRecord(directory, "source", entropy, bound);
+            if (ReadRecord<BoundSyntheticSource>(Path.Combine(directory, "source.dpapi"), entropy) != bound) throw Stop();
             return source;
         }
         catch (Exception failure)

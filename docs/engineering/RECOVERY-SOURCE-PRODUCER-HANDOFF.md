@@ -1,4 +1,32 @@
-# Recovery 来源生产者：合成跨进程备份与原生持久登记
+# Recovery 来源生产者：受保护配置绑定与合成跨进程备份
+
+## 本轮阶段：从 DPAPI 来源配置到备份结果登记
+
+本轮基于本地 `a9903a5`，继续在 `codex/recovery-v3-workspace-core` 开发。已读取权威设计；五份未跟踪设计文档保持字节不变。**本轮完成来源配置绑定内核及其合成端到端执行，个人恢复仍不可用，维护仍为 BLOCKED / UNREGISTERED_WRITERS_UNPROVEN。** 下方原有来源生产者记录是此前阶段背景，本节描述最新实现。
+
+`NativeProfileRecovery.freezeSource` 通过已有 `WindowsNativeGate.maintenanceProfileRoot(exclusion)` 取得当前 authority，只读取它固定的 `data/database.dpapi`；沿用 Profile ACL、无链接、配置解析与 DPAPI，不接收任意来源路径、不读取 Finance 配置，也不授予备份准入。`TrustedDatabaseConfiguration.RecoverySource` 在本次执行期间持有 root/data 禁删句柄及配置禁写/禁删句柄，固定原生文件身份和密文字节摘要，关闭后不能重新使用。普通配置加载和正常 Runtime Gate 的合同保持不变。
+
+备份使用该配置中的数据库、端口和 Profile Knowledge 路径；管理员材料只提供用户名/密码，不能另选来源。创建短期角色前，使用受保护应用凭据实际建立只读连接，核对低权限应用角色、Workspace V1/V2 与元数据合同。管理连接必须在 `pg_stat_activity` 中看到该尚存活的应用 backend PID、数据库 OID、角色 OID、客户端端口及 loopback 地址，随后固定 `pg_control_system()` 的实例标识。这样无需向日常应用角色授予控制文件读取权限，也不把 URL 相同当作实例身份。短期角色收尾完成后再次核对来源；若后置核对失败，不发布登记。回收本次已知角色依赖已有实例/数据库身份和角色 receipt，不依赖应用凭据仍可登录，避免配置异常阻止已知角色的安全收尾。
+
+原生合成结果帧升为 v2，增加配置文件身份、配置密文 SHA-256 和应用角色 OID；备份包仍是既有 v3。原生 owner 等待子进程正常退出后，独立 pin 同一固定配置文件并核对身份/摘要，再沿既有密文核验、角色收尾结果和 DPAPI 发布流程落盘。合成登记使用 v2 包装记录，包含原来源结果及配置绑定，仍只写 `Recovery/synthetic-sources`。原产品 `PinRegisteredSource`、来源种类和 `Recovery/sources` 消费合同未放宽；无绑定的旧合成引擎结果不能发送新版原生成功帧。
+
+验证只扩展原有 `RecoverySourceProducerProbe.cs/.java` 一条手工集成。新随机 PG17 实例内创建合成源、低权限应用角色及真正 DPAPI 配置；配置/ACL/句柄使用私有 OS 测试缝，**没有设置虚假 Native Gate 状态，也未运行真实 Profile 或个人凭据**。同次执行验证：
+
+- 固定配置 → 实际应用/管理连接绑定 → 临时角色 → v3 加密备份 → 角色回收 → 原生配置及密文核验 → 独立 DPAPI 登记和重读。
+- 配置缺失、配置写入/改名、data 目录改名、错误管理数据库、关闭后复用均拒绝；源 Workspace snapshot 和配置密文不变，Finance sentinel 保留，临时角色已不存在。
+- 完整认证解密与 manifest 摘要核对继续通过；合成登记仍不能预约产品目标，同一执行不得重复，子进程结束后排他锁释放。
+
+本轮这一个流程共执行两次，均通过：首次验证实现；收口审查调整“先完成角色回收、再作最终来源复核”的顺序后，仅重跑同一流程。两次独立 PG 实例均按 PID、启动时间、data directory、端口与程序路径核对后停止。使用两核/384 MiB JVM、随机 loopback 端口和 16 MiB shared_buffers；没有访问真实用户数据/Profile、启停既有服务、改动 KAG、合并 main 或部署。
+
+定向 javac 编译通过，沿用 `ExtendedOpenOption` 内部 API 警告；Desktop/探针构建为 0 warning / 0 error。未跑 Maven、前端构建或全套测试。最终证据在忽略目录 `.verification/recovery-source-binding/`：`native-source-integration.log`、`source-binding-evidence.json`、`native-source-evidence.json`、`fixture-result.json`、`owned-fixture.json`、`javac*.log`、`dotnet-build.log`；首轮证据以 `first-` 前缀保留，runner 也在该目录。
+
+实现前先参考 GitHub 的 [OpenJDK 21 WindowsChannelFactory](https://github.com/openjdk/jdk21u/blob/master/src/java.base/windows/classes/sun/nio/fs/WindowsChannelFactory.java) 和 [PostgreSQL 17 pg_controldata](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/utils/misc/pg_controldata.c)，核对 Windows 文件共享选项及实例标识来源；未修改第三方代码。
+
+仍缺完整停写准入、受审查且 pin 的产品直属 JVM 分派及真实 Native Gate 验证、真实 Profile 与维护文件 ACL 合同衔接、实际个人来源生产和未知结果核对。新目标 DB/Profile、prepared-target、凭据绑定、离线恢复/索引验证、RECOVERY_READY 与显式激活也尚未完成。本轮配置绑定是其中一段可复用内核，不能据此把维护改成 GO。后续应把已验证的来源绑定接入有完整停写证据的产品 owner；不能仅把 synthetic 改名或增加可填写的成功 receipt。
+
+本轮仅本地提交，未经另行授权不得推送。公开远端明确授权仍只到 `abe6530`；未 fetch 或宣称重新核验远端。
+
+## 前一阶段背景（截至 a9903a5）
 
 日期：2026-11-07（Asia/Shanghai）。基于本地 `6e8c4ae`，开发分支 `codex/recovery-v3-workspace-core`。已读取并遵循未跟踪的 `CURRENT-PROFILE-RECOVERY-DESIGN.md` 与 `RECOVERY-SLICE-2H-HANDOFF.md`。本阶段把 2g 的实际备份/角色收尾和 2h 的句柄交接连到原生结果核验与 DPAPI 发布；**通过的是明确隔离的合成执行链，个人受信来源登记仍未交付，维护仍为 BLOCKED / UNREGISTERED_WRITERS_UNPROVEN。**
 

@@ -14,6 +14,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.*;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.sql.Connection;
 import java.util.*;
 
 /** Device-local configuration, never part of a portable backup. No caller-supplied path or fallback. */
@@ -122,6 +123,163 @@ public final class TrustedDatabaseConfiguration {
         return Identity.read(path, directory);
     }
 
+    /** Maintenance reads only the authority's fixed Workspace configuration. This does not
+     * prove stopped writers or authorize a backup. No arbitrary source path or Finance input. */
+    static RecoverySource freezeRecoverySource(MaintenanceExclusion exclusion) throws IOException {
+        Path root = WindowsNativeGate.maintenanceProfileRoot(exclusion);
+        verifyDirectory(root); verifyDirectory(root.resolve("data"));
+        PrivateMemoryDirectory.validateLocation(root.resolve("data"), root.resolve("credentials/client-token"));
+        WindowsPrivateAcl.verify(root.resolve("data/database.dpapi"), false);
+        RecoverySource source = pinRecoverySource(root);
+        try {
+            WindowsPrivateAcl.verify(root.resolve("data/database.dpapi"), false);
+            WindowsNativeGate.maintenanceProfileRoot(exclusion);
+            source.requireUnchanged();
+            return source;
+        } catch (IOException | RuntimeException | Error failure) { source.close(); throw failure; }
+    }
+
+    // Private OS primitive seam for the explicit fresh-cluster probe. It does not set or mock
+    // NativeGate state. Production can reach this only through the gated factory above.
+    private static RecoverySource pinRecoverySource(Path root) throws IOException {
+        var source = new RecoverySource(root);
+        try { source.open(); return source; }
+        catch (Exception | LinkageError rejected) { source.close(); throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
+    }
+
+    /** A pinned source binding, never a maintenance capability or a writable configuration.
+     * Credentials stay here; callers supply only temporary administrator credentials. */
+    public static final class RecoverySource implements AutoCloseable {
+        private final Path root, data, file;
+        private final List<com.sun.jna.platform.win32.WinNT.HANDLE> directories = new ArrayList<>();
+        private String rootIdentity, dataIdentity, configurationIdentity, configurationSha256;
+        private FileChannel pin;
+        private Values values;
+        private DatabaseIdentity databaseIdentity;
+        private boolean closed;
+        private RecoverySource(Path root) { this.root = root; data = root.resolve("data"); file = data.resolve("database.dpapi"); }
+        public record DatabaseIdentity(String systemIdentifier, long databaseOid, long applicationRoleOid) {
+            @Override public String toString() { return "RecoveryDatabaseIdentity[private]"; }
+        }
+        private void open() throws Exception {
+            if (!root.equals(root.toAbsolutePath().normalize())) throw new IOException();
+            NativeProfileRecovery.requireOrdinaryProfile(root);
+            PrivateMemoryDirectory.noLinks(file);
+            // Gate already pins ancestors. These additional no-delete handles retain root/data
+            // for the configuration lifetime, including the private synthetic OS probe.
+            for (Path directory : List.of(root, data)) {
+                var handle = com.sun.jna.platform.win32.Kernel32.INSTANCE.CreateFile("\\\\?\\" + directory,
+                    0x20081, 3, null, 3, 0x02200000, null);
+                if (com.sun.jna.platform.win32.WinBase.INVALID_HANDLE_VALUE.equals(handle)) throw new IOException();
+                directories.add(handle);
+                Identity.read(directory, true);
+            }
+            rootIdentity = Identity.read(root, true); dataIdentity = Identity.read(data, true);
+            pin = FileChannel.open(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS,
+                ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE);
+            configurationIdentity = Identity.read(file, false);
+            byte[] encrypted = readEncrypted(), plaintext = null;
+            try {
+                configurationSha256 = sha256(encrypted);
+                plaintext = Protection.unprotect(encrypted);
+                values = ((Source) parse(plaintext, false)).getSource().values;
+            } finally { Arrays.fill(encrypted, (byte) 0); if (plaintext != null) Arrays.fill(plaintext, (byte) 0); }
+            requireUnchanged();
+        }
+        private byte[] readEncrypted() throws IOException {
+            ByteBuffer bytes = ByteBuffer.allocate(LIMIT + 1);
+            try {
+                pin.position(0);
+                while (bytes.hasRemaining() && pin.read(bytes) != -1) { }
+                if (bytes.position() < 1 || bytes.position() > LIMIT) throw new IOException();
+                return Arrays.copyOf(bytes.array(), bytes.position());
+            } finally { Arrays.fill(bytes.array(), (byte) 0); }
+        }
+        private static String sha256(byte[] bytes) throws IOException {
+            try { return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)); }
+            catch (java.security.NoSuchAlgorithmException impossible) { throw new IOException(); }
+        }
+        public void requireUnchanged() throws IOException {
+            if (closed || pin == null || !pin.isOpen() || values == null) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            NativeProfileRecovery.requireOrdinaryProfile(root);
+            PrivateMemoryDirectory.noLinks(file);
+            if (!rootIdentity.equals(Identity.read(root, true)) || !dataIdentity.equals(Identity.read(data, true))
+                    || !configurationIdentity.equals(Identity.read(file, false))) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            byte[] encrypted = readEncrypted();
+            try { if (!configurationSha256.equals(sha256(encrypted))) throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
+            finally { Arrays.fill(encrypted, (byte) 0); }
+        }
+        public Path profileRoot() throws IOException { requireUnchanged(); return root; }
+        public String database() throws IOException { requireUnchanged(); return values.database; }
+        public int port() throws IOException { requireUnchanged(); return values.port; }
+        public String configurationIdentity() throws IOException { requireUnchanged(); return configurationIdentity; }
+        public String configurationSha256() throws IOException { requireUnchanged(); return configurationSha256; }
+        public DatabaseIdentity databaseIdentity() throws IOException {
+            requireUnchanged(); if (databaseIdentity == null) throw new Failure(Reason.CONNECTION_FAILED); return databaseIdentity;
+        }
+
+        /** Authenticate using the protected app credentials, and correlate that live backend
+         * on the administrator connection BEFORE any role DDL. A matching URL alone is not
+         * identity. App credentials never need pg_control_system privileges or new grants. */
+        public void verifyAdministrator(Connection administrator) throws IOException {
+            requireUnchanged();
+            var source = new org.postgresql.ds.PGSimpleDataSource();
+            source.setURL(values.url); source.setUser(values.username); source.setPassword(values.password);
+            source.setCurrentSchema("workspace,pg_catalog"); source.setConnectTimeout(3); source.setSocketTimeout(15);
+            try (var app = source.getConnection()) {
+                app.setReadOnly(true); app.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ); app.setAutoCommit(false);
+                try (var statement = app.createStatement()) { statement.execute("SET LOCAL statement_timeout='10s'"); }
+                PostgresqlWorkspace.verify(app);
+                try (var statement = app.createStatement(); var rows = statement.executeQuery(
+                        "SELECT version,success FROM workspace.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank")) {
+                    for (String version : List.of("1", "2"))
+                        if (!rows.next() || !version.equals(rows.getString(1)) || !rows.getBoolean(2)) throw new IOException();
+                    if (rows.next()) throw new IOException();
+                }
+                long databaseOid, roleOid; int backendPid, clientPort;
+                try (var statement = app.createStatement(); var row = statement.executeQuery(
+                        "SELECT pg_catalog.pg_backend_pid(),pg_catalog.inet_client_port(),d.oid,r.oid "
+                        + "FROM pg_catalog.pg_database d,pg_catalog.pg_roles r WHERE d.datname=current_database() "
+                        + "AND r.rolname=session_user AND current_user=session_user AND r.rolcanlogin "
+                        + "AND current_setting('server_version_num')::int/10000=17 AND pg_catalog.inet_server_addr()='127.0.0.1' "
+                        + "AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid)")) {
+                    if (!row.next()) throw new IOException();
+                    backendPid = row.getInt(1); clientPort = row.getInt(2); databaseOid = row.getLong(3); roleOid = row.getLong(4);
+                    if (row.next() || backendPid <= 0 || clientPort <= 0 || databaseOid <= 0 || roleOid <= 0) throw new IOException();
+                }
+                try (var statement = administrator.prepareStatement(
+                        "SELECT c.system_identifier::text FROM pg_catalog.pg_control_system() c,pg_catalog.pg_stat_activity a "
+                        + "WHERE current_database()=? AND pg_catalog.inet_server_port()=? AND pg_catalog.inet_server_addr()='127.0.0.1' "
+                        + "AND a.pid=? AND a.datid=? AND a.usesysid=? AND a.usename=? AND a.client_port=? "
+                        + "AND a.client_addr='127.0.0.1' AND a.backend_type='client backend'")) {
+                    statement.setQueryTimeout(10); statement.setString(1, values.database); statement.setInt(2, values.port);
+                    statement.setInt(3, backendPid); statement.setLong(4, databaseOid); statement.setLong(5, roleOid);
+                    statement.setString(6, values.username); statement.setInt(7, clientPort);
+                    try (var row = statement.executeQuery()) {
+                        if (!row.next()) throw new IOException();
+                        String system = row.getString(1);
+                        if (row.next() || system == null || Long.parseUnsignedLong(system) == 0) throw new IOException();
+                        var observed = new DatabaseIdentity(system, databaseOid, roleOid);
+                        if (databaseIdentity != null && !databaseIdentity.equals(observed)) throw new IOException();
+                        databaseIdentity = observed;
+                    }
+                }
+                app.rollback();
+                requireUnchanged();
+            } catch (Exception rejected) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
+        }
+        @Override public void close() throws IOException {
+            if (closed) return; closed = true; values = null;
+            try { if (pin != null) pin.close(); }
+            finally {
+                for (int i = directories.size() - 1; i >= 0; i--)
+                    com.sun.jna.platform.win32.Kernel32.INSTANCE.CloseHandle(directories.get(i));
+                directories.clear();
+            }
+        }
+        @Override public String toString() { return "RecoverySource[private; not maintenance admission]"; }
+    }
+
     static PropertySource<?> parse(byte[] bytes) throws Failure { return parse(bytes, false); }
 
     public static PropertySource<?> parseFinance(byte[] bytes) throws Failure { return parse(bytes, true); }
@@ -151,7 +309,8 @@ public final class TrustedDatabaseConfiguration {
                 throw new Failure(Reason.CREDENTIAL_UNAVAILABLE);
             String password = node.path("password").asString();
             if (password.length() > 1024 || password.chars().anyMatch(c -> c == 0 || c == '\r' || c == '\n')) throw new IOException();
-            return new Source(new Values("jdbc:postgresql://127.0.0.1:" + node.path("port").intValue() + "/" + database, username, password), finance);
+            return new Source(new Values("jdbc:postgresql://127.0.0.1:" + node.path("port").intValue() + "/" + database,
+                username, password, database, node.path("port").intValue()), finance);
         } catch (Failure controlled) { throw controlled; }
         catch (IOException | RuntimeException invalid) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
     }
@@ -195,7 +354,7 @@ public final class TrustedDatabaseConfiguration {
         environment.getPropertySources().addFirst(source);
     }
 
-    private record Values(String url, String username, String password) {
+    private record Values(String url, String username, String password, String database, int port) {
         @Override public String toString() { return "DatabaseConfiguration[private]"; }
     }
     private static final class State {

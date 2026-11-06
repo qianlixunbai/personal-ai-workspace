@@ -1,5 +1,6 @@
 package io.github.qianlixunbai.workspace.backup;
 
+import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.RecoverySource;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -23,8 +24,14 @@ final class WorkspaceSourceBackup {
         private final String backupId,sourceRole;
         private final SourceIdentity source;
         private final PortableEncryptedBackup.WorkspaceBackup backup;
-        private Completed(String backupId,String sourceRole,SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup){
+        private final String configurationIdentity,configurationSha256;
+        private final long applicationRoleOid;
+        private Completed(String backupId,String sourceRole,SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup,
+                RecoverySource binding) throws IOException {
             this.backupId=backupId;this.sourceRole=sourceRole;this.source=source;this.backup=backup;
+            configurationIdentity=binding==null?null:binding.configurationIdentity();
+            configurationSha256=binding==null?null:binding.configurationSha256();
+            applicationRoleOid=binding==null?0:binding.databaseIdentity().applicationRoleOid();
         }
         String backupId(){return backupId;}
         String sourceRole(){return sourceRole;}
@@ -34,14 +41,17 @@ final class WorkspaceSourceBackup {
          * completed execution can emit it; it is explicitly NOT personal SQL-source authority.
          * No endpoint password, passphrase, source content or caller-provided digest is sent. */
         void writeNativeResult(java.io.OutputStream output) throws IOException {
+            require(configurationIdentity!=null&&configurationSha256!=null&&applicationRoleOid>0);
             var result=new java.util.LinkedHashMap<String,Object>();
-            result.put("Version",1);result.put("Kind","SYNTHETIC_WORKSPACE_BACKUP_RESULT");
+            result.put("Version",2);result.put("Kind","SYNTHETIC_WORKSPACE_BACKUP_RESULT");
             result.put("ChildPid",ProcessHandle.current().pid());result.put("BackupId",backupId);
             result.put("DatabaseLogicalIdentity",backup.manifest().databaseLogicalIdentity());
             result.put("SourceSystemIdentifier",source.systemIdentifier());result.put("SourceDatabaseOid",source.databaseOid());
             result.put("SourcePort",source.port());result.put("SourceDatabase",source.database());result.put("SourceRole",sourceRole);
             result.put("PayloadBytes",backup.completion().bytes());result.put("PayloadSha256",backup.completion().sha256());
             result.put("ManifestSha256",backup.manifestSha256());result.put("CredentialCleanup","RECLAIMED");
+            result.put("SourceConfigurationIdentity",configurationIdentity);result.put("SourceConfigurationSha256",configurationSha256);
+            result.put("SourceApplicationRoleOid",applicationRoleOid);
             byte[] bytes=JSON.writeValueAsBytes(result);
             require(bytes.length>0&&bytes.length<=16384);
             var pipe=new java.io.DataOutputStream(output);pipe.writeInt(bytes.length);pipe.write(bytes);pipe.flush();
@@ -56,6 +66,24 @@ final class WorkspaceSourceBackup {
      */
     static Completed backupSynthetic(Endpoint administrator,Path tools,Path knowledge,Path encrypted,
             String backupId,String logicalId,boolean writersStopped,char[] passphrase) throws IOException {
+        return backupSynthetic(administrator,tools,knowledge,encrypted,backupId,logicalId,writersStopped,passphrase,null);
+    }
+
+    /** Bound synthetic execution: endpoint and source files come only from the pinned DPAPI
+     * configuration/Profile. Administrator input cannot select another source. Still synthetic;
+     * neither the binding nor the caller attestation grants personal maintenance admission. */
+    static Completed backupSynthetic(RecoverySource source,String administratorUsername,String administratorPassword,
+            Path tools,Path encrypted,String backupId,String logicalId,boolean writersStopped,char[] passphrase) throws IOException {
+        try {
+            require(source!=null);source.requireUnchanged();
+            var administrator=new Endpoint(source.database(),administratorUsername,administratorPassword,source.port());
+            return backupSynthetic(administrator,tools,source.profileRoot().resolve("data/knowledge"),encrypted,
+                backupId,logicalId,writersStopped,passphrase,source);
+        } finally {if(passphrase!=null)Arrays.fill(passphrase,'\0');}
+    }
+
+    private static Completed backupSynthetic(Endpoint administrator,Path tools,Path knowledge,Path encrypted,
+            String backupId,String logicalId,boolean writersStopped,char[] passphrase,RecoverySource binding) throws IOException {
         OwnedRole owned=null;PortableEncryptedBackup.WorkspaceBackup backup=null;Exception failure=null;String stage="SOURCE_ADMISSION";
         try {
             require(writersStopped&&administrator.database().matches("personal_ai_workspace_b3_[0-9a-f]{12}")&&administrator.port()!=5432);
@@ -66,7 +94,7 @@ final class WorkspaceSourceBackup {
             // still performs its complete CREATE_NEW/path admission and never overwrites.
             PortableEncryptedBackup.stagingParent(encrypted.toAbsolutePath().normalize());
             require(!java.nio.file.Files.exists(encrypted,java.nio.file.LinkOption.NOFOLLOW_LINKS));
-            owned=new OwnedRole(administrator,backupId);
+            owned=new OwnedRole(administrator,backupId,binding);
             stage="SOURCE_ROLE_PROVISION";
             Endpoint reader=owned.provision();
             stage="ENCRYPTED_BACKUP";
@@ -83,23 +111,32 @@ final class WorkspaceSourceBackup {
         }
         if(failure!=null)throw new IOException("Source backup stopped: BACKUP_INCOMPLETE; stage="+stage+"; kind="+failure.getClass().getSimpleName()+"; no registration");
         require(owned!=null&&backup!=null);
-        return new Completed(backupId,owned.role,owned.source,backup);
+        // Cleanup relies on the already-frozen server/database/role receipt, not continued app
+        // login availability. A changed app configuration must prevent publication without
+        // preventing reclamation of this attempt's known short-lived credentials.
+        if(binding!=null)try(var db=administrator.dataSource().getConnection()){
+            binding.verifyAdministrator(db);owned.requireBinding();
+        }catch(Exception rejected){throw new IOException("Source backup stopped: SOURCE_BINDING_CHANGED; no registration");}
+        return new Completed(backupId,owned.role,owned.source,backup,binding);
     }
 
     private static final class OwnedRole {
         private final Endpoint administrator;
+        private final RecoverySource binding;
         private final String role,receipt;
         private SourceIdentity source;
         private long roleOid;
         private boolean creationAttempted;
-        OwnedRole(Endpoint administrator,String backupId){
-            this.administrator=administrator;role="workspace_backup_src_"+backupId;receipt="workspace-backup-source:"+backupId;
+        OwnedRole(Endpoint administrator,String backupId,RecoverySource binding){
+            this.administrator=administrator;this.binding=binding;role="workspace_backup_src_"+backupId;receipt="workspace-backup-source:"+backupId;
         }
         Endpoint provision() throws Exception {
             byte[] random=new byte[32];new SecureRandom().nextBytes(random);
             String password;try{password=Base64.getEncoder().encodeToString(random);}finally{Arrays.fill(random,(byte)0);}
             try(var db=administrator.dataSource().getConnection()){
+                if(binding!=null)binding.verifyAdministrator(db); // App connection closes before the no-other-client check.
                 source=identity(db,administrator);
+                requireBinding();
                 WorkspaceV3Catalog.verify(db);
                 require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datid="+source.databaseOid()+" AND pid<>pg_backend_pid()")==0);
                 require(scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname='"+role+"'")==0);
@@ -151,6 +188,12 @@ final class WorkspaceSourceBackup {
                 }catch(Exception rejected){try{db.rollback();}catch(Exception ignored){}throw rejected;}
                 require(scalar(db,"SELECT count(*) FROM pg_roles WHERE oid="+roleOid+" OR rolname='"+role+"'")==0);
             }
+        }
+        private void requireBinding() throws IOException {
+            if(binding==null)return;
+            var actual=binding.databaseIdentity();
+            require(source.systemIdentifier().equals(actual.systemIdentifier())&&source.databaseOid()==actual.databaseOid()
+                &&source.port()==binding.port()&&source.database().equals(binding.database()));
         }
     }
     private static SourceIdentity identity(Connection db,Endpoint expected) throws Exception {
