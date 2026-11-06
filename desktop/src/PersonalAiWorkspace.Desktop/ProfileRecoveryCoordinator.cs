@@ -260,10 +260,11 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         WindowsProfileSecurity.ValidatePrivate(security, user);
     }
 
-    private static FileStream OpenRecord(string path)
+    private static FileStream OpenRecord(string path, bool write = false)
     {
         // OPEN_REPARSE_POINT: reject links on the opened object, not via a racy path precheck.
-        var handle = CreateFileW(@"\\?\" + path, 0x80020080, 1, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+        // Optional WRITE is used only for the empty early-admission lock, never a record write.
+        var handle = CreateFileW(@"\\?\" + path, write ? 0xC0020080 : 0x80020080, 1, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
         try
         {
             if (handle.IsInvalid || !GetFileInformationByHandle(handle, out FileInformation info)
@@ -271,7 +272,7 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
             var final = new StringBuilder(32768);
             uint length = GetFinalPathNameByHandleW(handle, final, (uint)final.Capacity, 0);
             if (length == 0 || length >= final.Capacity || !string.Equals(final.ToString(), @"\\?\" + path, StringComparison.OrdinalIgnoreCase)) throw Stop();
-            return new FileStream(handle, FileAccess.Read);
+            return new FileStream(handle, write ? FileAccess.ReadWrite : FileAccess.Read);
         }
         catch { handle.Dispose(); throw; }
     }

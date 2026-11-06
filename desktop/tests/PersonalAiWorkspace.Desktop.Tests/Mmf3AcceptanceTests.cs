@@ -25,6 +25,8 @@ public sealed class Mmf3AcceptanceTests
         string id = Guid.NewGuid().ToString("N");
         string profiles = Path.Combine(app, "Profiles"), profile = Path.Combine(profiles, id), model = Path.Combine(profile, "model-state");
         DirectoryNew(profiles); DirectoryNew(profile); DirectoryNew(model);
+        string evidence = Path.Combine(profile, "evidence"); DirectoryNew(evidence);
+        string earlyLock = Path.Combine(evidence, "runtime-admission.lock");
         string modelLock = Path.Combine(model, ".lock");
         File.WriteAllBytes(modelLock, []);
         Console.WriteLine("Synthetic runtime ownership fixture retained: " + app);
@@ -45,6 +47,8 @@ public sealed class Mmf3AcceptanceTests
             { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException!).Throw(); throw; }
         }
         void Denied() { using var journal = Journal(); Assert.ThrowsAny<IOException>(() => Inspect(journal)); }
+        Denied(); Assert.False(File.Exists(earlyLock)); // Maintenance never creates missing enrollment state.
+        File.WriteAllBytes(earlyLock, []);
         Denied(); // Missing history is not "never ran".
         using (var attempt = Attempt())
         {
@@ -73,9 +77,17 @@ public sealed class Mmf3AcceptanceTests
             var result = Inspect(journal);
             Assert.Equal(1, result.ObservedExitedChildren);
             Assert.Equal("UNREGISTERED_WRITERS_UNPROVEN", result.Blocker);
+            // Same READ/share-READ contract used by Java's early lease: the maintenance WRITE
+            // handle excludes it before model-state or credential reads can begin.
+            Assert.Throws<IOException>(() => new FileStream(earlyLock, FileMode.Open, FileAccess.Read, FileShare.Read));
             Assert.Throws<IOException>(() => new FileStream(modelLock, FileMode.Open, FileAccess.Write, FileShare.ReadWrite));
             Assert.Throws<IOException>(() => Directory.Move(model, Path.Combine(profile, "moved")));
+            Assert.Throws<IOException>(() => Directory.Move(evidence, Path.Combine(profile, "moved-evidence")));
         }
+        using (var earlyReader = new FileStream(earlyLock, FileMode.Open, FileAccess.Read, FileShare.Read)) Denied();
+        File.WriteAllText(earlyLock, "synthetic malformed lock"); Denied();
+        Assert.Equal("synthetic malformed lock", File.ReadAllText(earlyLock));
+        File.WriteAllBytes(earlyLock, []); // Restore only this test-owned fixture for guard checks.
         using (var writer = new FileStream(modelLock, FileMode.Open, FileAccess.Write, FileShare.Read)) Denied();
         foreach (string name in new[] { "execution-guard.json", "execution-guard.pending", "validation-required.pending", "unknown" })
         {

@@ -76,6 +76,11 @@ public final class WindowsPrivateAcl {
                     if (part.equals(root) || part.equals(root.getParent()) || part.equals(root.getParent().getParent()))
                         privateAcl(handle, currentSid(), true, false);
                 }
+                // Early Runtime/maintenance exclusion lives here. Pin this fixed directory too,
+                // so its lock name cannot be moved to another directory during a process lease.
+                HANDLE evidence = open(root.resolve("evidence"), true, true);
+                pins.add(evidence);
+                privateAcl(evidence, currentSid(), true, false);
                 developmentRoot = root; profilePins = pins;
             } catch (IOException | RuntimeException | Error failure) { pins.close(); throw failure; }
         }

@@ -1,15 +1,60 @@
 package io.github.qianlixunbai.workspace.persistence;
 
 import java.io.IOException;
+import com.sun.nio.file.ExtendedOpenOption;
+import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
+import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 
 /** Recovery preparation is not admission. No SQL, DPAPI, Spring or target provisioning here. */
 public final class NativeProfileRecovery {
     private NativeProfileRecovery() {}
+
+    /** Cooperating processes share a read lease; native maintenance requests WRITE on the same
+     * empty file. Win32 sharing excludes either side, across sessions, before credentials/SQL.
+     * This is not evidence that older binaries or external database clients are absent. */
+    public static RuntimeLease acquireRuntimeLease(Path verifiedProfileRoot) throws IOException {
+        requireOrdinaryProfile(verifiedProfileRoot);
+        Path evidence = verifiedProfileRoot.resolve("evidence");
+        Path file = evidence.resolve("runtime-admission.lock");
+        // The native gate has already pinned the canonical Profile AND evidence directory.
+        WindowsPrivateAcl.verify(evidence, true);
+        try { WindowsPrivateAcl.createFile(file); }
+        catch (FileAlreadyExistsException existing) { /* Verify; never truncate or repair. */ }
+        WindowsPrivateAcl.verify(file, false);
+        String identity = TrustedDatabaseConfiguration.Identity.read(file, false);
+        FileChannel channel = FileChannel.open(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS,
+                ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE);
+        try {
+            var lease = new RuntimeLease(verifiedProfileRoot, file, identity, channel);
+            lease.requireHeld(verifiedProfileRoot);
+            return lease;
+        } catch (IOException | RuntimeException | Error failure) { channel.close(); throw failure; }
+    }
+
+    public static final class RuntimeLease implements AutoCloseable {
+        private final Path root, file;
+        private final String identity;
+        private final FileChannel channel;
+        private RuntimeLease(Path root, Path file, String identity, FileChannel channel) {
+            this.root = root; this.file = file; this.identity = identity; this.channel = channel;
+        }
+        public void requireHeld(Path expectedRoot) throws IOException {
+            if (!root.equals(expectedRoot) || !channel.isOpen() || channel.size() != 0
+                    || !identity.equals(TrustedDatabaseConfiguration.Identity.read(file, false))) throw stopped();
+            WindowsPrivateAcl.verify(file.getParent(), true);
+            WindowsPrivateAcl.verify(file, false);
+        }
+        // WindowsNativeGate retains this object until OS process termination. It deliberately
+        // has no shutdown hook: releasing it before all Spring/DB shutdown work would be unsafe.
+        @Override public void close() throws IOException { channel.close(); }
+    }
 
     /** Additive denial after the existing helper verifies the canonical Profile identity.
      * No caller flag/receipt can authorize a candidate before publication and activation exist. */

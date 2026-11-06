@@ -139,25 +139,35 @@ internal sealed partial class ProfileRecoveryCoordinator
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         RequireHex(profileId, 32);
+        string evidence = Path.Combine(profileRoot, "evidence");
+        HoldPrivateDirectory(evidence);
         string model = Path.Combine(profileRoot, "model-state");
         HoldPrivateDirectory(model);
         using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-        var modelLock = OpenRecord(Path.Combine(model, ".lock"));
+        // Existing file only: absence cannot be upgraded into evidence of participating clients.
+        // Java holds READ + NOSHARE_WRITE/DELETE before returning its Profile/reading credentials.
+        var runtimeLock = OpenRecord(Path.Combine(evidence, "runtime-admission.lock"), write: true);
+        FileStream? modelLock = null;
         try
         {
+            ValidateFileAcl(runtimeLock, user.User!);
+            if (runtimeLock.Length != 0) throw Stop();
+            modelLock = OpenRecord(Path.Combine(model, ".lock"));
             ValidateFileAcl(modelLock, user.User!);
             if (modelLock.Length != 0) throw Stop();
             // The existing Java writer requests WRITE + NOSHARE_WRITE/DELETE. Our existing-file
             // read handle shares READ only: excludes that writer across sessions, without repair.
-            // It does NOT exclude Java before ModelStateStore, older clients or external SQL.
+            // The early lock above covers participating Java before ModelStateStore. Neither
+            // file proves absence of older clients, unregistered executions or external SQL.
             string[] files = Directory.EnumerateFileSystemEntries(model).Take(4).ToArray();
             if (files.Length > 3 || files.Any(file => Path.GetFileName(file)
                 is not (".lock" or "active-model.json" or "validation-required.json"))) throw Stop();
             int count = InspectRuntimeStops(profileId);
+            held.Add(runtimeLock);
             held.Add(modelLock); // Retain the exclusion until the native coordinator releases its mutex.
             return new MaintenanceInspection(count);
         }
-        catch { modelLock.Dispose(); throw; }
+        catch { modelLock?.Dispose(); runtimeLock.Dispose(); throw; }
     }
 
     private int InspectRuntimeStops(string profileId)

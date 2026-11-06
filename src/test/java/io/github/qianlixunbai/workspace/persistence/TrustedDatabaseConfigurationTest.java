@@ -26,6 +26,66 @@ class TrustedDatabaseConfigurationTest {
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private void directories() throws IOException { Files.createDirectory(root.resolve("data")); Files.createDirectory(root.resolve("credentials")); }
 
+    @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void earlyRuntimeLeaseExcludesMaintenanceBeforeCredentialsAndCannotReopenAfterLoss() throws Exception {
+        // A new @TempDir tree and real JDK/Windows sharing only. Cache a synthetic admitted root
+        // and mock ACL/identity primitives: no helper/JNA/DPAPI, real Profile, Spring or database.
+        Path profile = Files.createDirectories(root.resolve("Profiles").resolve("4".repeat(32)));
+        Path evidence = Files.createDirectory(profile.resolve("evidence"));
+        Path file = evidence.resolve("runtime-admission.lock");
+        var rootField = WindowsNativeGate.class.getDeclaredField("admittedRoot"); rootField.setAccessible(true);
+        var leaseField = WindowsNativeGate.class.getDeclaredField("runtimeLease"); leaseField.setAccessible(true);
+        assertNull(rootField.get(null)); assertNull(leaseField.get(null));
+        String[] arguments = { "--server.address=127.0.0.1", "--server.port=18765",
+            "--workspace.security.token-file=" + profile.resolve("credentials/client-token"),
+            "--workspace.data-directory=" + profile.resolve("data"),
+            "--workspace.model-state-directory=" + profile.resolve("model-state") };
+        try (var acl = mockStatic(WindowsPrivateAcl.class); var identities = mockStatic(Identity.class)) {
+            acl.when(() -> WindowsPrivateAcl.createFile(file)).thenAnswer(call -> { Files.createFile(file); return null; });
+            identities.when(() -> Identity.read(file, false)).thenReturn("synthetic-file-identity");
+            rootField.set(null, profile); // Bypass only native admission in this isolated test JVM.
+            assertEquals(profile, WindowsNativeGate.profileRoot());
+            var owned = (NativeProfileRecovery.RuntimeLease)leaseField.get(null);
+            assertNotNull(owned); assertEquals(0, Files.size(file));
+            WindowsNativeGate.requireRuntimeArguments(arguments);
+            try (var secondReader = NativeProfileRecovery.acquireRuntimeLease(profile)) {
+                secondReader.requireHeld(profile); // Runtime and native setup may coexist as before.
+                assertThrows(IOException.class, () -> java.nio.channels.FileChannel.open(file, StandardOpenOption.WRITE,
+                        com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE, com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE));
+                assertThrows(IOException.class, () -> Files.move(file, evidence.resolve("moved.lock")));
+                identities.when(() -> Identity.read(file, false)).thenReturn("synthetic-replacement");
+                assertThrows(IOException.class, () -> owned.requireHeld(profile));
+                identities.when(() -> Identity.read(file, false)).thenReturn("synthetic-file-identity");
+            }
+            owned.close();
+            assertThrows(IOException.class, WindowsNativeGate::profileRoot); // Never reacquire a lost cached lease.
+            leaseField.set(null, null); // Only the fixture simulates a different process.
+            try (var maintenance = java.nio.channels.FileChannel.open(file, StandardOpenOption.WRITE,
+                    com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE, com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE)) {
+                var output = new java.io.ByteArrayOutputStream();
+                var input = new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG));
+                assertEquals(10, NativeDatabaseSetup.run(arguments, input, new java.io.PrintStream(output, true, StandardCharsets.UTF_8)));
+                assertEquals(bytes("SAVE!\n" + CONFIG).length, input.available());
+                assertEquals("WORKSPACE_DATABASE_V1\tADMISSION_DENIED" + System.lineSeparator(), output.toString(StandardCharsets.UTF_8));
+                assertNull(leaseField.get(null)); // Failed acquisition grants nothing and retains no half lease.
+                assertEquals(0, maintenance.size());
+            }
+            assertEquals(profile, WindowsNativeGate.profileRoot());
+            ((NativeProfileRecovery.RuntimeLease)leaseField.get(null)).close(); leaseField.set(null, null);
+            Files.writeString(file, "synthetic malformed lock");
+            assertThrows(IOException.class, WindowsNativeGate::profileRoot);
+            assertEquals("synthetic malformed lock", Files.readString(file));
+            assertNull(leaseField.get(null));
+            assertFalse(Files.exists(profile.resolve("data")));
+            assertFalse(Files.exists(profile.resolve("credentials")));
+        } finally {
+            var lease = (NativeProfileRecovery.RuntimeLease)leaseField.get(null);
+            if (lease != null) lease.close();
+            leaseField.set(null, null); rootField.set(null, null);
+        }
+    }
+
     @Test void recoveryReservationsRejectRuntimeAdmissionWithoutReadingCredentialsOrTrustingMarkers() throws Exception {
         // @TempDir is a synthetic surrogate application root, not an OS Profile or real registry.
         Path profiles = root.resolve("Profiles");

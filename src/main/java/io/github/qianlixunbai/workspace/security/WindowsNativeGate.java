@@ -21,6 +21,7 @@ public final class WindowsNativeGate {
         ".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885",
         ".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6");
     private static Path admittedRoot;
+    private static io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.RuntimeLease runtimeLease;
     private static FileChannel owningJarPin;
     private static Object owningJarKey;
     private static Path owningJar;
@@ -77,6 +78,11 @@ public final class WindowsNativeGate {
         admit();
         if (admittedRoot == null) throw new IOException("Development Profile required");
         io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(admittedRoot);
+        // Every runtime/setup entry calls profileRoot before credentials, ADMITTED or Spring.
+        // Hold until process death, not merely app.run() return or an unordered shutdown hook.
+        if (runtimeLease == null)
+            runtimeLease = io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.acquireRuntimeLease(admittedRoot);
+        runtimeLease.requireHeld(admittedRoot); // A lost/closed lease is STOP, never silently reacquired.
         return admittedRoot;
     }
 
