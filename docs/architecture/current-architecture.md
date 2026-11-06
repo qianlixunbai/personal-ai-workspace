@@ -90,7 +90,14 @@ Native 首次绑定采用 CREATE_NEW，服务端每次核对 dataset / ACTIVE �
 | Memory logical backup | Memory source records；独立格式，新／空目标重建派生数据 |
 | Workspace logical backup | Memory + terminal Conversations；不自动包含 Knowledge、Finance 或凭据 |
 | Knowledge backup | 独立文档／源文件合同；不能用 Workspace logical backup 代替 |
-| PostgreSQL unified offline backup | 独立维护链、revision／文件一致性、OpenPGP 加密流与受控恢复；不在普通 Runtime 启动时执行 |
+| PostgreSQL unified offline backup v1/v2 | 既有合成整库格式（public + workspace），OpenPGP 加密流与独立维护链；不静默转为 v3 |
+| Workspace-only v3 内核 | 仅内部合成装配；workspace 的 17 表结构、12 表数据、全部不可变 Knowledge 源文件；5 表排除 data，恢复后重建索引。不是个人 Profile 恢复入口 |
+
+v3 使用 completion version 3 与 `workspace-v3.zip`，固定 `scope=WORKSPACE_KNOWLEDGE_ONLY`、`schemas=[workspace]`、`financeVersions=[]`、`workspaceVersions=[1,2]`。`WorkspaceV3Catalog` 的[冻结预期](../../src/main/resources/backup/workspace-v3-pg17.json)来自新建合成 PG17.11 库中的受审查 V1/V2 DDL 与 Flyway history，包含迁移文件摘要、对象定义、依赖和归档目录；不从待恢复包建立预期。内部 FK trigger 比较语义，忽略物理 TOAST／内部 trigger 的 OID 派生名字。
+
+导出沿用 PostgreSQL 原生 `--schema=workspace` 与逐表 `--exclude-table-data`，额外禁止大对象、注释与安全标签，不先全库导出再过滤 manifest。选择参考 [PG17 官方合同](https://www.postgresql.org/docs/17/app-pgdump.html)及 [PostgreSQL 上游测试](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/bin/pg_dump/t/002_pg_dump.pl)；schema 过滤并不自动解决外部依赖，故另做固定 catalog／依赖检查。JDBC、pg_dump 和 pg_restore 共用确切端口。
+
+合成例外只由本进程成功 v3 备份产生的内部能力对象进入；公开旧恢复入口拒绝 v3，认证成功不授予 SQL 来源权限。新目标核对空对象集合后，在独立事务及 advisory 锁内将合成 preparation receipt 持久改为 `:restore-attempted:<uuid>`，提交完成才创建 candidate／调用 pg_restore；失败或未知目标即使仍空，换目录或能力对象也不能再次执行恢复，须另建目标。恢复最多发布内核 `RESTORE_VERIFIED`，保留原库与失败候选，不发布 Profile READY／激活状态，不复制凭据、启动 Runtime 或构造历史 task/job 队列。正式来源登记、维护 authority、新 Profile 凭据、发布与激活仍属后续切片。聚焦证据与限制见[当前状态](../STATUS.md)。
 
 默认逻辑备份及源数据可能为明文；统一加密备份不改变其他格式。恢复、迁移与真实数据操作必须遵守各自独立门禁，文档更新不改变权限或持久格式。
 

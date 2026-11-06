@@ -6,6 +6,12 @@
 
 2026-11-07 状态提示候选补充：本轮从 `main @ fe2c34c89703408b06bd3f4d8ca83c2ca6ded5b9` 开发，Settings 复用现有 Desktop owner、Bridge 与 Runtime 状态入口，区分构建身份、可访问性、存储 backend、模型安装／驻留／验证 Ready，并提供下一步。查询失败不保留旧的可用展示；未改变启动、认证、Profile、模型 guard 或外部服务所有权。当前源码候选不等于已构建并验收的分发包，也不等于历史实机证据包。实际仅执行 Settings / StorageSettings / Bridge 前端聚焦测试、TypeScript 检查及 Desktop 状态探针／Bridge 聚焦测试（含相关编译）；未启动真实客户端、模型或用户数据库，未重做受阻 Profile／Java 实机路径，未打包。当前实际 Runtime、数据库与模型状态未在本轮查询，目标 1 验收仍未完成。详见 [开发指南的状态说明](DEVELOPMENT.md#在-settings-核对本次可用性)。
 
+2026-11-07 Recovery Slice 1：从 `352f01f901fc939bbb73dcef3ac34f0a2850fb98` 在 `codex/recovery-v3-workspace-core` 实施 Workspace-only v3 加密备份／恢复内核，固定 17 表结构、12 表数据、5 表 data 排除及受审查 catalog／归档目录；保留旧 v1/v2 合成格式。v3 仅供内部合成装配，本进程成功备份产生的能力对象与认证密文绑定，不能从口令或 manifest 自报身份获得 SQL 恢复权限；未实现正式来源登记或个人恢复入口。见[当前备份边界](architecture/current-architecture.md#本地安全profile-与备份)。
+
+必要编译及单个真实 PG17.11 综合用例已通过（专属临时实例、非默认端口、合成明文卷例外）。同一用例累计执行 5 次：3 次失败、修正后 2 次通过、0 跳过；前三次失败分别涉及断言、fixture 缺失与索引查询上限，另在 fixture 准备时修正了 catalog 的 OID 派生名称。失败目标保留，未原地重放。最后一次为独立 Review 修复后的聚焦复验，1 用例、0 failures/errors/skips、12.57 秒。另一位 `gpt-6-astra`／xHigh 全程只读审查及复审，4 项 finding（失败空目标重放、遗漏 public 类型、两种合法 Knowledge 终态误拒绝）均已关闭，**本切片代码级 GO**。只扩展现有综合用例并去掉一处重复校验断言，未新增测试矩阵或删减已有安全回归。
+
+未重跑全套测试；旧包仅复用认证拒绝证据，没有重新验收完整 v1/v2 成功恢复。第 2–5 切片、受保护卷、断电故障及真实 Profile／Desktop 恢复激活验收均未完成；仍为 Development-only、X1 PARTIAL、Vision BLOCKED、无已核验 CI PASS、尚未 Production GO。
+
 历史源码核验基线：`12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；文档现代化候选：`95ba76a0f244037fd01a38e366da8f524908a418`。两者均为固定历史记录，不代表最新 main HEAD。
 当前发布主线为 [main](https://github.com/qianlixunbai/personal-ai-workspace/commits/main/)：新版 README、文档体系与 Closing 修订通过 fast-forward 纳入主线；最新提交以该记录为准。原 54 个开发提交完整保留，原 12 个开发分支已清理，文档开发分支继续保留；本次仅完成文档发布，不升级产品验收。
 

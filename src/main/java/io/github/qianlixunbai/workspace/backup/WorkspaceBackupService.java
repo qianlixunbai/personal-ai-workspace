@@ -236,6 +236,12 @@ public final class WorkspaceBackupService {
         return new Metadata(1,1,1,created,count(db,"SELECT count(*) FROM memory_items"),count(db,"SELECT count(*) FROM conversations"),
                 count(db,"SELECT count(*) FROM conversation_turns"),count(db,"SELECT count(*) FROM conversation_messages"),digest);
     }
+    static void validateCurrentDatabase(Connection db) throws Exception {
+        var m=metadata(db,Instant.now().toString(),"");
+        validateDatabase(db,m);
+        // Reuse the logical format's domain validators without exporting or rewriting task_id.
+        digest(db,m);
+    }
     private static void validateDatabase(Connection db, Metadata m) throws Exception {
         require(m.memoryCount() >= 0 && m.memoryCount() <= 1000 && m.conversationCount() >= 0 && m.conversationCount() <= 1000
                 && m.turnCount() >= 0 && m.turnCount() <= MAX_TURNS && m.messageCount() >= 0 && m.messageCount() <= 2 * MAX_TURNS);

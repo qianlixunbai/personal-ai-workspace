@@ -21,6 +21,7 @@ public final class PortableEncryptedBackup {
     public static final String FORMAT="personal-ai-workspace.openpgp-backup";
     static final String LITERAL="workspace-b3-v1.zip",PAYLOAD="backup.pgp",COMPLETE="ENCRYPTED_BACKUP_COMPLETE.json";
     private static final String STREAM_LITERAL="workspace-b3-v2.zip";
+    private static final String WORKSPACE_LITERAL="workspace-v3.zip";
     static final long MAX_BYTES=1L<<40;
     private static final int BUFFER=65536,MAX_ENTRIES=1004;
     private final UnifiedPostgresqlBackup plain;
@@ -39,6 +40,30 @@ public final class PortableEncryptedBackup {
      * The only on-disk output is ciphertext. Snapshot/handles and the AEAD stream close before publication.
      */
     public Completion backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase) throws IOException {
+        return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,null).completion;
+    }
+    /** In-process synthetic fixture capability, deliberately unavailable through CLI/HTTP/public restore.
+     * A successful authenticated stream creates it; neither a passphrase nor a manifest can mint it.
+     * Durable personal-source registration belongs to later recovery slices.
+     */
+    static final class WorkspaceBackup {
+        private final Path encrypted;
+        private final Completion completion;
+        private final UnifiedPostgresqlBackup.Manifest manifest;
+        private final String sourceDatabase;
+        private final int sourcePort;
+        private WorkspaceBackup(Path encrypted,Completion completion,UnifiedPostgresqlBackup.Manifest manifest,UnifiedPostgresqlBackup.Endpoint source){
+            this.encrypted=encrypted;this.completion=completion;this.manifest=manifest;sourceDatabase=source.database();sourcePort=source.port();
+        }
+        Completion completion(){return completion;}
+        UnifiedPostgresqlBackup.Manifest manifest(){return manifest;}
+        String sourceDatabase(){return sourceDatabase;}
+        int sourcePort(){return sourcePort;}
+    }
+    WorkspaceBackup backupWorkspace(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase) throws IOException {
+        return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,UUID.randomUUID().toString());
+    }
+    private WorkspaceBackup backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase,String logicalId) throws IOException {
         String stage="DIRECT_BACKUP_ADMISSION";
         try {
             password(passphrase);Path root=knowledgeRoot.toAbsolutePath().normalize();encrypted=encrypted.toAbsolutePath().normalize();
@@ -46,14 +71,18 @@ public final class PortableEncryptedBackup {
             require(!Files.exists(encrypted,LinkOption.NOFOLLOW_LINKS));
             directory(encrypted);write(encrypted.resolve("ENCRYPTED_BACKUP_INCOMPLETE"),new byte[0]);
             Path pending=encrypted.resolve(PAYLOAD+".pending");write(pending,new byte[0]);stage="DIRECT_SNAPSHOT_STREAM";
+            var manifest=new UnifiedPostgresqlBackup.Manifest[1];
             try(var file=FileChannel.open(pending,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-                encryptZip(Channels.newOutputStream(file),passphrase,STREAM_LITERAL,zip->plain.stream(source,root,writersStopped,zip));file.force(true);
+                encryptZip(Channels.newOutputStream(file),passphrase,logicalId==null?STREAM_LITERAL:WORKSPACE_LITERAL,zip->{
+                    manifest[0]=logicalId==null?plain.stream(source,root,writersStopped,zip):plain.streamWorkspace(source,root,writersStopped,zip,logicalId);
+                });file.force(true);
             }
             require(!Thread.currentThread().isInterrupted());
             Files.move(pending,encrypted.resolve(PAYLOAD),StandardCopyOption.ATOMIC_MOVE);
-            var result=new Completion(FORMAT,2,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",PAYLOAD,
+            var result=new Completion(FORMAT,logicalId==null?2:3,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",PAYLOAD,
                 Files.size(encrypted.resolve(PAYLOAD)),digest(encrypted.resolve(PAYLOAD)));
-            stage="COMPLETION_PUBLICATION";publish(encrypted.resolve(COMPLETE),UnifiedPostgresqlBackup.JSON.writeValueAsBytes(result));return result;
+            stage="COMPLETION_PUBLICATION";publish(encrypted.resolve(COMPLETE),UnifiedPostgresqlBackup.JSON.writeValueAsBytes(result));
+            return new WorkspaceBackup(encrypted,result,manifest[0],source);
         }catch(Exception failure){throw rejected(stage,failure);}
         finally{clear(passphrase);}
     }
@@ -126,25 +155,37 @@ public final class PortableEncryptedBackup {
      * No plaintext ZIP exists. A failure removes only this operation's temporary backup subtree.
      */
     public Decrypted decrypt(Path encrypted,Path staging,char[] passphrase) throws IOException {
+        return decrypt(encrypted,staging,passphrase,null);
+    }
+    Decrypted decryptWorkspace(WorkspaceBackup origin,Path staging,char[] passphrase) throws IOException {
+        if(origin==null){clear(passphrase);throw new IOException("Synthetic source capability required");}
+        return decrypt(origin.encrypted,staging,passphrase,origin);
+    }
+    private Decrypted decrypt(Path encrypted,Path staging,char[] passphrase,WorkspaceBackup origin) throws IOException {
         String stage="CONTAINER_VALIDATION";boolean created=false;
         try {
             password(passphrase);encrypted=encrypted.toAbsolutePath().normalize();staging=staging.toAbsolutePath().normalize();
             require(!staging.startsWith(encrypted)&&!encrypted.startsWith(staging));
             MaintenanceStaging.admit(staging,stagingProtection==StagingProtection.SYNTHETIC_ONLY);
             var completion=completion(encrypted);
+            if(completion.version==3&&stagingProtection==StagingProtection.SYNTHETIC_ONLY){
+                stage="SQL_SOURCE_TRUST";require(origin!=null);stage="CONTAINER_VALIDATION";
+            }
             Decrypted result;
             try(var receipt=pin(encrypted.resolve(COMPLETE));var payload=pin(encrypted.resolve(PAYLOAD))) {
                 require(completion.equals(completion(encrypted)));profile(payload);payload.position(0);
+                if(origin!=null)require(origin.completion.equals(completion)&&completion.version==3&&origin.encrypted.equals(encrypted));
                 long budget=Math.min(MAX_BYTES,completion.bytes);
                 require(Files.getFileStore(staging.getParent()).getUsableSpace()>Math.multiplyExact(budget,2)+1048576);
                 directory(staging);created=true;write(staging.resolve("DECRYPTION_INCOMPLETE"),new byte[0]);stage="AUTHENTICATED_DECRYPTION";
-                String literal=completion.version==1?LITERAL:STREAM_LITERAL;
+                String literal=switch(completion.version){case 1->LITERAL;case 2->STREAM_LITERAL;case 3->WORKSPACE_LITERAL;default->throw new IOException("Unsupported version");};
                 decryptBundle(Channels.newInputStream(payload),passphrase,literal,input->transfer(input,OutputStream.nullOutputStream(),budget));
                 payload.position(0);
                 stage="INTERNAL_VALIDATION";Path backup=staging.resolve("backup");
                 decryptBundle(Channels.newInputStream(payload),passphrase,literal,input->{extract(input,backup,budget);transfer(input,OutputStream.nullOutputStream(),budget);});
                 var manifest=plain.validate(backup,true);
-                require(completion.version==1?manifest.formatVersion()==1:manifest.formatVersion()==2);
+                require(completion.version==manifest.formatVersion());
+                if(origin!=null)require(origin.manifest.equals(manifest));
                 result=new Decrypted(backup,manifest);
             }
             // All input handles close successfully before the final durable verification receipt.
@@ -214,7 +255,7 @@ public final class PortableEncryptedBackup {
     Completion completion(Path directory) throws Exception {
         privatePath(directory,true);Path marker=directory.resolve(COMPLETE);privatePath(marker,false);require(Files.size(marker)<=2048);
         var result=UnifiedPostgresqlBackup.JSON.readValue(Files.readAllBytes(marker),Completion.class);
-        require(FORMAT.equals(result.format)&&(result.version==1||result.version==2)&&result.status.equals("ENCRYPTED_BACKUP_COMPLETE")&&result.profile.equals("RFC9580-AES256-GCM-ARGON2ID")&&result.payload.equals(PAYLOAD));
+        require(FORMAT.equals(result.format)&&(result.version==1||result.version==2||result.version==3)&&result.status.equals("ENCRYPTED_BACKUP_COMPLETE")&&result.profile.equals("RFC9580-AES256-GCM-ARGON2ID")&&result.payload.equals(PAYLOAD));
         require(result.bytes>0&&result.bytes<=MAX_BYTES+MAX_BYTES/100&&result.sha256.matches("[0-9a-f]{64}"));
         privatePath(directory.resolve(PAYLOAD),false);require(Files.size(directory.resolve(PAYLOAD))==result.bytes&&digest(directory.resolve(PAYLOAD)).equals(result.sha256));
         try(var files=Files.list(directory)) {
@@ -229,20 +270,32 @@ public final class PortableEncryptedBackup {
      * Config is not even opened until authentication + every B3 static validation has completed.
      */
     public UnifiedPostgresqlBackup.Result restore(Path encrypted,Path staging,char[] passphrase,Path targetConfig,boolean trustedSqlSource) throws IOException {
+        return restore(encrypted,staging,passphrase,targetConfig,trustedSqlSource,null);
+    }
+    UnifiedPostgresqlBackup.Result restoreWorkspace(WorkspaceBackup origin,Path staging,char[] passphrase,Path targetConfig) throws IOException {
+        if(origin==null){clear(passphrase);throw new IOException("Synthetic source capability required");}
+        return restore(origin.encrypted,staging,passphrase,targetConfig,true,origin);
+    }
+    private UnifiedPostgresqlBackup.Result restore(Path encrypted,Path staging,char[] passphrase,Path targetConfig,boolean trustedSqlSource,WorkspaceBackup origin) throws IOException {
         String stage="SQL_SOURCE_TRUST";boolean decryptedTemporary=false;
         try {
-            require(trustedSqlSource);stage="AUTHENTICATION";var decrypted=decrypt(encrypted,staging,passphrase);
+            require(trustedSqlSource);stage="AUTHENTICATION";var decrypted=decrypt(encrypted,staging,passphrase,origin);
             decryptedTemporary=true;
+            stage="SQL_SOURCE_TRUST";require(origin!=null?decrypted.manifest.formatVersion()==3:decrypted.manifest.formatVersion()<=2);
             stage="TARGET_CONFIGURATION_AND_RESTORE";
             privatePath(targetConfig,false);require(Files.size(targetConfig)<16384);
             var c=UnifiedPostgresqlBackup.JSON.readTree(Files.readAllBytes(targetConfig));
-            var owner=new UnifiedPostgresqlBackup.Endpoint(c.path("targetDatabase").asString(),c.path("ownerUsername").asString(),c.path("ownerPassword").asString());
-            var app=new UnifiedPostgresqlBackup.Endpoint(owner.database(),c.path("appUsername").asString(),c.path("appPassword").asString());
+            int port=origin==null?5432:c.path("port").asInt(0);
+            var owner=new UnifiedPostgresqlBackup.Endpoint(c.path("targetDatabase").asString(),c.path("ownerUsername").asString(),c.path("ownerPassword").asString(),port);
+            var app=new UnifiedPostgresqlBackup.Endpoint(owner.database(),c.path("appUsername").asString(),c.path("appPassword").asString(),port);
             // Tool installation belongs to the destination computer, never to the saved source paths.
             var targetMaintenance=new UnifiedPostgresqlBackup(Path.of(c.path("tools").asString()));
-            return targetMaintenance.restore(decrypted.backup,owner,app,c.path("ownershipReceipt").asString(),staging.resolve("candidate"),true);
+            return origin==null?targetMaintenance.restore(decrypted.backup,owner,app,c.path("ownershipReceipt").asString(),staging.resolve("candidate"),true):
+                targetMaintenance.restoreWorkspace(decrypted.backup,owner,app,c.path("ownershipReceipt").asString(),staging.resolve("candidate"),origin);
         }catch(Exception failure){
             if(stage.equals("AUTHENTICATION")&&failure instanceof IOException io)throw io;
+            // The owning engine already emits only stage/type/SQLSTATE/code (never raw SQL or paths).
+            if(stage.equals("TARGET_CONFIGURATION_AND_RESTORE")&&failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().startsWith("Offline maintenance stopped: "))throw io;
             throw new IOException("Encrypted restore stopped: "+stage+"; no activation; retain private evidence");
         }finally{clear(passphrase);if(decryptedTemporary)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());}
     }

@@ -32,11 +32,12 @@ public final class UnifiedPostgresqlBackup {
     private static final String FORMAT="personal-ai-workspace.postgresql-synthetic-backup";
     static final String STREAM_FORMAT="personal-ai-workspace.postgresql-encrypted-stream";
     private static final Set<String> DERIVED=Set.of("workspace.knowledge_chunks","workspace.knowledge_index_metadata");
-    public record Endpoint(String database,String username,String password) {
-        public Endpoint {if(!database.matches("[a-z][a-z0-9_]{0,62}")||!username.matches("[a-z][a-z0-9_]{0,62}"))throw new IllegalArgumentException("Invalid endpoint");}
+    public record Endpoint(String database,String username,String password,int port) {
+        public Endpoint(String database,String username,String password){this(database,username,password,5432);}
+        public Endpoint {if(!database.matches("[a-z][a-z0-9_]{0,62}")||!username.matches("[a-z][a-z0-9_]{0,62}")||port<1||port>65535)throw new IllegalArgumentException("Invalid endpoint");}
         @Override public String toString(){return "PostgresqlEndpoint[private]";}
         public PGSimpleDataSource dataSource() {
-            var ds=new PGSimpleDataSource();ds.setServerNames(new String[]{"127.0.0.1"});ds.setPortNumbers(new int[]{5432});
+            var ds=new PGSimpleDataSource();ds.setServerNames(new String[]{"127.0.0.1"});ds.setPortNumbers(new int[]{port});
             ds.setDatabaseName(database);ds.setUser(username);ds.setPassword(password);ds.setCurrentSchema("workspace,pg_catalog");
             ds.setConnectTimeout(5);ds.setSocketTimeout(120);return ds;
         }
@@ -47,7 +48,9 @@ public final class UnifiedPostgresqlBackup {
     public record Manifest(String format,int formatVersion,String protection,String status,String createdAt,
         String databaseLogicalIdentity,String serverVersion,int postgresqlMajor,String dumpVersion,String restoreVersion,
         List<String> schemas,List<String> financeVersions,List<String> workspaceVersions,Snapshot snapshot,
-        FileEntry archive,List<FileEntry> knowledgeFiles,String indexEngine,boolean rebuildRequired,List<String> excluded) {}
+        FileEntry archive,List<FileEntry> knowledgeFiles,String indexEngine,boolean rebuildRequired,List<String> excluded,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String scope,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) List<String> dataExcludedTables) {}
     public record Result(String status,String identity,String windows) {}
     private final Path tools;
     public UnifiedPostgresqlBackup(Path tools) {this.tools=tools.toAbsolutePath().normalize();}
@@ -131,7 +134,7 @@ public final class UnifiedPostgresqlBackup {
                     versions(db,"public"),versions(db,"workspace"),before,
                     new FileEntry("database.dump",Files.size(destination.resolve("database.dump")),digest(destination.resolve("database.dump")),null),
                     files,"postgresql-token-bm25-1",true,List.of("Windows tokens and ACL identity","LocalFinanceProfile trusted binding",
-                    "Ollama weights, model configuration and caches","historical SQLite backups and lexical.db","PostgreSQL global roles, credentials and grants"));
+                    "Ollama weights, model configuration and caches","historical SQLite backups and lexical.db","PostgreSQL global roles, credentials and grants"),null,null);
                 write(destination.resolve("manifest.json"),JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
                 validateContents(destination,manifest);
                 sql(db,"ROLLBACK");
@@ -149,6 +152,14 @@ public final class UnifiedPostgresqlBackup {
      * No plaintext database archive, ZIP or Knowledge copy is created by this path.
      */
     Manifest stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip) throws Exception {
+        return stream(source,knowledgeRoot,writersStopped,zip,2,null);
+    }
+    Manifest streamWorkspace(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,String logicalId) throws Exception {
+        require(logicalId!=null&&logicalId.equals(UUID.fromString(logicalId).toString()));
+        return stream(source,knowledgeRoot,writersStopped,zip,3,logicalId);
+    }
+    private Manifest stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,int version,String logicalId) throws Exception {
+        boolean workspaceOnly=version==3;
         require(writersStopped&&syntheticDatabase(source.database));
         knowledgeRoot=knowledgeRoot.toAbsolutePath().normalize();privatePath(knowledgeRoot,true);
         String dumpVersion=tool("pg_dump",null,List.of("--version"));
@@ -160,14 +171,24 @@ public final class UnifiedPostgresqlBackup {
             require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")==0);
             sql(db,"BEGIN ISOLATION LEVEL REPEATABLE READ");sql(db,"SET LOCAL lock_timeout='3s'");
             require(scalar(db,"SELECT pg_try_advisory_lock(170017,2)::int")==1);
-            for(String table:tables(db))sql(db,"LOCK TABLE "+qualified(table)+" IN SHARE MODE NOWAIT");
-            safeJobs(db);histories(db);var before=snapshot(db);var files=knowledgeFiles(db);
+            if(workspaceOnly){
+                // pg_stat_activity can hide backend_type for another user's session. Count those too.
+                require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()")==0);
+                require(scalar(db,"SELECT has_database_privilege(current_user,current_database(),'CREATE')::int")==0);
+                require(scalar(db,"SELECT has_schema_privilege(current_user,'workspace','CREATE')::int")==0);
+                require(scalar(db,"SELECT has_schema_privilege(current_user,'public','USAGE')::int")==0);
+                WorkspaceV3Catalog.verify(db);
+            }
+            for(String table:workspaceOnly?WorkspaceV3Catalog.TABLES:tables(db))sql(db,"LOCK TABLE "+qualified(table)+" IN SHARE MODE NOWAIT");
+            safeJobs(db);histories(db,workspaceOnly);
+            if(workspaceOnly)validateWorkspaceData(db);
+            var before=snapshot(db,workspaceOnly);var files=knowledgeFiles(db);
             require(files.size()<=1000);
             for(var entry:files){Path file=resolveKnowledge(knowledgeRoot,entry.path);privatePath(file,false);pins.add(pin(file));}
             verifyKnowledge(db,knowledgeRoot,files);
             String exported=value(db,"SELECT pg_export_snapshot()");
             zip.putNextEntry(new ZipEntry("database.dump"));
-            var archive=streamDump(source,exported,zip);zip.closeEntry();
+            var archive=streamDump(source,exported,zip,workspaceOnly);zip.closeEntry();
             byte[] buffer=new byte[65536];
             try {
                 for(int i=0;i<files.size();i++) {
@@ -181,13 +202,17 @@ public final class UnifiedPostgresqlBackup {
                     require(count==entry.bytes&&HexFormat.of().formatHex(hash.digest()).equals(entry.sha256));zip.closeEntry();
                 }
             }finally{Arrays.fill(buffer,(byte)0);}
-            verifyKnowledge(db,knowledgeRoot,files);require(before.equals(snapshot(db)));
-            try(var check=source.dataSource().getConnection()){session(check);require(before.equals(snapshot(check)));}
-            var manifest=new Manifest(STREAM_FORMAT,2,"OPENPGP_CONTAINER_REQUIRED","BACKUP_COMPLETE",Instant.now().toString(),
-                source.database,value(db,"SHOW server_version"),major(db),dumpVersion,restoreVersion,List.of("public","workspace"),
-                versions(db,"public"),versions(db,"workspace"),before,archive,files,"postgresql-token-bm25-1",true,
+            verifyKnowledge(db,knowledgeRoot,files);require(before.equals(snapshot(db,workspaceOnly)));
+            try(var check=source.dataSource().getConnection()){
+                session(check);require(before.equals(snapshot(check,workspaceOnly)));safeJobs(check);
+                require(scalar(check,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND pid<>"+scalar(db,"SELECT pg_backend_pid()")+(workspaceOnly?"":" AND backend_type='client backend'"))==0);
+            }
+            var manifest=new Manifest(STREAM_FORMAT,version,"OPENPGP_CONTAINER_REQUIRED","BACKUP_COMPLETE",Instant.now().toString(),
+                workspaceOnly?logicalId:source.database,value(db,"SHOW server_version"),major(db),dumpVersion,restoreVersion,workspaceOnly?List.of("workspace"):List.of("public","workspace"),
+                workspaceOnly?List.of():versions(db,"public"),versions(db,"workspace"),before,archive,files,"postgresql-token-bm25-1",true,
                 List.of("Windows tokens and ACL identity","LocalFinanceProfile trusted binding",
-                    "Ollama weights, model configuration and caches","historical SQLite backups and lexical.db","PostgreSQL global roles, credentials and grants"));
+                    "Ollama weights, model configuration and caches","historical SQLite backups and lexical.db","PostgreSQL global roles, credentials and grants"),
+                workspaceOnly?WorkspaceV3Catalog.SCOPE:null,workspaceOnly?WorkspaceV3Catalog.EXCLUDED:null);
             byte[] json=JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest);require(json.length<=4*1024*1024);
             zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();
             zip.putNextEntry(new ZipEntry("BACKUP_COMPLETE"));zip.write(HexFormat.of().formatHex(sha256().digest(json)).getBytes(StandardCharsets.US_ASCII));zip.closeEntry();
@@ -198,8 +223,14 @@ public final class UnifiedPostgresqlBackup {
             if(closeFailure!=null)throw closeFailure;
         }
     }
-    private FileEntry streamDump(Endpoint source,String snapshot,OutputStream output) throws Exception {
-        Process process=startTool("pg_dump",source,List.of("--format=custom","--no-owner","--no-privileges","--snapshot="+snapshot),true);
+    static List<String> dumpArguments(String snapshot,boolean workspaceOnly) {
+        var args=new ArrayList<>(List.of("--format=custom","--no-owner","--no-privileges","--snapshot="+snapshot));
+        if(workspaceOnly){args.addAll(List.of("--schema=workspace","--strict-names","--no-large-objects","--no-comments","--no-security-labels"));
+            for(String table:WorkspaceV3Catalog.EXCLUDED)args.add("--exclude-table-data="+table);}
+        return args;
+    }
+    private FileEntry streamDump(Endpoint source,String snapshot,OutputStream output,boolean workspaceOnly) throws Exception {
+        Process process=startTool("pg_dump",source,dumpArguments(snapshot,workspaceOnly),true);
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(120),count=0;var hash=sha256();byte[] buffer=new byte[65536],signature=new byte[5];
         try(var input=process.getInputStream()) {
             process.getOutputStream().close();
@@ -228,7 +259,9 @@ public final class UnifiedPostgresqlBackup {
         try {
             backup=backup.toAbsolutePath().normalize();privatePath(backup,true);
             var manifestFile=backup.resolve("manifest.json");privatePath(manifestFile,false);require(Files.size(manifestFile)<=4*1024*1024);
-            var manifest=JSON.readValue(Files.readAllBytes(manifestFile),Manifest.class);
+            byte[] json=Files.readAllBytes(manifestFile);var node=JSON.readTree(json);
+            if(node.path("formatVersion").asInt()!=3)require(!node.has("scope")&&!node.has("dataExcludedTables"));
+            var manifest=JSON.readValue(json,Manifest.class);
             privatePath(backup.resolve("BACKUP_COMPLETE"),false);
             require(Files.readString(backup.resolve("BACKUP_COMPLETE")).equals(digest(manifestFile)));
             validateContents(backup,manifest,authenticatedContainer);return manifest;
@@ -240,9 +273,20 @@ public final class UnifiedPostgresqlBackup {
     private void validateContents(Path backup,Manifest m,boolean authenticatedContainer) throws Exception {
         require("BACKUP_COMPLETE".equals(m.status));
         require((FORMAT.equals(m.format)&&m.formatVersion==1&&"UNENCRYPTED_SYNTHETIC_ONLY".equals(m.protection))||
-            (authenticatedContainer&&STREAM_FORMAT.equals(m.format)&&m.formatVersion==2&&"OPENPGP_CONTAINER_REQUIRED".equals(m.protection)));
-        Instant.parse(m.createdAt);require(m.postgresqlMajor==17&&syntheticDatabase(m.databaseLogicalIdentity));
-        require(m.schemas.equals(List.of("public","workspace"))&&m.financeVersions.equals(expectedVersions(21))&&m.workspaceVersions.equals(expectedVersions(2)));
+            (authenticatedContainer&&STREAM_FORMAT.equals(m.format)&&(m.formatVersion==2||m.formatVersion==3)&&"OPENPGP_CONTAINER_REQUIRED".equals(m.protection)));
+        Instant.parse(m.createdAt);require(m.postgresqlMajor==17);
+        if(m.formatVersion==3){
+            require(m.databaseLogicalIdentity.equals(UUID.fromString(m.databaseLogicalIdentity).toString()));
+            require(WorkspaceV3Catalog.SCOPE.equals(m.scope)&&WorkspaceV3Catalog.EXCLUDED.equals(m.dataExcludedTables));
+            require(m.schemas.equals(List.of("workspace"))&&m.financeVersions.isEmpty());
+            require(m.snapshot.tables.keySet().equals(WorkspaceV3Catalog.DATA)&&m.snapshot.sequences.isEmpty());
+            require(m.snapshot.catalogSha256.equals(WorkspaceV3Catalog.expected().path("catalogSha256").asString()));
+            for(var table:m.snapshot.tables.values())require(table.rows>=0&&hex(table.sha256));
+        }else{
+            require(syntheticDatabase(m.databaseLogicalIdentity)&&m.scope==null&&m.dataExcludedTables==null);
+            require(m.schemas.equals(List.of("public","workspace"))&&m.financeVersions.equals(expectedVersions(21)));
+        }
+        require(m.workspaceVersions.equals(expectedVersions(2)));checkTools(m.dumpVersion,m.restoreVersion,17);
         require(m.rebuildRequired&&m.indexEngine.equals("postgresql-token-bm25-1"));
         require(m.archive.path.equals("database.dump")&&m.archive.bytes>0&&m.archive.representationSha256==null);
         require(m.knowledgeFiles.size()<=1000&&m.snapshot.tables.size()<=256);
@@ -250,6 +294,7 @@ public final class UnifiedPostgresqlBackup {
         expected.add(backup.resolve("database.dump"));expected.add(backup.resolve("manifest.json"));
         expected.add(backup.resolve("BACKUP_COMPLETE"));expected.add(backup.resolve("BACKUP_INCOMPLETE"));
         verifyFile(backup.resolve("database.dump"),m.archive);
+        if(m.formatVersion==3)WorkspaceV3Catalog.verifyToc(toolOutput("pg_restore",List.of("--list",backup.resolve("database.dump").toString()),1048576));
         try(var in=pin(backup.resolve("database.dump"))){var signature=ByteBuffer.allocate(5);while(signature.hasRemaining()&&in.read(signature)>0){}require(Arrays.equals(signature.array(),"PGDMP".getBytes(StandardCharsets.US_ASCII)));}
         for(var file:m.knowledgeFiles) {
             require(unique.add(file.path));require(file.bytes>0&&file.bytes<=8388608&&hex(file.representationSha256));
@@ -274,18 +319,33 @@ public final class UnifiedPostgresqlBackup {
         return restore(backup,owner,app,ownershipReceipt,candidate,false);
     }
     Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,boolean authenticatedContainer) throws IOException {
+        return restore(backup,owner,app,ownershipReceipt,candidate,authenticatedContainer,null);
+    }
+    Result restoreWorkspace(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,PortableEncryptedBackup.WorkspaceBackup origin) throws IOException {
+        return restore(backup,owner,app,ownershipReceipt,candidate,true,Objects.requireNonNull(origin));
+    }
+    private Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,boolean authenticatedContainer,PortableEncryptedBackup.WorkspaceBackup origin) throws IOException {
         String stage="BACKUP_VALIDATION";List<FileChannel> pins=new ArrayList<>();
         try {
             backup=backup.toAbsolutePath().normalize();Manifest m=validate(backup,authenticatedContainer);
+            boolean workspaceOnly=origin!=null;
+            require(workspaceOnly?m.formatVersion==3&&m.equals(origin.manifest()):m.formatVersion<=2);
             pins.add(pin(backup.resolve("manifest.json")));pins.add(pin(backup.resolve("BACKUP_COMPLETE")));pins.add(pin(backup.resolve("database.dump")));
             for(var file:m.knowledgeFiles)pins.add(pin(resolveKnowledge(backup.resolve("knowledge"),file.path)));
             require(m.equals(validate(backup,authenticatedContainer)));
             stage="TARGET_ADMISSION";
             require(owner.database.matches("personal_ai_workspace_b3_[0-9a-f]{12}")&&owner.database.equals(app.database));
+            require(owner.port==app.port);
+            if(workspaceOnly)require(owner.port==origin.sourcePort()&&!owner.database.equals(origin.sourceDatabase()));
+            else require(!owner.database.equals(m.databaseLogicalIdentity));
             require(ownershipReceipt.matches("workspace-b3:[0-9a-f-]{36}"));
             candidate=candidate.toAbsolutePath().normalize();require(!candidate.startsWith(backup)&&!backup.startsWith(candidate));
             privatePath(candidate.getParent(),true);require(!Files.exists(candidate,LinkOption.NOFOLLOW_LINKS));
             String restoreVersion=tool("pg_restore",null,List.of("--version"));checkTools(m.dumpVersion,restoreVersion,m.postgresqlMajor);
+            if(workspaceOnly)try(var db=app.dataSource().getConnection()){
+                session(db);safeRole(db);require(!owner.username.equals(app.username));
+                require(scalar(db,"SELECT has_database_privilege(current_user,current_database(),'CREATE')::int")==0);
+            }
             try(var db=owner.dataSource().getConnection()) {
                 session(db);safeRole(db);require(major(db)==m.postgresqlMajor);
                 require(value(db,"SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()").equals(owner.username));
@@ -295,14 +355,29 @@ public final class UnifiedPostgresqlBackup {
                 require(scalar(db,"SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'")==0);
                 require(scalar(db,"SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'")==0);
                 require(scalar(db,"SELECT count(*) FROM pg_extension WHERE extname<>'plpgsql'")==0);
+                if(workspaceOnly){
+                    require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()")==0);
+                    // Namespace membership includes types/domains/collations/operators, not only tables/functions.
+                    require(scalar(db,"SELECT count(*) FROM pg_depend WHERE refclassid='pg_namespace'::regclass AND refobjid=(SELECT oid FROM pg_namespace WHERE nspname='public')")==0);
+                    for(String catalog:List.of("pg_largeobject_metadata","pg_event_trigger","pg_publication","pg_foreign_server"))
+                        require(scalar(db,"SELECT count(*) FROM pg_catalog."+catalog)==0);
+                    require(scalar(db,"SELECT count(*) FROM pg_catalog.pg_subscription WHERE subdbid=(SELECT oid FROM pg_database WHERE datname=current_database())")==0);
+                    // Consume the preparation receipt in its own durable transaction BEFORE any restore SQL.
+                    // A failed/unknown target stays claimed even if pg_restore rolls its transaction back.
+                    sql(db,"BEGIN");require(scalar(db,"SELECT pg_try_advisory_xact_lock(170017,4)::int")==1);
+                    require(value(db,"SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()").equals(ownershipReceipt));
+                    sql(db,"COMMENT ON DATABASE \""+owner.database+"\" IS '"+ownershipReceipt+":restore-attempted:"+UUID.randomUUID()+"'");
+                    sql(db,"COMMIT");
+                }
             }
             directory(candidate);write(candidate.resolve("RESTORE_INCOMPLETE"),"No Runtime activation; retain for diagnosis".getBytes(StandardCharsets.UTF_8));
             stage="DATABASE_RESTORE";
             tool("pg_restore",owner,List.of("--no-owner","--no-privileges","--exit-on-error","--single-transaction",backup.resolve("database.dump").toString()));
             stage="DATABASE_VERIFICATION";
             try(var db=owner.dataSource().getConnection()) {
-                session(db);require(m.snapshot.equals(snapshot(db)));histories(db);safeJobs(db);verifyOwnership(db,owner.username);
-                grantStore(db,app.username);
+                session(db);require(m.snapshot.equals(snapshot(db,workspaceOnly)));histories(db,workspaceOnly);safeJobs(db);verifyOwnership(db,owner.username);
+                if(workspaceOnly){WorkspaceV3Catalog.emptyExcluded(db,false);validateWorkspaceData(db);}
+                grantStore(db,app.username,workspaceOnly);
             }
             stage="KNOWLEDGE_RESTORE";directory(candidate.resolve("knowledge"));directory(candidate.resolve("knowledge/sources"));
             for(var file:m.knowledgeFiles) {
@@ -313,12 +388,15 @@ public final class UnifiedPostgresqlBackup {
             try(var db=owner.dataSource().getConnection()){verifyKnowledge(db,candidate.resolve("knowledge"),m.knowledgeFiles);}
             stage="STORE_AND_INDEX_VERIFICATION";readStoresAndRebuild(app,candidate,m);
             try(var db=owner.dataSource().getConnection()) {
-                session(db);var after=snapshot(db);
+                session(db);var after=snapshot(db,workspaceOnly);
                 require(m.snapshot.catalogSha256.equals(after.catalogSha256)&&m.snapshot.sequences.equals(after.sequences));
                 var expected=new TreeMap<>(m.snapshot.tables);var actual=new TreeMap<>(after.tables);DERIVED.forEach(expected::remove);DERIVED.forEach(actual::remove);require(expected.equals(actual));
                 verifyKnowledge(db,candidate.resolve("knowledge"),m.knowledgeFiles);safeJobs(db);
+                if(workspaceOnly){WorkspaceV3Catalog.emptyExcluded(db,true);validateWorkspaceData(db);}
             }
             var result=new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING");
+            // A close failure is still an incomplete restore, never a published verification.
+            for(var handle:pins)handle.close();pins.clear();
             publish(candidate.resolve("RESTORE_VERIFIED.json"),JSON.writeValueAsBytes(result));return result;
         }catch(Exception failure){throw stopped(stage,failure);}
         finally{for(var handle:pins)try{handle.close();}catch(IOException ignored){}}
@@ -343,15 +421,36 @@ public final class UnifiedPostgresqlBackup {
                 require(index.status().state().equals("READY"));
                 // Execute the real retrieval path even for an empty corpus; fixture assertions check hits.
                 index.search("budget",10);
+                if(manifest.formatVersion==3){
+                    require(scalar(db,"SELECT count(*) FROM workspace.knowledge_chunks c WHERE NOT EXISTS(SELECT FROM workspace.knowledge_documents d WHERE d.id=c.document AND d.status='ACTIVE' AND d.current_revision=c.revision)")==0);
+                    require(index.status().indexedDocuments()==scalar(db,"SELECT count(*) FROM workspace.knowledge_documents WHERE status='ACTIVE' AND current_revision IS NOT NULL"));
+                    try(var s=db.createStatement();var r=s.executeQuery("SELECT d.id,d.current_revision,r.text FROM workspace.knowledge_documents d JOIN workspace.knowledge_revisions r ON r.doc_id=d.id AND r.revision=d.current_revision WHERE d.status='ACTIVE' ORDER BY d.id")){
+                        while(r.next()){
+                            var token=LexicalAnalyzer.tokens(r.getString(3)).stream().filter(t->t.chars().filter(ch->ch=='x').count()<=64).findFirst();
+                            if(token.isEmpty())continue;
+                            var query=new StringBuilder();for(String code:token.get().substring(1).split("x"))query.appendCodePoint(Integer.parseInt(code,16));
+                            var hits=index.search(query.toString(),10).hits();require(!hits.isEmpty());
+                            for(var hit:hits){
+                                var preview=knowledge.preview(hit.documentId(),hit.sourceRevision(),hit.startOffset());
+                                require(preview.documentId().equals(hit.documentId())&&preview.sourceRevision().equals(hit.sourceRevision())&&!preview.locators().isEmpty());
+                            }
+                        }
+                    }
+                    require(index.status().state().equals("READY"));
+                }
             }
         }
     }
     static void grantStore(Connection db,String app) throws Exception {
+        grantStore(db,app,false);
+    }
+    private static void grantStore(Connection db,String app,boolean workspaceOnly) throws Exception {
         require(app.matches("workspace_b3_app_[0-9a-f]{12}"));
-        sql(db,"REVOKE ALL ON SCHEMA public,workspace FROM PUBLIC");
-        sql(db,"REVOKE ALL ON ALL TABLES IN SCHEMA public,workspace FROM PUBLIC");
-        sql(db,"REVOKE ALL ON ALL SEQUENCES IN SCHEMA public,workspace FROM PUBLIC");
-        sql(db,"REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public,workspace FROM PUBLIC");
+        String schemas=workspaceOnly?"workspace":"public,workspace";
+        sql(db,"REVOKE ALL ON SCHEMA "+schemas+" FROM PUBLIC");
+        sql(db,"REVOKE ALL ON ALL TABLES IN SCHEMA "+schemas+" FROM PUBLIC");
+        sql(db,"REVOKE ALL ON ALL SEQUENCES IN SCHEMA "+schemas+" FROM PUBLIC");
+        sql(db,"REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "+schemas+" FROM PUBLIC");
         sql(db,"GRANT USAGE ON SCHEMA workspace TO "+app);
         sql(db,"GRANT SELECT ON ALL TABLES IN SCHEMA workspace TO "+app);
         sql(db,"GRANT UPDATE ON workspace.knowledge_control TO "+app);
@@ -371,6 +470,43 @@ public final class UnifiedPostgresqlBackup {
         require(scalar(db,"SELECT count(*) FROM workspace.knowledge_deletes")==0);
         require(scalar(db,"SELECT count(*) FROM workspace.conversation_turns WHERE status='PENDING'")==0);
         require(scalar(db,"SELECT count(*) FROM workspace.knowledge_jobs j WHERE state='READY' AND NOT EXISTS(SELECT FROM workspace.knowledge_revisions r WHERE r.doc_id=j.doc_id AND r.revision=j.revision)")==0);
+    }
+    static void validateWorkspaceData(Connection db) throws Exception {
+        WorkspaceBackupService.validateCurrentDatabase(db);
+        require(scalar(db,"SELECT count(*) FROM workspace.storage_metadata WHERE singleton=1 AND version=1")==1);
+        require(scalar(db,"SELECT count(*) FROM workspace.write_lock WHERE singleton=1")==1);
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_control WHERE singleton=1 AND format=1")==1);
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_documents d WHERE (d.last_job IS NOT NULL AND NOT EXISTS(SELECT FROM workspace.knowledge_jobs j WHERE j.id=d.last_job AND j.doc_id=d.id)) OR (d.current_revision IS NOT NULL AND d.current_revision<>(SELECT max(r.revision) FROM workspace.knowledge_revisions r WHERE r.doc_id=d.id))")==0);
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_documents")<=KnowledgeLimits.DOCUMENTS);
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_revisions")<=1000);
+        require(scalar(db,"SELECT count(*) FROM (SELECT doc_id FROM workspace.knowledge_revisions GROUP BY doc_id HAVING min(revision)<>1 OR max(revision)<>count(*)) invalid")==0);
+        require(scalar(db,"SELECT count(*) FROM (SELECT digest FROM workspace.knowledge_revisions GROUP BY digest HAVING count(*)>1) duplicates")==0);
+        require(scalar(db,"SELECT coalesce(sum(bytes),0) FROM workspace.knowledge_revisions")<=KnowledgeLimits.CORPUS_BYTES);
+        require(scalar(db,"SELECT coalesce(sum(artifact_bytes),0) FROM workspace.knowledge_revisions")<=KnowledgeLimits.ARTIFACT_BYTES);
+        try(var s=db.createStatement();var r=s.executeQuery("SELECT * FROM workspace.knowledge_documents ORDER BY id")){
+            while(r.next()){
+                KnowledgeStore.id(r.getString("id"));KnowledgeParser.filename(r.getString("title"));
+                require(Set.of("ACTIVE","ARCHIVED").contains(r.getString("status"))&&r.getLong("version")>0);
+                require(!Instant.parse(r.getString("updated")).isBefore(Instant.parse(r.getString("created"))));
+                if(r.getString("last_job")!=null)KnowledgeStore.id(r.getString("last_job"));
+            }
+        }
+        try(var s=db.createStatement();var r=s.executeQuery("SELECT * FROM workspace.knowledge_jobs ORDER BY id")){
+            while(r.next()){
+                KnowledgeStore.id(r.getString("id"));KnowledgeStore.id(r.getString("doc_id"));
+                require(Set.of("READY","FAILED","CANCELLED","INTERRUPTED").contains(r.getString("state")));
+                require(KnowledgeParser.type(KnowledgeParser.filename(r.getString("filename"))).equals(r.getString("type")));
+                // A rejected eleventh import is a valid terminal job, not a published eleventh revision.
+                require(r.getLong("expected_version")>0&&r.getLong("revision")>=1&&r.getLong("revision")<=KnowledgeLimits.REVISIONS_PER_DOCUMENT+1);
+                Instant.parse(r.getString("created"));
+                String error=r.getString("error");
+                if(error!=null)io.github.qianlixunbai.workspace.common.ErrorCode.valueOf(error);
+                require(!r.getString("state").equals("READY")||error==null);
+            }
+        }
+        // Duplicate-byte imports can retain a different request filename/type while referring to an old revision.
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_jobs j JOIN workspace.knowledge_revisions r ON r.doc_id=j.doc_id AND r.revision=j.revision WHERE j.state='READY' AND j.size<>r.bytes")==0);
+        require(scalar(db,"SELECT count(*) FROM workspace.knowledge_jobs j WHERE j.revision>1+(SELECT coalesce(max(r.revision),0) FROM workspace.knowledge_revisions r WHERE r.doc_id=j.doc_id)")==0);
     }
     static List<FileEntry> knowledgeFiles(Connection db) throws Exception {
         List<FileEntry> files=new ArrayList<>();
@@ -447,6 +583,17 @@ public final class UnifiedPostgresqlBackup {
         }
         return new Snapshot(rows,HexFormat.of().formatHex(hash.digest()),sequences);
     }
+    static Snapshot snapshot(Connection db,boolean workspaceOnly) throws Exception {
+        if(!workspaceOnly)return snapshot(db);
+        String catalog=WorkspaceV3Catalog.verify(db);Map<String,Table> rows=new TreeMap<>();
+        for(String table:WorkspaceV3Catalog.DATA){
+            var hash=sha256();long count=0;
+            try(var s=db.createStatement();var r=s.executeQuery("SELECT row_to_json(t)::text FROM "+qualified(table)+" t ORDER BY row_to_json(t)::text COLLATE \"C\"")){
+                while(r.next()){frame(hash,r.getString(1));count++;}
+            }rows.put(table,new Table(count,HexFormat.of().formatHex(hash.digest())));
+        }
+        return new Snapshot(rows,catalog,Map.of());
+    }
     private static String projection(Connection db,String table,String expression) throws Exception {
         String plan=value(db,"EXPLAIN (VERBOSE, FORMAT JSON, COSTS OFF) SELECT ("+expression+") FROM "+qualified(table));
         var output=JSON.readTree(plan).get(0).path("Plan").path("Output");require(output.isArray()&&output.size()==1);return output.toString();
@@ -462,6 +609,11 @@ public final class UnifiedPostgresqlBackup {
         require(versions(db,"public").equals(expectedVersions(21))&&versions(db,"workspace").equals(expectedVersions(2)));
         require(scalar(db,"SELECT count(*) FROM public.flyway_schema_history WHERE NOT success")==0&&scalar(db,"SELECT count(*) FROM workspace.flyway_schema_history WHERE NOT success")==0);
     }
+    private static void histories(Connection db,boolean workspaceOnly) throws Exception {
+        if(!workspaceOnly){histories(db);return;}
+        require(versions(db,"workspace").equals(expectedVersions(2)));
+        require(scalar(db,"SELECT count(*) FROM workspace.flyway_schema_history WHERE NOT success")==0);
+    }
     private static String qualified(String name) throws IOException {require(name.matches("(public|workspace)\\.[a-z_][a-z0-9_]*"));var parts=name.split("\\.");return "\""+parts[0]+"\".\""+parts[1]+"\"";}
     private static void forceFile(Path path) throws IOException {privatePath(path,false);try(var ch=FileChannel.open(path,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)){ch.force(true);}}
     private static void checkTools(String dump,String restore,int major) throws IOException {require(dump.matches("pg_dump \\(PostgreSQL\\) "+major+"\\..*")&&restore.matches("pg_restore \\(PostgreSQL\\) "+major+"\\..*"));}
@@ -473,7 +625,7 @@ public final class UnifiedPostgresqlBackup {
     private Process startTool(String name,Endpoint endpoint,List<String> arguments,boolean stream) throws Exception {
         String suffix=System.getProperty("os.name","").startsWith("Windows")?".exe":"";Path binary=tools.resolve(name+suffix);noLinks(binary);require(Files.isRegularFile(binary));
         List<String> command=new ArrayList<>();command.add(binary.toString());
-        if(endpoint!=null)command.addAll(List.of("--no-password","--host=127.0.0.1","--port=5432","--username="+endpoint.username,"--dbname="+endpoint.database));command.addAll(arguments);
+        if(endpoint!=null)command.addAll(List.of("--no-password","--host=127.0.0.1","--port="+endpoint.port,"--username="+endpoint.username,"--dbname="+endpoint.database));command.addAll(arguments);
         var builder=new ProcessBuilder(command);builder.environment().keySet().removeIf(k->k.toUpperCase(Locale.ROOT).startsWith("PG"));
         builder.environment().put("PGCONNECT_TIMEOUT","5");builder.environment().put("PGCLIENTENCODING","UTF8");
         if(endpoint!=null)builder.environment().put("PGPASSWORD",endpoint.password);
@@ -489,6 +641,19 @@ public final class UnifiedPostgresqlBackup {
             return endpoint==null?new String(process.getInputStream().readNBytes(1024),StandardCharsets.UTF_8).strip():"";
         }catch(InterruptedException cancelled){Thread.currentThread().interrupt();throw cancelled;}
         finally{stopTool(process);}
+    }
+    private String toolOutput(String name,List<String> arguments,int limit) throws Exception {
+        Process process=startTool(name,null,arguments,true);var bytes=new ByteArrayOutputStream();
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(30);byte[] buffer=new byte[8192];
+        try(var input=process.getInputStream()){
+            process.getOutputStream().close();
+            while(true){
+                require(!Thread.currentThread().isInterrupted()&&System.nanoTime()<deadline);
+                int available=input.available();if(available==0&&process.isAlive()){process.waitFor(20,TimeUnit.MILLISECONDS);continue;}
+                int count=input.read(buffer,0,available==0?buffer.length:Math.min(buffer.length,available));if(count<0)break;
+                require(bytes.size()+count<=limit);bytes.write(buffer,0,count);
+            }require(process.exitValue()==0);return bytes.toString(StandardCharsets.UTF_8);
+        }finally{Arrays.fill(buffer,(byte)0);stopTool(process);}
     }
     private static void stopTool(Process process) throws IOException {
         boolean interrupted=Thread.interrupted();
