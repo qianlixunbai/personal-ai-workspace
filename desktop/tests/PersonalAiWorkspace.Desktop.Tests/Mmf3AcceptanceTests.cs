@@ -14,6 +14,113 @@ public sealed class Mmf3AcceptanceTests
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     [Fact]
+    public async Task RuntimeExitEvidenceNeverAuthorizesMaintenanceOrHidesInterruptedOwners()
+    {
+        // Only newly created private surrogate folders and one hidden, stdin-controlled cmd
+        // child. No Profile Known Folder/helper, Java, model, database or existing process access.
+        string app = Path.Combine(Path.GetTempPath(), "paw-recovery-runtime-" + Guid.NewGuid().ToString("N"));
+        var sid = WindowsIdentity.GetCurrent().User!;
+        void DirectoryNew(string path) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(path, sid);
+        DirectoryNew(app);
+        string id = Guid.NewGuid().ToString("N");
+        string profiles = Path.Combine(app, "Profiles"), profile = Path.Combine(profiles, id), model = Path.Combine(profile, "model-state");
+        DirectoryNew(profiles); DirectoryNew(profile); DirectoryNew(model);
+        string modelLock = Path.Combine(model, ".lock");
+        File.WriteAllBytes(modelLock, []);
+        Console.WriteLine("Synthetic runtime ownership fixture retained: " + app);
+        ProfileRecoveryCoordinator Journal() => (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
+        ProfileRecoveryCoordinator.RuntimeAttempt Attempt() => (ProfileRecoveryCoordinator.RuntimeAttempt)
+            typeof(ProfileRecoveryCoordinator.RuntimeAttempt).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null,
+                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string)], null)!.Invoke([Journal(), id, new string('a', 64)]);
+        ProfileRecoveryCoordinator.MaintenanceInspection Inspect(ProfileRecoveryCoordinator journal)
+        {
+            try
+            {
+                return (ProfileRecoveryCoordinator.MaintenanceInspection)typeof(ProfileRecoveryCoordinator)
+                    .GetMethod("InspectMaintenancePrerequisites", BindingFlags.NonPublic | BindingFlags.Instance, null,
+                        [typeof(string), typeof(string)], null)!.Invoke(journal, [id, profile])!;
+            }
+            catch (TargetInvocationException error)
+            { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException!).Throw(); throw; }
+        }
+        void Denied() { using var journal = Journal(); Assert.ThrowsAny<IOException>(() => Inspect(journal)); }
+        Denied(); // Missing history is not "never ran".
+        using (var attempt = Attempt())
+        {
+            Denied(); // Durable intent, but no child identity yet.
+            using var child = new Process { StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
+                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app } };
+            child.StartInfo.ArgumentList.Add("/d"); child.StartInfo.ArgumentList.Add("/q");
+            Assert.True(child.Start());
+            try
+            {
+                attempt.RecordStarted(child);
+                attempt.ObserveExitBeforeOwnerCleanup(false);
+                Denied(); // A live handle produces no exit event, regardless of a free port.
+                await child.StandardInput.WriteLineAsync("exit 0"); await child.StandardInput.FlushAsync();
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await child.WaitForExitAsync(deadline.Token);
+                attempt.ObserveExitBeforeOwnerCleanup(false);
+                Assert.Throws<IOException>(() => attempt.ObserveExitBeforeOwnerCleanup(false)); // No repeat publication.
+            }
+            finally { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } } // Only our synthetic child.
+        }
+        // Close/reopen the DPAPI journal. Even intact exit observations do not yield admission.
+        using (var journal = Journal())
+        {
+            var result = Inspect(journal);
+            Assert.Equal(1, result.ObservedExitedChildren);
+            Assert.Equal("UNREGISTERED_WRITERS_UNPROVEN", result.Blocker);
+            Assert.Throws<IOException>(() => new FileStream(modelLock, FileMode.Open, FileAccess.Write, FileShare.ReadWrite));
+            Assert.Throws<IOException>(() => Directory.Move(model, Path.Combine(profile, "moved")));
+        }
+        using (var writer = new FileStream(modelLock, FileMode.Open, FileAccess.Write, FileShare.Read)) Denied();
+        foreach (string name in new[] { "execution-guard.json", "execution-guard.pending", "validation-required.pending", "unknown" })
+        {
+            string guard = Path.Combine(model, name);
+            File.WriteAllText(guard, "synthetic unresolved evidence");
+            Denied(); Assert.Equal("synthetic unresolved evidence", File.ReadAllText(guard));
+            File.Delete(guard); // Only the exact newly created test artifact; production never clears it.
+        }
+        string history = Path.Combine(app, "Recovery", "runtimes", id);
+        string directory = Assert.Single(Directory.GetDirectories(history));
+        string exitFile = Path.Combine(directory, "exited.dpapi");
+        byte[] encrypted = File.ReadAllBytes(exitFile);
+        byte[] entropy = System.Text.Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/runtime/v1/" + id + "/" + Path.GetFileName(directory) + "/exited");
+        byte[] plain = System.Security.Cryptography.ProtectedData.Unprotect(encrypted, entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        string json = System.Text.Encoding.UTF8.GetString(plain);
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain);
+        Assert.DoesNotContain(id, System.Text.Encoding.UTF8.GetString(encrypted));
+        foreach (string altered in new[] { json.Replace("EXIT_BEFORE_OWNER_CLEANUP", "OWNER_STOP_REQUESTED"),
+            json.Replace("\"ExitCode\":0", "\"ExitCode\":1"), json.Replace(id, Guid.NewGuid().ToString("N")),
+            json.Replace("\"Version\":1", "\"Version\":2"),
+            json.Replace("\"Version\":1", "\"Version\":1,\"Version\":1"),
+            json.Replace("\"Version\":1", "\"Version\":1,\"Unknown\":true") })
+        {
+            File.WriteAllBytes(exitFile, System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(altered), entropy,
+                System.Security.Cryptography.DataProtectionScope.CurrentUser));
+            using var journal = Journal();
+            var failure = Record.Exception(() => Inspect(journal));
+            Assert.True(failure is IOException or System.Text.Json.JsonException);
+        }
+        File.WriteAllBytes(exitFile, [1, 2, 3]);
+        using (var journal = Journal()) Assert.Throws<System.Security.Cryptography.CryptographicException>(() => Inspect(journal));
+        File.WriteAllBytes(exitFile, encrypted);
+        string pending = Path.Combine(directory, "exited.pending");
+        File.WriteAllText(pending, "synthetic interrupted publication"); Denied(); File.Delete(pending);
+        using (var journal = Journal()) Assert.Equal(1, Inspect(journal).ObservedExitedChildren);
+        // An unfinished later intent is retained; disposal publishes no exit.
+        using (Attempt()) { }
+        Denied();
+        ProfileRecoveryCoordinator.RequireOrdinaryProfile(profile); // No change to ordinary Profile selection.
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(app, "Recovery", "targets")));
+        Assert.False(Directory.Exists(Path.Combine(profile, "data")));
+        Assert.False(Directory.Exists(Path.Combine(profile, "credentials")));
+    }
+
+    [Fact]
     public void RecoveryPlanIsPrivateDurableNonAuthorizingAndInterruptedCandidatesCannotStart()
     {
         // A fresh temporary surrogate application tree only; never call Parent/Root/Prepare,

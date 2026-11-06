@@ -126,6 +126,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(applicationLifetime, stop.Token);
         TrustedDevelopmentRuntimeSources? sources = null;
         RuntimeProcessJob? job = null;
+        ProfileRecoveryCoordinator.RuntimeAttempt? ownership = null;
         Task output = Task.CompletedTask, errors = Task.CompletedTask;
         bool ready = false;
         try
@@ -136,9 +137,12 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             lifetime.Token.ThrowIfCancellationRequested();
             var start = sources.StartInfo(profile);
             job = RuntimeProcessJob.Create();
+            ownership = ProfileRecoveryCoordinator.RuntimeAttempt.Begin(profile, sources.JarSha256);
+            lifetime.Token.ThrowIfCancellationRequested();
             var process = Process.Start(start) ?? throw new IOException();
             lock (sync) { child = process; jarSha256 = sources.JarSha256; } // Hold the actual Process handle before any further operation can fail.
             job.Assign(process);
+            ownership.RecordStarted(process);
             output = PumpAsync(process.StandardOutput, false, lifetime.Token);
             errors = PumpAsync(process.StandardError, true, lifetime.Token);
             var clock = Stopwatch.StartNew();
@@ -175,20 +179,31 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         { State(diagnostic.Failure ?? (child is null ? "ADMISSION_DENIED" : "STARTUP_CAUSE_UNAVAILABLE")); }
         finally
         {
-            job?.Dispose();
-            Process? owned; lock (sync) owned = child;
-            if (owned is not null)
+            // Observe the original child handle BEFORE any existing Job/Kill cleanup. Neither
+            // cancellation nor finally/disposal is allowed to manufacture a safe-stop receipt.
+            try
             {
-                try
-                {
-                    if (!owned.HasExited) owned.Kill();
-                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    await owned.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
-                }
-                catch (InvalidOperationException) { }
+                try { ownership?.ObserveExitBeforeOwnerCleanup(lifetime.IsCancellationRequested); }
+                catch (Exception) { State("STARTUP_CAUSE_UNAVAILABLE"); }
+                finally { ownership?.Dispose(); }
             }
-            await Task.WhenAny(Task.WhenAll(output, errors), Task.Delay(2000)).ConfigureAwait(false);
-            sources?.Dispose();
+            finally // Receipt I/O, disposal or diagnostic callbacks cannot skip the existing cleanup.
+            {
+                job?.Dispose();
+                Process? owned; lock (sync) owned = child;
+                if (owned is not null)
+                {
+                    try
+                    {
+                        if (!owned.HasExited) owned.Kill();
+                        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                        await owned.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
+                    }
+                    catch (InvalidOperationException) { }
+                }
+                await Task.WhenAny(Task.WhenAll(output, errors), Task.Delay(2000)).ConfigureAwait(false);
+                sources?.Dispose();
+            }
         }
     }
     private async Task PumpAsync(StreamReader reader, bool parse, CancellationToken cancellation)

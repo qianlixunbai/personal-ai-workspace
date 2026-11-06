@@ -15,14 +15,15 @@ using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
 
-// Slice 2a: durable intent only. No SQL/source authority, target creation, READY or activation.
-// A plan is not evidence of stopped execution, a trusted backup, or a completed operation.
-internal sealed class ProfileRecoveryCoordinator : IDisposable
+// Slice 2a plans + Slice 2b owned-child observations. No SQL/source authority, target creation,
+// maintenance admission, READY or activation. A plan never proves stopped execution or backup trust.
+internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 {
     private const int MaximumRecordBytes = 16384;
     private readonly string applicationRoot;
     private readonly List<IDisposable> held = new();
     private bool disposed;
+    private Mmf3AcceptanceLaunch? authority;
     private static readonly JsonSerializerOptions Json = new()
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
@@ -57,6 +58,7 @@ internal sealed class ProfileRecoveryCoordinator : IDisposable
             authority.Validate();
             Mmf3ProfileNative.Verify(authority);
             result = new(Path.GetDirectoryName(WindowsProfileSecurity.Parent())!);
+            result.authority = authority;
             result.held.Add(single);
             result.held.Add(authorityPin);
             return result;
@@ -108,11 +110,23 @@ internal sealed class ProfileRecoveryCoordinator : IDisposable
         WindowsProfileSecurity.CreateDirectory(reservation, user.User!);
         using var pins = WindowsProfileSecurity.HoldDirectories(reservation);
         WindowsProfileSecurity.ValidatePrivate(pins.Handles[^1], user.User!, directory: true);
-        byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(plan, Json);
+        PublishRecord(reservation, "plan", Entropy(plan.TargetProfileId), plan);
+        if (Inspect(plan.TargetProfileId) != plan) throw Stop();
+    }
+
+    private static void PublishRecord<T>(string directory, string name, byte[] entropy, T record)
+    {
+        using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
+        byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(record, Json);
         byte[] encrypted;
-        try { encrypted = ProtectedData.Protect(plaintext, Entropy(plan.TargetProfileId), DataProtectionScope.CurrentUser); }
+        try
+        {
+            if (plaintext.Length > MaximumRecordBytes) throw Stop();
+            encrypted = ProtectedData.Protect(plaintext, entropy, DataProtectionScope.CurrentUser);
+            if (encrypted.Length > MaximumRecordBytes) throw Stop();
+        }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
-        string pending = Path.Combine(reservation, "plan.pending"), final = Path.Combine(reservation, "plan.dpapi");
+        string pending = Path.Combine(directory, name + ".pending"), final = Path.Combine(directory, name + ".dpapi");
         // CREATE_NEW, force then same-directory no-replace publication. Leave interrupted evidence.
         using (var output = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
@@ -121,7 +135,6 @@ internal sealed class ProfileRecoveryCoordinator : IDisposable
             output.Flush(flushToDisk: true);
         }
         File.Move(pending, final, overwrite: false);
-        if (Inspect(plan.TargetProfileId) != plan) throw Stop();
     }
 
     internal Plan Inspect(string targetProfileId)
@@ -140,12 +153,20 @@ internal sealed class ProfileRecoveryCoordinator : IDisposable
         // A pending or unknown file makes the whole operation unknown, even beside a valid plan.
         string[] files = Directory.EnumerateFileSystemEntries(reservation).Take(2).ToArray();
         if (files.Length != 1 || Path.GetFileName(files[0]) != "plan.dpapi") throw Stop();
-        using var input = OpenRecord(files[0]);
+        var plan = ReadRecord<Plan>(files[0], Entropy(targetProfileId));
+        Validate(plan, targetProfileId);
+        return plan;
+    }
+
+    private static T ReadRecord<T>(string path, byte[] entropy) where T : class
+    {
+        using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
+        using var input = OpenRecord(path);
         ValidateFileAcl(input, user.User!);
         if (input.Length is < 1 or > MaximumRecordBytes) throw Stop();
         byte[] encrypted = new byte[checked((int)input.Length)];
         input.ReadExactly(encrypted);
-        byte[] plaintext = ProtectedData.Unprotect(encrypted, Entropy(targetProfileId), DataProtectionScope.CurrentUser);
+        byte[] plaintext = ProtectedData.Unprotect(encrypted, entropy, DataProtectionScope.CurrentUser);
         try
         {
             if (plaintext.Length > MaximumRecordBytes) throw Stop();
@@ -154,9 +175,7 @@ internal sealed class ProfileRecoveryCoordinator : IDisposable
             if (document.RootElement.ValueKind != JsonValueKind.Object) throw Stop();
             foreach (var field in document.RootElement.EnumerateObject())
                 if (!names.Add(field.Name)) throw Stop();
-            var plan = document.Deserialize<Plan>(Json) ?? throw Stop();
-            Validate(plan, targetProfileId);
-            return plan;
+            return document.Deserialize<T>(Json) ?? throw Stop();
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
