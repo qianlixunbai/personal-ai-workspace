@@ -71,7 +71,8 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     {
         lock (sync)
         {
-            string current = state == "READY" && (child is null || child.HasExited) ? "PROCESS_EXITED" : state;
+            string current = state == "READY" && (disposed || stop.IsCancellationRequested || child is null || child.HasExited)
+                ? "PROCESS_EXITED" : state;
             return new(current == "READY" ? "AVAILABLE" : current == "STARTING" ? "STARTING" : "UNAVAILABLE",
                 current == "READY" ? "NONE" : current, "NOT_CHECKED", current == "READY", "NATIVE_SETUP_AVAILABLE", true);
         }
@@ -80,30 +81,45 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     {
         cancellation.ThrowIfCancellationRequested();
         Task? observed;
+        bool observationFailed = false;
         lock (sync) observed = Snapshot().CanQueryStorage ? running : null;
         if (observed is not null)
         {
             try
             {
                 await runtime.CheckHealthAsync(cancellation).ConfigureAwait(false);
-                await runtime.CheckCredentialAsync(cancellation).ConfigureAwait(false);
+                bool current;
+                lock (sync) current = observed == running && Snapshot().CanQueryStorage;
+                if (current) await runtime.CheckCredentialAsync(cancellation).ConfigureAwait(false);
             }
             catch (DesktopException error)
             {
                 lock (sync)
                 {
-                    if (observed == running)
+                    if (observed == running && Snapshot().CanQueryStorage)
                     {
-                        if (Snapshot().Failure != "ADMISSION_DENIED") State(error.Error is DesktopError.Unauthorized or DesktopError.CredentialInvalid
-                            ? "NATIVE_AUTHENTICATION_UNAVAILABLE" : error.Error == DesktopError.CredentialMissing
-                            ? "CREDENTIAL_UNAVAILABLE" : "STARTUP_CAUSE_UNAVAILABLE");
-                        stop.Cancel();
+                        observationFailed = error.IsReadObservationFailure;
+                        if (!observationFailed)
+                        {
+                            State(error.Error is DesktopError.Unauthorized or DesktopError.CredentialInvalid
+                                ? "NATIVE_AUTHENTICATION_UNAVAILABLE" : error.Error == DesktopError.CredentialMissing
+                                ? "CREDENTIAL_UNAVAILABLE" : "STARTUP_CAUSE_UNAVAILABLE");
+                            stop.Cancel();
+                        }
                     }
                 }
             }
         }
         cancellation.ThrowIfCancellationRequested();
-        return Snapshot();
+        lock (sync)
+        {
+            var snapshot = Snapshot();
+            // A failed observation is not a lifecycle transition or a cached successful query.
+            // A late response cannot borrow readiness from a replacement generation.
+            return (observationFailed && snapshot.CanQueryStorage) || (observed is not null && observed != running)
+                ? snapshot with { Runtime = "UNAVAILABLE", Failure = "STARTUP_CAUSE_UNAVAILABLE", CanQueryStorage = false }
+                : snapshot;
+        }
     }
     private async Task RunAsync(CancellationToken applicationLifetime)
     {
@@ -152,7 +168,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             State("PROCESS_EXITED");
         }
         catch (OperationCanceledException)
-        { if (Snapshot().Failure is "STARTING" or "NONE") State(ready ? "PROCESS_EXITED" : "STARTUP_CANCELLED"); }
+        { lock (sync) if (state is "STARTING" or "READY") State(ready ? "PROCESS_EXITED" : "STARTUP_CANCELLED"); }
         catch (DesktopException error)
         { State(error.Error is DesktopError.CredentialMissing or DesktopError.CredentialInvalid ? "CREDENTIAL_UNAVAILABLE" : "STARTUP_CAUSE_UNAVAILABLE"); }
         catch (Exception)

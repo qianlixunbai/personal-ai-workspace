@@ -108,12 +108,14 @@ public sealed partial class RuntimeClient : IDisposable
             request.Content = new ByteArrayContent(payload);
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         }
+        bool readObservation = method == HttpMethod.Get;
         try
         {
             // A linked deadline also bounds streamed body reads, not just response headers.
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(requestTimeout ?? TimeSpan.FromSeconds(8));
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            readObservation &= response.StatusCode == expected; // An observed rejection must still fail closed if its body breaks.
             if (response.StatusCode == HttpStatusCode.Unauthorized) throw new DesktopException(DesktopError.Unauthorized);
             if (expected == HttpStatusCode.NoContent && response.StatusCode == expected)
             {
@@ -162,10 +164,15 @@ public sealed partial class RuntimeClient : IDisposable
             catch { body.Dispose(); throw; }
         }
         catch (JsonException) { throw Invalid(); }
-        catch (HttpRequestException) { throw new DesktopException(DesktopError.RuntimeUnavailable); }
-        catch (IOException) { throw new DesktopException(DesktopError.RuntimeUnavailable); }
+        catch (HttpRequestException error)
+        { throw new DesktopException(DesktopError.RuntimeUnavailable) { IsReadObservationFailure = readObservation
+            && error.HttpRequestError is HttpRequestError.ConnectionError or HttpRequestError.ResponseEnded }; }
+        catch (IOException error)
+        { throw new DesktopException(DesktopError.RuntimeUnavailable) { IsReadObservationFailure = readObservation
+            && (error is not HttpIOException httpError
+                || httpError.HttpRequestError is HttpRequestError.ConnectionError or HttpRequestError.ResponseEnded) }; }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { throw new DesktopException(DesktopError.ClientTimeout); }
+        { throw new DesktopException(DesktopError.ClientTimeout) { IsReadObservationFailure = readObservation }; }
     }
 
     private static RuntimeTask ParseTask(JsonElement root, Guid? expectedId, string? expectedCapability = null, string? expectedPromptVersion = null)

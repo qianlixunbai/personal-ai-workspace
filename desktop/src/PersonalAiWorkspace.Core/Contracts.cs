@@ -34,6 +34,8 @@ public enum DesktopError
 public sealed class DesktopException(DesktopError error) : Exception(ErrorText.For(error))
 {
     public DesktopError Error { get; } = error;
+    // Local transport/deadline provenance only; error codes alone also represent rejected responses.
+    internal bool IsReadObservationFailure { get; init; }
 }
 
 public static class ErrorText
