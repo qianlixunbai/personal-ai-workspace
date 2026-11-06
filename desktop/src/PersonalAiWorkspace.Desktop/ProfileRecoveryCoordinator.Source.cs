@@ -71,11 +71,16 @@ internal sealed partial class ProfileRecoveryCoordinator
 
     private static void Validate(SourceRegistration source, string backupId)
     {
+        if (source.Kind != "WORKSPACE_BACKUP_SOURCE" || source.State != "BACKUP_REGISTERED") throw Stop();
+        ValidateSourceFields(source, backupId);
+    }
+
+    private static void ValidateSourceFields(SourceRegistration source, string backupId)
+    {
         RequireHex(source.BackupId, 32); RequireHex(source.SourceProfileId, 32);
         RequireHex(source.SourceRootIdentity, 48); RequireHex(source.SourceDataIdentity, 48);
         RequireHex(source.PayloadSha256, 64); RequireHex(source.ManifestSha256, 64);
-        if (source.Version != 1 || source.Kind != "WORKSPACE_BACKUP_SOURCE" || source.State != "BACKUP_REGISTERED"
-            || source.BackupId != backupId || source.CredentialCleanup != "RECLAIMED"
+        if (source.Version != 1 || source.BackupId != backupId || source.CredentialCleanup != "RECLAIMED"
             || source.Format != "personal-ai-workspace.postgresql-encrypted-stream" || source.FormatVersion != 3
             || source.PostgresqlMajor != 17 || source.Scope != "WORKSPACE_KNOWLEDGE_ONLY"
             || !Guid.TryParseExact(source.DatabaseLogicalIdentity, "D", out var logical) || logical == Guid.Empty

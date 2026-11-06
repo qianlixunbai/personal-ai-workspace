@@ -14,6 +14,8 @@
 
 2026-11-07 Recovery Slice 2a：在同一开发分支新增 DPAPI 恢复意图登记与 Desktop／Java 的候选启动拒绝。计划仅为 `RECOVERY_PLAN_ONLY / PREPARING`，不授予 SQL 来源、停写、目标 provision 或激活权限；没有产品维护入口。只运行两个新增的合成文件安全用例及必要编译，未访问真实 Profile／数据库或启动服务。完整第二切片及后续恢复、发布、激活仍未完成；详见[本轮交接与验证边界](engineering/RECOVERY-SLICE-2A-HANDOFF.md)。
 
+2026-11-07 Recovery 来源生产者阶段：已在新建独立 PG17 合成实例贯通原生分配意图 → 直属 Java 排他句柄交接 → v3 加密备份与短期角色回收 → 原生核验真实密文及正常退出 → 独立 DPAPI 发布/重读。记录固定为 `synthetic-sources` 下的合成种类，不授予个人 SQL 来源信任；真实 `sources/.../source.dpapi` 生产者、完整停写证明、受保护源配置绑定及恢复/激活仍未完成，维护保持 **BLOCKED / UNREGISTERED_WRITERS_UNPROVEN**。同一聚焦流程经失败诊断后通过，未访问真实用户数据或操作既有服务；详见[来源生产者交接](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。
+
 历史源码核验基线：`12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；文档现代化候选：`95ba76a0f244037fd01a38e366da8f524908a418`。两者均为固定历史记录，不代表最新 main HEAD。
 当前发布主线为 [main](https://github.com/qianlixunbai/personal-ai-workspace/commits/main/)：新版 README、文档体系与 Closing 修订通过 fast-forward 纳入主线；最新提交以该记录为准。原 54 个开发提交完整保留，原 12 个开发分支已清理，文档开发分支继续保留；本次仅完成文档发布，不升级产品验收。
 

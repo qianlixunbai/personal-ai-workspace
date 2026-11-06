@@ -30,6 +30,22 @@ final class WorkspaceSourceBackup {
         String sourceRole(){return sourceRole;}
         SourceIdentity source(){return source;}
         PortableEncryptedBackup.WorkspaceBackup backup(){return backup;}
+        /** One bounded result frame for the direct native owner's private stdout. Only the
+         * completed execution can emit it; it is explicitly NOT personal SQL-source authority.
+         * No endpoint password, passphrase, source content or caller-provided digest is sent. */
+        void writeNativeResult(java.io.OutputStream output) throws IOException {
+            var result=new java.util.LinkedHashMap<String,Object>();
+            result.put("Version",1);result.put("Kind","SYNTHETIC_WORKSPACE_BACKUP_RESULT");
+            result.put("ChildPid",ProcessHandle.current().pid());result.put("BackupId",backupId);
+            result.put("DatabaseLogicalIdentity",backup.manifest().databaseLogicalIdentity());
+            result.put("SourceSystemIdentifier",source.systemIdentifier());result.put("SourceDatabaseOid",source.databaseOid());
+            result.put("SourcePort",source.port());result.put("SourceDatabase",source.database());result.put("SourceRole",sourceRole);
+            result.put("PayloadBytes",backup.completion().bytes());result.put("PayloadSha256",backup.completion().sha256());
+            result.put("ManifestSha256",backup.manifestSha256());result.put("CredentialCleanup","RECLAIMED");
+            byte[] bytes=JSON.writeValueAsBytes(result);
+            require(bytes.length>0&&bytes.length<=16384);
+            var pipe=new java.io.DataOutputStream(output);pipe.writeInt(bytes.length);pipe.write(bytes);pipe.flush();
+        }
         @Override public String toString(){return "CompletedSourceBackup[private]";}
     }
 
