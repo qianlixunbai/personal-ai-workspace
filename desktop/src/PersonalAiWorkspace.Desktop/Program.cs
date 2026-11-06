@@ -133,6 +133,9 @@ internal static class Program
         string reason = error is System.IO.IOException ? error.Message : "";
         return reason switch
         {
+            "Recovery candidate or registration unavailable." =>
+                "此工作区属于尚未开放激活的恢复候选，或本机恢复登记无法核对。\n\n" +
+                "工作区未启动；请保留恢复登记和候选文件。不要删除标记或复制原生文件来强行打开。",
             "Development private ACL rejected." =>
                 "开发 Profile 私有目录权限不符合安全要求（PRIVATE_ACL）。\n\n" +
                 "位置：Windows 每用户 LocalAppData 下 PersonalAIWorkspace.Development/Profiles。" +

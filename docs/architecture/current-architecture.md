@@ -99,6 +99,8 @@ v3 使用 completion version 3 与 `workspace-v3.zip`，固定 `scope=WORKSPACE_
 
 合成例外只由本进程成功 v3 备份产生的内部能力对象进入；公开旧恢复入口拒绝 v3，认证成功不授予 SQL 来源权限。新目标核对空对象集合后，在独立事务及 advisory 锁内将合成 preparation receipt 持久改为 `:restore-attempted:<uuid>`，提交完成才创建 candidate／调用 pg_restore；失败或未知目标即使仍空，换目录或能力对象也不能再次执行恢复，须另建目标。恢复最多发布内核 `RESTORE_VERIFIED`，保留原库与失败候选，不发布 Profile READY／激活状态，不复制凭据、启动 Runtime 或构造历史 task/job 队列。正式来源登记、维护 authority、新 Profile 凭据、发布与激活仍属后续切片。聚焦证据与限制见[当前状态](../STATUS.md)。
 
+恢复准备的 [Slice 2a](../engineering/RECOVERY-SLICE-2A-HANDOFF.md) 新增原生内部计划登记：固定应用目录 `Recovery/targets/<id>`，DPAPI CurrentUser、CREATE_NEW、force 和无覆盖发布，仅记录 `RECOVERY_PLAN_ONLY / PREPARING`。计划不是成功备份来源证明，也不产生 SQL／Profile 操作权限。Desktop 与 Java 正常准入都拒绝登记过的目标；登记未知不能当作未登记。尚无完整停写准入、实际目标准备或激活入口，候选一律不可启动。
+
 默认逻辑备份及源数据可能为明文；统一加密备份不改变其他格式。恢复、迁移与真实数据操作必须遵守各自独立门禁，文档更新不改变权限或持久格式。
 
 ## 架构决策与历史

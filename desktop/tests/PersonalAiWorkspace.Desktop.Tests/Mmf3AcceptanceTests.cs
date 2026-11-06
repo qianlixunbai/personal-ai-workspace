@@ -12,6 +12,88 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class Mmf3AcceptanceTests
 {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    [Fact]
+    public void RecoveryPlanIsPrivateDurableNonAuthorizingAndInterruptedCandidatesCannotStart()
+    {
+        // A fresh temporary surrogate application tree only; never call Parent/Root/Prepare,
+        // OpenForPlanning, NativeBootstrap, a Runtime, a database, or the user's preferences.
+        string app = Path.Combine(Path.GetTempPath(), "paw-recovery-plan-" + Guid.NewGuid().ToString("N"));
+        Assert.False(Path.Exists(app));
+        PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(app, WindowsIdentity.GetCurrent().User!);
+        Console.WriteLine("Synthetic recovery plan fixture retained: " + app);
+        string source = Guid.NewGuid().ToString("N"), backup = Guid.NewGuid().ToString("N");
+        string preference = Path.Combine(app, "last-workspace");
+        File.WriteAllText(preference, source);
+        string Profile(string id) => Path.Combine(app, "Profiles", id);
+        ProfileRecoveryCoordinator Open() => (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
+        ProfileRecoveryCoordinator.Plan plan;
+        ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(source));
+        using (var journal = Open())
+        {
+            plan = journal.ReservePlan(source, backup, new string('a', 64), new string('b', 64));
+            Assert.Equal(plan, journal.Inspect(plan.TargetProfileId));
+            Assert.Throws<IOException>(() => Directory.Move(Path.Combine(app, "Recovery"), Path.Combine(app, "moved")));
+            Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+            ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(source));
+        }
+        Assert.False(Directory.Exists(Path.Combine(app, "Profiles"))); // Reservation creates no actual target.
+        Assert.Equal(source, File.ReadAllText(preference));
+        string reservation = Path.Combine(app, "Recovery", "targets", plan.TargetProfileId);
+        string file = Path.Combine(reservation, "plan.dpapi");
+        byte[] ciphertext = File.ReadAllBytes(file);
+        Assert.DoesNotContain(plan.SourceProfileId, System.Text.Encoding.UTF8.GetString(ciphertext));
+        using var reopened = Open();
+        Assert.Equal(plan, reopened.Inspect(plan.TargetProfileId)); // Real DPAPI after handles close/reopen.
+        var publish = typeof(ProfileRecoveryCoordinator).GetMethod("PublishPlan", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        Assert.IsAssignableFrom<IOException>(Assert.Throws<TargetInvocationException>(() => publish.Invoke(reopened, [plan])).InnerException);
+        Assert.Equal(ciphertext, File.ReadAllBytes(file)); // No-replace, even for an identical completed plan.
+
+        byte[] entropy = System.Text.Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/plan/v1/" + plan.TargetProfileId);
+        byte[] plain = System.Security.Cryptography.ProtectedData.Unprotect(ciphertext, entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        string json = System.Text.Encoding.UTF8.GetString(plain);
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain);
+        // Correct DPAPI cannot turn unknown/duplicate fields, another target or ACTIVE into authority.
+        foreach (string altered in new[] { json.Replace("PREPARING", "ACTIVE"), json.Replace("\"Version\":1", "\"Version\":2"),
+            json.Replace("\"Version\":1", "\"Version\":1,\"Version\":1"), json.Replace("\"Version\":1", "\"Version\":1,\"Unknown\":true"),
+            json.Replace(plan.TargetProfileId, Guid.NewGuid().ToString("N")) })
+        {
+            File.WriteAllBytes(file, System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(altered), entropy,
+                System.Security.Cryptography.DataProtectionScope.CurrentUser));
+            var failure = Record.Exception(() => reopened.Inspect(plan.TargetProfileId));
+            Assert.True(failure is IOException or System.Text.Json.JsonException);
+            Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+        }
+        File.WriteAllBytes(file, [1, 2, 3]);
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => reopened.Inspect(plan.TargetProfileId));
+        File.WriteAllBytes(file, ciphertext); // Restore only this test's synthetic record for interrupted-publication check.
+        File.WriteAllText(Path.Combine(reservation, "plan.pending"), "synthetic interrupted publication");
+        Assert.Throws<IOException>(() => reopened.Inspect(plan.TargetProfileId));
+        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+        string emptyTarget = Guid.NewGuid().ToString("N");
+        PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(Path.Combine(app, "Recovery", "targets", emptyTarget), WindowsIdentity.GetCurrent().User!);
+        Assert.Throws<IOException>(() => reopened.Inspect(emptyTarget));
+        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(emptyTarget)));
+        Assert.Equal(source, File.ReadAllText(preference));
+
+        // A failure before/during publication carries a stable attempt identity for inspection.
+        // This fresh surrogate has a malformed registry; no existing application files are used.
+        string brokenApp = Path.Combine(Path.GetTempPath(), "paw-recovery-plan-" + Guid.NewGuid().ToString("N"));
+        PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(brokenApp, WindowsIdentity.GetCurrent().User!);
+        File.WriteAllText(Path.Combine(brokenApp, "Recovery"), "synthetic malformed registry");
+        using var broken = (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([brokenApp]);
+        var incomplete = Assert.Throws<ProfileRecoveryCoordinator.ReservationIncomplete>(() =>
+            broken.ReservePlan(source, backup, new string('a', 64), new string('b', 64)));
+        Assert.Equal("PREPARING", incomplete.Attempt.State);
+        Assert.Equal(32, incomplete.Attempt.OperationId.Length);
+        Assert.Equal(32, incomplete.Attempt.TargetProfileId.Length);
+        Assert.ThrowsAny<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Path.Combine(brokenApp, "Profiles", source)));
+        Assert.False(Directory.Exists(Path.Combine(brokenApp, "Profiles")));
+    }
+#endif
+
     // Read-only compiled-artifact check also usable for B1 while its real LocalAppData gate is STOP.
     [Fact]
     public void CompiledVariantIdentityAndCrossModeArgumentsAreIsolated()

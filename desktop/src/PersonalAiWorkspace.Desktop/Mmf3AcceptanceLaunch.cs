@@ -62,6 +62,7 @@ internal sealed class Mmf3AcceptanceLaunch
 #if MMF3_PROFILE_ACCEPTANCE
         if (!string.Equals(Root, Mmf3ProfileState.Verify(RunId), StringComparison.OrdinalIgnoreCase))
             throw new IOException("MMF3 profile identity changed.");
+        ProfileRecoveryCoordinator.RequireOrdinaryProfile(Root);
 #else
         for (string? current = Root; current is not null; current = Path.GetDirectoryName(current))
             if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)

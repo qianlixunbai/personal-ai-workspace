@@ -46,6 +46,7 @@ public final class WindowsNativeGate {
             for (var entry : BOOTSTRAP.entrySet())
                 checkHash(helper.resolveSibling(NAME + entry.getKey()), entry.getValue());
             Admission before = verify(helper, runId);
+            io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(before.root);
             require("jna.boot.library.name", "jnidispatch");
             require("jna.boot.library.path", before.dll.getParent().toString());
             for (String key : List.of("jna.nosys", "jna.noclasspath", "jna.nounpack")) require(key, "true");
@@ -64,6 +65,7 @@ public final class WindowsNativeGate {
                 if (!before.equals(verify(helper, runId))) throw new IOException();
             }
             WindowsPrivateAcl.holdDevelopmentProfile(before.root);
+            io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(before.root);
             admittedRoot = before.root;
         } catch (Exception | LinkageError failure) {
             // No native messages, paths, account names, child output or credentials in diagnostics.
@@ -74,6 +76,7 @@ public final class WindowsNativeGate {
     public static synchronized Path profileRoot() throws IOException {
         admit();
         if (admittedRoot == null) throw new IOException("Development Profile required");
+        io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(admittedRoot);
         return admittedRoot;
     }
 

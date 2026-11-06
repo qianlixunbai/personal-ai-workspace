@@ -26,6 +26,30 @@ class TrustedDatabaseConfigurationTest {
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private void directories() throws IOException { Files.createDirectory(root.resolve("data")); Files.createDirectory(root.resolve("credentials")); }
 
+    @Test void recoveryReservationsRejectRuntimeAdmissionWithoutReadingCredentialsOrTrustingMarkers() throws Exception {
+        // @TempDir is a synthetic surrogate application root, not an OS Profile or real registry.
+        Path profiles = root.resolve("Profiles");
+        String targetId = "1".repeat(32), ordinaryId = "2".repeat(32);
+        Path target = profiles.resolve(targetId), ordinary = profiles.resolve(ordinaryId);
+        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
+        Path registry = Files.createDirectory(root.resolve("Recovery"));
+        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(ordinary));
+        Path targets = Files.createDirectory(registry.resolve("targets"));
+        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
+        Path reservation = Files.createDirectory(targets.resolve(targetId));
+        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(target));
+        Files.writeString(reservation.resolve("plan.pending"), "synthetic interrupted publication");
+        Files.writeString(reservation.resolve("plan.dpapi"), "ACTIVE");
+        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(target));
+        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
+        // Files and malformed paths fail closed too; existence checks must not swallow errors.
+        String malformed = "3".repeat(32);
+        Files.writeString(targets.resolve(malformed), "not a directory");
+        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(profiles.resolve(malformed)));
+        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(profiles.resolve("../other")));
+        assertFalse(Files.exists(profiles)); // No credentials, source data or target Profile touched.
+    }
+
     @Test void nativePipeAdmitsBeforeReadingAndOnlySavesAfterReadOnlyPreflightWithoutOverwriting() throws Exception {
         directories();
         var output = new java.io.ByteArrayOutputStream();
