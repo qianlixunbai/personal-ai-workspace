@@ -1,5 +1,29 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：prepared 配置持久写入、真实连接与日常 Store 权限核验
+
+基于本地 `16a9c8e`，本轮选择设计 §4 的 prepared 配置 owning 接口，完成“独立来源 → 新 canonical 目标恢复 → 固定 `data/database.dpapi` → 磁盘重读后的真实 app 连接 → Store/权限核验”的合成阶段。**没有发布 READY 或激活；合成收尾仍撤销两角色登录并清密，留下的配置不能当作可用的日常配置，更不能继续激活此候选。** 完整停写中旧包、跨会话/手动 Java、未知模型执行的归属仍无可信历史可补证；本轮未改写这些条件或修改真实环境来制造证据。
+
+`TrustedDatabaseConfiguration` 新增 package-private `createPreparedRecovery/readPreparedRecovery`，由 `NativeProfileRecovery` 的受限 owning 方法调用。它们只能使用已真实 Gate/原生身份/独立登记核验的 `PreparedRecoveryTarget`，且必须经过本次进程的 restored 状态；磁盘 marker 不能重建这个能力。只写固定 `data/database.dpapi`，复用原来的严格七字段解析与 DPAPI CurrentUser 格式，要求数据库、app 角色、端口与候选/来源绑定一致，不能写 owner/Finance 配置、任意路径或源配置。CREATE_NEW、force、私有 ACL、原生文件身份和前后目录复核均保留；普通 public load/create 的当前 Profile Gate 语义不变。
+
+新的 `PreparedDatabase` 是持有配置只读 pin 的连接提供者，不返回口令或 Spring PropertySource，不接受凭据覆盖或 unwrap。每次连接前核对配置字节摘要/身份和候选能力；真实连接验证 PG17、loopback/端口、DB/角色 OID、session/current user、角色能力/成员关系和权限合同。管理员连接再通过 `pg_stat_activity` 的 backend PID、client port、datid、usesysid 关联实际 app 连接，并核对 system identifier、DB owner、角色 operation receipt 和已消费的数据库 receipt。结果只记录身份、配置摘要及 `WORKSPACE_APP_V1`，不是授权 receipt。关闭配置句柄后再次独立读盘并连接，核对同一 observation，避免只验证内存 JSON。
+
+日常 app 授权只作用于本次已恢复目标：先核对 owner/目标/operation/端口/receipt，事务内设置固定 17 表合同。业务表获所需 CRUD；不可变消息/选择/revision 不授 UPDATE；`write_lock`、`knowledge_control` 仅 SELECT/UPDATE；metadata、Flyway history、两张迁移 receipt 仅 SELECT。随后逐表核对所有 PG17 table privileges 和 grant option，拒绝 schema/database CREATE、TEMP、转授权、owner membership、高权限角色、其他可连接数据库及 public schema 权限。原合成只读验证角色入口未改成通用写角色。
+
+仍只扩展已有 Java `RecoverySourceProducerProbe`，没有新增测试套件。为定位实际问题，本阶段共有两次保留的失败尝试，最后一次新夹具成功：
+
+- 第一尝试 `.verification/recovery-prepared-configuration/` 错把 `pg_control_system()` 当作默认禁止 app 执行的函数，真实连接被新增条件拒绝。查阅 [PG17 系统函数 ACL 初始化](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/catalog/system_functions.sql)、[只读实现](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/utils/misc/pg_controldata.c) 及 [GRANT 默认语义](https://github.com/postgres/postgres/blob/REL_17_STABLE/doc/src/sgml/ref/grant.sgml) 后，移除这条错误的新条件；没有额外 GRANT，也没有修改 pg_catalog 或既有服务权限。实例核验仍由真实后台关联完成。
+- 第二尝试 `.verification/recovery-prepared-configuration-fixed/` 已完成配置/权限连接、Memory 写入及 Conversation turn 写入，探针却传入分页 limit=20，超过既有 `MAX_LIMIT=10`，被领域 API 正确拒绝。仅改探针使用现有常量，产品代码/JAR 不变。两次失败目标、配置及记录均保留，不覆盖、不原地重放；各自专属 PG 已停止。
+- 最后一次 `.verification/recovery-prepared-configuration-verified/` 完整通过。验证配置 pin 阻止写/删、CREATE_NEW 拒绝重复绑定、错误 DB OID 拒绝、workspace/public DDL、TEMP、metadata/history/receipt 和不可变消息 UPDATE 均以 `42501` 拒绝。沿真实重读凭据执行 Memory 创建/修改/归档/恢复/删除，Conversation 创建/Memory selection/终态消息/改名/归档/恢复/删除，删除本次临时记录后原 Memory snapshot 不变；随后沿同一凭据执行现有 Knowledge 读回、精确 preview 和索引重建。未调用 TaskManager 或模型；探针中的消息均明确为合成数据。
+
+成功目标 `8343ff3cc2b04114a09f230090cce0b9`，operation `ac59da64019a4f159f1b5ab9f45e6743`，数据库 `personal_ai_workspace_b3_ac59da64019a`（OID 16592，owner/app OID 16590/16591）。配置 SHA-256 `dd73198dd0a91032be32a97048977b6cc23ab0d87d01b9e05f72643867779ef3`。来源 producer/consumer PID `29196/26272`；专属 PG PID `44848`、端口 `54080`、夹具 `C:\PAW-SourceProducer-64568636c7c042cb95654aee2f42859b`。PG 已按进程身份核验并停止，postmaster.pid 不再存在。源数据库恢复时不可连接、原合成 Profile 路径不存在，恢复后原 source snapshot/Finance sentinel 不变；双目标角色最终 NOLOGIN/PASSWORD NULL、临时明文 backup 清理、目标无 JNA、普通启动与重放拒绝，均沿原探针继续核验。
+
+真实产品 JAR 的只读维护入口本轮仍返回 `BLOCKED / UNREGISTERED_WRITERS_UNPROVEN`、`ObservedExitedChildren=null`；新 authority 没有数据库配置，`SourceState=CONFIGURATION_UNAVAILABLE`。配置恢复仍由同一真实 authority Gate 下的专用合成探针调用，不是已开放的产品恢复命令。合成来源/目标登记没有进入个人命名空间。
+
+必要构建为 Java 离线打包/实际 JAR 审计、原有 Java 探针编译及精确 manifest 的 .NET 探针构建（0 warning/0 error），未跑全套测试或模型。最终产品 JAR SHA-256 `8a9e87f75d819dc22f3a1df67fc2cf0fff27cd5d5eff7c3fe3edf21936cc76b2`；最后修复仅修改探针分页参数，复用该 JAR。helper 字节及 pins 未变。每次顺序运行，Java 384 MiB/2 核，PG shared_buffers 16 MiB/12 connections，最终运行前约 15.6 GiB 空闲内存；未启停 KAG、共享 PG 或任何既有服务。
+
+成功证据目录含独占 runner、manifest、构建日志、`product-maintenance-observation.json`、`owned-prepared-target.json`、`synthetic-recovery-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json`。未验证断电、网络中断、部分写入/CREATE 未知结果；没有将正常 finally 清理当作崩溃保证。下一关键阶段仍需可信个人来源/完整停写，及在全部持久化与关闭/明文清理完成后保留新 app 凭据、独立受保护 READY、显式激活与目标完整 Gate/Store/偏好保存的 owning 流程。不能拿本轮已撤销的合成凭据或 observation 冒充这些前置条件。五份未跟踪设计文档原字节未变；未推送、合并 main 或部署。
+
 ## 最新阶段：真实维护 Gate 下的 prepared target 固定 data 恢复
 
 基于本地 `622b5e4`，本轮把独立来源消费接到全新 canonical Profile 的固定 `data`，不再把临时 `staging/candidate` 当作 Profile 恢复结果。已实际完成合成来源到未发布候选的闭环；**个人恢复仍 BLOCKED，没有 RECOVERY_READY、目标登录配置或显式激活**。合成登记始终留在独立命名空间，不能用于个人 `ReservePlan`。

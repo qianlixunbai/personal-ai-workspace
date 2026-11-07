@@ -421,7 +421,9 @@ public final class UnifiedPostgresqlBackup {
     }
 
     static void readStoresAndRebuild(Endpoint app,Path candidate,Manifest manifest) throws Exception {
-        var ds=app.dataSource();
+        readStoresAndRebuild(app.dataSource(),candidate,manifest);
+    }
+    static void readStoresAndRebuild(javax.sql.DataSource ds,Path candidate,Manifest manifest) throws Exception {
         try(var db=ds.getConnection();var memory=new MemoryStore(ds,candidate);var conversations=new ConversationStore(ds);var knowledge=new KnowledgeStore(ds)) {
             require(memory.backupSnapshot().size()==manifest.snapshot.tables.get("workspace.memory_items").rows);
             try(var s=db.createStatement();var r=s.executeQuery("SELECT id FROM workspace.memory_items")){while(r.next())require(memory.get(UUID.fromString(r.getString(1)))!=null);}

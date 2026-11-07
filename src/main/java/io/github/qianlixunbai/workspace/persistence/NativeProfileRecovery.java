@@ -17,6 +17,60 @@ import io.github.qianlixunbai.workspace.security.WindowsNativeGate;
 public final class NativeProfileRecovery {
     private NativeProfileRecovery() {}
 
+    /** Fixed Workspace V1/V2 app contract. No DDL, migration receipt writes or Finance. */
+    static final java.util.Map<String,String> PREPARED_PRIVILEGES=java.util.Map.ofEntries(
+        java.util.Map.entry("storage_metadata","SELECT"),java.util.Map.entry("flyway_schema_history","SELECT"),
+        java.util.Map.entry("sqlite_import","SELECT"),java.util.Map.entry("knowledge_sqlite_import","SELECT"),
+        java.util.Map.entry("write_lock","SELECT,UPDATE"),java.util.Map.entry("knowledge_control","SELECT,UPDATE"),
+        java.util.Map.entry("memory_items","SELECT,INSERT,UPDATE,DELETE"),java.util.Map.entry("conversations","SELECT,INSERT,UPDATE,DELETE"),
+        java.util.Map.entry("conversation_turns","SELECT,INSERT,UPDATE,DELETE"),java.util.Map.entry("conversation_messages","SELECT,INSERT,DELETE"),
+        java.util.Map.entry("conversation_memory_selections","SELECT,INSERT,DELETE"),java.util.Map.entry("knowledge_documents","SELECT,INSERT,UPDATE,DELETE"),
+        java.util.Map.entry("knowledge_revisions","SELECT,INSERT,DELETE"),java.util.Map.entry("knowledge_jobs","SELECT,INSERT,UPDATE,DELETE"),
+        java.util.Map.entry("knowledge_deletes","SELECT,INSERT,DELETE"),java.util.Map.entry("knowledge_chunks","SELECT,INSERT,UPDATE,DELETE"),
+        java.util.Map.entry("knowledge_index_metadata","SELECT,INSERT,UPDATE,DELETE"));
+
+    /** The restore owner connection belongs to the caller's newly verified target. This
+     * entry is capability-bound and never called for a source or an ordinary Runtime. */
+    public static void grantPreparedApplication(PreparedRecoveryTarget target,java.sql.Connection owner) throws IOException {
+        try {
+            target.requireRestored();
+            if(!owner.getAutoCommit())throw stopped();
+            try(var s=owner.createStatement();var r=s.executeQuery("SELECT current_database(),session_user,current_user,shobj_description(d.oid,'pg_database') "
+                +"FROM pg_database d,pg_roles r WHERE d.datname=current_database() AND r.rolname=session_user AND d.datdba=r.oid "
+                +"AND inet_server_addr()='127.0.0.1' AND inet_server_port()="+target.sourcePort()
+                +" AND current_setting('server_version_num')::int/10000=17 AND shobj_description(r.oid,'pg_authid')='workspace-recovery-synthetic:"+target.operationId()+"'")){
+                if(!r.next()||!target.database().equals(r.getString(1))||!target.ownerRole().equals(r.getString(2))
+                    ||!r.getString(2).equals(r.getString(3)))throw stopped();
+                String receipt=r.getString(4),prefix=target.receipt()+":restore-attempted:";
+                if(receipt==null||!receipt.startsWith(prefix)||!java.util.UUID.fromString(receipt.substring(prefix.length())).toString().equals(receipt.substring(prefix.length()))||r.next())throw stopped();
+            }
+            owner.setAutoCommit(false);
+            try(var s=owner.createStatement()){
+                s.execute("SET LOCAL statement_timeout='10s'");s.execute("SET LOCAL lock_timeout='3s'");
+                s.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC");
+                s.execute("REVOKE ALL ON ALL TABLES IN SCHEMA workspace FROM "+target.appRole());
+                for(var entry:PREPARED_PRIVILEGES.entrySet())
+                    s.execute("GRANT "+entry.getValue()+" ON workspace."+entry.getKey()+" TO "+target.appRole());
+                target.requireRestored();owner.commit();
+            }catch(Exception failure){owner.rollback();throw failure;}
+            finally{owner.setAutoCommit(true);}
+        }catch(Exception failure){throw new IOException("Prepared application grants rejected");}
+    }
+
+    /** Writes only this restored candidate's fixed configuration, then verifies a fresh
+     * connection made from the independently re-read protected bytes. Never returns secrets. */
+    public static TrustedDatabaseConfiguration.PreparedDatabase bindPreparedDatabase(PreparedRecoveryTarget target,byte[] configuration,
+            java.sql.Connection administrator,long databaseOid,long ownerOid,long appOid) throws IOException {
+        TrustedDatabaseConfiguration.createPreparedRecovery(target,configuration);
+        return readPreparedDatabase(target,administrator,databaseOid,ownerOid,appOid);
+    }
+    public static TrustedDatabaseConfiguration.PreparedDatabase readPreparedDatabase(PreparedRecoveryTarget target,
+            java.sql.Connection administrator,long databaseOid,long ownerOid,long appOid) throws IOException {
+        var binding=TrustedDatabaseConfiguration.readPreparedRecovery(target,databaseOid,ownerOid,appOid);
+        try{binding.verifyAdministrator(administrator);return binding;}
+        catch(IOException|RuntimeException failure){binding.close();throw failure;}
+    }
+
     /** Freeze the already-admitted authority's Workspace configuration for one maintenance
      * attempt. Full stopped-writer proof is still required before any personal backup runs. */
     public static TrustedDatabaseConfiguration.RecoverySource freezeSource(MaintenanceExclusion exclusion) throws IOException {

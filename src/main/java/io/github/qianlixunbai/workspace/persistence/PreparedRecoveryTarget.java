@@ -26,16 +26,19 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
     private final Path authority,root,data,entry;
     private final String targetId;
     private final WindowsNativeGate.PreparedIdentity nativeIdentity;
+    private final int sourcePort;
+    private final String sourceSystemIdentifier;
+    private final long sourceDatabaseOid;
     private final List<WinNT.HANDLE> directories=new ArrayList<>();
     private final List<FileChannel> files=new ArrayList<>();
     private final Map<Path,String> identities=new LinkedHashMap<>();
-    private Plan plan;private Identity identity;private boolean closed,claimed;
+    private Plan plan;private Identity identity;private boolean closed,claimed,restored;
 
     public static PreparedRecoveryTarget openSynthetic(MaintenanceExclusion exclusion,String targetId,RegisteredRecoverySource source) throws IOException {
         require(source!=null&&source.synthetic());source.requireHeld();
         Path authority=WindowsNativeGate.maintenanceProfileRoot(exclusion);
         var nativeIdentity=WindowsNativeGate.verifyPreparedRecoveryTarget(exclusion,targetId);
-        var target=new PreparedRecoveryTarget(exclusion,authority,targetId,nativeIdentity);
+        var target=new PreparedRecoveryTarget(exclusion,authority,targetId,nativeIdentity,source);
         try {
             target.open(source,nativeIdentity);return target;
         }catch(Exception|LinkageError failure){
@@ -43,8 +46,9 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
             stopped.setStackTrace(failure.getStackTrace());throw stopped; // Frames only; no native/path/DPAPI message.
         }
     }
-    private PreparedRecoveryTarget(MaintenanceExclusion exclusion,Path authority,String targetId,WindowsNativeGate.PreparedIdentity nativeIdentity){
+    private PreparedRecoveryTarget(MaintenanceExclusion exclusion,Path authority,String targetId,WindowsNativeGate.PreparedIdentity nativeIdentity,RegisteredRecoverySource source){
         this.exclusion=exclusion;this.authority=authority;this.targetId=targetId;this.nativeIdentity=nativeIdentity;
+        sourcePort=source.port();sourceSystemIdentifier=source.systemIdentifier();sourceDatabaseOid=source.databaseOid();
         root=authority.getParent().resolve(targetId);data=root.resolve("data");
         entry=authority.getParent().getParent().resolve("Recovery/synthetic-targets").resolve(targetId);
     }
@@ -160,7 +164,13 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
     }
     public void writeMarker(String name,byte[] bytes) throws IOException {
         require(claimed&&Set.of("RESTORE_INCOMPLETE","RESTORE_VERIFIED.json").contains(name));requireHeld();writePrivate(data.resolve(name),bytes);requireHeld();
+        if(name.equals("RESTORE_VERIFIED.json"))restored=true;
     }
+    // A marker found on disk alone never recreates this in-process transition.
+    void requireRestored() throws IOException {requireHeld();require(claimed&&restored);}
+    int sourcePort(){return sourcePort;}
+    String sourceSystemIdentifier(){return sourceSystemIdentifier;}
+    long sourceDatabaseOid(){return sourceDatabaseOid;}
     private void writePrivate(Path path,byte[] bytes) throws IOException {
         WindowsPrivateAcl.createPreparedFile(this,path);
         try(var output=FileChannel.open(path,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)){

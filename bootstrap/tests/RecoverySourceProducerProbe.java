@@ -293,7 +293,8 @@ public final class RecoverySourceProducerProbe {
                             String target=readFrame(System.in);require(target.matches("[0-9a-f]{32}")&&System.in.read()==-1);
                             var prepared=PreparedRecoveryTarget.openSynthetic(authorityExclusion,target,registered);
                             preparedId[0]=target;targetData[0]=prepared.data();return prepared;
-                        });
+                        },(prepared,binding)->verifyPreparedConfiguration(prepared,binding,db,port,
+                            JSON.treeToValue(expected.path("manifest"),Manifest.class)));
                     require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
                         &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup"))
                         &&databases+1==scalar(db,"SELECT count(*) FROM pg_database")&&roles+2==scalar(db,"SELECT count(*) FROM pg_roles")
@@ -326,12 +327,18 @@ public final class RecoverySourceProducerProbe {
                     if(authorityExclusion!=null){
                         require(!Files.exists(restored.resolve("candidate"))&&Files.exists(targetData[0].resolve("RESTORE_VERIFIED.json"))
                             &&!Files.exists(targetData[0].getParent().resolve("jna-5.17.0-win32-x86-64")));
+                        require(recovery.configuration()!=null&&recovery.configuration().databaseOid()==recovery.databaseOid()
+                            &&recovery.configuration().applicationRoleOid()==recovery.appRoleOid()
+                            &&recovery.configuration().configurationSha256().equals(digest(targetData[0].resolve("database.dpapi"))));
                         try{io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(targetData[0].getParent());throw new IllegalStateException("Candidate started");}
                         catch(IOException denied){}
                         try{PreparedRecoveryTarget.openSynthetic(authorityExclusion,preparedId[0],registered);throw new IllegalStateException("Claimed prepared target reopened");}
                         catch(IOException denied){}
                         evidence.put("preparedTargetProfile",preparedId[0]);evidence.put("preparedTargetData",targetData[0].toString());
                         evidence.put("preparedTargetConsumedOnce",true);evidence.put("candidateStartupRejected",true);evidence.put("targetJnaAbsent",true);
+                        evidence.put("preparedConfigurationReadBackConnected",true);evidence.put("preparedApplicationPrivilegesVerified",true);
+                        evidence.put("preparedConfigurationStoreCrudVerified",true);evidence.put("preparedConfigurationPinnedNoOverwrite",true);
+                        evidence.put("preparedConfigurationCredentialRevokedAfterSyntheticCheck",true);
                     }
                     evidence.put("nativeGateExercised",authorityExclusion!=null);evidence.put("activation",false);
                     write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(evidence));
@@ -344,6 +351,52 @@ public final class RecoverySourceProducerProbe {
                 }
             }finally{Arrays.fill(password,'\0');}
         }
+    }
+
+    private static void verifyPreparedConfiguration(PreparedRecoveryTarget prepared,
+            TrustedDatabaseConfiguration.PreparedDatabase binding,java.sql.Connection administrator,int port,Manifest manifest) throws IOException {
+        try {
+            var before=binding.observation();Path file=prepared.data().resolve("database.dpapi");
+            try(var ignored=java.nio.channels.FileChannel.open(file,StandardOpenOption.WRITE)){throw new IllegalStateException("Pinned configuration writable");}
+            catch(IOException denied){}
+            try{Files.delete(file);throw new IllegalStateException("Pinned configuration deleted");}catch(IOException denied){}
+            byte[] duplicate=JSON.writeValueAsBytes(Map.of("format",1,"backend","postgresql","host","127.0.0.1",
+                "port",port,"database",prepared.database(),"username",prepared.appRole(),"password","synthetic-invalid-replacement"));
+            try{
+                try(var ignored=io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.bindPreparedDatabase(prepared,duplicate,
+                    administrator,before.databaseOid(),before.ownerRoleOid(),before.applicationRoleOid())){throw new IllegalStateException("Configuration overwritten");}
+                catch(IOException denied){}
+            }finally{Arrays.fill(duplicate,(byte)0);}
+            try(var ignored=io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.readPreparedDatabase(prepared,
+                administrator,before.databaseOid()+1,before.ownerRoleOid(),before.applicationRoleOid())){throw new IllegalStateException("Wrong database identity accepted");}
+            catch(IOException denied){}
+            try(var app=binding.getConnection()){
+                for(String sql:List.of("CREATE TABLE workspace.forbidden_configuration_probe(id int)","CREATE TEMP TABLE forbidden_configuration_probe(id int)",
+                    "CREATE TABLE public.forbidden_configuration_probe(id int)","UPDATE workspace.storage_metadata SET version=version",
+                    "DELETE FROM workspace.sqlite_import WHERE false","DELETE FROM workspace.knowledge_sqlite_import WHERE false",
+                    "UPDATE workspace.flyway_schema_history SET success=success WHERE false","UPDATE workspace.conversation_messages SET content=content WHERE false")){
+                    try{sql(app,sql);throw new IllegalStateException("Forbidden application privilege granted");}
+                    catch(java.sql.SQLException denied){require("42501".equals(denied.getSQLState()));}
+                }
+            }
+            try(var memory=new io.github.qianlixunbai.workspace.memory.MemoryStore(binding,prepared.data());
+                var conversations=new io.github.qianlixunbai.workspace.conversation.ConversationStore(binding)){
+                var original=memory.backupSnapshot();
+                var item=memory.create(io.github.qianlixunbai.workspace.memory.MemoryItem.Type.PROJECT_NOTE,"Synthetic config check","Disposable fixture record");
+                item=memory.update(item.id(),item.revision(),item.type(),"Updated synthetic config check",item.content());
+                item=memory.archive(item.id(),item.revision());item=memory.restore(item.id(),item.revision());
+                var conversation=conversations.create("Synthetic credential check");
+                var turn=conversations.createTurnWithUserMessage(conversation.id(),"Fixture message; no model execution",null,
+                    List.of(new io.github.qianlixunbai.workspace.memory.MemoryReference(item.id(),item.revision())));
+                conversations.completeTurnWithAssistantMessage(conversation.id(),turn.id(),"Synthetic stored answer");
+                require(conversations.detail(conversation.id(),0,io.github.qianlixunbai.workspace.conversation.ConversationLimits.MAX_LIMIT).totalTurns()==1);
+                conversations.rename(conversation.id(),"Renamed fixture");conversations.archive(conversation.id());
+                conversations.unarchive(conversation.id());conversations.delete(conversation.id());
+                memory.delete(item.id(),item.revision());require(memory.backupSnapshot().equals(original));
+            }
+            readStoresAndRebuild(binding,prepared.data(),manifest);
+            binding.verifyAdministrator(administrator);require(before.equals(binding.observation()));
+        }catch(Exception failure){var stopped=new IOException("Prepared configuration fixture rejected");stopped.setStackTrace(failure.getStackTrace());throw stopped;}
     }
 
     private static void writeFrame(OutputStream output,String message) throws IOException {

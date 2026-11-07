@@ -123,6 +123,170 @@ public final class TrustedDatabaseConfiguration {
         return Identity.read(path, directory);
     }
 
+    /** Package-owned prepared path: identical format/DPAPI as normal startup, without
+     * changing the admitted authority or publishing the target's native library. */
+    static void createPreparedRecovery(PreparedRecoveryTarget target,byte[] configuration) throws IOException {
+        byte[] encrypted=null;
+        try {
+            target.requireRestored();preparedValues(target,configuration);
+            Path file=target.data().resolve("database.dpapi");
+            encrypted=Protection.protect(configuration);
+            if(encrypted.length<1||encrypted.length>LIMIT)throw new IOException();
+            target.requireRestored();WindowsPrivateAcl.createPreparedFile(target,file);
+            Object identity=key(file,false);
+            try(var pin=FileChannel.open(file,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS,
+                    ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE)){
+                WindowsPrivateAcl.verifyPreparedConfiguration(target);
+                var buffer=ByteBuffer.wrap(encrypted);while(buffer.hasRemaining())pin.write(buffer);pin.force(true);
+                target.requireRestored();WindowsPrivateAcl.verifyPreparedConfiguration(target);
+                if(!identity.equals(key(file,false)))throw new IOException();
+            }
+        }catch(IOException|RuntimeException|LinkageError failure){throw preparedFailure(failure);}
+        finally{if(encrypted!=null)Arrays.fill(encrypted,(byte)0);}
+    }
+    private static Values preparedValues(PreparedRecoveryTarget target,byte[] configuration) throws IOException {
+        var values=((Source)parse(configuration,false)).getSource().values;
+        if(!values.database.equals(target.database())||!values.username.equals(target.appRole())
+            ||values.port!=target.sourcePort())throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        return values;
+    }
+    static PreparedDatabase readPreparedRecovery(PreparedRecoveryTarget target,long databaseOid,long ownerOid,long appOid) throws IOException {
+        target.requireRestored();
+        var result=new PreparedDatabase(target,databaseOid,ownerOid,appOid);
+        try{result.open();return result;}
+        catch(IOException|RuntimeException|LinkageError failure){result.close();throw preparedFailure(failure);}
+    }
+    private static Failure preparedFailure(Throwable failure){
+        var sanitized=new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        sanitized.setStackTrace(failure.getStackTrace());return sanitized; // Code locations only, never raw SQL/native messages.
+    }
+
+    /** A private, pinned configuration connection provider; not a Runtime identity, READY
+     * receipt or activation permission. Only the persistence owner can construct one. */
+    public static final class PreparedDatabase implements javax.sql.DataSource,AutoCloseable {
+        public record Observation(String systemIdentifier,long databaseOid,long ownerRoleOid,long applicationRoleOid,
+            String configurationIdentity,String configurationSha256,String permissionContract) {}
+        private final PreparedRecoveryTarget target;
+        private final long databaseOid,ownerOid,appOid;
+        private final Path file;
+        private FileChannel pin;private Values values;private String identity,digest;
+        private boolean closed,verified;
+        private PreparedDatabase(PreparedRecoveryTarget target,long databaseOid,long ownerOid,long appOid){
+            this.target=target;this.databaseOid=databaseOid;this.ownerOid=ownerOid;this.appOid=appOid;
+            file=target.data().resolve("database.dpapi");
+        }
+        private void open() throws IOException {
+            if(databaseOid<1||databaseOid>0xffffffffL||ownerOid<1||ownerOid>0xffffffffL||appOid<1||appOid>0xffffffffL
+                ||appOid==ownerOid||databaseOid==target.sourceDatabaseOid())throw new IOException();
+            target.requireRestored();WindowsPrivateAcl.verifyPreparedConfiguration(target);
+            pin=FileChannel.open(file,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+                ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE);
+            identity=Identity.read(file,false);byte[] encrypted=readEncrypted(),plaintext=null;
+            try{digest=RecoverySource.sha256(encrypted);plaintext=Protection.unprotect(encrypted);values=preparedValues(target,plaintext);}
+            finally{Arrays.fill(encrypted,(byte)0);if(plaintext!=null)Arrays.fill(plaintext,(byte)0);}
+            requireUnchanged();
+        }
+        private byte[] readEncrypted() throws IOException {
+            var bytes=ByteBuffer.allocate(LIMIT+1);
+            try{pin.position(0);while(bytes.hasRemaining()&&pin.read(bytes)!=-1){}
+                if(bytes.position()<1||bytes.position()>LIMIT)throw new IOException();return Arrays.copyOf(bytes.array(),bytes.position());}
+            finally{Arrays.fill(bytes.array(),(byte)0);}
+        }
+        public void requireUnchanged() throws IOException {
+            if(closed||pin==null||!pin.isOpen()||values==null)throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            target.requireRestored();WindowsPrivateAcl.verifyPreparedConfiguration(target);
+            if(!identity.equals(Identity.read(file,false)))throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            byte[] encrypted=readEncrypted();
+            try{if(!digest.equals(RecoverySource.sha256(encrypted)))throw new Failure(Reason.CONFIGURATION_UNTRUSTED);}
+            finally{Arrays.fill(encrypted,(byte)0);}
+        }
+        private Connection connect() throws java.sql.SQLException,IOException {
+            requireUnchanged();var ds=new org.postgresql.ds.PGSimpleDataSource();
+            ds.setURL(values.url);ds.setUser(values.username);ds.setPassword(values.password);
+            ds.setCurrentSchema("workspace,pg_catalog");ds.setConnectTimeout(3);ds.setSocketTimeout(15);
+            var connection=ds.getConnection();
+            try{verifyApplication(connection);return connection;}
+            catch(Exception failure){connection.close();throw preparedFailure(failure);}
+        }
+        private void verifyApplication(Connection app) throws Exception {
+            PostgresqlWorkspace.verify(app);
+            try(var s=app.createStatement();var r=s.executeQuery("SELECT d.oid,r.oid,d.datname,r.rolname FROM pg_database d,pg_roles r "
+                +"WHERE d.datname=current_database() AND r.rolname=session_user AND current_user=session_user AND r.rolcanlogin "
+                +"AND NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls OR r.rolinherit) "
+                +"AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE m.member=r.oid) "
+                +"AND current_setting('server_version_num')::int/10000=17 AND inet_server_addr()='127.0.0.1' "
+                +"AND inet_server_port()="+target.sourcePort()+" AND has_database_privilege(current_user,d.oid,'CONNECT') "
+                +"AND NOT has_database_privilege(current_user,d.oid,'CREATE,TEMP,CONNECT WITH GRANT OPTION') "
+                +"AND has_schema_privilege(current_user,'workspace','USAGE') AND NOT has_schema_privilege(current_user,'workspace','CREATE,USAGE WITH GRANT OPTION') "
+                +"AND NOT has_schema_privilege(current_user,'public','USAGE,CREATE') "
+                +"AND NOT EXISTS(SELECT FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='workspace' AND has_function_privilege(current_user,p.oid,'EXECUTE')) "
+                +"AND NOT EXISTS(SELECT FROM pg_database other WHERE other.datallowconn AND other.oid<>d.oid AND has_database_privilege(current_user,other.oid,'CONNECT'))")){
+                if(!r.next()||r.getLong(1)!=databaseOid||r.getLong(2)!=appOid||!target.database().equals(r.getString(3))
+                    ||!target.appRole().equals(r.getString(4))||r.next())throw new IOException();
+            }
+            var privileges=List.of("SELECT","INSERT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER","MAINTAIN");
+            String columns=String.join(",",privileges.stream().map(p->"has_table_privilege(current_user,c.oid,'"+p+"')").toList());
+            String grantOptions=String.join(",",privileges.stream().map(p->p+" WITH GRANT OPTION").toList());
+            var seen=new HashSet<String>();
+            try(var s=app.createStatement();var r=s.executeQuery("SELECT c.relname,"+columns+",has_table_privilege(current_user,c.oid,'"+grantOptions
+                +"') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='workspace' AND c.relkind IN ('r','p')")){
+                while(r.next()){
+                    String table=r.getString(1),allowed=NativeProfileRecovery.PREPARED_PRIVILEGES.get(table);
+                    if(allowed==null||!seen.add(table))throw new IOException();
+                    var expected=Set.of(allowed.split(","));
+                    for(int i=0;i<privileges.size();i++)if(r.getBoolean(i+2)!=expected.contains(privileges.get(i)))throw new IOException();
+                    if(r.getBoolean(privileges.size()+2))throw new IOException();
+                }
+            }
+            if(!seen.equals(NativeProfileRecovery.PREPARED_PRIVILEGES.keySet()))throw new IOException();
+        }
+        /** Correlate the actual protected-credential backend, not just connection strings. */
+        public void verifyAdministrator(Connection administrator) throws IOException {
+            try(var app=connect()){
+                int backend,clientPort;
+                try(var s=app.createStatement();var r=s.executeQuery("SELECT pg_backend_pid(),inet_client_port()")){
+                    if(!r.next())throw new IOException();backend=r.getInt(1);clientPort=r.getInt(2);
+                }
+                try(var s=administrator.prepareStatement("SELECT c.system_identifier::text,shobj_description(d.oid,'pg_database') "
+                    +"FROM pg_control_system() c,pg_database d,pg_stat_activity a,pg_roles o,pg_roles r "
+                    +"WHERE current_database()='postgres' AND inet_server_addr()='127.0.0.1' AND inet_server_port()=? "
+                    +"AND d.oid=? AND d.datname=? AND d.datdba=? AND d.datallowconn AND o.oid=d.datdba AND o.rolname=? "
+                    +"AND r.oid=? AND r.rolname=? AND shobj_description(o.oid,'pg_authid')=? AND shobj_description(r.oid,'pg_authid')=? "
+                    +"AND a.pid=? AND a.datid=d.oid AND a.usesysid=r.oid AND a.usename=r.rolname AND a.client_port=? "
+                    +"AND a.client_addr='127.0.0.1' AND a.backend_type='client backend'")){
+                    s.setQueryTimeout(10);s.setInt(1,target.sourcePort());s.setLong(2,databaseOid);s.setString(3,target.database());
+                    s.setLong(4,ownerOid);s.setString(5,target.ownerRole());s.setLong(6,appOid);s.setString(7,target.appRole());
+                    s.setString(8,"workspace-recovery-synthetic:"+target.operationId());s.setString(9,"workspace-recovery-synthetic:"+target.operationId());
+                    s.setInt(10,backend);s.setInt(11,clientPort);
+                    try(var r=s.executeQuery()){
+                        if(!r.next()||!target.sourceSystemIdentifier().equals(r.getString(1)))throw new IOException();
+                        String receipt=r.getString(2),prefix=target.receipt()+":restore-attempted:";
+                        if(receipt==null||!receipt.startsWith(prefix)||!UUID.fromString(receipt.substring(prefix.length())).toString().equals(receipt.substring(prefix.length()))||r.next())throw new IOException();
+                    }
+                }
+                requireUnchanged();verified=true;
+            }catch(Exception failure){verified=false;throw preparedFailure(failure);}
+        }
+        public Observation observation() throws IOException {
+            requireUnchanged();if(!verified)throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            return new Observation(target.sourceSystemIdentifier(),databaseOid,ownerOid,appOid,identity,digest,"WORKSPACE_APP_V1");
+        }
+        @Override public Connection getConnection() throws java.sql.SQLException {
+            try{if(!verified)throw new IOException();return connect();}
+            catch(Exception failure){throw new java.sql.SQLException("Prepared database unavailable","08001");}
+        }
+        @Override public Connection getConnection(String user,String password) throws java.sql.SQLException {throw new java.sql.SQLException("Credential override rejected");}
+        @Override public java.io.PrintWriter getLogWriter(){return null;}
+        @Override public void setLogWriter(java.io.PrintWriter writer) throws java.sql.SQLException {throw new java.sql.SQLException("Configuration is fixed");}
+        @Override public int getLoginTimeout(){return 3;}
+        @Override public void setLoginTimeout(int seconds) throws java.sql.SQLException {throw new java.sql.SQLException("Configuration is fixed");}
+        @Override public java.util.logging.Logger getParentLogger() throws java.sql.SQLFeatureNotSupportedException {throw new java.sql.SQLFeatureNotSupportedException();}
+        @Override public boolean isWrapperFor(Class<?> type){return false;}
+        @Override public <T>T unwrap(Class<T> type) throws java.sql.SQLException {throw new java.sql.SQLException("Unwrap rejected");}
+        @Override public void close() throws IOException {closed=true;verified=false;values=null;if(pin!=null)pin.close();}
+        @Override public String toString(){return "PreparedDatabase[private; no activation]";}
+    }
+
     /** Maintenance reads only the authority's fixed Workspace configuration. This does not
      * prove stopped writers or authorize a backup. No arbitrary source path or Finance input. */
     static RecoverySource freezeRecoverySource(MaintenanceExclusion exclusion) throws IOException {

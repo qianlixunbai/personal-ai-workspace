@@ -7,6 +7,8 @@ import java.sql.Connection;
 import java.util.*;
 import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
 import io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget;
+import io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery;
+import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 
@@ -19,7 +21,8 @@ import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 final class WorkspaceRecovery {
     private WorkspaceRecovery() {}
     record Verified(String operationId,String database,long databaseOid,String ownerRole,long ownerRoleOid,
-                    String appRole,long appRoleOid,Result restore,String credentials) {}
+                    String appRole,long appRoleOid,Result restore,String credentials,
+                    TrustedDatabaseConfiguration.PreparedDatabase.Observation configuration) {}
 
     static Verified restoreNewSyntheticTarget(WorkspaceSourceBackup.Completed source,Path tools,Path staging,
                                               char[] passphrase,Endpoint administrator) throws IOException {
@@ -45,7 +48,7 @@ final class WorkspaceRecovery {
                     target.receipt,staging.resolve("candidate"),source.backup());
                 target.verifyDatabase(true);
                 verified=new Verified(target.operation,target.database,target.databaseOid,target.ownerRole,target.ownerOid,
-                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED");
+                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED",null);
             }finally{target.close();} // Cleanup failure must not hide as a suppressed restore error.
         }catch(Exception failure){
             if(failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().contains("TARGET_CREDENTIAL_CLEANUP_REQUIRED"))throw io;
@@ -68,8 +71,15 @@ final class WorkspaceRecovery {
         return restoreRegisteredSyntheticTarget(source,tools,staging,passphrase,administrator,null);
     }
     @FunctionalInterface interface SyntheticPreparation { PreparedRecoveryTarget afterAuthentication() throws IOException; }
+    @FunctionalInterface interface SyntheticConfigurationCheck {
+        void verify(PreparedRecoveryTarget target,TrustedDatabaseConfiguration.PreparedDatabase binding) throws IOException;
+    }
     static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
             char[] passphrase,Endpoint administrator,SyntheticPreparation preparation) throws IOException {
+        return restoreRegisteredSyntheticTarget(source,tools,staging,passphrase,administrator,preparation,null);
+    }
+    static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
+            char[] passphrase,Endpoint administrator,SyntheticPreparation preparation,SyntheticConfigurationCheck configurationCheck) throws IOException {
         String stage="REGISTERED_SOURCE";boolean decoded=false;Verified verified;
         PreparedRecoveryTarget prepared=null;
         try {
@@ -90,8 +100,10 @@ final class WorkspaceRecovery {
                     target.receipt,staging.resolve("candidate"),authenticated.origin())
                     :engine.restorePreparedWorkspace(authenticated.clear().backup(),target.owner(),target.app(),target.receipt,authenticated.origin(),prepared);
                 target.verifyDatabase(true);source.requireHeld();
+                TrustedDatabaseConfiguration.PreparedDatabase.Observation configuration=null;
+                if(prepared!=null){stage="PREPARED_CONFIGURATION";configuration=target.bindConfiguration(prepared,configurationCheck);}
                 verified=new Verified(target.operation,target.database,target.databaseOid,target.ownerRole,target.ownerOid,
-                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED");
+                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED",configuration);
             }finally{target.close();}
         }catch(Exception failure){
             if(failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().contains("TARGET_CREDENTIAL_CLEANUP_REQUIRED"))throw io;
@@ -192,6 +204,25 @@ final class WorkspaceRecovery {
                 &&UUID.fromString(actual.substring((receipt+":restore-attempted:").length())).toString()
                     .equals(actual.substring((receipt+":restore-attempted:").length())));
             else require(receipt.equals(actual));
+        }
+        TrustedDatabaseConfiguration.PreparedDatabase.Observation bindConfiguration(PreparedRecoveryTarget prepared,
+                SyntheticConfigurationCheck check) throws Exception {
+            verifyDatabase(true);
+            try(var owner=owner().dataSource().getConnection()){NativeProfileRecovery.grantPreparedApplication(prepared,owner);}
+            byte[] bytes=JSON.writeValueAsBytes(Map.of("format",1,"backend","postgresql","host","127.0.0.1",
+                "port",administrator.port(),"database",database,"username",appRole,"password",appPassword));
+            TrustedDatabaseConfiguration.PreparedDatabase.Observation observation;
+            try(var binding=NativeProfileRecovery.bindPreparedDatabase(prepared,bytes,db,databaseOid,ownerOid,appOid)){
+                if(check!=null)check.verify(prepared,binding);
+                binding.verifyAdministrator(db);observation=binding.observation();
+            }finally{Arrays.fill(bytes,(byte)0);}
+            // Close and independently re-read the protected file, not a cached JSON object.
+            try(var reloaded=NativeProfileRecovery.readPreparedDatabase(prepared,db,databaseOid,ownerOid,appOid)){
+                require(observation.equals(reloaded.observation()));
+            }
+            verifyDatabase(true);return observation;
+            // The synthetic caller still revokes BOTH logins on exit. A verified connection
+            // observation does not mean the retained configuration remains usable or READY.
         }
         @Override public void close() throws IOException {
             if(db==null)return;

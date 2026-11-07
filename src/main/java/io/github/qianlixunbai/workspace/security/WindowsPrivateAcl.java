@@ -39,6 +39,9 @@ public final class WindowsPrivateAcl {
     public static void verifyPreparedDirectory(PreparedRecoveryTarget target,Path path) throws IOException {
         operatePrepared(target,path,true,false,false);
     }
+    public static void verifyPreparedConfiguration(PreparedRecoveryTarget target) throws IOException {
+        operatePrepared(target,target.data().resolve("database.dpapi"),false,false,false);
+    }
     private static void operatePrepared(PreparedRecoveryTarget target,Path path,boolean directory,boolean create,boolean sidecar) throws IOException {
         if(!isWindows())throw new IOException("Windows private ACL unavailable");
         WindowsNativeGate.admit();Path boundary=target.requirePinnedPath(path);
