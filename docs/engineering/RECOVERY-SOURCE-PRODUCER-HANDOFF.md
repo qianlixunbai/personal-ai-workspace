@@ -1,5 +1,17 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：旧工作区受控登记方案与单库连接围栏实验
+
+基于本地 `d788361`，按用户要求研究 PostgreSQL/pgBackRest/Borg 的当前离线状态、禁止新增并等待已有操作结束及一致性快照方案，形成 [LEGACY-PROFILE-ENROLLMENT-DESIGN.md](LEGACY-PROFILE-ENROLLMENT-DESIGN.md)。方向是建立本次可验证的当前边界，将此前历史保留为 UNKNOWN，而非要求永久补齐旧退出日志；主设计原字节和个人准入检查均未改动。
+
+在编码前建立本地 Git 标签 `recovery-before-legacy-enrollment-d788361`，并将五份未跟踪文档复制到本地忽略目录后逐字节摘要核对。Git 只能回退代码／已跟踪文档，不能回退数据库、凭据、模型任务、服务状态或外部副作用；用户的宽泛决定授权没有被转换为真实恢复、删除或公开发布许可。
+
+仅新增一个手动隔离实验 `LegacySourceFenceProbe.java` 和对应 runner，**首次单次通过**：新建专属 PG17 的精确源库 HBA 规则拒绝旧 app／管理员的新连接，另一个新建库仍可用；同时证明已有旧 app 连接仍可写，必须等待它自然退出。该 probe 自愿关闭自己的旧连接后，持有 SHARE/exported snapshot，新的受限 pg_dump 成功使用快照，Windows 源文件句柄拒绝写入；结束时只在当前字节仍匹配本次变更的情况下恢复 HBA 原字节，原 app 可重新连接。未创建 Profile 锁、退出记录或来源登记；结果为 `SYNTHETIC_DATABASE_FENCE_VERIFIED_MODEL_UNPROVEN`，不能用于个人 admission。
+
+专属 PG 端口 `62705`／PID `16144` 已经 data/端口/启动时间/程序路径核对后停止，现有 PG/Ollama/KAG 未触碰。JVM 256 MiB/2 核，PG shared_buffers 16 MiB/12 connections；只编译并运行此一个手动 probe，javac 有 5 条 Windows ExtendedOpenOption 内部 API 警告，无 Maven/Desktop/前端／全套测试或模型请求。单独 synthetic_source 表不代表 v3 完整备份或恢复重测。证据在 `.verification/recovery-legacy-enrollment/`，自产口令文件已清理，其余合成数据／dump 留存。
+
+方案明确将真实 HBA 变更 owner、原身份/ACL校验、未知结果只读核对／撤销、登记前只读配置上下文及独立模型结束证明列为待实现边界。HBA 是共享实例配置，局部规则也存在语法／并发修改与可用性风险；恢复访问规则不等于撤销连接和业务副作用。真实操作前须列出确切库、规则、维护角色、模型服务归属及回退计划，不能据本实验自动改共享配置、停止服务或创建缺失锁。已有只读许可仍有效，本轮没有新增真实内容读取。完整个人恢复继续 BLOCKED，但首次受控登记已有可实施的当前边界方案和 SQL／文件部分实证，不再以倒填历史为目标。
+
 ## 最新阶段：已授权的真实只读核查与排他失败分项诊断
 
 基于本地 `21b9159`。用户另行明确同意读取当前工作区的受保护 Runtime 历史，以及使用本机已有应用配置连接数据库、只读核对连接／角色等元数据；仍禁止读取业务数据、展示／另存密码、停止服务和实际备份／恢复。**这一只读许可已获得，不应再次把相同检查描述为等待用户授权。** 本阶段真实连接检查被缺失的安全前置阻断，而非缺少用户同意。
