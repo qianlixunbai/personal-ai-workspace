@@ -1,6 +1,23 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
-## 后续定位：合成 Profile 最终路径分歧，未修复、未补记 PASS
+## 最新阶段：认证后新建合成目标并恢复，真实入口仍阻塞
+
+基于 `5dc3fe8` 继续。先核对既有 NativeBootstrap 四份构建 pin，以 `VerifyProfileNative` 只读检查此前已记录的合成 ID；helper 返回 STOP/10，未 Provision，也没有证明从工作区可执行文件位置启动就获得非虚拟化目录视图。证据保存在 `.verification/recovery-profile-identity/pinned-native-readonly.json`。没有修改系统/包安全设置、替换 Known Folder、绕行 Gate、操作真实资料或启停既有服务。此前的最终路径分歧仍是实际产品入口的联调阻塞。
+
+随后实现 `backup/WorkspaceRecovery.restoreNewSyntheticTarget`，把已经完成加密及来源角色回收的 `WorkspaceSourceBackup.Completed` 接到实际新目标恢复：
+
+- 先完成 v3 AEAD 两遍认证、清单/TOC/Knowledge 验证及保存的 manifest digest 核对，之后才生成目标凭据、打开管理员连接或创建目标；只有该进程内真实执行产生的 Completed 可进入，不从口令或 JSON 重建来源权限。
+- 管理连接重新核对 source server system identifier、数据库 OID/receipt、端口和身份。全新随机数据库与 owner/app 角色仍强制 B3 合成命名、同一非 5432 实例；在任何 CREATE 前 force 保存不含密码的私有合成操作意图，不复用既有目标。
+- 两份角色以 NOLOGIN 创建并绑定操作 receipt；核对新 DB OID/owner、两份角色 OID、跨库 CONNECT/成员资格及 app 最小权限后才启用短期登录。调用既有恢复引擎完成新库恢复、Memory/Conversation/Knowledge 读回、源文件摘要与索引重建核对；目标原始 ownership receipt 被原引擎持久消费，未知结果不能重放。
+- 成功或普通异常结束时，都按精确 role OID/name/receipt 尝试禁用两份登录并清除密码；清理未知报告 `TARGET_CREDENTIAL_CLEANUP_REQUIRED`。仅删除本次解密临时 backup 子树，保留 candidate、数据库和操作证据；最终合成验证记录在凭据收尾及明文清理完成后写入。没有 DROP、覆盖修复或自动重试。
+
+沿用并扩展唯一 `RecoverySourceProducerProbe`，没有增加测试套件。对新建私有夹具 `C:\PAW-SourceProducer-b015697df8bd4f1f91cf8dee4e8f2b96`、PG17 随机端口 54964 实际执行 **1 次**：受保护配置绑定 → v3 备份/来源角色回收 → 错误口令不创建 DB/角色 → 新目标恢复 → 非空 Memory、Conversation、Knowledge 与索引核验 → 目标两角色 NOLOGIN/PASSWORD NULL → 原生来源记录发布及 DPAPI 重读。还核对 Finance 不进入目标、源快照不变、既有 staging 拒绝重放、操作意图不变及临时 backup 已清理。全部通过；自建 PG 实例经精确 PID/启动时间/路径/端口检查后停止，postmaster.pid 已不存在。Java 只编译本次两个类，.NET 只构建手工 probe（0 warning/0 error），未重建完整应用 JAR、前端或重跑其他测试。
+
+**这仍是合成引擎闭环，不是产品恢复发布。** 合成操作意图不是原生 DPAPI 恢复登记，当前进程内 Completed 不是可重启的可信来源消费者；本次没有验证断电/kill、网络中断或部分 CREATE 的未知结果处置。突然终止可能留下目标和短期凭据，必须保留证据、禁止自动重放；没有宣称 finally 能覆盖崩溃。目标 app 仍使用既有维护读回 grant，未提供日常 CRUD 配置/权限，两个登录最终都禁用。真实 Native Gate、完整停写、个人来源生产/登记消费、prepared Profile、READY、正式发布与显式激活仍缺失，维护保持 **BLOCKED**。目标结果准确保留 `RESTORE_VERIFIED / IDENTITY_REBIND_REQUIRED / WINDOWS_ADMISSION_PENDING`。
+
+证据：`.verification/recovery-fresh-target/` 中 `javac.log`、`dotnet-build.log`、`native-source-integration.log`、`synthetic-recovery-evidence.json`、`native-source-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json` 以及限定 runner。实现参考 [PostgreSQL 17 CREATE DATABASE 原始文档](https://github.com/postgres/postgres/blob/REL_17_STABLE/doc/src/sgml/ref/create_database.sgml) 的事务限制，故 intent 在 CREATE DATABASE 之前持久化，不能把该 SQL 与角色创建包装成一个虚构原子事务。五份未跟踪设计文档哈希未变；未合并 main、部署或推送。
+
+## 前次定位：合成 Profile 最终路径分歧，未修复、未补记 PASS
 
 按后续明确授权重新定位 `09978c3` 的 `PROFILE_PREPARATION` 失败；本次只检查上次记录的两份自建合成目录及其路径祖先元数据，没有新建 Profile、运行数据库、读取业务内容、修改 ACL 或重放 Provision。原失败日志和两个未完成目录均保留。
 

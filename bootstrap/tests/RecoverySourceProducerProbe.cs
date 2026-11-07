@@ -63,14 +63,20 @@ internal static class RecoverySourceProducerProbe
         if (!CryptographicOperations.FixedTimeEquals(original, File.ReadAllBytes(record))) throw new IOException();
         using (new FileStream(Path.Combine(root, "evidence", "runtime-admission.lock"), FileMode.Open, FileAccess.Read, FileShare.Read)) { }
         using (new FileStream(Path.Combine(root, "model-state", ".lock"), FileMode.Open, FileAccess.Write, FileShare.Read)) { }
+        using var recovery = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(isolated, "synthetic-recovery-evidence.json")));
+        foreach (string field in new[] { "authenticatedFreshTarget", "wrongPasswordCreatedNoDatabaseOrRoles",
+            "memoryConversationKnowledgeVerified", "financeExcluded", "sourceSnapshotUnchanged", "existingAttemptRejected", "plaintextBackupCleaned" })
+            if (!recovery.RootElement.GetProperty(field).GetBoolean()) throw new IOException();
         File.WriteAllText(Path.Combine(isolated, "native-source-evidence.json"), JsonSerializer.Serialize(new {
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
+            authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = true,
             personalSourceRegistration = false, productPlanRejected = true, duplicateAttemptRejected = true,
             sourceRecord = record, sourceRecordSha256 = Convert.ToHexStringLower(SHA256.HashData(original)) }));
         Console.WriteLine("PASS: protected Workspace configuration -> app/admin database binding -> owned backup/role cleanup -> native configuration/ciphertext verification -> DPAPI readback.");
         Console.WriteLine("PASS: synthetic receipt cannot authorize a product plan; duplicate attempt rejected; exclusion released after child exit.");
-        Console.WriteLine("Personal maintenance remains BLOCKED; real Native Gate, personal source and restore/activation were not exercised.");
+        Console.WriteLine("PASS: authenticated v3 backup -> new synthetic database/roles -> Memory/Conversation/Knowledge restore and index rebuild -> both target logins disabled.");
+        Console.WriteLine("Personal maintenance remains BLOCKED; real Native Gate, personal target publication and activation were not exercised.");
     }
 }

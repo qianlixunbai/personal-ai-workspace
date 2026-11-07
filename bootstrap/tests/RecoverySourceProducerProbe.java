@@ -135,9 +135,10 @@ public final class RecoverySourceProducerProbe {
                 sql(db,"GRANT USAGE ON SCHEMA workspace TO "+appRole);
                 for(String table:WorkspaceV3Catalog.TABLES)sql(db,"GRANT SELECT ON TABLE "+table+" TO "+appRole);
                 sql(db,"INSERT INTO workspace.memory_items VALUES('"+UUID.randomUUID()+"','PROJECT_NOTE','Synthetic','Native producer','ACTIVE',1,'MANUAL',1000,1000)");
-                before=snapshot(db,true);
             }
             Path knowledge=root.resolve("data/knowledge");directory(knowledge);directory(knowledge.resolve("sources"));
+            seedSyntheticHistory(source,knowledge);
+            try(var db=source.dataSource().getConnection()){before=snapshot(db,true);}
             stage="PROTECTED_CONFIGURATION";
             Method freeze=TrustedDatabaseConfiguration.class.getDeclaredMethod("pinRecoverySource",Path.class);freeze.setAccessible(true);
             try{freeze.invoke(null,root);throw new IllegalStateException("Missing configuration accepted");}
@@ -177,6 +178,46 @@ public final class RecoverySourceProducerProbe {
                 require(digest(decrypted.backup().resolve("manifest.json")).equals(completed.backup().manifestSha256()));
                 MaintenanceStaging.clean(staging);held.invoke(exclusion,root);
                 require(configurationHash.equals(digest(configurationFile)));
+                stage="AUTHENTICATED_FRESH_TARGET_RECOVERY";
+                long databases,roles;
+                try(var db=source.dataSource().getConnection()){
+                    databases=scalar(db,"SELECT count(*) FROM pg_database");roles=scalar(db,"SELECT count(*) FROM pg_roles");
+                }
+                Path rejected=isolated.resolve("wrong-recovery-password");
+                char[] wrong=UUID.randomUUID().toString().toCharArray();
+                try{WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),rejected,wrong,source);
+                    throw new IllegalStateException("Unauthenticated recovery accepted");}
+                catch(IOException denied){require(denied.getMessage().contains("AUTHENTICATION"));}
+                require(Arrays.equals(wrong,new char[wrong.length])&&!Files.exists(rejected.resolve("SYNTHETIC_RESTORE_PLAN.json")));
+                try(var db=source.dataSource().getConnection()){
+                    require(databases==scalar(db,"SELECT count(*) FROM pg_database")&&roles==scalar(db,"SELECT count(*) FROM pg_roles"));
+                }
+                Path restored=isolated.resolve("restored-target");
+                var recovery=WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),restored,password.clone(),source);
+                require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
+                    &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup")));
+                try(var db=source.dataSource().getConnection()){
+                    require(before.equals(snapshot(db,true))&&databases+1==scalar(db,"SELECT count(*) FROM pg_database")
+                        &&roles+2==scalar(db,"SELECT count(*) FROM pg_roles"));
+                    require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid IN ("+recovery.ownerRoleOid()+","+recovery.appRoleOid()+") AND NOT rolcanlogin AND rolpassword IS NULL")==2);
+                }
+                var restoredAdmin=new Endpoint(recovery.database(),source.username(),source.password(),source.port());
+                try(var db=restoredAdmin.dataSource().getConnection()){
+                    require(scalar(db,"SELECT count(*) FROM workspace.memory_items")==1&&scalar(db,"SELECT count(*) FROM workspace.conversations")==1
+                        &&scalar(db,"SELECT count(*) FROM workspace.knowledge_revisions")==1
+                        &&scalar(db,"SELECT count(*) FROM workspace.knowledge_chunks")>0
+                        &&scalar(db,"SELECT count(*) FROM pg_tables WHERE schemaname='public'")==0);
+                    verifyKnowledge(db,restored.resolve("candidate/knowledge"),completed.backup().manifest().knowledgeFiles());
+                }
+                String planHash=digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"));
+                try{WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),restored,password.clone(),source);
+                    throw new IllegalStateException("Existing attempt replayed");}
+                catch(IOException denied){/* Existing staging is terminal, never replayed. */}
+                require(planHash.equals(digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"))));
+                write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(Map.of(
+                    "authenticatedFreshTarget",true,"wrongPasswordCreatedNoDatabaseOrRoles",true,"target",recovery,
+                    "memoryConversationKnowledgeVerified",true,"financeExcluded",true,"sourceSnapshotUnchanged",true,
+                    "existingAttemptRejected",true,"plaintextBackupCleaned",true,"nativeGateExercised",false,"activation",false)));
                 write(isolated.resolve("source-binding-evidence.json"),JSON.writeValueAsBytes(Map.of(
                     "configurationDpapiRead",true,"configurationPinned",true,"configurationSha256",configurationHash,
                     "applicationRoleOid",binding.databaseIdentity().applicationRoleOid(),"wrongAdministratorDatabaseRejected",true,
@@ -188,6 +229,32 @@ public final class RecoverySourceProducerProbe {
                 completed.writeNativeResult(output);
                 stage="RESULT_SENT";
             } finally {Arrays.fill(password,'\0');Arrays.fill(consumed,'\0');}
+        }
+    }
+
+    private static void seedSyntheticHistory(Endpoint source,Path knowledge) throws Exception {
+        String conversation=UUID.randomUUID().toString(),turn=UUID.randomUUID().toString();
+        String doc=UUID.randomUUID().toString(),job=UUID.randomUUID().toString();
+        directory(knowledge.resolve("sources/"+doc));Path file=knowledge.resolve("sources/"+doc+"/1.source");
+        write(file,"synthetic recovery budget\n".getBytes(StandardCharsets.UTF_8));
+        var parsed=io.github.qianlixunbai.workspace.knowledge.KnowledgeParser.parse(file,"TXT",()->false);
+        try(var db=source.dataSource().getConnection()){
+            sql(db,"INSERT INTO workspace.conversations VALUES('"+conversation+"','Synthetic recovery','ACTIVE',1000,2000)");
+            sql(db,"INSERT INTO workspace.conversation_turns VALUES('"+turn+"','"+conversation+"',1,'SUCCEEDED',1000,2000,'"+UUID.randomUUID()+"',NULL)");
+            sql(db,"INSERT INTO workspace.conversation_messages VALUES('"+UUID.randomUUID()+"','"+turn+"','USER','synthetic question',1000)");
+            sql(db,"INSERT INTO workspace.conversation_messages VALUES('"+UUID.randomUUID()+"','"+turn+"','ASSISTANT','synthetic answer',2000)");
+            db.setAutoCommit(false);
+            sql(db,"INSERT INTO workspace.knowledge_documents VALUES('"+doc+"','budget.txt','ACTIVE',2,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','"+job+"')");
+            try(var statement=db.prepareStatement("INSERT INTO workspace.knowledge_revisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")){
+                Object[] values={doc,1,digest(file),"budget.txt","TXT",Files.size(file),"2026-01-01T00:00:00Z",
+                    io.github.qianlixunbai.workspace.knowledge.KnowledgeParser.PARSER_VERSION,
+                    io.github.qianlixunbai.workspace.knowledge.KnowledgeParser.NORMALIZATION_VERSION,
+                    parsed.digest(),parsed.text(),parsed.locatorJson(),parsed.lineCount(),
+                    (long)parsed.text().getBytes(StandardCharsets.UTF_8).length+parsed.locatorJson().getBytes(StandardCharsets.UTF_8).length};
+                for(int i=0;i<values.length;i++)statement.setObject(i+1,values[i]);statement.executeUpdate();
+            }
+            sql(db,"INSERT INTO workspace.knowledge_jobs VALUES('"+job+"','"+doc+"','READY',NULL,1,'budget.txt','TXT',"+Files.size(file)+",1,'2026-01-01T00:00:00Z')");
+            db.commit();
         }
     }
 
