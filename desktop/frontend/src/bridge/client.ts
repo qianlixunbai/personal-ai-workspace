@@ -35,7 +35,7 @@ import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
 
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
-const submission = (method: Method) => method === 'assistant.submit' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
+const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
@@ -142,6 +142,7 @@ export class WorkspaceClient {
   open(method: NativeMethod) { return this.request(method) as Promise<{ opened: true }> }
   selectMemories() { return this.request('assistant.selectMemories') as Promise<MemoryChoice> }
   submitAssistant(payload: AssistantSubmit) { return this.request('assistant.submit', payload) as Promise<OperationView> }
+  proposeMemory(text: string) { return this.request('assistant.proposeMemory', { text }) as Promise<OperationView> }
   submitTranslate(text: string, targetLanguage: string) { return this.request('translate.submit', { text, targetLanguage }) as Promise<OperationView> }
   getOperation(operationId: string) { return this.request('operations.get', { operationId }) as Promise<OperationView> }
   submitWebFetch(url: string) {

@@ -5,9 +5,11 @@ import { emptyMemory, validContent, validDraft, validQuery } from '../bridge/mem
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { MemoryPreview } from '../components/MemoryPreview'
+import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
+import type { MemorySourceRole } from '../components/memoryCandidate'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
-export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void) => boolean
+export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void, role: MemorySourceRole) => boolean
 const message = (problem: unknown) => problem instanceof BridgeError ? problem.message : 'Memory 暂时不可用，请显式刷新或重新加载。'
 type Confirmation = { title: string; text: string; confirmText: string; action: () => void } | null
 export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDraft, openBackup }: {
@@ -21,7 +23,8 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
-  const [fromConversation, setFromConversation] = useState(false)
+  const [fromConversation, setFromConversation] = useState<MemorySourceRole | null>(null)
+  const [candidateEpoch, setCandidateEpoch] = useState(0)
   const [stale, setStale] = useState(false)
   const [missing, setMissing] = useState(false)
   const [unknown, setUnknown] = useState(false)
@@ -49,9 +52,10 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     }
   }, [busy, confirmation, visible])
   const loadEditor = (item: MemoryItem | null) => {
+    setCandidateEpoch(value => value + 1)
     setPreviewId(null)
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
-    setStale(false); setMissing(false); setUnknown(false); setError(''); setFromConversation(false)
+    setStale(false); setMissing(false); setUnknown(false); setError(''); setFromConversation(null)
   }
   useEffect(() => {
     if (!bridge.ready || dirty === signalledDirty.current) return
@@ -71,12 +75,12 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   useEffect(() => registerLeave(leave => requestDiscard(() => {
     loadEditor(null); setNotice('已丢弃本地修改。'); leave()
   })), [registerLeave, dirty, confirmation, busy])
-  useEffect(() => registerDraft?.((incoming, accepted) => {
+  useEffect(() => registerDraft?.((incoming, accepted, role) => {
     if (!enabled || actionLock.current || confirmation) return false
     const token = generation.current
     requestDiscard(() => {
       if (token !== generation.current) return
-      loadEditor(null); setDraft(incoming); setFromConversation(true); setNotice(''); focusNext.current = 'editor'
+      loadEditor(null); setDraft(incoming); setFromConversation(role); setNotice(''); focusNext.current = 'editor'
       accepted()
     })
     return true
@@ -195,6 +199,8 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
       </section>
       <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
         {fromConversation && <p className="hint">已从对话填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。</p>}
+        {fromConversation && !loaded && <MemoryCandidatePanel key={candidateEpoch} bridge={bridge} enabled={enabled && visible && !busy && !confirmation && !blocked} draft={draft} role={fromConversation}
+          apply={candidate => { if (blocked || actionLock.current) return; loadEditor(null); setDraft(candidate); setNotice('已采用模型候选，尚未保存。请检查内容后点击保存。' + (fromConversation === 'ASSISTANT' ? '来源为助手回复，未经核实。' : '')); editor.current?.focus() }} />}
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
         {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请新建 或选择其他条目。</p>}

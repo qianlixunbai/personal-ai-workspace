@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryPage } from './MemoryPage'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
+import { candidatePrompt, parseCandidate } from '../components/memoryCandidate'
 import { MemoryService, memoryItem } from '../test/memoryFixtures'
 import { conversation, history as conversationHistory, uuid } from '../test/conversationFixtures'
 import { Port } from '../test/fixtures'
@@ -65,8 +66,22 @@ it('previews one search result without replacing a dirty draft, rejects changed 
 })
 class ConversationMemoryService extends MemoryService {
   detail = conversationHistory()
+  candidateStatus: 'SUCCEEDED' | 'QUEUED' = 'SUCCEEDED'
+  candidateResult = JSON.stringify({ candidate: null })
+  candidateError: string | null = null
+  holdCandidate = false
   postMessage(request: unknown) {
     const method = (request as { method: string }).method
+    if (method === 'assistant.proposeMemory' || method.startsWith('operations.')) {
+      Port.prototype.postMessage.call(this, request)
+      const index = this.sent.length - 1, sent = this.sent[index]!
+      if (this.holdCandidate) return
+      queueMicrotask(() => {
+        if (this.candidateError) { this.emit({ version: 1, sessionId: sent.sessionId, requestId: sent.requestId, ok: false, error: { code: this.candidateError, message: `Safe ${this.candidateError}` } }); return }
+        this.reply(index, method === 'operations.cancel' ? { requested: true } : { operationId: uuid(801), status: this.candidateStatus,
+          result: this.candidateStatus === 'SUCCEEDED' ? this.candidateResult : null, error: null })
+      }); return
+    }
     if (!method.startsWith('conversations.')) { super.postMessage(request); return }
     Port.prototype.postMessage.call(this, request)
     const index = this.sent.length - 1
@@ -89,6 +104,94 @@ const chooseMessage = async (role: 'USER' | 'ASSISTANT') => {
   await act(async () => fireEvent.click(within(turn).getAllByRole('button', { name: '保存为记忆草稿' })[role === 'USER' ? 0 : 1]!))
 }
 const openConversations = async () => { await act(async () => fireEvent.click(screen.getByRole('link', { name: '对话' }))) }
+it('generates editable grounded memory candidates and saves only after explicit adoption and Save', async () => {
+  const port = new ConversationMemoryService()
+  const original = '我喜欢简洁的中文回答。\n项目使用本地模型。'
+  const proposed = { type: 'PREFERENCE', title: '回答偏好', content: '偏好简洁的中文回答。', evidence: '我喜欢简洁的中文回答。' }
+  port.detail.turns[0]!.userMessage.content = original
+  port.candidateStatus = 'QUEUED'
+  port.candidateResult = JSON.stringify({ candidate: proposed })
+  const { title, content } = await setupConversationDraft(port)
+  await chooseMessage('USER')
+  expect(port.sent.some(x => x.method === 'assistant.proposeMemory')).toBe(false)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '生成记忆候选' })); fireEvent.click(screen.getByRole('button', { name: '生成记忆候选' })) })
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory').map(x => x.payload)).toEqual([{ text: candidatePrompt(original, 'USER') }])
+  port.candidateStatus = 'SUCCEEDED'; await screen.findByLabelText('候选标题')
+  expect(title.value).toBe(''); expect(content.value).toBe(original)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+  expect(screen.getByText(proposed.evidence)).toBeTruthy()
+  edit(screen.getByLabelText('候选标题'), '已审阅的偏好'); edit(screen.getByLabelText('候选正文'), '请使用简洁中文。')
+  await click('采用候选到编辑器')
+  expect(title.value).toBe('已审阅的偏好'); expect(content.value).toBe('请使用简洁中文。')
+  expect(port.sent.some(x => x.method === 'memory.create')).toBe(false)
+  await click('保存')
+  expect(port.sent.filter(x => x.method === 'memory.create').map(x => x.payload)).toEqual([{ type: 'PREFERENCE', title: '已审阅的偏好', content: '请使用简洁中文。' }])
+
+  await openConversations(); await chooseMessage('ASSISTANT')
+  port.candidateResult = JSON.stringify({ candidate: null }); await click('生成记忆候选')
+  expect(screen.getByText(/模型未提出适合长期保留/)).toBeTruthy()
+  expect((port.sent.filter(x => x.method === 'assistant.proposeMemory').at(-1)?.payload as { text: string }).text).toContain('"role":"ASSISTANT"')
+  port.candidateResult = JSON.stringify({ candidate: { ...proposed, evidence: 'not in source' } }); await click('生成记忆候选')
+  expect(screen.getByRole('alert').textContent).toContain('未采用，未保存')
+  expect(screen.queryByLabelText('候选标题')).toBeNull()
+  expect(content.value).toBe('Synthetic answer 1')
+  edit(content, original)
+  port.candidateResult = JSON.stringify({ candidate: proposed }); await click('生成记忆候选')
+  edit(content, 'Changed during review')
+  expect(screen.getByRole('button', { name: '采用候选到编辑器' }).hasAttribute('disabled')).toBe(true)
+  await click('丢弃候选'); expect(content.value).toBe('Changed during review')
+  edit(content, '中'.repeat(3000))
+  expect(screen.getByRole('button', { name: '生成记忆候选' }).hasAttribute('disabled')).toBe(true)
+  expect(candidatePrompt('\ud800', 'USER')).toBeNull()
+  expect(() => parseCandidate(JSON.stringify({ candidate: { ...proposed, content: 'x'.repeat(2001) } }), original)).toThrow()
+  expect(() => parseCandidate('```json\n{"candidate":null}\n```', original)).toThrow()
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+  edit(content, original); edit(title, 'Synthetic uncertain original')
+  await click('生成记忆候选'); port.error = 'OutcomeUnknown'; await click('保存')
+  expect(screen.getByRole('button', { name: '采用候选到编辑器' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: '生成记忆候选' }).hasAttribute('disabled')).toBe(true)
+  await click('采用候选到编辑器'); expect(title.value).toBe('Synthetic uncertain original')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(2)
+})
+it('keeps candidate cancellation, unknown outcomes and late task replies from writing or replacing drafts', async () => {
+  const port = new ConversationMemoryService()
+  const { bridge, content } = await setupConversationDraft(port)
+  await chooseMessage('USER')
+  const proposed = JSON.stringify({ candidate: { type: 'PROJECT_NOTE', title: 'Synthetic candidate', content: 'Synthetic reviewed text', evidence: 'Synthetic user 1' } })
+  port.candidateStatus = 'QUEUED'; await click('生成记忆候选')
+  await click('取消生成候选')
+  port.candidateError = 'RuntimeUnavailable'
+  await screen.findByText('执行结果待确认，不会自动重发。')
+  const submissions = port.sent.filter(x => x.method === 'assistant.proposeMemory').length
+  expect(screen.getByRole('button', { name: '生成记忆候选' }).hasAttribute('disabled')).toBe(true)
+  port.candidateError = null; port.candidateStatus = 'SUCCEEDED'; port.candidateResult = proposed
+  await click('核对生成状态')
+  expect(screen.getByText('任务已结束；已按取消意图丢弃候选。')).toBeTruthy()
+  expect(screen.queryByLabelText('候选标题')).toBeNull()
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(submissions)
+
+  port.holdCandidate = true; await click('生成记忆候选')
+  const late = port.sent.length - 1
+  await openConversations(); await click('丢弃并继续')
+  await act(async () => port.reply(late, { operationId: uuid(801), status: 'SUCCEEDED', result: proposed, error: null }))
+  expect(screen.queryByLabelText('候选标题')).toBeNull()
+  expect(content.value).toBe('')
+  await chooseMessage('USER'); await click('生成记忆候选')
+  const oldSession = port.sent.length - 1
+  await act(async () => port.session(uuid(909)))
+  await act(async () => port.reply(oldSession, { operationId: uuid(801), status: 'SUCCEEDED', result: proposed, error: null }))
+  expect(screen.queryByLabelText('候选标题')).toBeNull()
+  await openConversations(); await screen.findByRole('article'); await chooseMessage('USER')
+  port.holdCandidate = false; port.candidateError = 'OutcomeUnknown'
+  await click('生成记忆候选')
+  const uncertainSubmissions = port.sent.filter(x => x.method === 'assistant.proposeMemory').length
+  expect(screen.getByRole('button', { name: '生成记忆候选' }).hasAttribute('disabled')).toBe(true)
+  await click('生成记忆候选')
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(uncertainSubmissions)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update' || x.method === 'conversations.send')).toBe(false)
+  expect(bridge.ready).toBe(true)
+})
 it('hands USER and ASSISTANT history through App into the existing editor, and creates exactly once only after an edited Save', async () => {
   const port = new ConversationMemoryService()
   const original = '  Synthetic 用户 <script>instruction</script>\r\n\u0001\u202e  '

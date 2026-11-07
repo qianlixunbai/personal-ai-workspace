@@ -116,6 +116,33 @@ public sealed class WorkspaceOperationsTests
         foreach (string secret in new[] { "taskId", "profile", "promptVersion", "Authorization", new string('t', 43) }) Assert.DoesNotContain(secret, f.Sent.Last());
         Assert.Equal([0], f.Handler.MemoryCounts); Assert.All(f.Handler.Paths, path => Assert.DoesNotContain("conversation", path));
     }
+    [Fact] public async Task MemoryCandidateUsesLocalAskWithoutConsumingSelectionOrWritingMemory()
+    {
+        using var f = new Fixture(); await f.Call("assistant.selectMemories");
+        int replies = f.Sent.Count;
+        await f.Call("assistant.proposeMemory", new { text = "Synthetic candidate", selectedMemoryRefs = Fixture.Refs() });
+        Assert.Equal(replies, f.Sent.Count); Assert.Equal(0, f.Handler.Posts);
+        await f.Call("assistant.proposeMemory", new { text = new string('界', 2000) });
+        Assert.False(f.Last.GetProperty("ok").GetBoolean()); Assert.Equal(0, f.Handler.Posts);
+        string request = f.Request("assistant.proposeMemory", new { text = "Synthetic candidate" });
+        await f.Receive(request, "https://evil.invalid/index.html"); Assert.Equal(0, f.Handler.Posts);
+        await f.Receive(request); string id = f.Id;
+        Assert.Equal(TaskState.SUCCEEDED, (await f.Terminal(id)).Status);
+        Assert.Equal("/api/v1/ask/tasks", f.Handler.Paths[0]); Assert.Equal([0], f.Handler.MemoryCounts);
+        await f.Receive(request); Assert.Equal(1, f.Handler.Posts);
+        await f.Assistant(refs: Fixture.Refs()); await f.Terminal(f.Id);
+        Assert.Equal(new[] { 0, 1 }, f.Handler.MemoryCounts);
+        f.Handler.Finish = false; await f.Call("assistant.proposeMemory", new { text = "Synthetic cancellation" }); string active = f.Id;
+        await f.Call("operations.cancel", new { operationId = active });
+        Assert.Equal(TaskState.CANCELLED, (await f.Terminal(active)).Status);
+        Assert.All(f.Handler.Paths, path => Assert.True(path == "/api/v1/ask/tasks" || path == "/api/v1/memory/ask/tasks" || path.StartsWith("/api/v1/tasks/", StringComparison.Ordinal)));
+        f.Bridge.BeginDocument(Document); f.Bridge.Ready(Document);
+        await f.Call("operations.get", new { operationId = id }); Assert.False(f.Last.GetProperty("ok").GetBoolean());
+        f.Handler.TransportFailure = true; int posts = f.Handler.Posts;
+        await f.Call("assistant.proposeMemory", new { text = "Synthetic unknown outcome" });
+        Assert.Equal("OutcomeUnknown", f.Last.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(posts + 1, f.Handler.Posts); Assert.DoesNotContain("private provider", f.Sent.Last());
+    }
     [Fact] public async Task TranslateUsesNativeSingleContractAndCopyOnlyVerifiedOwnedResult()
     {
         using var f = new Fixture(); await f.Call("translate.submit", new { text = "Synthetic translate source", targetLanguage = "ja" }); string id = f.Id;

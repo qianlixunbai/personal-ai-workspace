@@ -13,7 +13,7 @@ const safeText = (problem: unknown) => problem instanceof BridgeError ? problem.
 type Pending = { turnId: string; canCancel: boolean } | null
 
 export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
-  bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string) => void
+  bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'USER' | 'ASSISTANT') => void
 }) {
   const [status, setStatus] = useState<ConversationStatus>('ACTIVE')
   const [pages, setPages] = useState({ ACTIVE: 0, ARCHIVED: 0 })
@@ -62,7 +62,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     const turn = detailRef.current?.turns.find(item => item.status !== 'PENDING'
       && (item.userMessage.messageId === messageId || item.assistantMessage?.messageId === messageId))
     const message = turn?.userMessage.messageId === messageId ? turn.userMessage : turn?.assistantMessage
-    if (message) onMemoryDraft?.(message.content)
+    if (message) onMemoryDraft?.(message.content, message.role)
   }
 
   const loadList = async (filter = statusRef.current, page = pagesRef.current[filter]) => {

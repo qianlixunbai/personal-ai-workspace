@@ -57,7 +57,7 @@ flowchart TD
 
 | 领域 | 数据真相与边界 |
 | --- | --- |
-| Memory | 用户主动维护的记录；revision 保护；每次使用显式选取，不自动提取或隐式注入；[只读预览](../engineering/MEMORY-READ-PREVIEW-REPORT.md)复用单条读取并核对列表版本，正文仅留在当前界面内存 |
+| Memory | 用户主动维护、revision 保护、每次显式选取；[对话候选生成](../engineering/MEMORY-CANDIDATE-GENERATION-REPORT.md)复用本地 Ask，必须人工审阅并明确保存，无后台提取或隐式注入；[只读预览](../engineering/MEMORY-READ-PREVIEW-REPORT.md)核对列表版本，正文仅留在当前界面内存 |
 | Conversations | durable 有序轮次与终态；上下文由 Runtime 组装，UI 不重放未确认提交；[按轮次定位](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)复用分页读取；[记忆引用查看](../engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)只读核对当前记录的精确版本，不重建历史正文或自动选择下一轮上下文 |
 | Knowledge | 独立文档 metadata、源文件／内容与版本；TXT / Markdown 确定性导入，支持独立备份／恢复 |
 | 检索 | [KnowledgeLexicalIndex](../../src/main/java/io/github/qianlixunbai/workspace/knowledge/KnowledgeLexicalIndex.java) 的派生词法索引；不是向量数据库 |

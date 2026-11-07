@@ -75,7 +75,15 @@ internal sealed class WorkspaceOperations : IDisposable
             return new { changed = true, selectedMemoryRefs = result };
         }
     }
-    internal async Task<WorkspaceOperationView> SubmitAsync(string session, AssistantInput input, SelectedMemoryRef[] references)
+    internal Task<WorkspaceOperationView> SubmitAsync(string session, AssistantInput input, SelectedMemoryRef[] references)
+        => SubmitCoreAsync(session, input, references, consumeSelection: true);
+
+    // Candidate generation is a stateless local Ask. It neither uses nor consumes
+    // a selection held by the ordinary assistant UI, and has no Memory write path.
+    internal Task<WorkspaceOperationView> ProposeMemoryAsync(string session, string text)
+        => SubmitCoreAsync(session, new(AssistantAction.Ask, text), [], consumeSelection: false);
+
+    private async Task<WorkspaceOperationView> SubmitCoreAsync(string session, AssistantInput input, SelectedMemoryRef[] references, bool consumeSelection)
     {
         input.Validate();
         MemoryReference[] memories;
@@ -116,7 +124,7 @@ internal sealed class WorkspaceOperations : IDisposable
                         {
                             reservations--; registered = true;
                             if (!disposed) entries.Add(id, entry);
-                            if (selections.TryGetValue(session, out var current) && ReferenceEquals(current, selection)) selections.Remove(session);
+                            if (consumeSelection && selections.TryGetValue(session, out var current) && ReferenceEquals(current, selection)) selections.Remove(session);
                         }
                         entry.Task = task;
                         if (task.Terminal) entry.Finished = now();

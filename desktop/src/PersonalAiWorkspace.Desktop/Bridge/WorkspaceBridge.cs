@@ -291,6 +291,7 @@ internal sealed class WorkspaceBridge : IDisposable
                 result = method switch
                 {
                     "assistant.selectMemories" => await operations.SelectAsync(session, cancellation),
+                    "assistant.proposeMemory" => await operations.ProposeMemoryAsync(session, payload.GetProperty("text").GetString()!),
                     "assistant.submit" => await operations.SubmitAsync(session,
                         new(payload.GetProperty("mode").GetString() == "Ask" ? AssistantAction.Ask : AssistantAction.Summarize,
                             payload.GetProperty("text").GetString()!),
@@ -354,7 +355,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static bool CanonicalId(string value) => Guid.TryParseExact(value, "D", out var id)
         && id != Guid.Empty && id.ToString("D") == value;
     internal static readonly IReadOnlySet<string> BusinessMethods = new HashSet<string>(StringComparer.Ordinal)
-    { "assistant.selectMemories", "assistant.submit", "translate.submit", "operations.get", "operations.cancel", "operations.copyResult" };
+    { "assistant.selectMemories", "assistant.submit", "assistant.proposeMemory", "translate.submit", "operations.get", "operations.cancel", "operations.copyResult" };
     internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
     { "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
@@ -444,6 +445,7 @@ internal sealed class WorkspaceBridge : IDisposable
         if (method == "translate.submit")
             return Fields(payload, "text", "targetLanguage") && Text(payload, "text", 4000, out _)
                 && Text(payload, "targetLanguage", 35, out _);
+        if (method == "assistant.proposeMemory") return Fields(payload, "text") && Text(payload, "text", 3000, out _);
         if (method != "assistant.submit" || !Fields(payload, "mode", "text", "selectedMemoryRefs")
             || !Text(payload, "mode", 9, out var mode) || mode is not ("Ask" or "Summarize")
             || !Text(payload, "text", mode == "Ask" ? 3000 : 6000, out _)) return false;

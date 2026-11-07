@@ -2,6 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
+2026-11-07 记忆形成补充：对话转草稿后可主动用当前本机模型生成最多一条可编辑候选，对照原文摘录审阅、采用，再明确点击保存；无候选或无效输出不写入。复用现有 Ask／Memory 链路，候选请求不消耗助手已有记忆选择。前端聚焦场景、隔离 Native 桥接及构建通过；实际模型提取质量和真实 Windows 流程未验收。无后台自动记忆，个人备份／恢复仍关闭，见[能力盘点、交付与验证边界](engineering/MEMORY-CANDIDATE-GENERATION-REPORT.md)。
+
 2026-11-07 记忆透明性补充：对话历史可展开本轮记忆引用，并逐条按需读取。仅 ID／版本匹配且仍使用中的当前正文可显示；版本变化、归档和删除不冒充历史正文。查看不改变下一轮记忆选择或草稿，不增加自动记忆。一个合成 Bridge 场景及前端构建通过；尚未打入受信 Windows 包或验收真实读取链路。个人备份／恢复继续 BLOCKED，详见[交付与回退边界](engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)。
 
 2026-11-07 记忆使用补充：“我的记忆”新增按需只读正文预览和已提交搜索词高亮，保留右侧未保存草稿，一次只读取／显示一条，并拒绝列表版本已变化的结果。一个合成 Bridge 聚焦用例及前端构建通过；仍为用户手动维护记忆，没有自动提取或注入。未打入受信 Windows 包或访问真实个人数据，个人恢复继续 BLOCKED。见[交付与使用范围](engineering/MEMORY-READ-PREVIEW-REPORT.md)。

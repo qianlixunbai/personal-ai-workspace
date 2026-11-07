@@ -35,11 +35,11 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   }
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
   const registerDraft = useCallback((receive: MemoryDraftReceiver) => { receiveMemoryDraft.current = receive; return () => { receiveMemoryDraft.current = () => false } }, [])
-  const draftFromConversation = (content: string) => {
+  const draftFromConversation = (content: string, role: 'USER' | 'ASSISTANT') => {
     const token = generation.current
     if (!receiveMemoryDraft.current({ ...emptyMemory(), content }, () => {
       if (token === generation.current) navigate('memory')
-    })) setNotice('请先完成记忆编辑器中的操作，再重试。')
+    }, role)) setNotice('请先完成记忆编辑器中的操作，再重试。')
   }
   const navigate = (next: typeof page, runtime = false) => {
     if (next === pageRef.current) {
