@@ -1,6 +1,20 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
-## 最新阶段：产品受信维护入口已接线，实机集成阻塞
+## 后续定位：合成 Profile 最终路径分歧，未修复、未补记 PASS
+
+按后续明确授权重新定位 `09978c3` 的 `PROFILE_PREPARATION` 失败；本次只检查上次记录的两份自建合成目录及其路径祖先元数据，没有新建 Profile、运行数据库、读取业务内容、修改 ACL 或重放 Provision。原失败日志和两个未完成目录均保留。
+
+- 使用与产品相同的 `CreateFileW` 访问、共享及目录/无跟随标志，重开逻辑路径和 OS 返回的物理路径。两者的 `FILE_ID_INFO` 相同，物理路径本身 canonical；目录无 reparse point，当前用户所有、DACL protected。失败点是最终路径字符串与固定 Profile 根不相等，不能将其解释为 ACL 不合格。
+- Known Folder 返回 `C:\Users\<user>\AppData\Local`；新建叶目录的最终路径落在 `D:\WpSystem\<SID>\AppData\Local\Packages\OpenAI.Codex_<family>\LocalCache\Local\PersonalAIWorkspace.Development\Profiles\<synthetic-id>`。应用/Profiles 父目录通过两种路径打开均报告相同文件身份，但各自最终路径仍保留各自名称；这不证明目录祖先和叶目录已经具有产品需要的一致 canonical 路径链。不能仅凭文件 ID 相同接受逐个子根重定向。
+- `GetCurrentPackageFullName` 返回 `15700 / NO_PACKAGE`。显式当前用户 token 和 NULL token 下的 `KF_FLAG_RETURN_FILTER_REDIRECTION_TARGET` 都未返回物理包缓存位置；NULL token 下单独的 FORCE_APP_DATA_REDIRECTION、FORCE_PACKAGE_REDIRECTION 也未改变返回值。包身份查询或 Known Folder 标志不能在本环境提供修复依据。
+
+微软的 [MSIX AppData 操作说明](https://github.com/MicrosoftDocs/msix-docs/blob/main/msix-src/desktop/desktop-to-uwp-behind-the-scenes.md#appdata-operations-on-windows-10-version-1903-and-later) 说明新建项的私有重定向及已有路径的合并行为，与本机观测相符。GitHub [openai/codex#41665](https://github.com/openai/codex/issues/41665) 有同类“子进程无 package identity、句柄仍指向 LocalCache”的报告；其中 [进程树 breakaway 实验](https://github.com/openai/codex/issues/41665#issuecomment-5476012474) 也未改变报告者的路径视图。后两者只是外部线索，不是本机验证；本次没有复制其进程启动绕行实验、改 Codex 包配置或删除任何 shadow。
+
+**本次没有找到符合原固定根/祖先 pin 合同的产品修复，完整真实 Native Gate 链路仍 BLOCKED。** 不修改 `OpenDirectory`、helper pin 或 Java Gate 来接受该分歧；也不把物理路径写入参数冒充当前受信 Profile。后续需要在独立、正常用户的非虚拟化执行环境中运行已有 `RecoveryTrustedInspectionProbe`，先确认新建合成根的最终路径一致，再进行原生配置与只读来源端到端验证。当前工具进程的所有普通子进程是否可获得这种视图尚未证明，不能承诺只换 shell 或加一个 Known Folder 标志就能解决。该环境前提满足后，仍不得将只读来源验证提升为完整停写或个人备份准入。
+
+本地证据：`.verification/recovery-profile-identity/inspect-context.ps1`、`context-readonly.json`、`known-folder-null-token.json`、`handle-lineage-readonly.json`、`final-boundary-evidence.json`。本次未重跑相同失败的端到端流程或新增测试模块；仅保存诊断与交接结论。五份未跟踪设计文档保持原字节，既有服务未操作，未合并、部署或推送。
+
+## 前一阶段：产品受信维护入口已接线，实机集成阻塞
 
 基于本地 `2b1899f` 继续实现。`Program --inspect-profile-recovery-v1` 现在调用原生 owner 的 `InspectSourceReadinessAsync`：持有既有实例互斥量及 Profile/运行锁/模型锁，使用 `TrustedDevelopmentRuntimeSources` 的嵌入清单固定实际 JAR、JVM 与 JNA 来源，直接启动有资源上限的维护 Java 子进程。Java 经正常 `PersonalAiWorkspaceApplication` 分派到 `NativeProfileRecovery.runInspection`，完成原有 Native Gate 后才发 PID/Profile 握手；原生端随后只向自己持有的 Process 句柄复制排他句柄。
 
