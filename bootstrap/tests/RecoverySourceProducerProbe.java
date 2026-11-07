@@ -17,13 +17,68 @@ public final class RecoverySourceProducerProbe {
     private static Path diagnosticRoot;
     private static String stage="FIXTURE";
     public static void main(String[] args) throws Exception {
-        try { run(args); }
+        try { if(args.length==2)trustedInspectionFixture(args);else run(args); }
         catch(Exception | LinkageError failure){
             Throwable cause=failure instanceof java.lang.reflect.InvocationTargetException wrapper?wrapper.getCause():failure;
             if(diagnosticRoot!=null)write(diagnosticRoot.resolve("probe-failure.json"),JSON.writeValueAsBytes(Map.of(
                 "stage",stage,"type",cause.getClass().getName(),"frames",Arrays.stream(cause.getStackTrace()).limit(8).map(StackTraceElement::toString).toList())));
             System.exit(10); // No exception message/SQL/credential in child output.
         }
+    }
+
+    /** Fixture preparation/verification for the real pinned-JAR maintenance entry. This
+     * helper never admits a Profile; only NativeDatabaseSetup writes its new configuration. */
+    private static void trustedInspectionFixture(String[] args) throws Exception {
+        require(Set.of("prepare-native-inspection","verify-native-inspection").contains(args[0]));
+        var output=System.out;System.setOut(System.err);
+        Path fixture=Path.of(args[1]);privatePath(fixture,false);
+        var config=JSON.readTree(Files.readAllBytes(fixture));Path isolated=Path.of(config.path("root").asString());privatePath(isolated,true);
+        require(isolated.getFileName().toString().matches("PAW-SourceProducer-[0-9a-f]{32}"));diagnosticRoot=isolated;
+        int port=config.path("port").asInt();require(port!=5432);
+        var pid=Files.readAllLines(isolated.resolve("pgdata/postmaster.pid"));
+        require(pid.get(1).equals(isolated.resolve("pgdata").toString().replace('\\','/'))
+            &&pid.get(3).equals(Integer.toString(port))&&Long.parseLong(pid.getFirst())==config.path("processId").asLong());
+        var administrator=new Endpoint("postgres",config.path("adminUsername").asString(),config.path("adminPassword").asString(),port);
+        Path evidence=isolated.resolve("trusted-inspection-database.json");
+        if(args[0].equals("verify-native-inspection")){
+            privatePath(evidence,false);var expected=JSON.readTree(Files.readAllBytes(evidence));
+            var source=new Endpoint(expected.path("database").asString(),administrator.username(),administrator.password(),port);
+            try(var db=source.dataSource().getConnection()){
+                require(value(db,"SHOW data_directory").replace('\\','/').equals(isolated.resolve("pgdata").toString().replace('\\','/')));
+                require(JSON.valueToTree(snapshot(db,true)).equals(expected.path("snapshot"))
+                    &&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname LIKE 'workspace_backup_src_%'")==0
+                    &&value(db,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE"));
+            }
+            output.print("VERIFIED_UNCHANGED");return;
+        }
+        require(!Files.exists(evidence));
+        String id=UUID.randomUUID().toString().replace("-","").substring(0,12);
+        String database="personal_ai_workspace_b3_"+id,appRole="workspace_app_"+id,password=UUID.randomUUID().toString();
+        try(var db=administrator.dataSource().getConnection()){
+            require(value(db,"SHOW data_directory").replace('\\','/').equals(isolated.resolve("pgdata").toString().replace('\\','/')));
+            require(scalar(db,"SELECT count(*) FROM pg_database")==3&&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname !~ '^pg_'")==1);
+            sql(db,"CREATE DATABASE "+database+" TEMPLATE template0 ENCODING 'UTF8'");
+            sql(db,"COMMENT ON DATABASE "+database+" IS 'workspace-b3:"+UUID.randomUUID()+"'");
+            for(String name:List.of(database,"postgres","template1"))sql(db,"REVOKE ALL ON DATABASE "+name+" FROM PUBLIC");
+        }
+        var source=new Endpoint(database,administrator.username(),administrator.password(),port);
+        try(var db=source.dataSource().getConnection()){
+            sql(db,"REVOKE ALL ON SCHEMA public FROM PUBLIC");sql(db,"CREATE SCHEMA workspace");
+            sql(db,"CREATE TABLE public.finance_sentinel(value text)");sql(db,"INSERT INTO public.finance_sentinel VALUES('OUTSIDE_WORKSPACE')");
+        }
+        Flyway.configure().dataSource(source.dataSource()).schemas("workspace").defaultSchema("workspace").createSchemas(false)
+            .locations("classpath:db/workspace/migration").cleanDisabled(true).load().migrate();
+        try(var db=source.dataSource().getConnection()){
+            sql(db,"CREATE ROLE "+appRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD '"+password+"'");
+            sql(db,"GRANT CONNECT ON DATABASE "+database+" TO "+appRole);sql(db,"GRANT USAGE ON SCHEMA workspace TO "+appRole);
+            for(String table:WorkspaceV3Catalog.TABLES)sql(db,"GRANT SELECT ON TABLE "+table+" TO "+appRole);
+            sql(db,"INSERT INTO workspace.memory_items VALUES('"+UUID.randomUUID()+"','PROJECT_NOTE','Synthetic','Trusted inspection','ACTIVE',1,'MANUAL',1000,1000)");
+            write(evidence,JSON.writeValueAsBytes(Map.of("database",database,"snapshot",snapshot(db,true))));
+        }
+        // Captured only by the owning C# probe and passed to the real setup child's stdin;
+        // never tee this stdout to a log. It contains newly generated synthetic credentials.
+        output.write(JSON.writeValueAsBytes(Map.of("format",1,"backend","postgresql","host","127.0.0.1",
+            "port",port,"database",database,"username",appRole,"password",password)));output.flush();
     }
     private static void run(String[] args) throws Exception {
         if(args.length!=1)throw new IOException();

@@ -19,6 +19,101 @@ namespace PersonalAiWorkspace.Desktop;
 
 internal sealed partial class ProfileRecoveryCoordinator
 {
+    internal sealed record NativeMaintenanceInspection(int Version, string Kind, long ChildPid, string ProfileId,
+        string Admission, string WriterCoverage, string ModelState, string SourceState,
+        string? SourceConfigurationIdentity, string? SourceConfigurationSha256, uint SourceDatabaseOid, uint SourceApplicationRoleOid);
+
+    internal sealed record SourceReadiness(NativeMaintenanceInspection Native, int? ObservedExitedChildren);
+
+    // Uses the reviewed embedded source manifest, the original authority Gate and our direct
+    // Process handle. This is a read-only product preflight, not the synthetic backup launcher.
+    internal async Task<SourceReadiness> InspectSourceReadinessAsync()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (authority is null || maintenanceRuntimeLock is not null) throw Stop();
+        authority.Validate(); Mmf3ProfileNative.Verify(authority);
+        foreach (string directory in new[] { "evidence", "model-state" }) HoldPrivateDirectory(Path.Combine(authority.Root, directory));
+        using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
+        var runtime = OpenRecord(Path.Combine(authority.Root, "evidence", "runtime-admission.lock"), write: true);
+        FileStream? model = null;
+        try
+        {
+            model = OpenRecord(Path.Combine(authority.Root, "model-state", ".lock"));
+            ValidateFileAcl(runtime, user.User!); ValidateFileAcl(model, user.User!);
+            if (runtime.Length != 0 || model.Length != 0) throw Stop();
+            held.Add(runtime); held.Add(model); maintenanceRuntimeLock = runtime;
+        }
+        catch { model?.Dispose(); runtime.Dispose(); throw; }
+        int? exited = null;
+        try { exited = InspectRuntimeStops(authority.RunId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+        { /* Missing/incomplete/corrupt ownership history stays UNKNOWN, never zero or stopped. */ }
+        using var sources = TrustedDevelopmentRuntimeSources.Open();
+        var launch = sources.StartInfo(authority, recoveryInspection: true);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var job = RuntimeProcessJob.Create();
+        using var child = Process.Start(launch) ?? throw Stop();
+        _ = child.SafeHandle;
+        Task errors = DrainSourceErrors(child.StandardError.BaseStream, deadline.Token);
+        try
+        {
+            job.Assign(child);
+            byte[] hello = await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token).ConfigureAwait(false);
+            if (Encoding.ASCII.GetString(hello) != "WORKSPACE_MAINTENANCE_V1\t" + child.Id.ToString(CultureInfo.InvariantCulture)
+                + "\t" + authority.RunId) throw Stop();
+            long handle = TransferRuntimeExclusion(child);
+            byte[] request = JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, Action = "INSPECT_SOURCE", ExclusionHandle = handle });
+            await WriteSourceFrame(child.StandardInput.BaseStream, request, deadline.Token).ConfigureAwait(false);
+            child.StandardInput.Close();
+            var result = ParseSourceFrame<NativeMaintenanceInspection>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token).ConfigureAwait(false));
+            if (await child.StandardOutput.BaseStream.ReadAsync(new byte[1], deadline.Token).ConfigureAwait(false) != 0) throw Stop();
+            await child.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+            await errors.ConfigureAwait(false);
+            if (child.ExitCode != 0 || result.Version != 1 || result.Kind != "WORKSPACE_MAINTENANCE_INSPECTION"
+                || result.ChildPid != child.Id || result.ProfileId != authority.RunId || result.Admission != "BLOCKED"
+                || result.WriterCoverage != "UNREGISTERED_WRITERS_UNPROVEN"
+                || result.ModelState is not ("NO_GUARD_FILE_OBSERVED" or "UNRESOLVED_MODEL_STATE")) throw Stop();
+            if (result.SourceState == "BOUND_READ_ONLY")
+            {
+                if (result.ModelState != "NO_GUARD_FILE_OBSERVED" || result.SourceDatabaseOid == 0 || result.SourceApplicationRoleOid == 0) throw Stop();
+                VerifySourceConfiguration(authority.Root, result.SourceConfigurationIdentity!, result.SourceConfigurationSha256!);
+            }
+            else if (result.SourceConfigurationIdentity is not null || result.SourceConfigurationSha256 is not null
+                || result.SourceDatabaseOid != 0 || result.SourceApplicationRoleOid != 0
+                || result.SourceState is not ("NOT_READ_MODEL_STATE_UNRESOLVED" or "CONFIGURATION_UNAVAILABLE"
+                    or "CONFIGURATION_UNTRUSTED" or "CREDENTIAL_UNAVAILABLE")) throw Stop();
+            authority.Validate();
+            return new(result, exited);
+        }
+        finally
+        {
+            job.Dispose(); // Only this direct maintenance child and its native helper belong here.
+            if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
+            deadline.Cancel();
+            try { await errors.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch (Exception) { }
+        }
+    }
+
+    private void VerifySourceConfiguration(string root, string identity, string digest)
+    {
+        RequireHex(identity, 48); RequireHex(digest, 64);
+        var configuration = OpenRecord(Path.Combine(root, "data", "database.dpapi"));
+        try
+        {
+            using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
+            ValidateFileAcl(configuration, user.User!);
+            if (configuration.Length is < 1 or > MaximumRecordBytes
+                || !GetFileInformationByHandleEx(configuration.SafeFileHandle, 18, out SourceFileId id, 24)) throw Stop();
+            Span<byte> bytes = stackalloc byte[24];
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes, id.Volume);
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes[8..], id.Low);
+            BinaryPrimitives.WriteUInt64LittleEndian(bytes[16..], id.High);
+            if (Convert.ToHexStringLower(bytes) != identity || Convert.ToHexStringLower(SHA256.HashData(configuration)) != digest) throw Stop();
+            held.Add(configuration);
+        }
+        catch { configuration.Dispose(); throw; }
+    }
+
     private sealed record SourceChildResult(int Version, string Kind, long ChildPid, string BackupId,
         string DatabaseLogicalIdentity, string SourceSystemIdentifier, uint SourceDatabaseOid, int SourcePort,
         string SourceDatabase, string SourceRole, long PayloadBytes, string PayloadSha256,

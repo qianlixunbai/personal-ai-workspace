@@ -77,8 +77,10 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
 #endif
     }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
-    internal ProcessStartInfo StartInfo(Mmf3AcceptanceLaunch profile, bool databaseSetup = false, bool financeSetup = false)
+    internal ProcessStartInfo StartInfo(Mmf3AcceptanceLaunch profile, bool databaseSetup = false, bool financeSetup = false,
+        bool recoveryInspection = false)
     {
+        if ((databaseSetup ? 1 : 0) + (financeSetup ? 1 : 0) + (recoveryInspection ? 1 : 0) > 1) throw new IOException();
         profile.Validate(); Mmf3ProfileNative.Verify(profile);
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
         {
@@ -89,7 +91,8 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         }
         var start = new ProcessStartInfo(Java) { UseShellExecute = false, CreateNoWindow = true,
             WorkingDirectory = profile.Root, RedirectStandardOutput = true, RedirectStandardError = true,
-            RedirectStandardInput = databaseSetup || financeSetup };
+            RedirectStandardInput = databaseSetup || financeSetup || recoveryInspection };
+        if (recoveryInspection) { start.ArgumentList.Add("-Xmx256m"); start.ArgumentList.Add("-XX:ActiveProcessorCount=2"); }
         string native = Path.Combine(profile.Root, "jna-5.17.0-win32-x86-64"), evidence = Path.Combine(profile.Root, "evidence");
         foreach (string option in new[] { "-Dworkspace.native.development-profile=" + profile.RunId,
             "-Dworkspace.native.bootstrap=" + Mmf3ProfileNative.Helper, "-Djna.boot.library.path=" + native,
@@ -97,6 +100,7 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
             "-Djava.io.tmpdir=" + evidence, "-Djna.tmpdir=" + evidence, "-jar", Jar }) start.ArgumentList.Add(option);
         if (databaseSetup) start.ArgumentList.Add("--native-database-setup");
         if (financeSetup) start.ArgumentList.Add("--native-finance-setup");
+        if (recoveryInspection) start.ArgumentList.Add("--native-profile-recovery-v1");
         foreach (string option in new[] { "--server.address=127.0.0.1", "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
             "--workspace.data-directory=" + Path.Combine(profile.Root, "data"), "--workspace.model-state-directory=" + Path.Combine(profile.Root, "model-state") })
             start.ArgumentList.Add(option);

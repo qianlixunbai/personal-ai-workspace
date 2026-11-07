@@ -218,10 +218,23 @@ public final class TrustedDatabaseConfiguration {
             requireUnchanged(); if (databaseIdentity == null) throw new Failure(Reason.CONNECTION_FAILED); return databaseIdentity;
         }
 
+        public record ApplicationObservation(long databaseOid, long applicationRoleOid) {}
+
+        /** Native maintenance preflight only: reads schema/role metadata without administrator
+         * credentials, role grants, mutations or a claim that other writers have stopped. */
+        public ApplicationObservation inspectApplication() throws IOException {
+            return inspectApplicationAndAdministrator(null);
+        }
+
         /** Authenticate using the protected app credentials, and correlate that live backend
          * on the administrator connection BEFORE any role DDL. A matching URL alone is not
          * identity. App credentials never need pg_control_system privileges or new grants. */
         public void verifyAdministrator(Connection administrator) throws IOException {
+            if (administrator == null) throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+            inspectApplicationAndAdministrator(administrator);
+        }
+
+        private ApplicationObservation inspectApplicationAndAdministrator(Connection administrator) throws IOException {
             requireUnchanged();
             var source = new org.postgresql.ds.PGSimpleDataSource();
             source.setURL(values.url); source.setUser(values.username); source.setPassword(values.password);
@@ -247,7 +260,7 @@ public final class TrustedDatabaseConfiguration {
                     backendPid = row.getInt(1); clientPort = row.getInt(2); databaseOid = row.getLong(3); roleOid = row.getLong(4);
                     if (row.next() || backendPid <= 0 || clientPort <= 0 || databaseOid <= 0 || roleOid <= 0) throw new IOException();
                 }
-                try (var statement = administrator.prepareStatement(
+                if (administrator != null) try (var statement = administrator.prepareStatement(
                         "SELECT c.system_identifier::text FROM pg_catalog.pg_control_system() c,pg_catalog.pg_stat_activity a "
                         + "WHERE current_database()=? AND pg_catalog.inet_server_port()=? AND pg_catalog.inet_server_addr()='127.0.0.1' "
                         + "AND a.pid=? AND a.datid=? AND a.usesysid=? AND a.usename=? AND a.client_port=? "
@@ -266,6 +279,7 @@ public final class TrustedDatabaseConfiguration {
                 }
                 app.rollback();
                 requireUnchanged();
+                return new ApplicationObservation(databaseOid, roleOid);
             } catch (Exception rejected) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
         }
         @Override public void close() throws IOException {

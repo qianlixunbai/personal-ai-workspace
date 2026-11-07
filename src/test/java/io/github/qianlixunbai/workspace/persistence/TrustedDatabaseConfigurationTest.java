@@ -26,6 +26,46 @@ class TrustedDatabaseConfigurationTest {
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private void directories() throws IOException { Files.createDirectory(root.resolve("data")); Files.createDirectory(root.resolve("credentials")); }
 
+    @Test void maintenanceInspectionRejectsBeforeSecretsAndCannotDispatchBackupOrOversizedFrames() throws Exception {
+        // Deterministic protocol denial only. Mocked admission is NOT real Native Gate evidence.
+        String previous = System.getProperty("workspace.native.development-profile");
+        System.setProperty("workspace.native.development-profile", "9".repeat(32));
+        try (var gate = mockStatic(WindowsNativeGate.class)) {
+            gate.when(WindowsNativeGate::admit).thenThrow(new IOException("synthetic admission refusal"));
+            byte[] untouched = bytes("synthetic-secret-must-not-be-read");
+            var input = new java.io.ByteArrayInputStream(untouched);
+            var output = new java.io.ByteArrayOutputStream();
+            assertEquals(10, NativeProfileRecovery.runInspection(new String[0], input, output));
+            assertEquals(untouched.length, input.available());
+            var response = new java.io.DataInputStream(new java.io.ByteArrayInputStream(output.toByteArray()));
+            assertEquals("WORKSPACE_MAINTENANCE_V1\tINSPECTION_DENIED", new String(response.readNBytes(response.readInt()), StandardCharsets.US_ASCII));
+            assertEquals(-1, response.read());
+            gate.reset();
+            for (String invalid : List.of(
+                    "{\"Version\":1,\"Action\":\"BACKUP\",\"ExclusionHandle\":1}",
+                    "{\"Version\":1,\"Version\":1,\"Action\":\"INSPECT_SOURCE\",\"ExclusionHandle\":1}",
+                    "{\"Version\":1,\"Action\":\"INSPECT_SOURCE\",\"ExclusionHandle\":1,\"Administrator\":\"synthetic-secret\"}")) {
+                var framed = new java.io.ByteArrayOutputStream();
+                var writer = new java.io.DataOutputStream(framed);
+                byte[] payload = bytes(invalid); writer.writeInt(payload.length); writer.write(payload);
+                output.reset();
+                assertEquals(10, NativeProfileRecovery.runInspection(new String[0], new java.io.ByteArrayInputStream(framed.toByteArray()), output));
+                assertFalse(output.toString(StandardCharsets.UTF_8).contains("synthetic-secret"));
+            }
+            var framed = new java.io.ByteArrayOutputStream();
+            new java.io.DataOutputStream(framed).writeInt(16385); framed.write(untouched);
+            input = new java.io.ByteArrayInputStream(framed.toByteArray()); output.reset();
+            assertEquals(10, NativeProfileRecovery.runInspection(new String[0], input, output));
+            assertEquals(untouched.length, input.available());
+            gate.verify(() -> WindowsNativeGate.receiveMaintenanceExclusion(anyLong()), never());
+            gate.verify(WindowsNativeGate::profileRoot, never());
+            assertFalse(Files.exists(root.resolve("data")));
+        } finally {
+            if (previous == null) System.clearProperty("workspace.native.development-profile");
+            else System.setProperty("workspace.native.development-profile", previous);
+        }
+    }
+
     @Test
     @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
     void earlyRuntimeLeaseExcludesMaintenanceBeforeCredentialsAndCannotReopenAfterLoss() throws Exception {

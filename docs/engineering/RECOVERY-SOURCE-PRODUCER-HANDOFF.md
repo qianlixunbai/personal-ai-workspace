@@ -1,5 +1,24 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：产品受信维护入口已接线，实机集成阻塞
+
+基于本地 `2b1899f` 继续实现。`Program --inspect-profile-recovery-v1` 现在调用原生 owner 的 `InspectSourceReadinessAsync`：持有既有实例互斥量及 Profile/运行锁/模型锁，使用 `TrustedDevelopmentRuntimeSources` 的嵌入清单固定实际 JAR、JVM 与 JNA 来源，直接启动有资源上限的维护 Java 子进程。Java 经正常 `PersonalAiWorkspaceApplication` 分派到 `NativeProfileRecovery.runInspection`，完成原有 Native Gate 后才发 PID/Profile 握手；原生端随后只向自己持有的 Process 句柄复制排他句柄。
+
+新协议仅接受有界、严格字段的 `INSPECT_SOURCE`，不接受备份动作、管理员材料或调用者路径。Java 重核固定 Profile 参数与已交接资源后，检查模型文件状态；存在 guard、pending 或未知条目时跳过配置读取。其余情况下复用上阶段的配置 pin/DPAPI/应用只读连接核对，返回配置文件身份/密文摘要及数据库、应用角色 OID，原生端独立重核配置文件。这里没有管理连接、PG system identifier 证明、短期角色、加密备份或来源发布，也没有启动 Spring/HTTP/模型。来源只读观察不能构造上阶段要求完整管理连接绑定的备份结果。
+
+**返回的准入始终为 BLOCKED / UNREGISTERED_WRITERS_UNPROVEN。** 原生退出记录缺失、损坏或不完整以 nullable unknown 表示，不能改成“0 次运行”或安全退出。没有 guard 文件也只报告 `NO_GUARD_FILE_OBSERVED`，不证明旧包、未登记 Java、外部 SQL 或模型执行已停止。原入口在报告后终止，不进入工作区选择、Runtime 启动或偏好保存。已有严格 `InspectMaintenancePrerequisites` 的拒绝合同保留。
+
+本轮实际验证与未覆盖项：
+
+- 离线构建实际应用 JAR，既有 JAR 审计通过；嵌入精确来源清单的 Desktop 和新手工探针构建通过，.NET 为 0 warning / 0 error。Java 保留既有内部 API 警告，未跑全套测试、前端构建或分发打包。
+- 新增一个聚焦协议拒绝测试，实际 1 test / 0 failure / 0 error：Gate 拒绝时输入不被读取；备份动作、额外凭据字段、重复键和超长帧不能进入句柄接收。该测试 mock Gate，**不是实际 Native Gate PASS**。
+- 手工集成 `RecoveryTrustedInspectionProbe.cs` 使用原有 Prepare/Provision 和真正 `NativeDatabaseSetup`，计划只对全新随机合成 Profile 执行“受信配置保存 → 原生维护调用 → 来源只读核对 → guard 拒绝”。实际第一次在 **PROFILE_PREPARATION** 阶段被原有 `WindowsProfileSecurity.State → HoldDirectories → OpenDirectory` 的目录身份检查拒绝，尚未调用 Provision、Java Native Gate 或数据库配置写入。独立 PG17 实例已核对 PID、启动时间、data directory、端口与程序路径后停止。
+- 为定位同一拒绝，仅补一次不重启 PG 的脱敏函数栈诊断；使用另一个全新随机 Profile ID，同一阶段拒绝。两个新建合成根存在并保留为未完成证据；没有对它们重放 Provision、修补 ACL、换根或覆盖。只读取了这些本轮拥有的目标和工程 helper；没有访问真实用户 Profile 内容或启停既有服务。
+
+因此本轮**真实受信维护/来源集成未通过**。完成的是产品调用链代码、实际产物构建和必要拒绝验证，不能把它写成完整停写证明或实际来源生产者已可用。原生 Profile 目录身份环境阻塞应沿原有 owning 边界单独解决；本轮没有重开已结束的子根重定向排查或放松 Gate/helper pin。完整停写覆盖、个人来源生产与未知结果核对、真实恢复、prepared-target、READY/显式激活仍未完成。
+
+证据在 `.verification/recovery-trusted-inspection/`：`runtime-build.log`、`runtime-sources.local.json`、`dotnet-build*.log`、`protocol-denial-test.log`、`native-source-integration.log`、`preparation-diagnostic.log`、`fixture-result.json`、`first-owned-synthetic-profile.json`、`diagnostic-owned-synthetic-profile.json`。runner 和独立 csproj 同目录。实现前参考 [.NET 10 Process](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.cs) 的直属子进程退出/EOF 行为。五份未跟踪文档保持不变；仅本地提交，未合并、部署或推送，远端授权仍仅到 `abe6530`。
+
 ## 本轮阶段：从 DPAPI 来源配置到备份结果登记
 
 本轮基于本地 `a9903a5`，继续在 `codex/recovery-v3-workspace-core` 开发。已读取权威设计；五份未跟踪设计文档保持字节不变。**本轮完成来源配置绑定内核及其合成端到端执行，个人恢复仍不可用，维护仍为 BLOCKED / UNREGISTERED_WRITERS_UNPROVEN。** 下方原有来源生产者记录是此前阶段背景，本节描述最新实现。

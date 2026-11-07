@@ -126,9 +126,13 @@ internal static class Program
             // Stay on the STA entry thread: the existing mutex is thread-owned. Keep its scope
             // and all Profile/file pins until the result dialog closes; inspection grants nothing.
             using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(authority);
-            var inspection = coordinator.InspectMaintenancePrerequisites();
-            report("维护状态：BLOCKED（" + inspection.Blocker + "）。\n\n" +
-                "已核对登记的直属 Runtime 退出观察，但旧版本、未登记进程及外部数据库客户端的停止状态尚未证明。\n\n" +
+            var inspection = coordinator.InspectSourceReadinessAsync().GetAwaiter().GetResult();
+            string history = inspection.ObservedExitedChildren is int count
+                ? "已核对 " + count + " 次登记的直属 Runtime 退出观察。" : "直属 Runtime 退出记录不完整或不可验证。";
+            string source = inspection.Native.SourceState == "BOUND_READ_ONLY"
+                ? "受保护 Workspace 配置与应用数据库连接只读核对通过。" : "Workspace 来源尚未通过核对（" + inspection.Native.SourceState + "）。";
+            report("维护状态：BLOCKED（" + inspection.Native.WriterCoverage + "）。\n\n" + history + "\n" + source + "\n" +
+                "模型状态：" + inspection.Native.ModelState + "。\n旧版本、未登记进程及外部数据库客户端的停止状态尚未证明。\n\n" +
                 "本次仅检查，未启动工作区，也未备份、恢复或激活。完整 PostgreSQL Profile 恢复仍未开放。");
             return 3;
         }
