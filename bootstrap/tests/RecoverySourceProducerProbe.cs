@@ -46,6 +46,20 @@ internal static class RecoverySourceProducerProbe
         using var owner = (IDisposable)Activator.CreateInstance(coordinator, flags, null, [app], null)!;
         object intent = coordinator.GetMethod("ReserveBackupIntentForProfile", flags)!.Invoke(owner, [profileId])!;
         string backupId = (string)intent.GetType().GetProperty("BackupId")!.GetValue(intent)!;
+        // Automated native button action for explicitly authorized fresh synthetic data only.
+        // Real product code never reads fixture.json or auto-fills/auto-confirms this window.
+        string passphrase = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+        int confirmations = 0;
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) =>
+        {
+            if (sender is not Window window || window.Title != "Personal AI Workspace · 合成备份授权") return;
+            if (Interlocked.Increment(ref confirmations) != 1 || window.Content is not StackPanel panel
+                || !panel.Children.OfType<TextBlock>().Any(text => text.Text.Contains(backupId, StringComparison.Ordinal))) throw new IOException();
+            panel.Children.OfType<TextBox>().Single(box => box.Name == "SourceAdministrator").Text = config.RootElement.GetProperty("adminUsername").GetString()!;
+            panel.Children.OfType<PasswordBox>().Single(box => box.Name == "SourceAdministratorPassword").Password = config.RootElement.GetProperty("adminPassword").GetString()!;
+            foreach (var box in panel.Children.OfType<PasswordBox>().Where(box => box.Name.StartsWith("SourceBackupPassphrase", StringComparison.Ordinal))) box.Password = passphrase;
+            panel.Children.OfType<Button>().Single(button => button.Name == "AuthorizeSourceBackup").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }));
         var start = new ProcessStartInfo(args[1]) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app };
         foreach (string value in new[] { "-Xmx384m", "-XX:ActiveProcessorCount=2", "-cp", args[2],
@@ -53,7 +67,26 @@ internal static class RecoverySourceProducerProbe
         var run = coordinator.GetMethod("ExecuteSyntheticSourceBackupAsync", flags)!;
         var pending = (Task)run.Invoke(owner, [start])!;
         await pending;
+        if (confirmations != 1) throw new IOException();
         object registration = pending.GetType().GetProperty("Result")!.GetValue(pending)!;
+        // Persist only this generated fixture passphrase so the separate restoration process
+        // can consume the new backup. No production secret is written by the native window.
+        byte[] passphraseBytes = Encoding.UTF8.GetBytes(passphrase); passphrase = "";
+        try
+        {
+            byte[] protectedPhrase = ProtectedData.Protect(passphraseBytes, null, DataProtectionScope.CurrentUser);
+            try
+            {
+                var sid = WindowsIdentity.GetCurrent().User!;
+                var security = new FileSecurity(); security.SetOwner(sid); security.SetAccessRuleProtection(true, false);
+                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+                using var file = new FileInfo(Path.Combine(isolated, "fixture-passphrase.dpapi")).Create(FileMode.CreateNew,
+                    FileSystemRights.Read | FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, security);
+                file.Write(protectedPhrase); file.Flush(true);
+            }
+            finally { CryptographicOperations.ZeroMemory(protectedPhrase); }
+        }
+        finally { CryptographicOperations.ZeroMemory(passphraseBytes); }
         string record = Path.Combine(app, "Recovery", "synthetic-sources", backupId, "source.dpapi");
         byte[] original = File.ReadAllBytes(record);
         if (original.Length == 0 || Directory.Exists(Path.Combine(app, "Recovery", "sources"))) throw new IOException();
@@ -112,6 +145,7 @@ internal static class RecoverySourceProducerProbe
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
+            nativeAuthorizationWindowConfirmed = confirmations == 1, sourceSecretsViaPrivatePipe = true,
             authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = args.Length!=5||args[4]=="prepared",
             applicationCredentialRetainedForReady = args.Length==5&&args[4]!="prepared",
             restoredByNewProcessFromDurableRegistration = true, originalSourceProfileRetainedAt = retired,

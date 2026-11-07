@@ -124,6 +124,12 @@ internal sealed partial class ProfileRecoveryCoordinator
     private sealed record BoundSyntheticSource(int Version, SourceRegistration Source,
         string SourceConfigurationIdentity, string SourceConfigurationSha256, uint SourceApplicationRoleOid);
 
+    internal sealed record SourceAuthorizationRequest(int Version, string Kind, long ChildPid, string BackupId,
+        string DatabaseLogicalIdentity, string SourceProfileId, string SourceDatabase, int SourcePort,
+        string SourceConfigurationIdentity, string SourceConfigurationSha256, uint SourceApplicationRoleOid, string Challenge);
+
+    private bool syntheticSourceAttempted;
+
     // This is an executable development seam, not a product maintenance admission. The only
     // current Java producer is synthetic. Its records have a distinct kind, entropy AND namespace;
     // PinRegisteredSource cannot consume them even if a file is copied into sources/<id>.
@@ -134,11 +140,12 @@ internal sealed partial class ProfileRecoveryCoordinator
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         var intent = backupIntent ?? throw Stop();
-        if (authority is not null || !Path.GetFileName(applicationRoot).StartsWith("paw-source-producer-", StringComparison.Ordinal)
+        if (syntheticSourceAttempted || authority is not null || !Path.GetFileName(applicationRoot).StartsWith("paw-source-producer-", StringComparison.Ordinal)
             || !launch.RedirectStandardInput || !launch.RedirectStandardOutput || !launch.RedirectStandardError
             || launch.UseShellExecute || !launch.CreateNoWindow || !Path.IsPathFullyQualified(launch.FileName)) throw Stop();
         string root = Path.Combine(applicationRoot, "Profiles", intent.SourceProfileId);
         RecheckSourceIntent(intent, root);
+        syntheticSourceAttempted = true; // Cancellation/unknown child results never permit replay of this intent.
         string payloads = Path.Combine(applicationRoot, "Recovery", "synthetic-payloads");
         // The existing synthetic backup engine requires user-only ACLs (narrower than the
         // Profile's user/System/Admin ACL). Create this new output boundary to that contract;
@@ -161,7 +168,7 @@ internal sealed partial class ProfileRecoveryCoordinator
         using var model = OpenRecord(Path.Combine(root, "model-state", ".lock"));
         ValidateFileAcl(runtime, user.User!); ValidateFileAcl(model, user.User!);
         if (runtime.Length != 0 || model.Length != 0) throw Stop();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         using var job = RuntimeProcessJob.Create();
         using var child = Process.Start(launch) ?? throw Stop();
         // Process.Start's handle is retained throughout; a reported PID never opens a process.
@@ -176,15 +183,41 @@ internal sealed partial class ProfileRecoveryCoordinator
             byte[] request = JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, Action = "BACKUP_SYNTHETIC",
                 intent.BackupId, intent.DatabaseLogicalIdentity, SourceRoot = root, Encrypted = encrypted, ExclusionHandle = handle });
             await WriteSourceFrame(child.StandardInput.BaseStream, request, deadline.Token);
+            var authorization = ParseSourceFrame<SourceAuthorizationRequest>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token));
+            if (authorization.Version != 1 || authorization.Kind != "SYNTHETIC_SOURCE_AUTHORIZATION_REQUEST"
+                || authorization.ChildPid != child.Id || authorization.BackupId != intent.BackupId
+                || authorization.DatabaseLogicalIdentity != intent.DatabaseLogicalIdentity || authorization.SourceProfileId != intent.SourceProfileId
+                || authorization.SourceDatabase != "personal_ai_workspace_b3_" + intent.BackupId[..12]
+                || authorization.SourcePort is < 1 or > 65535 or 5432 || authorization.SourceApplicationRoleOid == 0) throw Stop();
+            RequireHex(authorization.Challenge, 64);
+            VerifySourceConfiguration(root, authorization.SourceConfigurationIdentity, authorization.SourceConfigurationSha256);
+            RecheckSourceIntent(intent, root);
+            byte[]? secrets = await ProfileRecoveryWindow.RequestSyntheticSourceAuthorizationAsync(authorization, deadline.Token);
+            if (secrets is null) throw new OperationCanceledException();
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                if (child.WaitForExit(0)) throw Stop();
+                RecheckSourceIntent(intent, root);
+                VerifySourceConfiguration(root, authorization.SourceConfigurationIdentity, authorization.SourceConfigurationSha256);
+                await WriteSourceFrame(child.StandardInput.BaseStream, secrets, deadline.Token);
+            }
+            finally { CryptographicOperations.ZeroMemory(secrets); }
             child.StandardInput.Close();
             var result = ParseSourceFrame<SourceChildResult>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token));
             // A result followed by a hang, abnormal exit or extra stdout never authorizes a receipt.
             if (await child.StandardOutput.BaseStream.ReadAsync(new byte[1], deadline.Token) != 0) throw Stop();
             await child.WaitForExitAsync(deadline.Token);
+            if (!child.WaitForExit(10000)) throw Stop();
+            child.Refresh();
             await errors;
             if (child.ExitCode != 0 || result.ChildPid != child.Id || result.Version != 2
                 || result.Kind != "SYNTHETIC_WORKSPACE_BACKUP_RESULT" || result.BackupId != intent.BackupId
                 || result.DatabaseLogicalIdentity != intent.DatabaseLogicalIdentity || result.SourcePort == 5432
+                || result.SourceDatabase != authorization.SourceDatabase || result.SourcePort != authorization.SourcePort
+                || result.SourceConfigurationIdentity != authorization.SourceConfigurationIdentity
+                || result.SourceConfigurationSha256 != authorization.SourceConfigurationSha256
+                || result.SourceApplicationRoleOid != authorization.SourceApplicationRoleOid
                 || result.SourceRole != "workspace_backup_src_" + intent.BackupId
                 || !System.Text.RegularExpressions.Regex.IsMatch(result.SourceDatabase, "\\Apersonal_ai_workspace_b3_[0-9a-f]{12}\\z")
                 || !ulong.TryParse(result.SourceSystemIdentifier, NumberStyles.None, CultureInfo.InvariantCulture, out ulong system)

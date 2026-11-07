@@ -1,7 +1,14 @@
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
 using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 namespace PersonalAiWorkspace.Desktop;
 
@@ -91,6 +98,107 @@ internal sealed class ProfileRecoveryWindow : Window
                 _ => "存在无法解释的历史状态，请保留现有记录。"
             });
         return text;
+    }
+
+    // Called only by the isolated synthetic owner after verifying its direct child, exact
+    // source configuration and live OS exclusion. This never accepts a personal admission.
+    internal static Task<byte[]?> RequestSyntheticSourceAuthorizationAsync(
+        ProfileRecoveryCoordinator.SourceAuthorizationRequest request, CancellationToken cancellation)
+    {
+        var completion = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            byte[]? payload = null;
+            var username = new TextBox { Name = "SourceAdministrator", MaxLength = 63 };
+            var password = new PasswordBox { Name = "SourceAdministratorPassword", MaxLength = 1024 };
+            var phrase = new PasswordBox { Name = "SourceBackupPassphrase", MaxLength = 1024 };
+            var repeated = new PasswordBox { Name = "SourceBackupPassphraseAgain", MaxLength = 1024 };
+            try
+            {
+                if (cancellation.IsCancellationRequested) { completion.SetResult(null); return; }
+                var window = new ProfileRecoveryWindow("Personal AI Workspace · 合成备份授权",
+                    "仅隔离合成数据。此确认不授予个人备份权限，也不证明历史写入者或模型已停止。\n" +
+                    "备份：" + request.BackupId + "\n来源工作区：" + request.SourceProfileId +
+                    "\n数据库：127.0.0.1:" + request.SourcePort + " / " + request.SourceDatabase +
+                    "\n仅为这次备份创建受限短期角色，完成后回收。管理员凭据不保存；不会修改日常应用权限。")
+                    { ShowInTaskbar = false };
+                foreach (var field in new (string Label, Control Input)[] { ("数据库管理员用户名", username), ("管理员密码", password),
+                    ("新备份口令（至少 16 个字符）", phrase), ("再次输入备份口令", repeated) })
+                {
+                    window.body.Children.Add(new Label { Content = field.Label, Target = field.Input });
+                    window.body.Children.Add(field.Input);
+                }
+                var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                window.body.Children.Add(error);
+                window.close.Content = "取消"; window.close.IsDefault = true;
+                var allow = window.AddButton("仅授权这次合成备份", () =>
+                {
+                    char[] secret = [], passphrase = [], confirmation = [];
+                    try
+                    {
+                        if (payload is not null || cancellation.IsCancellationRequested) return;
+                        secret = ReadSecret(password); passphrase = ReadSecret(phrase); confirmation = ReadSecret(repeated);
+                        if (!System.Text.RegularExpressions.Regex.IsMatch(username.Text, "\\A[a-z_][a-z0-9_]{0,62}\\z")
+                            || secret.Length is < 1 or > 1024 || passphrase.Length is < 16 or > 1024
+                            || !passphrase.AsSpan().SequenceEqual(confirmation))
+                        { error.Text = "请核对用户名、密码和两次一致的备份口令。"; return; }
+                        using var buffer = new MemoryStream();
+                        try
+                        {
+                            using (var json = new Utf8JsonWriter(buffer))
+                            {
+                                json.WriteStartObject(); json.WriteNumber("Version", 1);
+                                json.WriteString("Action", "AUTHORIZE_SYNTHETIC_BACKUP"); json.WriteNumber("ChildPid", request.ChildPid);
+                                json.WriteString("BackupId", request.BackupId); json.WriteString("DatabaseLogicalIdentity", request.DatabaseLogicalIdentity);
+                                json.WriteString("SourceProfileId", request.SourceProfileId);
+                                json.WriteString("SourceConfigurationSha256", request.SourceConfigurationSha256);
+                                json.WriteString("Challenge", request.Challenge); json.WriteString("AdministratorUsername", username.Text);
+                                json.WriteString("AdministratorPassword", secret.AsSpan()); json.WriteString("Passphrase", passphrase.AsSpan());
+                                json.WriteEndObject(); json.Flush();
+                            }
+                            if (buffer.Length is < 1 or > 16384) throw new IOException();
+                            payload = buffer.ToArray();
+                        }
+                        finally { CryptographicOperations.ZeroMemory(buffer.GetBuffer()); }
+                        window.DialogResult = true;
+                    }
+                    catch (Exception)
+                    {
+                        if (payload is not null) { CryptographicOperations.ZeroMemory(payload); payload = null; }
+                        error.Text = "授权材料无法安全准备；未发送凭据。";
+                    }
+                    finally { Array.Clear(secret); Array.Clear(passphrase); Array.Clear(confirmation); }
+                });
+                allow.Name = "AuthorizeSourceBackup";
+                using var cancel = cancellation.Register(() => window.Dispatcher.BeginInvoke(new Action(() => { if (window.IsVisible) window.Close(); })));
+                window.Loaded += (_, _) => { if (cancellation.IsCancellationRequested) window.Close(); };
+                bool confirmed = window.ShowDialog() == true && !cancellation.IsCancellationRequested;
+                if (!confirmed && payload is not null) { CryptographicOperations.ZeroMemory(payload); payload = null; }
+                completion.SetResult(payload); payload = null;
+            }
+            catch (Exception) { completion.TrySetException(new IOException("Native source authorization unavailable")); }
+            finally
+            {
+                password.Clear(); phrase.Clear(); repeated.Clear();
+                if (payload is not null) CryptographicOperations.ZeroMemory(payload);
+                Dispatcher.CurrentDispatcher.InvokeShutdown();
+            }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        return completion.Task;
+    }
+
+    private static char[] ReadSecret(PasswordBox input)
+    {
+        using var secure = input.SecurePassword;
+        IntPtr memory = Marshal.SecureStringToGlobalAllocUnicode(secure);
+        try
+        {
+            char[] result = new char[secure.Length];
+            for (int index = 0; index < result.Length; index++) result[index] = (char)Marshal.ReadInt16(memory, index * 2);
+            return result;
+        }
+        finally { Marshal.ZeroFreeGlobalAllocUnicode(memory); }
     }
 
     // Only the owning coordinator creates this window after re-reading its exact READY target.

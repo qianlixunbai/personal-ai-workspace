@@ -1,5 +1,27 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：原生一次性管理员授权与合成备份生产链
+
+基于本地 `9fb30fe`，本模块实现原生安全输入、直属子进程挑战绑定和一次性授权消费，并接入已有合成来源生产者。**没有开放个人授权入口，没有生成个人停写证明或个人来源记录。** `ExecuteSyntheticSourceBackupAsync` 仍要求无个人 authority、明确的合成私有目录；Java 工厂继续拒绝非合成库、默认共享端口及非合成根。新窗口不是个人恢复按钮。
+
+- 原生 owner 持有已有 Runtime/model 排他句柄，在直属子进程通过受保护 app 配置核对后，接收有界 `SYNTHETIC_SOURCE_AUTHORIZATION_REQUEST`。它独立 pin 并核对固定 `data/database.dpapi` 的原生身份/SHA-256，重核 backup intent/root/data，再显示确切来源 Profile、DB/端口和 backupId。随机挑战与实际 child PID、备份/逻辑 ID、Profile 及配置摘要一起绑定回复，UI 不接收 SQL、源路径、endpoint 覆盖或“已停写”布尔值。
+- 管理员密码及双次确认的备份口令仅在原生 `PasswordBox` 输入。使用 SecurePassword 副本、短期可清零字符/字节数组和私有 stdin 帧，发送后清理；不进入命令行、环境变量、WebView 或产品持久配置。Java 严格拒绝字段/类型/挑战/身份不符、额外帧及缺失 EOF，重核存活来源后才用这次管理员材料建立绑定连接并构造 `NativeAuthorization`。该能力只能执行一次原有冻结/短期角色/加密/回收流程，之后口令引用清空；关闭也清理。JSON/JDBC 产生的托管不可变 String 不声称已可靠擦除。
+- 原生 owner 在启动直属子进程前就消费当前内存意图的执行资格；取消、超时、异常或未知结果均不能在该 owner 内重放，重开 owner 也没有从磁盘恢复此执行资格的工厂。窗口没有默认 Enter 授权，关闭/取消不发秘密。子进程输出还须与授权时固定来源完全一致；核对真实内核退出后才沿既有密文验证/DPAPI 独立合成登记发布。产品 `sources` 与 `ReservePlan` 合同未放宽。
+
+必要验证：Java owning 类/既有 probe 聚焦编译、离线 Maven package（跳过全部测试）与实际 JAR 审计、Desktop/既有 C# probe 编译（0 warning/0 error），随后 **一次全新隔离流程，首次通过**。原生窗口由明确限于该新合成 backupId 的 probe 填入其自产凭据并触发 WPF 按钮事件，不是用户手动点击证据。生产者实际消费原生管道中的管理员/备份口令；只有 probe 为后续独立消费者将自产口令保存在新夹具 DPAPI 文件，产品窗口/owner 不保存秘密。没有增加测试套件、执行全量测试、重测完整 WebView/托盘、个人 Gate、目标 READY/激活或强制断电场景。取消/超时分支本轮仅代码核对，没有另起数据库流程声称已实测。
+
+成功夹具 `C:\PAW-SourceProducer-475bcaf6b1d6412793fae4884ab2d11d`，PG17 端口 `59326`、PID `24984`；生产者/消费者 `43532/57044`。backupId `06ef420a50c946c282bb7f38d256bdc4`，来源记录 SHA-256 `5cef5f08bb26e9a36772ce2d220196f76b8d0dbf79a45b17c7143d7119bc57eb`。新恢复库 `personal_ai_workspace_b3_0b6204810061`，结果 `RESTORE_VERIFIED / WINDOWS_ADMISSION_PENDING`，两目标角色禁登/清密；没有新 canonical 目标 Profile 或 ACTIVE。原 snapshot/Finance sentinel 保留，额外 SQL 会话、冻结源 DML/文件写入、重复授权能力、重复 intent 以及合成记录转个人 plan 均拒绝；独立恢复时原源 DB 不可连接、原 Profile 路径已移至本夹具保留目录。专属 PG 按原 PID/创建时间/data directory/端口/可执行文件核对后停止，既有服务/KAG未启停，未发模型请求。
+
+证据在 `.verification/recovery-native-authorization/`：`java-build.log`、`javac.log`、`dotnet-build.log`、`native-source-integration.log`、`native-source-evidence.json`、`source-freeze-evidence.json`、`synthetic-recovery-evidence.json`、`fixture-result.json`、`runner-result.json` 及文档首尾哈希。JAR SHA-256 为 `4c1d3da059943cd900e06dfbf555828057c70d4f8a8c72d662b7df10708ebb32`；JVM 384 MiB/2 核顺序运行、PG shared_buffers 16 MiB，运行前可用内存约 15.7 GiB。参考上游 [WPF PasswordBox.SecurePassword](https://github.com/dotnet/wpf/blob/v10.0.0/src/Microsoft.DotNet.Wpf/src/PresentationFramework/System/Windows/Controls/PasswordBox.cs)，沿用原有私有管道和加密协议，未新增加密算法。
+
+### 未能自动补齐的前置与最小用户动作
+
+1. 当前代码不能追溯证明历史未登记的旧客户端、跨会话/手动 Java 和外部 SQL 写入者已经停止。关闭当前 Desktop、端口不监听、新的退出观察或“我已停写”勾选都不能补这份历史。现阶段没有一个用户按钮能把个人恢复立即解锁；也不会要求用户为了制造证据而清记录或重启共享服务。
+2. 现有模型 `RECOVER` 明确依赖用户接受“原请求完成或原服务/runner 已结束”的外部信任假设。它恢复正常模型流程，不是本设计所要求的独立完整停写证明，不能因 guard 被清除就批准备份。未知任务应先由其原 owner/使用者在原工作流处理，维护入口不代为取消、RECOVER 或停止 KAG/Ollama。
+3. 若要进入真实环境核验，最小必要新增用户输入是：明确指定当前源工作区，并明确授权仅查询该工作区的身份/配置绑定及直属进程/连接元数据（不读正文、不备份、不改数据、不停服务）。当前“不得访问真实 Profile/数据库”的限制仍有效，本轮未执行这种核验。随后仍须实现并核实完整停写能力；只有它成立，才可让用户在受信原生窗口为本次精确来源提供短期管理员授权和备份口令。**现在无需向聊天提供凭据，上述用户动作也不自动替代未完成的停写合同。**
+
+自动审批曾拒绝读取旧验证目录的 `runtime-sources.local.json`（理由：可能含凭据且未证明本步必要性）。已读取父线程最新授权历史并选择安全替代：完全跳过该文件，使用当前源码、明确工具路径及新隔离产物构建；未重试被拒绝的读取。此拒绝未阻断已完成的合成模块。五份未跟踪文档原字节保持，仅本地提交，不推送、合并 main 或部署。
+
 ## 最新阶段：直属 Runtime 收尾结果与维护阻塞明细
 
 基于本地 `feb6737`，本模块补齐直属 Runtime 的可核验收尾事实和原生维护展示。**个人备份、恢复和激活仍未开放；没有签发完整停写能力、个人来源登记或管理员授权。** 新记录不能追溯补证历史未登记写入者，也不能证明远端模型任务完成。

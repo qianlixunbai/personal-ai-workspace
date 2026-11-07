@@ -106,6 +106,80 @@ final class WorkspaceSourceBackup {
             throw new IOException("Source freeze unavailable; no role or registration");
         }finally{if(password!=null)Arrays.fill(password,'\0');}
     }
+
+    /** One native response to this live synthetic source, never a personal admission or a
+     * reusable administrator credential. The owner retains OS/configuration pins throughout. */
+    static NativeAuthorization requestSyntheticAuthorization(RecoverySource source,String backupId,String logicalId,
+            java.io.InputStream input,java.io.OutputStream output) throws IOException {
+        byte[] bytes=null;char[] password=null,phrase=null;FrozenSource frozen=null;
+        try {
+            source.requireMaintenanceHeld();
+            require(backupId.matches("[0-9a-f]{32}")&&source.database().equals("personal_ai_workspace_b3_"+backupId.substring(0,12))
+                &&source.port()!=5432&&source.profileRoot().getParent().getParent().getFileName().toString().matches("paw-source-producer-[0-9a-f]{32}"));
+            require(UUID.fromString(logicalId).toString().equals(logicalId));
+            byte[] random=new byte[32];new SecureRandom().nextBytes(random);
+            String challenge=java.util.HexFormat.of().formatHex(random);Arrays.fill(random,(byte)0);
+            String profile=source.profileRoot().getFileName().toString(),configuration=source.configurationSha256();
+            var observation=source.inspectApplication();
+            var request=new java.util.LinkedHashMap<String,Object>();
+            request.put("Version",1);request.put("Kind","SYNTHETIC_SOURCE_AUTHORIZATION_REQUEST");
+            request.put("ChildPid",ProcessHandle.current().pid());request.put("BackupId",backupId);
+            request.put("DatabaseLogicalIdentity",logicalId);request.put("SourceProfileId",profile);
+            request.put("SourceDatabase",source.database());request.put("SourcePort",source.port());
+            request.put("SourceConfigurationIdentity",source.configurationIdentity());request.put("SourceConfigurationSha256",configuration);
+            request.put("SourceApplicationRoleOid",observation.applicationRoleOid());request.put("Challenge",challenge);
+            byte[] frame=JSON.writeValueAsBytes(request);require(frame.length>0&&frame.length<=16384);
+            var pipe=new java.io.DataOutputStream(output);pipe.writeInt(frame.length);pipe.write(frame);pipe.flush();
+            var response=new java.io.DataInputStream(input);int length=response.readInt();require(length>0&&length<=16384);
+            bytes=response.readNBytes(length);require(bytes.length==length&&response.read()==-1);
+            var call=JSON.readTree(bytes);
+            var fields=java.util.Set.of("Version","Action","ChildPid","BackupId","DatabaseLogicalIdentity","SourceProfileId",
+                "SourceConfigurationSha256","Challenge","AdministratorUsername","AdministratorPassword","Passphrase");
+            require(call.isObject()&&call.size()==fields.size());
+            for(String field:fields)require(call.has(field));
+            require(call.path("Version").isIntegralNumber()&&call.path("Version").canConvertToInt()&&call.path("Version").intValue()==1
+                &&call.path("ChildPid").isIntegralNumber()&&call.path("ChildPid").canConvertToLong()
+                &&call.path("ChildPid").longValue()==ProcessHandle.current().pid());
+            for(String field:fields)if(!field.equals("Version")&&!field.equals("ChildPid"))require(call.path(field).isString());
+            require(call.path("Action").asString().equals("AUTHORIZE_SYNTHETIC_BACKUP")&&call.path("BackupId").asString().equals(backupId)
+                &&call.path("DatabaseLogicalIdentity").asString().equals(logicalId)&&call.path("SourceProfileId").asString().equals(profile)
+                &&call.path("SourceConfigurationSha256").asString().equals(configuration)&&call.path("Challenge").asString().equals(challenge));
+            String username=call.path("AdministratorUsername").asString();
+            password=call.path("AdministratorPassword").asString().toCharArray();phrase=call.path("Passphrase").asString().toCharArray();
+            require(username.matches("[a-z_][a-z0-9_]{0,62}")&&password.length>0&&password.length<=1024&&phrase.length>=16&&phrase.length<=1024);
+            source.requireMaintenanceHeld();require(configuration.equals(source.configurationSha256()));
+            // Only now can the supplied administrator connect; endpoint and scope come from
+            // the retained configuration. No path/endpoint/SQL or stop flag came from the UI.
+            frozen=freezeSynthetic(source,username,password);
+            var authorized=new NativeAuthorization(frozen,backupId,logicalId,phrase);phrase=null;frozen=null;
+            return authorized;
+        }catch(Exception rejected){throw new IOException("Native synthetic source authorization rejected; no receipt");}
+        finally {
+            if(bytes!=null)Arrays.fill(bytes,(byte)0);if(password!=null)Arrays.fill(password,'\0');if(phrase!=null)Arrays.fill(phrase,'\0');
+            if(frozen!=null)frozen.close();
+        }
+    }
+
+    static final class NativeAuthorization implements AutoCloseable {
+        private final FrozenSource frozen;
+        private final String backupId,logicalId;
+        private char[] passphrase;
+        private boolean consumed,closed;
+        private NativeAuthorization(FrozenSource frozen,String backupId,String logicalId,char[] passphrase){
+            this.frozen=frozen;this.backupId=backupId;this.logicalId=logicalId;this.passphrase=passphrase;
+        }
+        FrozenSource frozen() throws IOException {require(!closed&&!consumed);return frozen;}
+        Completed backup(Path tools,Path encrypted) throws IOException {
+            require(!closed&&!consumed);consumed=true;
+            try{return backupSynthetic(frozen,tools,encrypted,backupId,logicalId,passphrase);}
+            finally{Arrays.fill(passphrase,'\0');passphrase=null;}
+        }
+        @Override public void close() throws IOException {
+            if(closed)return;closed=true;
+            try{frozen.close();}finally{if(passphrase!=null){Arrays.fill(passphrase,'\0');passphrase=null;}}
+        }
+        @Override public String toString(){return "NativeAuthorization[synthetic; single use; private]";}
+    }
     static final class Completed {
         private final String backupId,sourceRole;
         private final SourceIdentity source;

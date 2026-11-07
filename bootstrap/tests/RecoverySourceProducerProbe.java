@@ -102,7 +102,7 @@ public final class RecoverySourceProducerProbe {
         pipe.writeInt(hello.length);pipe.write(hello);pipe.flush();
         stage="REQUEST";
         var input=new DataInputStream(System.in);int size=input.readInt();require(size>0&&size<=16384);
-        byte[] request=input.readNBytes(size);require(request.length==size&&input.read()==-1);
+        byte[] request=input.readNBytes(size);require(request.length==size);
         var call=JSON.readTree(request);require(call.size()==7&&call.path("Version").asInt()==1&&call.path("Action").asString().equals("BACKUP_SYNTHETIC"));
         String backupId=call.path("BackupId").asString(),logical=call.path("DatabaseLogicalIdentity").asString();
         require(backupId.matches("[0-9a-f]{32}")&&UUID.fromString(logical).toString().equals(logical));
@@ -152,7 +152,6 @@ public final class RecoverySourceProducerProbe {
             byte[] configuration=JSON.writeValueAsBytes(Map.of("format",1,"backend","postgresql","host","127.0.0.1",
                 "port",port,"database",database,"username",appRole,"password",appPassword));
             createProtectedConfiguration(root.resolve("data/database.dpapi"),configuration);Arrays.fill(configuration,(byte)0);
-            char[] password=(UUID.randomUUID().toString()+UUID.randomUUID()).toCharArray(),consumed=password.clone();
             Method freezeBound=TrustedDatabaseConfiguration.class.getDeclaredMethod("pinSyntheticRecoverySource",Path.class,MaintenanceExclusion.class);
             freezeBound.setAccessible(true);
             try(var binding=(TrustedDatabaseConfiguration.RecoverySource)freezeBound.invoke(null,root,exclusion)) {
@@ -178,11 +177,10 @@ public final class RecoverySourceProducerProbe {
                     catch(IOException denied){require(Arrays.equals(deniedSecret,new char[deniedSecret.length]));}
                     require(scalar(other,"SELECT count(*) FROM pg_roles WHERE rolname='workspace_backup_src_"+backupId+"'")==0);
                 }
-                char[] adminSecret=administrator.password().toCharArray();
-                var frozen=WorkspaceSourceBackup.freezeSynthetic(binding,administrator.username(),adminSecret);
-                require(Arrays.equals(adminSecret,new char[adminSecret.length]));
                 WorkspaceSourceBackup.Completed completed;
-                try(frozen) {
+                stage="NATIVE_AUTHORIZATION";
+                try(var authorization=WorkspaceSourceBackup.requestSyntheticAuthorization(binding,backupId,logical,input,output)) {
+                    var frozen=authorization.frozen();
                     stage="SOURCE_FREEZE";
                     try(var writer=source.dataSource().getConnection()) {
                         sql(writer,"SET lock_timeout='250ms'");
@@ -194,25 +192,24 @@ public final class RecoverySourceProducerProbe {
                     catch(IOException denied){/* Sharing denial before any write. */}
                     frozen.verifyContents();
                     stage="BACKUP";
-                    completed=WorkspaceSourceBackup.backupSynthetic(frozen,Path.of(config.path("tools").asString()),encrypted,backupId,logical,consumed);
+                    completed=authorization.backup(Path.of(config.path("tools").asString()),encrypted);
+                    Path replayOutput=encrypted.resolveSibling(backupId+"-replay");
+                    try{authorization.backup(Path.of(config.path("tools").asString()),replayOutput);throw new IllegalStateException("Native authorization reused");}
+                    catch(IOException denied){require(!Files.exists(replayOutput));}
+                    var secret=authorization.getClass().getDeclaredField("passphrase");secret.setAccessible(true);
+                    require(secret.get(authorization)==null);
                 }
-                char[] replay=password.clone();Path replayOutput=encrypted.resolveSibling(backupId+"-replay");
-                try{WorkspaceSourceBackup.backupSynthetic(frozen,Path.of(config.path("tools").asString()),replayOutput,backupId,logical,replay);throw new IllegalStateException("Closed freeze reused");}
-                catch(IOException denied){require(!Files.exists(replayOutput)&&Arrays.equals(replay,new char[replay.length]));}
                 write(isolated.resolve("source-freeze-evidence.json"),JSON.writeValueAsBytes(Map.of(
                     "status","SYNTHETIC_PARTIAL_FREEZE_VERIFIED","unknownSqlSessionRejectedBeforeRole",true,"sourceDmlBlocked",true,
                     "knowledgeWriteOpenRejected",true,"administratorInputCleared",true,"singleUseClosedCapabilityRejected",true,
                     "tablesFrozen",WorkspaceV3Catalog.TABLES.size(),"personalStoppedWriterProof",false,"personalSourceAuthorization",false)));
-                require(Arrays.equals(consumed,new char[consumed.length]));held.invoke(exclusion,root);
+                held.invoke(exclusion,root);
                 try(var db=source.dataSource().getConnection()){
                     require(before.equals(snapshot(db,true))&&value(db,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE")
                         &&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname='"+completed.sourceRole()+"'")==0);
                 }
-                // Only the isolated fixture persists its generated passphrase, under DPAPI.
-                // Product code has no password persistence or metadata -> Completed constructor.
-                byte[] passwordBytes=new String(password).getBytes(StandardCharsets.UTF_8);
-                try{createProtectedConfiguration(isolated.resolve("fixture-passphrase.dpapi"),passwordBytes);}
-                finally{Arrays.fill(passwordBytes,(byte)0);}
+                // The native probe owns the generated passphrase and its synthetic-only DPAPI
+                // handoff. The producer receives it solely through the native authorization pipe.
                 write(isolated.resolve("registered-fixture.json"),JSON.writeValueAsBytes(Map.of(
                     "database",database,"snapshot",before,"sourceProfileId",root.getFileName().toString(),
                     "producerPid",ProcessHandle.current().pid(),"manifest",completed.backup().manifest())));
@@ -227,7 +224,7 @@ public final class RecoverySourceProducerProbe {
                 catch(IOException denied){/* A closed pin never silently reopens configuration. */}
                 completed.writeNativeResult(output);
                 stage="RESULT_SENT";
-            } finally {Arrays.fill(password,'\0');Arrays.fill(consumed,'\0');}
+            }
         }
     }
 
