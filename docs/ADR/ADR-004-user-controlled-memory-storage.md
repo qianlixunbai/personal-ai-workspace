@@ -60,6 +60,7 @@ the POSIX permission path has not received a real Linux/macOS acceptance run.
 
 ## Evidence / references
 
+- 2026-11-07 additive implementation: [explicit draft-to-existing-memory revision](../engineering/MEMORY-DRAFT-REVISION-REPORT.md) lets the user choose one ACTIVE record for an adopted candidate or a manually prepared new draft, inspect the old content, and adopt the proposed revision into the existing editor. Only Save calls the existing update with the exact ID/revision. This adds no automatic merging, extra record, schema, model call, or revision history; stale or uncertain writes retain the existing block-and-review behavior.
 - 2026-11-07 additive implementation: [user-initiated conversation memory candidates](../engineering/MEMORY-CANDIDATE-GENERATION-REPORT.md) reuse the local Ask pipeline without Memory access or write tools. A candidate is transient, editable and untrusted; only explicit adoption followed by the existing manual Save writes a MANUAL record. Background extraction, automatic saving/retrieval and schema changes remain excluded. The original M3A scope above is historical.
 - [M3A implementation and acceptance report](../milestones/M3A-MEMORY-STORAGE-REPORT.md)
 - [Xerial pinned release](https://github.com/xerial/sqlite-jdbc/releases/tag/3.53.2.0)

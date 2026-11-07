@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import { emptyMemory, validContent, validDraft, validQuery } from '../bridge/memory'
-import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
+import type { MemoryDraft, MemoryItem, MemoryList, MemoryMetadata, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { MemoryPreview } from '../components/MemoryPreview'
 import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
@@ -25,6 +25,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
   const [fromConversation, setFromConversation] = useState<MemorySourceRole | null>(null)
   const [candidateEpoch, setCandidateEpoch] = useState(0)
+  const [revisionReview, setRevisionReview] = useState<{ draft: MemoryDraft; target: MemoryItem | null } | null>(null)
   const [stale, setStale] = useState(false)
   const [missing, setMissing] = useState(false)
   const [unknown, setUnknown] = useState(false)
@@ -35,6 +36,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [confirmation, setConfirmation] = useState<Confirmation>(null)
   const generation = useRef(0)
   const listGeneration = useRef(0)
+  const revisionGeneration = useRef(0)
   const actionLock = useRef(false)
   const queried = useRef(false)
   const queryRef = useRef(query); queryRef.current = query
@@ -50,8 +52,9 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     if (visible && !busy && !confirmation && focusNext.current) {
       (focusNext.current === 'editor' ? editor.current : newButton.current)?.focus(); focusNext.current = null
     }
-  }, [busy, confirmation, visible])
+  }, [busy, confirmation, visible, revisionReview])
   const loadEditor = (item: MemoryItem | null) => {
+    revisionGeneration.current++; setRevisionReview(null)
     setCandidateEpoch(value => value + 1)
     setPreviewId(null)
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
@@ -116,6 +119,9 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     if (enabled && visible && !queried.current) { queried.current = true; void refresh() }
   }, [enabled, visible])
   useEffect(() => { if (!enabled || !visible) setPreviewId(null) }, [enabled, visible])
+  useEffect(() => {
+    if (!enabled || !visible) { revisionGeneration.current++; setRevisionReview(null) }
+  }, [enabled, visible])
   useEffect(() => () => { generation.current++; listGeneration.current++ }, [])
   const run = async (operation: () => Promise<void>, mutation = false, affectsLoaded = true) => {
     if (actionLock.current || !enabled) return
@@ -143,7 +149,36 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     if (token !== generation.current) return
     loadEditor(item); setNotice('已加载 Runtime 保存的 Memory。'); focusNext.current = 'editor'
   }, false, id === loaded?.id) }
-  const save = () => { if (blocked || !dirty || !validDraft(draft)) return; void run(async () => {
+  const chooseRevisionTarget = (metadata: MemoryMetadata) => {
+    if (!revisionReview || actionLock.current || blocked || metadata.status !== 'ACTIVE') return
+    const token = ++revisionGeneration.current, session = generation.current
+    setRevisionReview(previous => previous ? { ...previous, target: null } : null)
+    void run(async () => {
+      let item: MemoryItem
+      try { item = await bridge.getMemory(metadata.id) }
+      catch (problem) { if (token === revisionGeneration.current && session === generation.current) throw problem; return }
+      if (token !== revisionGeneration.current || session !== generation.current) return
+      if (item.id !== metadata.id || item.revision !== metadata.revision || item.status !== 'ACTIVE') {
+        setError('修订目标已变更或归档，请刷新列表后重新选择。草稿保持原样。'); return
+      }
+      setRevisionReview(previous => previous ? { ...previous, target: item } : null)
+      setNotice('请对照目标旧内容与下方草稿，再采用修订；此时尚未写入。')
+    }, false, false)
+  }
+  const beginRevision = () => {
+    if (!enabled || !visible || actionLock.current || confirmation || loaded || fromConversation || blocked || !validDraft(draft)) return
+    revisionGeneration.current++; setPreviewId(null); setError(''); setNotice('')
+    setRevisionReview({ draft: { ...draft }, target: null })
+    if (queryRef.current.status !== 'ACTIVE') void refresh({ ...queryRef.current, status: 'ACTIVE', page: 0 })
+  }
+  const adoptRevision = () => {
+    if (!enabled || !visible || actionLock.current || confirmation || blocked || !revisionReview?.target) return
+    const { target, draft: replacement } = revisionReview
+    loadEditor(target); setDraft(replacement)
+    setNotice('已将草稿用于修订所选记忆，尚未保存。点击保存才会更新这条记忆，不会另建一条。')
+    focusNext.current = 'editor'
+  }
+  const save = () => { if (revisionReview || blocked || !dirty || !validDraft(draft)) return; void run(async () => {
     const token = generation.current
     const item = loaded ? await bridge.updateMemory(loaded.id, loaded.revision, draft) : await bridge.createMemory(draft)
     if (token !== generation.current) return
@@ -180,13 +215,13 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
             onKeyDown={event => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault() }} />
           <div className="operation-actions"><button disabled={disabled || listLoading}>搜索</button></div>
         </form>
-        <div className="memory-filters"><label htmlFor="memory-status">状态<select id="memory-status" value={query.status} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, status: event.target.value as MemoryStatus, page: 0 }) }}>
+        <div className="memory-filters"><label htmlFor="memory-status">状态<select id="memory-status" value={query.status} disabled={disabled || listLoading || !!revisionReview} onChange={event => { void refresh({ ...queryRef.current, status: event.target.value as MemoryStatus, page: 0 }) }}>
           <option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select></label>
           <label htmlFor="memory-filter-type">类型<select id="memory-filter-type" value={query.type ?? 'ALL'} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, type: event.target.value === 'ALL' ? null : event.target.value as MemoryType, page: 0 }) }}>
             <option value="ALL">全部</option><option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></label></div>
         <p id="memory-search-help" className="hint">搜索标题和正文，区分大小写。</p>
-        <ul tabIndex={0} aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button id={`memory-select-${item.id}`} className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id} disabled={disabled || listLoading}
-          onClick={() => { if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button>
+        <ul tabIndex={0} aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button id={`memory-select-${item.id}`} className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id || revisionReview?.target?.id === item.id} disabled={disabled || listLoading || !!revisionReview && item.status !== 'ACTIVE'}
+          onClick={() => { if (revisionReview) chooseRevisionTarget(item); else if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button>
           <button type="button" className="memory-preview-toggle" disabled={disabled || listLoading} aria-expanded={previewId === item.id}
             aria-describedby={`memory-select-${item.id}`} aria-controls={previewId === item.id ? `memory-preview-${item.id}` : undefined}
             onClick={() => setPreviewId(current => current === item.id ? null : item.id)}>{previewId === item.id ? '收起预览' : '预览正文'}</button>
@@ -197,22 +232,36 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <span>{query.page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))} · {list?.total ?? 0}</span>
           <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>
       </section>
-      <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
+      <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : revisionReview ? '修订已有记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled || !!revisionReview} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
         {fromConversation && <p className="hint">已从对话填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。</p>}
         {fromConversation && !loaded && <MemoryCandidatePanel key={candidateEpoch} bridge={bridge} enabled={enabled && visible && !busy && !confirmation && !blocked} draft={draft} role={fromConversation}
           apply={candidate => { if (blocked || actionLock.current) return; loadEditor(null); setDraft(candidate); setNotice('已采用模型候选，尚未保存。请检查内容后点击保存。' + (fromConversation === 'ASSISTANT' ? '来源为助手回复，未经核实。' : '')); editor.current?.focus() }} />}
+        {!loaded && !fromConversation && !revisionReview && <div className="operation-actions">
+          <button disabled={disabled || blocked || listLoading || !validDraft(draft)} onClick={beginRevision}>用此草稿修订已有记忆</button>
+        </div>}
+        {revisionReview && <section className="memory-revision-review" aria-label="修订目标审核">
+          <p>从左侧选择一条使用中的记忆。当前草稿将完整替换它的类型、标题和正文，请对照旧内容后确认。</p>
+          {revisionReview.target && <>
+            <h3>目标旧内容：<bdi>{revisionReview.target.title}</bdi></h3>
+            <p>{revisionReview.target.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {revisionReview.target.revision}</p>
+            <pre aria-label="修订目标旧正文" dir="auto">{revisionReview.target.content}</pre>
+          </>}
+          <p className="hint">下方为待采用的新内容。采用仅准备编辑草稿，仍需点击“保存”才更新原记录。不会自动合并；保存后不保留可恢复的旧正文。</p>
+          <div className="operation-actions"><button disabled={disabled || blocked || !revisionReview.target} onClick={adoptRevision}>采用修订到编辑器</button>
+            <button disabled={disabled} onClick={() => { revisionGeneration.current++; setRevisionReview(null); setError(''); setNotice('已取消选择修订目标，原草稿保留。'); focusNext.current = 'editor' }}>取消选择修订目标</button></div>
+        </section>}
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
         {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请新建 或选择其他条目。</p>}
         {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}
-        <div className="memory-fields"><div><label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
+        <div className="memory-fields"><div><label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled || !!revisionReview} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
           <option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></div>
-          <div><label htmlFor="memory-title">记忆标题</label><input ref={editor} id="memory-title" value={draft.title} disabled={disabled} autoComplete="off" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} />
+          <div><label htmlFor="memory-title">记忆标题</label><input ref={editor} id="memory-title" value={draft.title} disabled={disabled || !!revisionReview} autoComplete="off" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} />
             <p className="hint">{[...draft.title].length} / 160 字符</p></div></div>
-        <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
+        <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled || !!revisionReview} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
         <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
         {fromConversation && !validContent(draft.content) && <p role="alert" className="error">对话原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
-        <div className="operation-actions"><button className="primary" disabled={disabled || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
+        <div className="operation-actions"><button className="primary" disabled={disabled || !!revisionReview || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
           <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
           <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>
           <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>重新加载</button></div>

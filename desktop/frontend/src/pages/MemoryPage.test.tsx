@@ -334,6 +334,79 @@ it('isolates session rotation and late reads, refuses handoff during editor oper
   await click('刷新'); expect(content.value).toBe('Synthetic answer 1')
   expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
 })
+it('revises a user-selected existing memory from an adopted candidate only on Save and reads back the same identity', async () => {
+  const port = new ConversationMemoryService()
+  const original = '现在我更喜欢详细的中文回答。'
+  const candidate = { type: 'PREFERENCE', title: '新的回答偏好', content: '请用详细中文回答。', evidence: original }
+  port.detail.turns[0]!.userMessage.content = original
+  port.candidateResult = JSON.stringify({ candidate })
+  port.items[0] = { ...memoryItem(), content: '旧偏好：简洁回答。\n<img src=x onerror=alert(1)>' }
+  const saved = { ...port.items[0] }
+  const { title, content } = await setupConversationDraft(port)
+  await chooseMessage('USER'); await click('生成记忆候选'); await click('采用候选到编辑器')
+  await click('用此草稿修订已有记忆')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: '采用修订到编辑器' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.get')).toHaveLength(0)
+  await click(/^Synthetic Memory 1 PROJECT_NOTE/)
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByLabelText('修订目标旧正文').textContent).toBe(saved.content)
+  expect(screen.getByLabelText('修订目标旧正文').querySelector('img')).toBeNull()
+  expect(content.value).toBe(candidate.content); expect(title.value).toBe(candidate.title)
+  await click('取消选择修订目标'); expect(content.value).toBe(candidate.content)
+  expect(document.activeElement).toBe(title)
+  await click('用此草稿修订已有记忆'); await click(/^Synthetic Memory 1 PROJECT_NOTE/); await click('采用修订到编辑器')
+  expect(document.activeElement).toBe(title)
+  expect(screen.getByText(/使用中 · 版本 9007199254740993/)).toBeTruthy()
+  expect(port.sent.some(x => ['memory.create', 'memory.update', 'memory.delete', 'memory.archive'].includes(String(x.method)))).toBe(false)
+  edit(content, '  已审阅：请用详细中文回答。\n保留示例。  ')
+  const revised = content.value
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存' })); fireEvent.click(screen.getByRole('button', { name: '保存' })) })
+  expect(port.sent.filter(x => x.method === 'memory.update').map(x => x.payload)).toEqual([
+    { memoryId: saved.id, expectedRevision: saved.revision, type: 'PREFERENCE', title: candidate.title, content: revised },
+  ])
+  expect(port.sent.some(x => x.method === 'memory.create')).toBe(false)
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(1)
+  expect(port.items).toHaveLength(1); expect(port.items[0]?.id).toBe(saved.id); expect(port.items[0]?.revision).toBe('9007199254740994')
+  await click('新建'); await click(/^新的回答偏好 PREFERENCE/)
+  expect(content.value).toBe(revised)
+  expect(port.sent.filter(x => x.method === 'memory.get').at(-1)?.payload).toEqual({ memoryId: saved.id })
+})
+it('revision target review preserves drafts on stale archived missing and late reads, and cannot bypass conflict or unknown Save', async () => {
+  const { port, bridge, view, title, content } = await setup()
+  const draft = '  Synthetic corrected preference\nexact text  '
+  edit(title, 'Synthetic revision'); edit(content, draft); await click('用此草稿修订已有记忆')
+  port.items[0] = { ...port.items[0]!, revision: '9007199254740994' }
+  await click(/^Synthetic Memory 1 PROJECT_NOTE/)
+  expect(screen.getByRole('alert').textContent).toContain('修订目标已变更或归档')
+  expect(screen.getByRole('button', { name: '采用修订到编辑器' }).hasAttribute('disabled')).toBe(true)
+  expect(content.value).toBe(draft); await click('刷新')
+  port.items[0] = { ...port.items[0]!, status: 'ARCHIVED' }; await click(/^Synthetic Memory 1 PROJECT_NOTE/)
+  expect(screen.queryByLabelText('修订目标旧正文')).toBeNull()
+  port.items[0] = { ...port.items[0]!, status: 'ACTIVE' }; port.getError = 'MemoryNotFound'; await click(/^Synthetic Memory 1 PROJECT_NOTE/)
+  expect(screen.getByRole('alert').textContent).toContain('MemoryNotFound'); expect(content.value).toBe(draft)
+  port.getError = null
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click(/^Synthetic Memory 1 PROJECT_NOTE/)
+  view.rerender(<MemoryPage bridge={bridge} enabled visible={false} registerLeave={() => () => {}} openBackup={() => {}} />)
+  await act(async () => complete(port.items[0]!))
+  view.rerender(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => {}} />)
+  expect(screen.queryByRole('region', { name: '修订目标审核' })).toBeNull(); expect(content.value).toBe(draft)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+  await click('用此草稿修订已有记忆'); await click(/^Synthetic Memory 1 PROJECT_NOTE/); await click('采用修订到编辑器')
+  port.error = 'MemoryRevisionConflict'; await click('保存'); expect(content.value).toBe(draft)
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.queryByRole('button', { name: '用此草稿修订已有记忆' })).toBeNull()
+  await click('新建'); await click('丢弃并继续'); edit(title, 'Synthetic revision'); edit(content, draft)
+  await click('用此草稿修订已有记忆'); await click(/^Synthetic Memory 1 PROJECT_NOTE/); await click('采用修订到编辑器')
+  port.error = 'OutcomeUnknown'; await click('保存'); await click('刷新')
+  expect(content.value).toBe(draft); expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(2)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.restore')).toBe(false)
+  await act(async () => port.session(uuid(909)))
+  expect(content.value).toBe(''); expect(screen.queryByRole('region', { name: '修订目标审核' })).toBeNull()
+})
 it('creates only with Save, adopts canonical snapshot, signals dirty transitions and updates exact decimal revision', async () => {
   const { port, title, content } = await setup(); edit(title, 'Synthetic new'); edit(content, '  Synthetic exact\nbody  ')
   await act(async () => {}); expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)

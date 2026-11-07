@@ -327,6 +327,8 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .memory-preview h3 { margin: 8px 0; font-size: 13px; }
 .memory-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; font: inherit; font-size: 13px; line-height: 1.7; margin: 0; }
 .memory-preview mark { color: var(--text); background: var(--accent-soft); text-decoration: underline; }
+.memory-revision-review { padding: 12px; margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-raised); }
+.memory-revision-review pre { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; font: inherit; font-size: 13px; }
 .conversation-memory-references { margin-top: 8px; }
 .conversation-memory-references .memory-preview { margin-top: 8px; }
 .memory-candidate { padding: 12px; margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-raised); }
