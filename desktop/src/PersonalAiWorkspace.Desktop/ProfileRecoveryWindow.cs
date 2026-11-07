@@ -13,7 +13,7 @@ using System.Windows.Threading;
 namespace PersonalAiWorkspace.Desktop;
 
 // Native presentation only. A result never grants maintenance or SQL-source authority.
-internal sealed class ProfileRecoveryWindow : Window
+internal sealed partial class ProfileRecoveryWindow : Window
 {
     internal const string Argument = "--recover-development-workspace-v1";
     internal const string Scope = "范围：当前 PostgreSQL 工作区的 Memory、Conversations 和 Knowledge。\n" +
@@ -120,8 +120,9 @@ internal sealed class ProfileRecoveryWindow : Window
                     "仅隔离合成数据。此确认不授予个人备份权限，也不证明历史写入者或模型已停止。\n" +
                     "备份：" + request.BackupId + "\n来源工作区：" + request.SourceProfileId +
                     "\n数据库：127.0.0.1:" + request.SourcePort + " / " + request.SourceDatabase +
-                    "\n仅为这次备份创建受限短期角色，完成后回收。管理员凭据不保存；不会修改日常应用权限。")
-                    { ShowInTaskbar = false };
+                    "\n仅为这次备份创建受限短期角色，完成后回收。管理员凭据不保存；不会修改日常应用权限。");
+                // This dialog has its own STA; keep it reachable from the taskbar if the
+                // progress window is brought to the foreground while authorization waits.
                 foreach (var field in new (string Label, Control Input)[] { ("数据库管理员用户名", username), ("管理员密码", password),
                     ("新备份口令（至少 16 个字符）", phrase), ("再次输入备份口令", repeated) })
                 {

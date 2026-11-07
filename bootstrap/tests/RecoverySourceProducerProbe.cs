@@ -49,9 +49,23 @@ internal static class RecoverySourceProducerProbe
         // Automated native button action for explicitly authorized fresh synthetic data only.
         // Real product code never reads fixture.json or auto-fills/auto-confirms this window.
         string passphrase = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
-        int confirmations = 0;
+        int confirmations = 0, outcomeAcknowledgements = 0;
         EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) =>
         {
+            if (sender is Window feedback && feedback.Title == "Personal AI Workspace · 合成备份进度")
+            {
+                if (feedback.Content is not StackPanel content
+                    || !content.Children.OfType<TextBlock>().Any(text => text.Text.Contains(backupId, StringComparison.Ordinal))) throw new IOException();
+                var close = content.Children.OfType<Button>().Single(button => button.Name == "CloseSourceBackup");
+                close.IsEnabledChanged += (_, _) =>
+                {
+                    if (!close.IsEnabled) return;
+                    if (content.Children.OfType<TextBlock>().Any(text => text.Text.Contains("SYNTHETIC_BACKUP_RECORDED", StringComparison.Ordinal)))
+                        Interlocked.Increment(ref outcomeAcknowledgements);
+                    feedback.Dispatcher.BeginInvoke(new Action(feedback.Close));
+                };
+                return;
+            }
             if (sender is not Window window || window.Title != "Personal AI Workspace · 合成备份授权") return;
             if (Interlocked.Increment(ref confirmations) != 1 || window.Content is not StackPanel panel
                 || !panel.Children.OfType<TextBlock>().Any(text => text.Text.Contains(backupId, StringComparison.Ordinal))) throw new IOException();
@@ -67,7 +81,7 @@ internal static class RecoverySourceProducerProbe
         var run = coordinator.GetMethod("ExecuteSyntheticSourceBackupAsync", flags)!;
         var pending = (Task)run.Invoke(owner, [start])!;
         await pending;
-        if (confirmations != 1) throw new IOException();
+        if (confirmations != 1 || outcomeAcknowledgements != 1) throw new IOException();
         object registration = pending.GetType().GetProperty("Result")!.GetValue(pending)!;
         // Persist only this generated fixture passphrase so the separate restoration process
         // can consume the new backup. No production secret is written by the native window.
@@ -146,6 +160,7 @@ internal static class RecoverySourceProducerProbe
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
             nativeAuthorizationWindowConfirmed = confirmations == 1, sourceSecretsViaPrivatePipe = true,
+            nativeBackupOutcomeAcknowledged = outcomeAcknowledgements == 1,
             authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = args.Length!=5||args[4]=="prepared",
             applicationCredentialRetainedForReady = args.Length==5&&args[4]!="prepared",
             restoredByNewProcessFromDurableRegistration = true, originalSourceProfileRetainedAt = retired,

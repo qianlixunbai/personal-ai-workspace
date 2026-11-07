@@ -146,6 +146,30 @@ internal sealed partial class ProfileRecoveryCoordinator
         string root = Path.Combine(applicationRoot, "Profiles", intent.SourceProfileId);
         RecheckSourceIntent(intent, root);
         syntheticSourceAttempted = true; // Cancellation/unknown child results never permit replay of this intent.
+        return await ProfileRecoveryWindow.RunSyntheticSourceBackupAsync(intent.BackupId, async report =>
+        {
+            var stage = SourceBackupStage.Preparing;
+            using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            try
+            {
+                return await ExecuteSyntheticSourceBackupCoreAsync(launch, intent, root, deadline.Token,
+                    next => { stage = next; report(next); });
+            }
+            catch (Exception failure)
+            {
+                // Keep child/SQL exception text out of the native window and default logs.
+                // A local stage describes observation, never a fabricated rollback receipt.
+                throw new SourceBackupFailure(intent.BackupId, stage, deadline.IsCancellationRequested
+                    ? SourceBackupFailureReason.DeadlineExpired
+                    : failure is SourceAuthorizationCancelledException ? SourceBackupFailureReason.CancelledBeforeSend
+                    : SourceBackupFailureReason.ExecutionFailed);
+            }
+        });
+    }
+
+    private async Task<SourceRegistration> ExecuteSyntheticSourceBackupCoreAsync(ProcessStartInfo launch,
+        BackupIntent intent, string root, CancellationToken deadline, Action<SourceBackupStage> report)
+    {
         string payloads = Path.Combine(applicationRoot, "Recovery", "synthetic-payloads");
         // The existing synthetic backup engine requires user-only ACLs (narrower than the
         // Profile's user/System/Admin ACL). Create this new output boundary to that contract;
@@ -168,22 +192,23 @@ internal sealed partial class ProfileRecoveryCoordinator
         using var model = OpenRecord(Path.Combine(root, "model-state", ".lock"));
         ValidateFileAcl(runtime, user.User!); ValidateFileAcl(model, user.User!);
         if (runtime.Length != 0 || model.Length != 0) throw Stop();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        using var stderrCancellation = CancellationTokenSource.CreateLinkedTokenSource(deadline);
         using var job = RuntimeProcessJob.Create();
+        deadline.ThrowIfCancellationRequested();
         using var child = Process.Start(launch) ?? throw Stop();
         // Process.Start's handle is retained throughout; a reported PID never opens a process.
         _ = child.SafeHandle;
-        Task errors = DrainSourceErrors(child.StandardError.BaseStream, deadline.Token);
+        Task errors = DrainSourceErrors(child.StandardError.BaseStream, stderrCancellation.Token);
         try
         {
             job.Assign(child);
-            byte[] hello = await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token);
+            byte[] hello = await ReadSourceFrame(child.StandardOutput.BaseStream, deadline);
             if (Encoding.ASCII.GetString(hello) != "SYNTHETIC_SOURCE_V1\t" + child.Id.ToString(CultureInfo.InvariantCulture)) throw Stop();
             long handle = DuplicateExclusion(runtime, child);
             byte[] request = JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, Action = "BACKUP_SYNTHETIC",
                 intent.BackupId, intent.DatabaseLogicalIdentity, SourceRoot = root, Encrypted = encrypted, ExclusionHandle = handle });
-            await WriteSourceFrame(child.StandardInput.BaseStream, request, deadline.Token);
-            var authorization = ParseSourceFrame<SourceAuthorizationRequest>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token));
+            await WriteSourceFrame(child.StandardInput.BaseStream, request, deadline);
+            var authorization = ParseSourceFrame<SourceAuthorizationRequest>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline));
             if (authorization.Version != 1 || authorization.Kind != "SYNTHETIC_SOURCE_AUTHORIZATION_REQUEST"
                 || authorization.ChildPid != child.Id || authorization.BackupId != intent.BackupId
                 || authorization.DatabaseLogicalIdentity != intent.DatabaseLogicalIdentity || authorization.SourceProfileId != intent.SourceProfileId
@@ -192,22 +217,28 @@ internal sealed partial class ProfileRecoveryCoordinator
             RequireHex(authorization.Challenge, 64);
             VerifySourceConfiguration(root, authorization.SourceConfigurationIdentity, authorization.SourceConfigurationSha256);
             RecheckSourceIntent(intent, root);
-            byte[]? secrets = await ProfileRecoveryWindow.RequestSyntheticSourceAuthorizationAsync(authorization, deadline.Token);
-            if (secrets is null) throw new OperationCanceledException();
+            report(SourceBackupStage.AwaitingAuthorization);
+            byte[]? secrets = await ProfileRecoveryWindow.RequestSyntheticSourceAuthorizationAsync(authorization, deadline);
+            if (secrets is null) throw new SourceAuthorizationCancelledException();
             try
             {
-                deadline.Token.ThrowIfCancellationRequested();
+                deadline.ThrowIfCancellationRequested();
                 if (child.WaitForExit(0)) throw Stop();
                 RecheckSourceIntent(intent, root);
                 VerifySourceConfiguration(root, authorization.SourceConfigurationIdentity, authorization.SourceConfigurationSha256);
-                await WriteSourceFrame(child.StandardInput.BaseStream, secrets, deadline.Token);
+                // Mark before the first byte: a partial write has an unknown outcome too.
+                report(SourceBackupStage.SendingAuthorization);
+                await WriteSourceFrame(child.StandardInput.BaseStream, secrets, deadline);
             }
             finally { CryptographicOperations.ZeroMemory(secrets); }
             child.StandardInput.Close();
-            var result = ParseSourceFrame<SourceChildResult>(await ReadSourceFrame(child.StandardOutput.BaseStream, deadline.Token));
+            report(SourceBackupStage.ProducingBackup);
+            byte[] resultFrame = await ReadSourceFrame(child.StandardOutput.BaseStream, deadline);
+            report(SourceBackupStage.VerifyingBackup);
+            var result = ParseSourceFrame<SourceChildResult>(resultFrame);
             // A result followed by a hang, abnormal exit or extra stdout never authorizes a receipt.
-            if (await child.StandardOutput.BaseStream.ReadAsync(new byte[1], deadline.Token) != 0) throw Stop();
-            await child.WaitForExitAsync(deadline.Token);
+            if (await child.StandardOutput.BaseStream.ReadAsync(new byte[1], deadline) != 0) throw Stop();
+            await child.WaitForExitAsync(deadline);
             if (!child.WaitForExit(10000)) throw Stop();
             child.Refresh();
             await errors;
@@ -242,7 +273,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             BinaryPrimitives.WriteUInt64LittleEndian(configurationIdentity.AsSpan(8), configurationId.Low);
             BinaryPrimitives.WriteUInt64LittleEndian(configurationIdentity.AsSpan(16), configurationId.High);
             if (Convert.ToHexStringLower(configurationIdentity) != result.SourceConfigurationIdentity
-                || Convert.ToHexStringLower(await SHA256.HashDataAsync(configuration, deadline.Token)) != result.SourceConfigurationSha256) throw Stop();
+                || Convert.ToHexStringLower(await SHA256.HashDataAsync(configuration, deadline)) != result.SourceConfigurationSha256) throw Stop();
             // Parent independently pins and hashes the actual ciphertext at its own planned path.
             // Never accept a child-selected path, a package-side SHA or an outer success marker alone.
             HoldSyntheticBackupOutput(encrypted, payloads);
@@ -252,7 +283,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             using var completion = OpenRecord(Path.Combine(encrypted, "ENCRYPTED_BACKUP_COMPLETE.json"));
             ValidateFileAcl(payload, user.User!); ValidateFileAcl(completion, user.User!);
             if (payload.Length != source.PayloadBytes || completion.Length is < 1 or > MaximumRecordBytes
-                || Convert.ToHexStringLower(await SHA256.HashDataAsync(payload, deadline.Token)) != source.PayloadSha256) throw Stop();
+                || Convert.ToHexStringLower(await SHA256.HashDataAsync(payload, deadline)) != source.PayloadSha256) throw Stop();
             byte[] complete = new byte[checked((int)completion.Length)]; completion.ReadExactly(complete);
             using var doc = ParseSourceDocument(complete);
             var fields = doc.RootElement;
@@ -262,6 +293,8 @@ internal sealed partial class ProfileRecoveryCoordinator
                 || fields.GetProperty("payload").GetString() != "backup.pgp"
                 || fields.GetProperty("bytes").GetInt64() != source.PayloadBytes
                 || fields.GetProperty("sha256").GetString() != source.PayloadSha256) throw Stop();
+            deadline.ThrowIfCancellationRequested();
+            report(SourceBackupStage.RegisteringBackup);
             string sources = Path.Combine(applicationRoot, "Recovery", "synthetic-sources");
             EnsurePrivateDirectory(sources);
             string directory = Path.Combine(sources, intent.BackupId);
@@ -272,13 +305,8 @@ internal sealed partial class ProfileRecoveryCoordinator
                 result.SourceConfigurationSha256, result.SourceApplicationRoleOid);
             PublishRecord(directory, "source", entropy, bound);
             if (ReadRecord<BoundSyntheticSource>(Path.Combine(directory, "source.dpapi"), entropy) != bound) throw Stop();
+            report(SourceBackupStage.Recorded);
             return source;
-        }
-        catch (Exception failure)
-        {
-            // Retain intent, ciphertext and any publication evidence. No retry, role/DB cleanup,
-            // success inference or publication from an incomplete/unknown child's result.
-            throw new IOException("Synthetic source execution incomplete; inspect retained attempt; no personal registration.", failure);
         }
         finally
         {
@@ -288,7 +316,7 @@ internal sealed partial class ProfileRecoveryCoordinator
                 child.Kill(); // Only the directly started synthetic child; no existing service.
                 await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             }
-            deadline.Cancel();
+            stderrCancellation.Cancel();
             try { await errors.WaitAsync(TimeSpan.FromSeconds(2)); } catch (Exception) { /* Never log raw stderr. */ }
         }
     }

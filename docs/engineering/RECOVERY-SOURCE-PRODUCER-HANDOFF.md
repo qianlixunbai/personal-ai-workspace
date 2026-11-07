@@ -1,5 +1,27 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：合成进度／失败结果界面与限定的只读身份核对
+
+基于本地 `728fb82`，合成生产者现直接打开原生进度窗口，在子进程操作和其 finally 返回后展示结果，用户关闭确认后才返回所属验收流程。此 UI 没有个人来源入口；没有把阶段、窗口确认或异常转换成停写／SQL 来源授权。
+
+- 授权第一字节发送前先标记阶段，避免部分写入被误报为“未发送”；独立密文验证后、来源登记发布前标记登记阶段，DPAPI 重读后才记录“登记已核对”。结果分别给出 `AUTHORIZATION_NOT_SENT`、`OUTCOME_UNCONFIRMED`、`REGISTRATION_UNCONFIRMED`、`RECORDED_CLEANUP_UNCONFIRMED` 以及准确的保留／核对指引。用户取消和执行时限到期分别显示；取消 stderr 排空不再改变操作超时令牌。
+- 未完成状态保留意图、密文和登记；窗口不重试、不清除证据、不按失败推断回滚。失败只携带 backupId、阶段、固定原因，不把子进程／SQL 原始异常或 inner exception 传入界面和默认异常日志。仅已验证登记及正常收尾才展示合成备份成功；成功提示明确尚未恢复／激活，个人能力仍 BLOCKED。
+- 执行期间关闭无效，executor 的收尾完成／抛错后才启用关闭确认；原生授权仍可取消。独立 STA 的授权窗口保留任务栏入口，避免被进度窗口遮挡后难以找回。Loaded 只触发一次执行；现有完整合成探针已接入完成结果的自动确认，但产品窗口不会自动授权或自动关闭。
+
+**聚焦验证范围**：一个新增原生 UI 用例，以四种明确的展示夹具状态验证取消／超时／登记失败／收尾未知、关闭时序、重复 Loaded 不重放和原始异常隔离；这些夹具不生成停写或备份证据。首次运行通过（907 ms）；加入重复 Loaded 防重入后同一用例复验通过（854 ms，1 passed / 0 failed），证据为 `.verification/recovery-source-feedback/results-final/source-feedback.trx`。Desktop 和合成探针最终编译通过（0 warnings / 0 errors）。未重跑 Java／PG 全链路，未故障注入实际角色回收、DPAPI 发布或进程崩溃；上阶段真实合成流水线证据仍属于上阶段，不宣称本次重新验收。
+
+### 经用户授权的只读检查（2026-11-07 05:07 UTC）
+
+用户已明确允许“当前个人工作区只读身份与进程元数据检查”，并询问需要密码时告知。本次没有要求或读取密码。检查范围严格为：
+
+1. 复用 `DevelopmentWorkspaceSelection.Read()`，只读 32 字节非敏感 `last-workspace` 标识；复用原生 Known Folder/handle 路径解析及 `WindowsProfileSecurity.State(id, false)` 核对所选目录和固定子目录的私有 ACL／元数据。未打开任何 Profile 文件、数据库配置、client token、凭据或 Native helper。结果为 `SAVED_SELECTION_PRIVATE_DIRECTORIES_VERIFIED`，仅表示最后保存的选择及目录边界可核对；不是 Native Gate admission 或当前活动进程绑定。
+2. 限定查询命名的 `PersonalAiWorkspace.Desktop.exe`、它的直接子进程，以及 `127.0.0.1:18765` 的监听归属。只取名称、PID/父 PID、Session、创建时间和可执行路径，未读取命令行。命名 Desktop 返回 0；监听查询为 `NOT_OBSERVED_OR_UNAVAILABLE`，没有把“未取得记录”改写成服务已停止，也没有扩大到全机 Java、数据库或 KAG 进程扫描。
+3. 具体 Profile 标识和本机路径只留在未跟踪的本地 `.verification/recovery-source-feedback/identity-metadata.json`；进程查询范围／结果在 `process-metadata.json`。没有将个人路径／标识提交到仓库，没有修改源目录、配置或服务。
+
+**剩余阻塞**：这次许可消除了身份核对本身的授权障碍，但查询不到命名进程／端口无法补证历史未登记写入者，也无法判定未知模型执行完成。真实数据库端点、应用／管理员连接绑定和个人来源生产链未检查／未开放。暂不需要数据库密码；聊天中的密码不能解决停写证据缺口。如后续确需源连接元数据或新的管理员动作，应先说明具体对象和范围，再由用户授权；密钥只进入原生安全输入，不能在聊天中索取。真实备份、恢复、配置变更和启停服务均未授权、未执行。
+
+证据目录 `.verification/recovery-source-feedback/` 保存本次构建、UI 聚焦日志及五份受保护文档的前后摘要。上述工程代码可继续仅在隔离合成环境使用；个人按钮仍禁用。只做本地提交，不推送、合并或部署。
+
 ## 最新阶段：原生一次性管理员授权与合成备份生产链
 
 基于本地 `9fb30fe`，本模块实现原生安全输入、直属子进程挑战绑定和一次性授权消费，并接入已有合成来源生产者。**没有开放个人授权入口，没有生成个人停写证明或个人来源记录。** `ExecuteSyntheticSourceBackupAsync` 仍要求无个人 authority、明确的合成私有目录；Java 工厂继续拒绝非合成库、默认共享端口及非合成根。新窗口不是个人恢复按钮。

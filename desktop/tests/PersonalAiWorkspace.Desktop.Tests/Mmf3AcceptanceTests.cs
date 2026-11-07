@@ -14,6 +14,74 @@ public sealed class Mmf3AcceptanceTests
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     [Fact]
+    public async Task SyntheticBackupFeedbackRetainsFailuresUntilAcknowledgedAfterCleanup()
+    {
+        // Native presentation fixtures only: no source, process, SQL, credential or receipt.
+        string backupId = Guid.NewGuid().ToString("N");
+        var messages = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var violations = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        bool cleanupComplete = false;
+        int acknowledgements = 0, executions = 0;
+        System.Windows.EventManager.RegisterClassHandler(typeof(System.Windows.Window), System.Windows.FrameworkElement.LoadedEvent,
+            new System.Windows.RoutedEventHandler((sender, _) =>
+            {
+                if (sender is not System.Windows.Window window || window.Title != ProfileRecoveryWindow.SourceBackupTitle
+                    || window.Content is not System.Windows.Controls.StackPanel panel
+                    || !panel.Children.OfType<System.Windows.Controls.TextBlock>().Any(text => text.Text.Contains(backupId, StringComparison.Ordinal))
+                    || Equals(window.Tag, backupId)) return;
+                window.Tag = backupId;
+                var close = panel.Children.OfType<System.Windows.Controls.Button>().Single(button => button.Name == "CloseSourceBackup");
+                if (close.IsEnabled) violations.Enqueue("Acknowledgement enabled before completion");
+                window.Close();
+                if (!window.IsVisible) violations.Enqueue("Window closed while the executor still owned resources");
+                window.Dispatcher.BeginInvoke(new Action(() => window.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.FrameworkElement.LoadedEvent))));
+                close.IsEnabledChanged += (_, _) =>
+                {
+                    if (!close.IsEnabled) return;
+                    if (!cleanupComplete) violations.Enqueue("Failure shown before executor cleanup");
+                    messages.Enqueue(string.Join("\n", panel.Children.OfType<System.Windows.Controls.TextBlock>().Select(text => text.Text)));
+                    Interlocked.Increment(ref acknowledgements);
+                    window.Dispatcher.BeginInvoke(new Action(window.Close));
+                };
+            }));
+        foreach (var scenario in new[]
+        {
+            (ProfileRecoveryCoordinator.SourceBackupStage.AwaitingAuthorization, ProfileRecoveryCoordinator.SourceBackupFailureReason.CancelledBeforeSend, "AUTHORIZATION_NOT_SENT"),
+            (ProfileRecoveryCoordinator.SourceBackupStage.SendingAuthorization, ProfileRecoveryCoordinator.SourceBackupFailureReason.DeadlineExpired, "OUTCOME_UNCONFIRMED"),
+            (ProfileRecoveryCoordinator.SourceBackupStage.RegisteringBackup, ProfileRecoveryCoordinator.SourceBackupFailureReason.ExecutionFailed, "REGISTRATION_UNCONFIRMED"),
+            (ProfileRecoveryCoordinator.SourceBackupStage.Recorded, ProfileRecoveryCoordinator.SourceBackupFailureReason.ExecutionFailed, "RECORDED_CLEANUP_UNCONFIRMED")
+        })
+        {
+            cleanupComplete = false;
+            var failure = await Assert.ThrowsAsync<ProfileRecoveryCoordinator.SourceBackupFailure>(() =>
+                ProfileRecoveryWindow.RunSyntheticSourceBackupAsync(backupId, async report =>
+                {
+                    Interlocked.Increment(ref executions);
+                    try
+                    {
+                        await Task.Yield();
+                        report(scenario.Item1);
+                        if (scenario.Item1 == ProfileRecoveryCoordinator.SourceBackupStage.RegisteringBackup)
+                            throw new IOException("PRIVATE_CHILD_EXCEPTION_MUST_NOT_APPEAR");
+                        throw new ProfileRecoveryCoordinator.SourceBackupFailure(backupId, scenario.Item1, scenario.Item2);
+                    }
+                    finally { cleanupComplete = true; }
+                }));
+            Assert.Equal(scenario.Item1, failure.Stage);
+            Assert.Equal(scenario.Item2, failure.Reason);
+            Assert.Null(failure.InnerException);
+            Assert.True(messages.TryDequeue(out string? text));
+            Assert.Contains(scenario.Item3, text);
+            Assert.Contains("本次意图不可重放", text);
+            Assert.DoesNotContain("PRIVATE_CHILD_EXCEPTION_MUST_NOT_APPEAR", text);
+            Assert.DoesNotContain("PRIVATE_CHILD_EXCEPTION_MUST_NOT_APPEAR", failure.ToString());
+        }
+        Assert.Empty(violations);
+        Assert.Equal(4, acknowledgements);
+        Assert.Equal(4, executions);
+    }
+
+    [Fact]
     public async Task RuntimeExitEvidenceNeverAuthorizesMaintenanceOrHidesInterruptedOwners()
     {
         // The same entry handler used before normal startup rejects malformed/versioned requests
