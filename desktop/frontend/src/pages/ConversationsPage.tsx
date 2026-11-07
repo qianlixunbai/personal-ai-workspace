@@ -29,6 +29,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [busy, setBusy] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [turnNumber, setTurnNumber] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [pollingError, setPollingError] = useState(false)
@@ -37,6 +38,8 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const detailQueue = useRef<Promise<void>>(Promise.resolve())
   const selectedRef = useRef<string | null>(null)
   const detailRef = useRef<ConversationDetail | null>(null)
+  const historyView = useRef<HTMLDivElement>(null)
+  const historyFocus = useRef<{ conversationId: string; sequence: number; generation: number } | null>(null)
   const statusRef = useRef(status); statusRef.current = status
   const pagesRef = useRef(pages); pagesRef.current = pages
   const composing = useRef(false)
@@ -51,6 +54,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const sendAllowed = enabled && !busy && !historyLoading && !pending && !pollingError && !stale && detail?.conversation.status === 'ACTIVE'
   const bytes = new TextEncoder().encode(draft).length
   const invalid = !draft.trim() || draft.length > 3000 || bytes > 5632
+  const validTurn = /^[1-9][0-9]{0,3}$/.test(turnNumber.trim()) && Number(turnNumber) <= (detail?.totalTurns ?? 0)
   const saveMemoryDraft = (messageId: string) => {
     if (!enabled || !visible || actionLock.current || historyLoading) return
     const turn = detailRef.current?.turns.find(item => item.status !== 'PENDING'
@@ -76,7 +80,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   }
   // Serial detail requests prevent overlapping polls/navigation. Only the current
   // page and a pending identity are retained; a latest-page probe is never appended.
-  const loadDetail = (id: string, page?: number, observe = false): Promise<void> => {
+  const loadDetail = (id: string, page?: number, observe = false, focus?: number | 'latest'): Promise<void> => {
     const token = generation.current
     const work = async () => {
       if (token !== generation.current || selectedRef.current !== id) return
@@ -91,7 +95,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
         if (observe && previous && previous.page !== next.page) {
           const updated = { ...previous, conversation: next.conversation, totalTurns: next.totalTurns }
           detailRef.current = updated; setDetail(updated)
-        } else { detailRef.current = next; setDetail(next) }
+        } else {
+          detailRef.current = next; setDetail(next)
+          const sequence = focus === 'latest' ? next.totalTurns : focus
+          if (sequence !== undefined && next.turns.some(turn => turn.sequence === sequence)) {
+            historyFocus.current = { conversationId: id, sequence, generation: token }
+            setTurnNumber(String(sequence)); setNotice(`已定位到第 ${sequence} 轮。`)
+          }
+        }
         // Older-page reads keep the latest pending identity; opening/refresh always
         // discovers latest durable truth, including after a new document/session.
         if (next.page === Math.max(0, Math.ceil(next.totalTurns / 10) - 1)) {
@@ -112,6 +123,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     const old = selectedRef.current
     const token = ++generation.current
     selectedRef.current = id; detailRef.current = null; actionLock.current = false; composing.current = false
+    historyFocus.current = null; setTurnNumber('')
     setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
     setTitle(null); setDeleting(false); setBusy(false); setError(''); setNotice(''); setPollingError(false); setHistoryLoading(!!id)
     try {
@@ -124,8 +136,10 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
     setAdmission(null); actionLock.current = false; setBusy(false); setNotice('')
+    historyFocus.current = null; setTurnNumber('')
     const reset = () => {
       generation.current++; listGeneration.current++; selectedRef.current = null; detailRef.current = null
+      historyFocus.current = null; setTurnNumber('')
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
       setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
@@ -136,6 +150,15 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     const unsubscribe = bridge.onSession(reset)
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
+  useEffect(() => {
+    const target = historyFocus.current
+    if (!visible || !target || target.generation !== generation.current || target.conversationId !== detail?.conversation.id) return
+    const article = historyView.current?.querySelector<HTMLElement>(`[data-turn-sequence="${target.sequence}"]`)
+    if (article) {
+      historyFocus.current = null
+      article.focus({ preventScroll: true }); article.scrollIntoView({ block: 'nearest' })
+    }
+  }, [detail, visible])
   useEffect(() => { if (enabled && visible) { void loadList(); if (selectedRef.current) void loadDetail(selectedRef.current) } }, [enabled, visible, status, pages[status]])
   useEffect(() => {
     if (!visible || !pending || !selected || pollingError) return
@@ -238,9 +261,27 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
         <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>更早</button>
           <span>第 {detail.page + 1} 页 / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} 轮</span>
           <button disabled={busy || historyLoading || (detail.page + 1) * 10 >= detail.totalTurns} onClick={() => { void loadDetail(detail.conversation.id, detail.page + 1) }}>更新</button></div>
+        {detail.totalTurns > 0 && <form className="conversation-jump" onSubmit={event => {
+          event.preventDefault()
+          if (enabled && visible && !busy && !historyLoading && validTurn) {
+            setError(''); setNotice('')
+            void loadDetail(detail.conversation.id, Math.floor((Number(turnNumber) - 1) / 10), false, Number(turnNumber))
+          }
+        }}>
+          <label htmlFor="conversation-turn-number">跳转到轮次</label>
+          <input id="conversation-turn-number" inputMode="numeric" autoComplete="off" value={turnNumber} maxLength={4}
+            aria-describedby="conversation-turn-range" aria-invalid={!!turnNumber && !validTurn}
+            disabled={!enabled || busy || historyLoading} onChange={event => setTurnNumber(event.target.value)} />
+          <span id="conversation-turn-range" className="hint">1–{detail.totalTurns}</span>
+          <button type="submit" disabled={!enabled || busy || historyLoading || !validTurn}>跳转</button>
+          <button type="button" disabled={!enabled || busy || historyLoading} onClick={() => {
+            setError(''); setNotice(''); void loadDetail(detail.conversation.id, undefined, false, 'latest')
+          }}>回到最新</button>
+        </form>}
         <p className="hint">模型按预算选用近期已完成轮次，持久历史不等于本次模型上下文。历史回复也可能包含先前记忆中的信息。</p>
-        <div className="conversation-history" tabIndex={0} aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn">
-          <h3>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
+        <div ref={historyView} className="conversation-history" tabIndex={0} aria-label="持久会话历史">{detail.turns.map(turn => <article key={turn.turnId} className="conversation-turn"
+          tabIndex={-1} data-turn-sequence={turn.sequence} aria-labelledby={`conversation-turn-${turn.turnId}`}>
+          <h3 id={`conversation-turn-${turn.turnId}`}>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
           {onMemoryDraft && turn.status !== 'PENDING' && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.userMessage.messageId)}>保存为记忆草稿</button>}
           {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre>
             {onMemoryDraft && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.assistantMessage!.messageId)}>保存为记忆草稿</button>}</>}

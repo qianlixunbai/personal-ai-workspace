@@ -45,6 +45,7 @@ class Service extends Port {
   }
 }
 beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
@@ -56,6 +57,50 @@ async function setup(config: Partial<Service> = {}) {
   return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+it('jumps directly to a durable turn, returns to latest, preserves the draft and ignores a late jump after switching conversations', async () => {
+  const { port, input } = await setup({ total: 2, turns: 1000 })
+  fireEvent.change(input, { target: { value: 'Unsent synthetic draft' } })
+  await click('选择记忆…')
+  const before = port.sent.length
+  const jumpInput = screen.getByLabelText('跳转到轮次') as HTMLInputElement
+  fireEvent.change(jumpInput, { target: { value: '12' } })
+  await act(async () => { fireEvent.submit(jumpInput.closest('form')!) })
+  const turn = await screen.findByRole('article', { name: '第 12 轮 · 已完成' })
+  expect(document.activeElement).toBe(turn)
+  expect(turn.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+  expect(port.sent.slice(before).map(x => ({ method: x.method, payload: x.payload }))).toEqual([
+    { method: 'conversations.get', payload: { conversationId: conversation.id, page: 1 } },
+  ])
+  expect(screen.getAllByRole('article')).toHaveLength(10)
+  expect(input.value).toBe('Unsent synthetic draft'); expect(screen.getByText(memory.title)).toBeTruthy()
+  const afterJump = port.sent.length
+  for (const value of ['0', '1001', '1.5', '1e2']) {
+    fireEvent.change(jumpInput, { target: { value } })
+    expect(screen.getByRole('button', { name: '跳转' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.submit(jumpInput.closest('form')!)
+  }
+  expect(port.sent).toHaveLength(afterJump)
+  await click('回到最新')
+  expect(document.activeElement).toBe(await screen.findByRole('article', { name: '第 1000 轮 · 已完成' }))
+  expect(port.sent.slice(afterJump).map(x => x.payload)).toEqual([
+    { conversationId: conversation.id, page: 0 }, { conversationId: conversation.id, page: 99 },
+  ])
+  expect(input.value).toBe('Unsent synthetic draft'); expect(screen.getByText(memory.title)).toBeTruthy()
+  expect(port.sent.slice(before).every(x => x.method === 'conversations.get')).toBe(true)
+
+  port.holdGet = true
+  fireEvent.change(jumpInput, { target: { value: '12' } }); await click('跳转')
+  const late = port.sent.length - 1
+  const scrolls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+  await click('Synthetic conversation 2 2026/10/4')
+  port.holdGet = false
+  await act(async () => { port.reply(late, history(1000, 1)) })
+  await screen.findByLabelText('会话消息')
+  expect((screen.getByLabelText('跳转到轮次') as HTMLInputElement).value).toBe('')
+  expect(screen.queryByRole('article', { name: '第 12 轮 · 已完成' })).toBeNull()
+  expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls).toHaveLength(scrolls)
+  expect(screen.queryByText('已定位到第 12 轮。')).toBeNull()
+})
 it('opens only list page zero and latest of 1000 turns, and retains only ten rendered turns while navigating history', async () => {
   const { port } = await setup({ total: 25, turns: 1000 })
   expect(port.sent.filter(x => x.method === 'conversations.get').map(x => x.payload)).toEqual([{ conversationId: conversation.id, page: 0 }, { conversationId: conversation.id, page: 99 }])
