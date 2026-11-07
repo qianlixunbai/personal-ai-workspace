@@ -148,6 +148,7 @@ public final class RegisteredRecoverySource implements AutoCloseable {
     public Path encrypted(){return encrypted;}
     public String registrationSha256(){return registrationSha256;}
     public String database(){return source.path("SourceDatabase").asString();}
+    public String sourceProfileId(){return source.path("SourceProfileId").asString();}
     public long databaseOid(){return source.path("SourceDatabaseOid").longValue();}
     public String systemIdentifier(){return source.path("SourceSystemIdentifier").asString();}
     public int port(){return source.path("SourcePort").intValue();}

@@ -3,6 +3,8 @@ package io.github.qianlixunbai.workspace.backup;
 import io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion;
 import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration;
 import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
+import io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget;
+import io.github.qianlixunbai.workspace.security.WindowsNativeGate;
 import org.flywaydb.core.Flyway;
 import java.io.*;
 import java.lang.reflect.Method;
@@ -12,8 +14,9 @@ import java.util.*;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 
-/** Explicit fresh-cluster probe. No NativeGate call, fabricated admission, existing Profile,
- * shared service credential or product source registration. stdout belongs to the native pipe. */
+/** Explicit fresh-cluster probe. Optional prepared mode uses the real Gate of a newly owned
+ * synthetic authority. No fabricated stop proof, existing Profile, shared service credential
+ * or product source registration. stdout belongs to the native pipe. */
 public final class RecoverySourceProducerProbe {
     private static Path diagnosticRoot;
     private static String stage="FIXTURE";
@@ -200,6 +203,19 @@ public final class RecoverySourceProducerProbe {
     private static void restoreRegistered(String[] args) throws Exception {
         require(args[0].equals("restore-registered"));
         var output=System.out;System.setOut(System.err);
+        MaintenanceExclusion nativeExclusion=null;
+        if(!System.getProperty("workspace.native.development-profile","").isEmpty()){
+            stage="TARGET_AUTHORITY_NATIVE_GATE";WindowsNativeGate.admit();
+            String profile=System.getProperty("workspace.native.development-profile");
+            writeFrame(output,"SYNTHETIC_TARGET_NATIVE_V1\t"+ProcessHandle.current().pid()+"\t"+profile);
+            long handle=Long.parseLong(readFrame(System.in));
+            nativeExclusion=WindowsNativeGate.receiveMaintenanceExclusion(handle);
+            Path authority=WindowsNativeGate.maintenanceProfileRoot(nativeExclusion);
+            WindowsNativeGate.requireMaintenanceArguments(new String[]{"--server.address=127.0.0.1","--server.port=18765",
+                "--workspace.security.token-file="+authority.resolve("credentials/client-token"),"--workspace.data-directory="+authority.resolve("data"),
+                "--workspace.model-state-directory="+authority.resolve("model-state")},nativeExclusion);
+        }
+        final MaintenanceExclusion authorityExclusion=nativeExclusion;
         Path fixture=Path.of(args[1]);privatePath(fixture,false);
         var config=JSON.readTree(Files.readAllBytes(fixture));Path isolated=Path.of(config.path("root").asString());privatePath(isolated,true);
         require(isolated.getFileName().toString().matches("PAW-SourceProducer-[0-9a-f]{32}"));diagnosticRoot=isolated;
@@ -270,7 +286,14 @@ public final class RecoverySourceProducerProbe {
                         &&databases==scalar(db,"SELECT count(*) FROM pg_database")&&roles==scalar(db,"SELECT count(*) FROM pg_roles"));
                     stage="REGISTERED_RECOVERY";
                     Path restored=isolated.resolve("restored-target");
-                    var recovery=WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator);
+                    Path[] targetData={restored.resolve("candidate")};String[] preparedId={null};
+                    var recovery=WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator,
+                        authorityExclusion==null?null:()->{
+                            writeFrame(output,"SYNTHETIC_SOURCE_AUTHENTICATED_V1\t"+backupId+"\t"+registered.payloadSha256()+"\t"+registered.manifestSha256());
+                            String target=readFrame(System.in);require(target.matches("[0-9a-f]{32}")&&System.in.read()==-1);
+                            var prepared=PreparedRecoveryTarget.openSynthetic(authorityExclusion,target,registered);
+                            preparedId[0]=target;targetData[0]=prepared.data();return prepared;
+                        });
                     require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
                         &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup"))
                         &&databases+1==scalar(db,"SELECT count(*) FROM pg_database")&&roles+2==scalar(db,"SELECT count(*) FROM pg_roles")
@@ -280,7 +303,7 @@ public final class RecoverySourceProducerProbe {
                         require(scalar(target,"SELECT count(*) FROM workspace.memory_items")==1&&scalar(target,"SELECT count(*) FROM workspace.conversations")==1
                             &&scalar(target,"SELECT count(*) FROM workspace.knowledge_revisions")==1&&scalar(target,"SELECT count(*) FROM workspace.knowledge_chunks")>0
                             &&scalar(target,"SELECT count(*) FROM pg_tables WHERE schemaname='public'")==0);
-                        verifyKnowledge(target,restored.resolve("candidate/knowledge"),JSON.treeToValue(expected.path("manifest"),Manifest.class).knowledgeFiles());
+                        verifyKnowledge(target,targetData[0].resolve("knowledge"),JSON.treeToValue(expected.path("manifest"),Manifest.class).knowledgeFiles());
                     }
                     String planHash=digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"));
                     require(JSON.readTree(Files.readAllBytes(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"))).path("sourceRegistrationSha256").asString().equals(registered.registrationSha256()));
@@ -300,16 +323,36 @@ public final class RecoverySourceProducerProbe {
                         "financeExcluded","sourceSnapshotUnchanged","existingAttemptRejected","plaintextBackupCleaned","durableRegistrationConsumed",
                         "sourceDatabaseUnavailableDuringRestore","sourceProfileAbsent","missingRegistrationRejected","registrationAndPayloadPinned",
                         "recomputedCompletionCannotReplaceRegistration"))evidence.put(name,true);
-                    evidence.put("nativeGateExercised",false);evidence.put("activation",false);
+                    if(authorityExclusion!=null){
+                        require(!Files.exists(restored.resolve("candidate"))&&Files.exists(targetData[0].resolve("RESTORE_VERIFIED.json"))
+                            &&!Files.exists(targetData[0].getParent().resolve("jna-5.17.0-win32-x86-64")));
+                        try{io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(targetData[0].getParent());throw new IllegalStateException("Candidate started");}
+                        catch(IOException denied){}
+                        try{PreparedRecoveryTarget.openSynthetic(authorityExclusion,preparedId[0],registered);throw new IllegalStateException("Claimed prepared target reopened");}
+                        catch(IOException denied){}
+                        evidence.put("preparedTargetProfile",preparedId[0]);evidence.put("preparedTargetData",targetData[0].toString());
+                        evidence.put("preparedTargetConsumedOnce",true);evidence.put("candidateStartupRejected",true);evidence.put("targetJnaAbsent",true);
+                    }
+                    evidence.put("nativeGateExercised",authorityExclusion!=null);evidence.put("activation",false);
                     write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(evidence));
                     registered.close();
                     try{registered.requireHeld();throw new IllegalStateException("Closed source reused");}catch(IOException denied){}
-                    output.print("REGISTERED_SYNTHETIC_RECOVERY_VERIFIED");
+                    if(authorityExclusion==null)output.print("REGISTERED_SYNTHETIC_RECOVERY_VERIFIED");
+                    else writeFrame(output,"PREPARED_SYNTHETIC_RECOVERY_VERIFIED");
                 }finally{
                     if(disabled)sql(db,"ALTER DATABASE "+database+" ALLOW_CONNECTIONS true");
                 }
             }finally{Arrays.fill(password,'\0');}
         }
+    }
+
+    private static void writeFrame(OutputStream output,String message) throws IOException {
+        byte[] bytes=message.getBytes(StandardCharsets.US_ASCII);require(bytes.length>0&&bytes.length<=16384);
+        var stream=new DataOutputStream(output);stream.writeInt(bytes.length);stream.write(bytes);stream.flush();
+    }
+    private static String readFrame(InputStream input) throws IOException {
+        var stream=new DataInputStream(input);int size=stream.readInt();require(size>0&&size<=16384);
+        byte[] bytes=stream.readNBytes(size);require(bytes.length==size);return new String(bytes,StandardCharsets.US_ASCII);
     }
 
     private static void seedSyntheticHistory(Endpoint source,Path knowledge) throws Exception {

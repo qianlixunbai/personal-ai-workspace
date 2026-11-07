@@ -97,6 +97,17 @@ internal static class Win32
         return $"{id.Volume:x16}:{id.Low:x16}{id.High:x16}";
     }
 
+    internal static string RawIdentity(SafeFileHandle handle, string path, bool directory)
+    {
+        _ = Identity(handle, path, directory);
+        Check(GetFileInformationByHandleEx(handle, 18, out FileId id, 24), "FILE_ID");
+        Span<byte> bytes = stackalloc byte[24];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes, id.Volume);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes[8..], id.Low);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes[16..], id.High);
+        return Convert.ToHexStringLower(bytes);
+    }
+
     internal static void CreatePrivateDirectory(string path, SecurityIdentifier sid)
     {
         WithDescriptor(sid, true, attributes =>

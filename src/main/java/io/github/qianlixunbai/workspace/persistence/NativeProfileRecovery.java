@@ -143,6 +143,12 @@ public final class NativeProfileRecovery {
         Path targets = recovery.resolve("targets");
         // An incomplete, linked, unreadable or malformed registry never means "unregistered".
         requireDirectory(targets, attributes(targets));
+        Path syntheticTargets=recovery.resolve("synthetic-targets");
+        try {
+            requireDirectory(syntheticTargets,attributes(syntheticTargets));
+            try {attributes(syntheticTargets.resolve(verifiedProfileRoot.getFileName()));throw stopped();}
+            catch(NoSuchFileException absent){/* An unregistered Profile still uses the original Gate. */}
+        }catch(NoSuchFileException absent){/* No synthetic target registry. */}
         try { attributes(targets.resolve(verifiedProfileRoot.getFileName())); }
         catch (NoSuchFileException absent) { return; }
         throw stopped();

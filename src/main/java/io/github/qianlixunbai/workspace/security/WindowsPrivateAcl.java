@@ -8,6 +8,7 @@ import com.sun.jna.win32.StdCallLibrary;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget;
 
 /** Runtime-only Windows boundary. Existing unsafe objects are rejected, never migrated.
  * Native classes are initialized only after the Windows platform gate. */
@@ -18,6 +19,32 @@ public final class WindowsPrivateAcl {
 
     public static void directory(Path path) throws IOException { operate(path, true, true); }
     public static void createFile(Path path) throws IOException { operate(path, false, true); }
+    public static void createPreparedDirectory(PreparedRecoveryTarget target,Path path) throws IOException {
+        if(!isWindows())throw new IOException("Windows private directory unavailable");
+        WindowsNativeGate.admit();
+        Path boundary=target.requirePinnedPath(path);
+        try {
+            NativeAcl.operate(path.getParent(),true,false,false,boundary);
+            try(var descriptor=new NativeAcl.Descriptor(NativeAcl.currentSid(),true)){
+                if(!NativeAcl.KERNEL.CreateDirectory(NativeAcl.nativePath(path),descriptor.attributes()))throw new IOException("Private directory creation rejected");
+            }
+            NativeAcl.operate(path,true,false,false,boundary);target.requirePinnedPath(path);
+        }catch(LinkageError|RuntimeException failure){
+            throw new IOException("Windows private directory unavailable");
+        }
+    }
+    public static void createPreparedFile(PreparedRecoveryTarget target,Path path) throws IOException {
+        operatePrepared(target,path,false,true,false);
+    }
+    public static void verifyPreparedDirectory(PreparedRecoveryTarget target,Path path) throws IOException {
+        operatePrepared(target,path,true,false,false);
+    }
+    private static void operatePrepared(PreparedRecoveryTarget target,Path path,boolean directory,boolean create,boolean sidecar) throws IOException {
+        if(!isWindows())throw new IOException("Windows private ACL unavailable");
+        WindowsNativeGate.admit();Path boundary=target.requirePinnedPath(path);
+        try{NativeAcl.operate(path,directory,create,sidecar,boundary);target.requirePinnedPath(path);}
+        catch(LinkageError|RuntimeException failure){throw new IOException("Windows private ACL unavailable");}
+    }
     public static void verify(Path path, boolean directory) throws IOException { operate(path, directory, false); }
 
     /** SQLite creates these files by inheritance. Only the named sidecars beneath a verified
@@ -37,6 +64,14 @@ public final class WindowsPrivateAcl {
             ||!entry.getFileName().toString().matches("[0-9a-f]{32}")
             ||!entry.getParent().getFileName().toString().equals("sources"))throw new IOException("Unknown recovery record");
         operate(path,false,false,true);
+    }
+
+    public static void verifyRecoveryTargetRecord(PreparedRecoveryTarget target,Path path) throws IOException {
+        Path entry=path.getParent();
+        if(!Set.of("plan.dpapi","prepared.dpapi").contains(path.getFileName().toString())||entry==null||entry.getParent()==null
+            ||!entry.getFileName().toString().matches("[0-9a-f]{32}")
+            ||!entry.getParent().getFileName().toString().equals("synthetic-targets"))throw new IOException("Unknown prepared target record");
+        operatePrepared(target,path,false,false,true);
     }
 
     private static void operate(Path path, boolean directory, boolean create) throws IOException {
@@ -99,8 +134,14 @@ public final class WindowsPrivateAcl {
             return developmentRoot != null && target.startsWith(developmentRoot) && developmentRoot.startsWith(part);
         }
 
-        private static void verifyAncestor(HANDLE handle, Path part, Path target, PSID user) throws IOException {
-            if (!pinnedAncestor(part, target)) ancestorAcl(handle, user);
+        private static void verifyAncestor(HANDLE handle, Path part, Path target, PSID user,Path preparedBoundary) throws IOException {
+            // The caller holds an unforgeable PreparedRecoveryTarget whose reviewed helper
+            // identity and no-delete pins cover the Known Folder chain. Only this operation
+            // receives that boundary; ordinary paths retain the original ancestor policy.
+            if(preparedBoundary!=null && (preparedBoundary.startsWith(part)||part.startsWith(preparedBoundary))){
+                if(part.startsWith(preparedBoundary))privateAcl(handle,user,true,false);
+            }
+            else if (!pinnedAncestor(part, target)) ancestorAcl(handle, user);
             else if (part.startsWith(developmentRoot.getParent().getParent()))
                 privateAcl(handle, user, true, false); // Recheck the private boundary after admission, too.
         }
@@ -120,6 +161,9 @@ public final class WindowsPrivateAcl {
         }
 
         static void operate(Path input, boolean directory, boolean create, boolean sidecar) throws IOException {
+            operate(input,directory,create,sidecar,null);
+        }
+        static void operate(Path input, boolean directory, boolean create, boolean sidecar,Path preparedBoundary) throws IOException {
             Path path = input.toAbsolutePath().normalize();
             if (path.getFileSystem() != FileSystems.getDefault() || !path.toString().matches("[A-Za-z]:\\\\.*")
                     || path.getParent() == null) throw new IOException("Local Windows object required");
@@ -136,7 +180,7 @@ public final class WindowsPrivateAcl {
                 HANDLE root = open(part, true, true);
                 pins.add(root);
                 if (sidecar && part.equals(path.getParent())) privateAcl(root, user, true, false);
-                else verifyAncestor(root, part, path, user);
+                else verifyAncestor(root, part, path, user,preparedBoundary);
                 for (Path name : path) {
                     part = part.resolve(name);
                     boolean last = part.equals(path), isDirectory = !last || directory;
@@ -171,7 +215,7 @@ public final class WindowsPrivateAcl {
                     }
                     if (last) privateAcl(handle, user, directory, sidecar);
                     else if (sidecar && part.equals(path.getParent())) privateAcl(handle, user, true, false);
-                    else verifyAncestor(handle, part, path, user);
+                    else verifyAncestor(handle, part, path, user,preparedBoundary);
                 }
             }
         }

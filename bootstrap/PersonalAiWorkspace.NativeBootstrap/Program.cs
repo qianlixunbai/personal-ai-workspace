@@ -13,6 +13,11 @@ internal static class Program
         {
             if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
                 throw new Rejected("PLATFORM");
+            if(args.Length==2 && args[0]=="VerifyPreparedRecoveryTarget")
+            {
+                Console.WriteLine(TrustedNative.VerifyPreparedRecoveryTarget(args[1]));
+                return 0;
+            }
             if (args.Length < 2 || args[0] is not ("ProvisionTrustedNative" or "VerifyTrustedNative"
                     or "ProvisionProfileNative" or "VerifyProfileNative")
                 || args.Length != (args[0].StartsWith("Provision", StringComparison.Ordinal) ? 3 : 2))

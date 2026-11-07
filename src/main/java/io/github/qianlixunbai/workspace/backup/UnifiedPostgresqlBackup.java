@@ -328,6 +328,15 @@ public final class UnifiedPostgresqlBackup {
         return restore(backup,owner,app,ownershipReceipt,candidate,true,Objects.requireNonNull(origin));
     }
     private Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,boolean authenticatedContainer,PortableEncryptedBackup.WorkspaceBackup origin) throws IOException {
+        return restore(backup,owner,app,ownershipReceipt,candidate,authenticatedContainer,origin,null);
+    }
+    Result restorePreparedWorkspace(Path backup,Endpoint owner,Endpoint app,String receipt,PortableEncryptedBackup.WorkspaceBackup origin,
+            io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget prepared) throws IOException {
+        Objects.requireNonNull(prepared).requireHeld();
+        return restore(backup,owner,app,receipt,prepared.data(),true,Objects.requireNonNull(origin),prepared);
+    }
+    private Result restore(Path backup,Endpoint owner,Endpoint app,String ownershipReceipt,Path candidate,boolean authenticatedContainer,
+            PortableEncryptedBackup.WorkspaceBackup origin,io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget prepared) throws IOException {
         String stage="BACKUP_VALIDATION";List<FileChannel> pins=new ArrayList<>();
         try {
             backup=backup.toAbsolutePath().normalize();Manifest m=validate(backup,authenticatedContainer);
@@ -343,7 +352,8 @@ public final class UnifiedPostgresqlBackup {
             else require(!owner.database.equals(m.databaseLogicalIdentity));
             require(ownershipReceipt.matches("workspace-b3:[0-9a-f-]{36}"));
             candidate=candidate.toAbsolutePath().normalize();require(!candidate.startsWith(backup)&&!backup.startsWith(candidate));
-            privatePath(candidate.getParent(),true);require(!Files.exists(candidate,LinkOption.NOFOLLOW_LINKS));
+            if(prepared==null){privatePath(candidate.getParent(),true);require(!Files.exists(candidate,LinkOption.NOFOLLOW_LINKS));}
+            else {require(workspaceOnly&&candidate.equals(prepared.data()));prepared.requireEmptyData();}
             String restoreVersion=tool("pg_restore",null,List.of("--version"));checkTools(m.dumpVersion,restoreVersion,m.postgresqlMajor);
             if(workspaceOnly)try(var db=app.dataSource().getConnection()){
                 session(db);safeRole(db);require(!owner.username.equals(app.username));
@@ -373,7 +383,8 @@ public final class UnifiedPostgresqlBackup {
                     sql(db,"COMMIT");
                 }
             }
-            directory(candidate);write(candidate.resolve("RESTORE_INCOMPLETE"),"No Runtime activation; retain for diagnosis".getBytes(StandardCharsets.UTF_8));
+            if(prepared==null){directory(candidate);write(candidate.resolve("RESTORE_INCOMPLETE"),"No Runtime activation; retain for diagnosis".getBytes(StandardCharsets.UTF_8));}
+            else prepared.beginFiles();
             stage="DATABASE_RESTORE";
             tool("pg_restore",owner,List.of("--no-owner","--no-privileges","--exit-on-error","--single-transaction",backup.resolve("database.dump").toString()));
             stage="DATABASE_VERIFICATION";
@@ -382,7 +393,9 @@ public final class UnifiedPostgresqlBackup {
                 if(workspaceOnly){WorkspaceV3Catalog.emptyExcluded(db,false);validateWorkspaceData(db);}
                 grantStore(db,app.username,workspaceOnly);
             }
-            stage="KNOWLEDGE_RESTORE";directory(candidate.resolve("knowledge"));directory(candidate.resolve("knowledge/sources"));
+            stage="KNOWLEDGE_RESTORE";
+            if(prepared==null)directory(candidate.resolve("knowledge"));else prepared.createKnowledge();
+            directory(candidate.resolve("knowledge/sources"));
             for(var file:m.knowledgeFiles) {
                 Path target=resolveKnowledge(candidate.resolve("knowledge"),file.path);
                 if(!Files.exists(target.getParent()))directory(target.getParent());
@@ -400,7 +413,9 @@ public final class UnifiedPostgresqlBackup {
             var result=new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING");
             // A close failure is still an incomplete restore, never a published verification.
             for(var handle:pins)handle.close();pins.clear();
-            publish(candidate.resolve("RESTORE_VERIFIED.json"),JSON.writeValueAsBytes(result));return result;
+            if(prepared==null)publish(candidate.resolve("RESTORE_VERIFIED.json"),JSON.writeValueAsBytes(result));
+            else prepared.writeMarker("RESTORE_VERIFIED.json",JSON.writeValueAsBytes(result));
+            return result;
         }catch(Exception failure){throw stopped(stage,failure);}
         finally{for(var handle:pins)try{handle.close();}catch(IOException ignored){}}
     }

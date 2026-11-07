@@ -6,11 +6,13 @@ import java.security.SecureRandom;
 import java.sql.Connection;
 import java.util.*;
 import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
+import io.github.qianlixunbai.workspace.persistence.PreparedRecoveryTarget;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 
 /** One authenticated v3 backup -> fresh synthetic database -> verified, disabled target.
- * No CLI, native Profile, product source authority, READY or activation. In particular the
+ * No CLI, product source authority, READY or activation. The optional prepared capability
+ * binds a fresh native candidate but does not admit it as a Runtime. In particular the
  * in-process Completed capability cannot be reconstructed from a passphrase or a JSON file;
  * the restart path separately requires a pinned, independently protected source registration.
  */
@@ -63,31 +65,42 @@ final class WorkspaceRecovery {
      * to the original database. Missing/corrupt registration cannot be repaired from a package. */
     static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
             char[] passphrase,Endpoint administrator) throws IOException {
+        return restoreRegisteredSyntheticTarget(source,tools,staging,passphrase,administrator,null);
+    }
+    @FunctionalInterface interface SyntheticPreparation { PreparedRecoveryTarget afterAuthentication() throws IOException; }
+    static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
+            char[] passphrase,Endpoint administrator,SyntheticPreparation preparation) throws IOException {
         String stage="REGISTERED_SOURCE";boolean decoded=false;Verified verified;
+        PreparedRecoveryTarget prepared=null;
         try {
             require(source!=null&&source.synthetic());source.requireHeld();
             require(administrator.database().equals("postgres")&&administrator.port()==source.port()&&source.port()!=5432);
             stage="AUTHENTICATION";
             var authenticated=new PortableEncryptedBackup(tools,PortableEncryptedBackup.StagingProtection.SYNTHETIC_ONLY)
                 .decryptRegisteredSynthetic(source,staging,passphrase);decoded=true;
+            if(preparation!=null){stage="PREPARED_TARGET";prepared=preparation.afterAuthentication();require(prepared!=null);prepared.requireSource(source);prepared.claim();}
             source.requireHeld();stage="FRESH_TARGET_PREPARATION";
             var identity=new WorkspaceSourceBackup.SourceIdentity(source.systemIdentifier(),source.databaseOid(),
                 source.port(),source.database(),null);
-            var target=new NewTarget(source.backupId(),identity,authenticated.origin(),administrator,staging,source.registrationSha256());
+            var target=new NewTarget(source.backupId(),identity,authenticated.origin(),administrator,staging,source.registrationSha256(),prepared);
             try {
                 target.prepare();source.requireHeld();stage="RESTORE_AND_VERIFY";
-                var result=new UnifiedPostgresqlBackup(tools).restoreWorkspace(authenticated.clear().backup(),target.owner(),target.app(),
-                    target.receipt,staging.resolve("candidate"),authenticated.origin());
+                var engine=new UnifiedPostgresqlBackup(tools);
+                var result=prepared==null?engine.restoreWorkspace(authenticated.clear().backup(),target.owner(),target.app(),
+                    target.receipt,staging.resolve("candidate"),authenticated.origin())
+                    :engine.restorePreparedWorkspace(authenticated.clear().backup(),target.owner(),target.app(),target.receipt,authenticated.origin(),prepared);
                 target.verifyDatabase(true);source.requireHeld();
                 verified=new Verified(target.operation,target.database,target.databaseOid,target.ownerRole,target.ownerOid,
                     target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED");
             }finally{target.close();}
         }catch(Exception failure){
             if(failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().contains("TARGET_CREDENTIAL_CLEANUP_REQUIRED"))throw io;
-            throw new IOException("Synthetic registered recovery stopped: "+stage+"; no activation; retain target and attempt");
+            var stopped=new IOException("Synthetic registered recovery stopped: "+stage+"; no activation; retain target and attempt");
+            stopped.setStackTrace(failure.getStackTrace());throw stopped; // Preserve safe code location, never raw SQL/native messages.
         }finally{
             if(passphrase!=null)Arrays.fill(passphrase,'\0');
-            if(decoded)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());
+            try{if(decoded)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());}
+            finally{if(prepared!=null)prepared.close();}
         }
         source.requireHeld();
         write(staging.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"),JSON.writeValueAsBytes(verified));
@@ -100,17 +113,24 @@ final class WorkspaceRecovery {
         private final String backupId,registrationSha256;
         private final Endpoint administrator;
         private final Path staging;
-        private final String operation=UUID.randomUUID().toString().replace("-","");
-        private final String suffix=operation.substring(0,12),database="personal_ai_workspace_b3_"+suffix;
-        private final String ownerRole="workspace_b3_owner_"+suffix,appRole="workspace_b3_app_"+suffix;
-        private final String receipt="workspace-b3:"+UUID.randomUUID(),roleReceipt="workspace-recovery-synthetic:"+operation;
+        private final String operation,database,ownerRole,appRole,receipt,roleReceipt;
         private final String ownerPassword=password(),appPassword=password();
         private Connection db;
         private long ownerOid,appOid,databaseOid;
         NewTarget(String backupId,WorkspaceSourceBackup.SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup,
                 Endpoint administrator,Path staging,String registrationSha256){
+            this(backupId,source,backup,administrator,staging,registrationSha256,null);
+        }
+        NewTarget(String backupId,WorkspaceSourceBackup.SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup,
+                Endpoint administrator,Path staging,String registrationSha256,PreparedRecoveryTarget prepared){
             this.backupId=backupId;this.source=source;this.backup=backup;this.administrator=administrator;
             this.staging=staging;this.registrationSha256=registrationSha256;
+            operation=prepared==null?UUID.randomUUID().toString().replace("-",""):prepared.operationId();
+            String suffix=operation.substring(0,12);
+            database=prepared==null?"personal_ai_workspace_b3_"+suffix:prepared.database();
+            ownerRole=prepared==null?"workspace_b3_owner_"+suffix:prepared.ownerRole();
+            appRole=prepared==null?"workspace_b3_app_"+suffix:prepared.appRole();
+            receipt=prepared==null?"workspace-b3:"+UUID.randomUUID():prepared.receipt();roleReceipt="workspace-recovery-synthetic:"+operation;
         }
         Endpoint owner(){return new Endpoint(database,ownerRole,ownerPassword,administrator.port());}
         Endpoint app(){return new Endpoint(database,appRole,appPassword,administrator.port());}

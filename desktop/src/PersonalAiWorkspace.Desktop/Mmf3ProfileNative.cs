@@ -66,8 +66,8 @@ internal static class Mmf3ProfileNative
                 throw new IOException();
         }
         (string suffix, string hash)[] payload = [
-            (".exe", "0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4"),
-            (".dll", "e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d"),
+            (".exe", "5e0fb764990537a9d131cd3b3140834fa2462205d74f3e5ef4219abde1a6c99d"),
+            (".dll", "58877d638691495b46cdb35a5bf8030b653660da76b3cc836ef321ba8e58b256"),
             (".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"),
             (".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6")];
         foreach (var item in payload)

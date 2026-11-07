@@ -1,5 +1,34 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：真实维护 Gate 下的 prepared target 固定 data 恢复
+
+基于本地 `622b5e4`，本轮把独立来源消费接到全新 canonical Profile 的固定 `data`，不再把临时 `staging/candidate` 当作 Profile 恢复结果。已实际完成合成来源到未发布候选的闭环；**个人恢复仍 BLOCKED，没有 RECOVERY_READY、目标登录配置或显式激活**。合成登记始终留在独立命名空间，不能用于个人 `ReservePlan`。
+
+实现集中在已有恢复链路：
+
+- NativeBootstrap 增加只读 `VerifyPreparedRecoveryTarget`：由 targetId 重算 Known Folder 根，核对标准八目录、私有 ACL、canonical root/data 原生身份，并拒绝已发布 JNA 的布局。只返回目录证据，不成为 Runtime Gate。helper 重新构建，并同步 Desktop/Java 的精确 EXE/DLL pin；deps/runtimeconfig pin 保持原值。
+- 原生 coordinator 的私有合成入口只在真实 authority 已核验、消费者完成 AEAD/manifest/source 验证后运行。先持有目标 SingleInstance，再于 `Recovery/synthetic-targets/<targetId>` 发布 DPAPI `plan`，记录 operation、新 Profile、来源登记/payload/manifest 摘要、计划 DB/角色/receipt；之后才创建 Profile，记录 root/data 身份并发布 `prepared`。不调用目标 Native Provision，不产生用户授权。
+- `PreparedRecoveryTarget.openSynthetic` 要求实际维护排他句柄、真实 Gate 和上述 helper，严格核对 DPAPI 记录、来源绑定、计划命名、root/data 原生身份及空目录。持续固定祖先/目标目录和记录。`claim()` 通过 CREATE_NEW、force 和不覆盖发布生成独立 `attempt.dpapi`，先于目标 SQL/数据写入；领取后、未知结果或出现额外文件均不能重开重放。
+- 跨 Profile 的私有 ACL 操作仅接受该不可直接构造的候选能力：先重核 helper 身份、维护排他和持续固定的 Known Folder 祖先句柄，只作用于该候选及其登记目录。普通 `WindowsPrivateAcl` 的原有祖先 ACL 规则未放宽。恢复在固定 `data` 创建私有 Knowledge 子树，沿既有 v3 恢复、Store/源文/索引读回和双角色禁登清密流程运行；临时 backup 清理后只保留候选与有限验证记录。
+- C# 与 Java 普通启动额外拒绝 `synthetic-targets` 内已登记目标；目标 JNA 持续缺失，旧 helper 的普通 `VerifyProfileNative` 同样拒绝。没有把 `RESTORE_VERIFIED.json` 当成 READY。
+
+首次实际联调在领取前拒绝：`attempt.dpapi`、目标恢复文件和目标 SQL 意图均未产生；失败候选保留。只读 ACL 检查确认此系统的 AppData/Local 祖先包含通用路径规则拒绝的替换权限，原 Runtime 的 Known Folder 固定句柄上下文原本只覆盖 authority Profile。修复为上述候选专属能力，未更改任何现有目录 ACL，未覆盖或重放失败目标。首次证据位于 `.verification/recovery-prepared-target/`，自建 PG 已停止。此前还有一次 PowerShell 版本不符合预检要求的启动失败，未运行夹具。
+
+修复后使用全新夹具 **1 次**执行已有 `RecoverySourceProducerProbe.cs/.java` 的 `prepared` 模式（原四参数模式保留；第五参数为 `prepared`）：
+
+- 同用户 WMI 启动 PowerShell 7，经 canonical Known Folder/非重解析路径预检。原生探针新建专属 authority，使用本轮精确 manifest 的真实应用 JAR 调用产品 `InspectSourceReadinessAsync`。返回 `BLOCKED / UNREGISTERED_WRITERS_UNPROVEN`，`ObservedExitedChildren=null`；新 authority 无数据库配置，因此 `SourceState=CONFIGURATION_UNAVAILABLE`。这不是完整停写证明。
+- 独立生产者退出后，新消费者经真实 Native Gate 和维护句柄交接读取 DPAPI 合成来源。原合成 Profile 移到保留目录，源合成数据库 `ALLOW_CONNECTIONS false`；恢复不访问原业务库。验证缺登记、篡改密文并重算 completion、写/删除已 pin 文件、错误口令不创建 DB/角色等拒绝条件。
+- 全新 canonical 目标 `0928ebcc1ecf469889875e44c92b773b`，operation `c1e6380e09814f87926bed20bc38e781`，新库 `personal_ai_workspace_b3_c1e6380e0981`。固定 `data/knowledge` 恢复非空 Memory、终态 Conversation、指定 Knowledge source 并重建索引；无 `staging/candidate`，Finance 未进入目标。原 source snapshot/Finance sentinel 不变，两个目标角色均 NOLOGIN/PASSWORD NULL，临时明文 backup 已清理。
+- 重复 staging、已领取 prepared target、普通 Java/C# 启动均被拒绝；目标无 JNA，普通 NativeBootstrap 返回 STOP/10。`activation=false`。恢复消费者使用本轮编译类的专用探针，**不是已开放的产品恢复命令**；产品 JAR 真实走过的是维护只读入口。
+
+成功夹具 `C:\PAW-SourceProducer-25f505c9ff2f457fba97a08d9994456e`，PG17 端口 `56278`，自建 PG PID `2644`，生产者/消费者 PID `21252/36228`。自建 PG 按 PID、启动时间、data directory、端口及可执行路径核对后停止。JVM 顺序执行、384 MiB/2 核，PG shared_buffers 16 MiB/12 connections；预检约 15.7 GiB 空闲内存。未启停 KAG、共享 PG、模型或其他既有服务，未访问真实用户 Profile/数据库。
+
+必要验证仅为 helper/桌面探针构建、Java 离线构建及实际 JAR 审计、现有 Java probe 编译、上述失败定位与修复后的单次闭环、`git diff --check`。没有新增测试套件、跑全量测试或模型任务。实际受信应用 JAR SHA-256 为 `4a27153bc5a901e0a9f4c4fe66b0bd67b7084443edc47e05c5392c35efbb9866`；helper EXE `5e0fb764990537a9d131cd3b3140834fa2462205d74f3e5ef4219abde1a6c99d`，DLL `58877d638691495b46cdb35a5bf8030b653660da76b3cc836ef321ba8e58b256`。实现前参考 [.NET 私有目录创建实现](https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.FileSystem.AccessControl/src/System/IO/FileSystemAclExtensions.cs) 与 [PostgreSQL 17 pg_restore 文档](https://github.com/postgres/postgres/blob/REL_17_STABLE/doc/src/sgml/ref/pg_restore.sgml)，没有以目录存在或普通 rename 推导恢复已发布。
+
+可复查的本地执行材料在 `.verification/recovery-prepared-target-fixed/`：`run-isolated-recovery.ps1`、`invoke-prepared.ps1`、`context-preflight.ps1`、`SourceProducerProbe.csproj`、精确 `runtime-sources.local.json`、构建日志、`product-maintenance-observation.json`、`owned-prepared-target.json`、`synthetic-recovery-evidence.json`、`native-source-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json`。脚本只接受新的独占夹具；不能重放已有 runner/候选。脚本包含此机器的工具位置，迁移执行环境须重新建立可信 manifest/目录预检，不能直接复用本机哈希结论。
+
+完整停写仍缺覆盖旧包、跨会话/手动 Java、未知远程模型执行的可信历史和执行归属；mutex、没有监听端口、没有 guard 文件或本次子进程退出都无法补齐。原生维护继续拒绝个人变更，不能清 guard、取消/kill 原执行或伪造“零历史”来放行。下一关键合同是可信来源生产授权与完整停写覆盖；另需 prepared 配置 owning 接口、日常 app CRUD 权限/真实新凭据读回连接、清理完成后 DPAPI READY，以及用户显式激活后的完整目标 Gate/Store/选择保存。未验证断电、网络中断或部分 CREATE/发布未知结果；失败/中断仍留候选且禁止自动重放。五份未跟踪设计文件保持原字节；未合并 main、部署或推送本轮提交。
+
 ## 最新阶段：来源登记跨进程消费，源库不可连接时恢复新合成目标
 
 基于本地 `8429134`，仍在 `codex/recovery-v3-workspace-core`。核对权威设计后发现，旧恢复依赖同一 Java 进程中的 `Completed`，即使原生 DPAPI 来源登记已经发布，生产进程结束后也不能恢复；旧目标准备还必须连接原业务库。这不符合“有完整维护 authority 和独立来源登记即可恢复，不要求原业务库在线”的合同。本轮把这段实际闭环接通，**个人维护仍为 BLOCKED，未发布 READY 或激活**。

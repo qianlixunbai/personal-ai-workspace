@@ -16,8 +16,8 @@ public final class WindowsNativeGate {
     public static final String DLL_HASH = "5a7ff949f6d93d86491eb5b26b1cfc60051168a60622650224b89995ac420023";
     private static final String NAME = "PersonalAiWorkspace.NativeBootstrap";
     private static final Map<String, String> BOOTSTRAP = Map.of(
-        ".exe", "0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4",
-        ".dll", "e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d",
+        ".exe", "5e0fb764990537a9d131cd3b3140834fa2462205d74f3e5ef4219abde1a6c99d",
+        ".dll", "58877d638691495b46cdb35a5bf8030b653660da76b3cc836ef321ba8e58b256",
         ".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885",
         ".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6");
     private static Path admittedRoot;
@@ -262,6 +262,34 @@ public final class WindowsNativeGate {
     }
 
     private record Admission(Path root, Path dll, String identity) {}
+
+    public record PreparedIdentity(Path root,String rootIdentity,String dataIdentity) {}
+    /** Directory evidence only. Does not change admittedRoot, publish JNA or authorize SQL. */
+    public static PreparedIdentity verifyPreparedRecoveryTarget(io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion exclusion,String targetId) throws IOException {
+        Path authority=maintenanceProfileRoot(exclusion);
+        if(targetId==null||!targetId.matches("[0-9a-f]{32}")||authority.getFileName().toString().equals(targetId))throw new IOException("Prepared target rejected");
+        try {
+            Path helper=localPath(System.getProperty("workspace.native.bootstrap",""));
+            for(var entry:BOOTSTRAP.entrySet())checkHash(helper.resolveSibling(NAME+entry.getKey()),entry.getValue());
+            var child=new ProcessBuilder(helper.toString(),"VerifyPreparedRecoveryTarget",targetId)
+                .directory(helper.getParent().toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            child.getOutputStream().close();
+            try {
+                if(!child.waitFor(15,TimeUnit.SECONDS)||child.exitValue()!=0)throw new IOException();
+                byte[] bytes=child.getInputStream().readNBytes(16385);
+                String[] fields=new String(bytes,StandardCharsets.UTF_8).strip().split("\t",-1);
+                if(bytes.length>16384||fields.length!=6||!fields[0].equals("WINDOWS_PREPARED_RECOVERY_V1")
+                    ||!fields[1].equals("NOT_ACTIVATED")||!fields[2].equals(targetId)
+                    ||!fields[4].matches("[0-9a-f]{48}")||!fields[5].matches("[0-9a-f]{48}"))throw new IOException();
+                Path root=localPath(new String(Base64.getDecoder().decode(fields[3]),StandardCharsets.UTF_8));
+                if(!root.equals(authority.getParent().resolve(targetId)))throw new IOException();
+                exclusion.requireHeld(authority);return new PreparedIdentity(root,fields[4],fields[5]);
+            }finally{
+                if(child.isAlive()){child.destroyForcibly();child.waitFor(5,TimeUnit.SECONDS);}
+                child.getInputStream().close();
+            }
+        }catch(Exception|LinkageError failure){throw new IOException("Prepared target native verification rejected");}
+    }
 
     private static Admission verify(Path helper, String runId) throws Exception {
         Process child = new ProcessBuilder(helper.toString(), "VerifyProfileNative", runId)

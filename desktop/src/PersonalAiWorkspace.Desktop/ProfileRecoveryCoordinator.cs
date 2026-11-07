@@ -222,6 +222,13 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         using var targetPins = WindowsProfileSecurity.HoldDirectories(targets);
         WindowsProfileSecurity.ValidatePrivate(targetPins.Handles[^1], user.User!, directory: true);
         if (Exists(Path.Combine(targets, id))) throw Stop();
+        string syntheticTargets=Path.Combine(recovery,"synthetic-targets");
+        if(Exists(syntheticTargets))
+        {
+            using var syntheticPins=WindowsProfileSecurity.HoldDirectories(syntheticTargets);
+            WindowsProfileSecurity.ValidatePrivate(syntheticPins.Handles[^1],user.User!,directory:true);
+            if(Exists(Path.Combine(syntheticTargets,id)))throw Stop();
+        }
     }
 
     private void EnsurePrivateDirectory(string path)

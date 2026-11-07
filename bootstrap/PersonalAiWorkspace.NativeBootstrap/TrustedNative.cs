@@ -146,6 +146,25 @@ internal static class TrustedNative
         }
     }
 
+    // Read-only directory admission for an unpublished candidate, never a Runtime/JNA gate.
+    // The maintenance owner must separately bind its immutable operation/source records.
+    internal static string VerifyPreparedRecoveryTarget(string targetId)
+    {
+        using var user=Win32.CurrentUser();
+        if(user.Elevated)throw new Rejected("ELEVATED_PROFILE");
+        string root=WindowsProfileSecurity.State(targetId,false);
+        using var rootPins=WindowsProfileSecurity.HoldDirectories(root);
+        using var dataPins=WindowsProfileSecurity.HoldDirectories(Path.Combine(root,"data"));
+        string[] names=Directory.EnumerateFileSystemEntries(root).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
+        if(!names.SequenceEqual(WindowsProfileSecurity.Directories.Order(StringComparer.Ordinal)))throw new Rejected("PREPARED_LAYOUT");
+        WindowsProfileSecurity.ValidatePrivate(rootPins.Handles[^1],user.Sid,true);
+        WindowsProfileSecurity.ValidatePrivate(dataPins.Handles[^1],user.Sid,true);
+        return string.Join('\t',"WINDOWS_PREPARED_RECOVERY_V1","NOT_ACTIVATED",targetId,
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(root)),
+            Win32.RawIdentity(rootPins.Handles[^1],root,true),
+            Win32.RawIdentity(dataPins.Handles[^1],Path.Combine(root,"data"),true));
+    }
+
     private static byte[] Artifact(string input)
     {
         Win32.ValidatePath(input);
