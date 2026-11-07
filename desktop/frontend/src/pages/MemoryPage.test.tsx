@@ -15,11 +15,54 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(x => x.dispose()); vi.res
 const click = async (name: string | RegExp) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
 async function setup(port = new MemoryService()) {
   const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
-  render(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => { void bridge.open('native.openMemoryBackup') }} />)
+  const view = render(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => { void bridge.open('native.openMemoryBackup') }} />)
   await screen.findByRole('button', { name: /^Synthetic Memory 1 PROJECT_NOTE/ })
-  return { port, bridge, title: screen.getByLabelText('记忆标题') as HTMLInputElement, content: screen.getByLabelText('记忆内容') as HTMLTextAreaElement }
+  return { port, bridge, view, title: screen.getByLabelText('记忆标题') as HTMLInputElement, content: screen.getByLabelText('记忆内容') as HTMLTextAreaElement }
 }
 const edit = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } })
+it('previews one search result without replacing a dirty draft, rejects changed revisions and discards late hidden reads', async () => {
+  const service = new MemoryService()
+  const body = '第一段\r\n[a+b] literal <img src=x onerror=alert(1)>\n第二段 [a+b]'
+  service.items = [{ ...memoryItem(), content: body }, { ...memoryItem(2), content: '[a+b] second saved memory' }]
+  const { port, bridge, view, title, content } = await setup(service)
+  edit(title, 'Unsent draft title'); edit(content, 'Unsent draft body')
+  edit(screen.getByLabelText('搜索记忆'), '[a+b]'); await click('搜索')
+  expect(port.sent.filter(x => x.method === 'memory.get')).toHaveLength(0)
+  const preview = async (number: number) => {
+    const row = screen.getByRole('button', { name: new RegExp(`^Synthetic Memory ${number} PROJECT_NOTE`) }).closest('li')!
+    await act(async () => fireEvent.click(within(row).getByRole('button', { name: '预览正文' })))
+  }
+  await preview(1)
+  const first = screen.getByRole('region', { name: '记忆只读预览' })
+  expect(within(first).getByLabelText('预览正文').textContent).toBe(body)
+  expect([...first.querySelectorAll('mark')].map(x => x.textContent)).toEqual(['[a+b]', '[a+b]'])
+  expect(first.querySelector('img')).toBeNull()
+  expect(title.value).toBe('Unsent draft title'); expect(content.value).toBe('Unsent draft body')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  edit(screen.getByLabelText('搜索记忆'), 'not submitted')
+  expect(first.querySelectorAll('mark')).toHaveLength(2) // highlight the submitted query only
+  await preview(2)
+  expect(screen.getAllByRole('region', { name: '记忆只读预览' })).toHaveLength(1)
+  expect(screen.getByLabelText('预览正文').textContent).toBe('[a+b] second saved memory')
+  expect(port.sent.filter(x => x.method === 'memory.get')).toHaveLength(2)
+
+  service.items[0] = { ...service.items[0]!, revision: '9007199254740994', content: '[a+b] changed after search' }
+  await preview(1)
+  expect(screen.getByRole('alert').textContent).toContain('已变更')
+  expect(screen.queryByLabelText('预览正文')).toBeNull()
+  await click('刷新')
+  expect(screen.queryByRole('region', { name: '记忆只读预览' })).toBeNull()
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await preview(1)
+  expect(screen.getByRole('region', { name: '记忆只读预览' }).getAttribute('aria-busy')).toBe('true')
+  view.rerender(<MemoryPage bridge={bridge} enabled visible={false} registerLeave={() => () => {}} openBackup={() => {}} />)
+  await act(async () => complete(service.items[0]!))
+  view.rerender(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => {}} />)
+  expect(screen.queryByRole('region', { name: '记忆只读预览' })).toBeNull()
+  expect(title.value).toBe('Unsent draft title'); expect(content.value).toBe('Unsent draft body')
+  expect(port.sent.every(x => ['memory.list', 'memory.get', 'memory.editorState'].includes(String(x.method)))).toBe(true)
+})
 class ConversationMemoryService extends MemoryService {
   detail = conversationHistory()
   postMessage(request: unknown) {

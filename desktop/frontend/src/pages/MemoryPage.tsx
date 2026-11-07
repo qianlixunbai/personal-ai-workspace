@@ -4,6 +4,7 @@ import { BridgeError, WorkspaceClient } from '../bridge/client'
 import { emptyMemory, validContent, validDraft, validQuery } from '../bridge/memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { MemoryPreview } from '../components/MemoryPreview'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
 export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void) => boolean
@@ -17,6 +18,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [query, setQuery] = useState<MemoryQuery>({ query: '', status: 'ACTIVE', type: null, page: 0 })
   const [search, setSearch] = useState('')
   const [list, setList] = useState<MemoryList | null>(null)
+  const [previewId, setPreviewId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
   const [fromConversation, setFromConversation] = useState(false)
@@ -47,6 +49,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     }
   }, [busy, confirmation, visible])
   const loadEditor = (item: MemoryItem | null) => {
+    setPreviewId(null)
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
     setStale(false); setMissing(false); setUnknown(false); setError(''); setFromConversation(false)
   }
@@ -79,6 +82,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     return true
   }), [registerDraft, enabled, dirty, confirmation, busy])
   const fetchList = async (view = queryRef.current) => {
+    setPreviewId(null)
     const token = ++listGeneration.current
     setListLoading(true)
     try {
@@ -107,6 +111,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   useEffect(() => {
     if (enabled && visible && !queried.current) { queried.current = true; void refresh() }
   }, [enabled, visible])
+  useEffect(() => { if (!enabled || !visible) setPreviewId(null) }, [enabled, visible])
   useEffect(() => () => { generation.current++; listGeneration.current++ }, [])
   const run = async (operation: () => Promise<void>, mutation = false, affectsLoaded = true) => {
     if (actionLock.current || !enabled) return
@@ -176,8 +181,13 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <label htmlFor="memory-filter-type">类型<select id="memory-filter-type" value={query.type ?? 'ALL'} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, type: event.target.value === 'ALL' ? null : event.target.value as MemoryType, page: 0 }) }}>
             <option value="ALL">全部</option><option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></label></div>
         <p id="memory-search-help" className="hint">搜索标题和正文，区分大小写。</p>
-        <ul tabIndex={0} aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id} disabled={disabled || listLoading}
-          onClick={() => { if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button></li>)}</ul>
+        <ul tabIndex={0} aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button id={`memory-select-${item.id}`} className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id} disabled={disabled || listLoading}
+          onClick={() => { if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button>
+          <button type="button" className="memory-preview-toggle" disabled={disabled || listLoading} aria-expanded={previewId === item.id}
+            aria-describedby={`memory-select-${item.id}`} aria-controls={previewId === item.id ? `memory-preview-${item.id}` : undefined}
+            onClick={() => setPreviewId(current => current === item.id ? null : item.id)}>{previewId === item.id ? '收起预览' : '预览正文'}</button>
+          {previewId === item.id && visible && enabled && !listLoading && <MemoryPreview bridge={bridge} metadata={item} query={query.query} />}
+        </li>)}</ul>
         {!listLoading && list?.total === 0 && <p className="empty-state">没有找到记忆。可在右侧手动保存偏好或项目笔记。</p>}
         <div className="pagination" aria-label="Memory pagination"><button disabled={disabled || listLoading || !list || list.page === 0} onClick={() => { void refresh({ ...queryRef.current, page: query.page - 1 }) }}>上一页</button>
           <span>{query.page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))} · {list?.total ?? 0}</span>
