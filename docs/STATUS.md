@@ -2,6 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
+2026-11-07 Recovery 合成激活阶段：已在全新隔离 PG/Profile 中验证来源登记 → 恢复 → READY → 单次显式授权 → 绑定唯一 owner/JVM 的 Native Gate → 实际 Runtime/Store 就绪 → DPAPI ACTIVE。修复恢复文件创建时未保护子目录 DACL 的问题；两个失败目标保留且不重放，owner 退出后残留授权仍被拒绝。未写用户工作区偏好、未启停既有服务。**个人恢复仍 BLOCKED**：完整停写、个人来源授权与正式确认 UI/生命周期尚未闭环。详情及准确验证边界见[来源生产者／激活交接](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。下文各切片记录保留其历史时点。
+
 2026-10-30 补充：[GitHub 展示与 Runtime 核对](engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md) 对应 `main @ 8df87ab`。UI Polish / P0 / P1 / P2 已合并；历史 uncertainty 已解除并有一次文本问答成功记录。最新开发包重启后的历史状态为 NotValidated；本次只读检查时客户端与 Runtime 未运行，不能声明当前 Ready。下文未另行更新的核验与发布描述仍属 2026-10-28 历史记录。
 
 2026-11-07 状态提示候选补充：本轮从 `main @ fe2c34c89703408b06bd3f4d8ca83c2ca6ded5b9` 开发，Settings 复用现有 Desktop owner、Bridge 与 Runtime 状态入口，区分构建身份、可访问性、存储 backend、模型安装／驻留／验证 Ready，并提供下一步。查询失败不保留旧的可用展示；未改变启动、认证、Profile、模型 guard 或外部服务所有权。当前源码候选不等于已构建并验收的分发包，也不等于历史实机证据包。实际仅执行 Settings / StorageSettings / Bridge 前端聚焦测试、TypeScript 检查及 Desktop 状态探针／Bridge 聚焦测试（含相关编译）；未启动真实客户端、模型或用户数据库，未重做受阻 Profile／Java 实机路径，未打包。当前实际 Runtime、数据库与模型状态未在本轮查询，目标 1 验收仍未完成。详见 [开发指南的状态说明](DEVELOPMENT.md#在-settings-核对本次可用性)。

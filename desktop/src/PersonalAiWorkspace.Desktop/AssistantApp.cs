@@ -544,6 +544,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                 {
                     var storage = await runtime.GetStorageStatusAsync(lifetime.Token);
                     if (storage.ErrorCode != "NONE") failure = storage.ErrorCode;
+                    else if(runtimeOwner is not null)await runtimeOwner.CompleteRecoveryActivationAsync(lifetime.Token);
                 }
                 catch (OperationCanceledException) when (exitRequested) { return; }
                 catch (Exception) { failure = "STORAGE_UNAVAILABLE"; }

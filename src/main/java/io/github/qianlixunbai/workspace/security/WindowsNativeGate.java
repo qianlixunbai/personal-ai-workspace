@@ -16,14 +16,30 @@ public final class WindowsNativeGate {
     public static final String DLL_HASH = "5a7ff949f6d93d86491eb5b26b1cfc60051168a60622650224b89995ac420023";
     private static final String NAME = "PersonalAiWorkspace.NativeBootstrap";
     private static final Map<String, String> BOOTSTRAP = Map.of(
-        ".exe", "06f78c6dd753eecd3d8c424a4e53a3062ad3c3177a981d9115672a96209411d4",
-        ".dll", "31bcd5675ec5f5a2b2e116e2705f7ea9f232116f082766df78008a6e783d57d7",
+        ".exe", "816d253e5f707b1813eabc25a29a8ee5ba3da366fcf27e679cc7964a6c2abcf2",
+        ".dll", "4a8536eca1f7c85e893003c3079a7bd3a7e4dffd6f9bcfbf37cd3b8bad6134fb",
         ".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885",
         ".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6");
     private static Path admittedRoot;
     private static io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.RuntimeLease runtimeLease;
     private static io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion maintenanceExclusion;
     private static boolean maintenanceAttempted;
+    private static boolean syntheticActivation;
+    public static synchronized void receiveSyntheticActivation(java.io.InputStream input) throws IOException {
+        if(admittedRoot!=null||syntheticActivation||maintenanceAttempted)throw new IOException("Activation already attempted");
+        syntheticActivation=true; // Never reset, including malformed/closed input.
+        byte[] expected="SYNTHETIC_ACTIVATION_V1".getBytes(StandardCharsets.US_ASCII);
+        if(!Arrays.equals(input.readNBytes(expected.length+1),expected))throw new IOException("Activation handoff rejected");
+        // This flag alone grants nothing: verify() checks this JVM's actual OS parent-bound
+        // launch claim through the pinned helper before JNA, credentials or Spring.
+    }
+    public static void requireRecoveryStartup(Path root) throws IOException {
+        try {
+            Path helper=localPath(System.getProperty("workspace.native.bootstrap",""));
+            for(var entry:BOOTSTRAP.entrySet())checkHash(helper.resolveSibling(NAME+entry.getKey()),entry.getValue());
+            if(!root.equals(verify(helper,root.getFileName().toString()).root))throw new IOException();
+        }catch(Exception failure){throw new IOException("Recovery startup unavailable");}
+    }
     private static FileChannel owningJarPin;
     private static Object owningJarKey;
     private static Path owningJar;
@@ -292,7 +308,7 @@ public final class WindowsNativeGate {
     }
 
     private static Admission verify(Path helper, String runId) throws Exception {
-        Process child = new ProcessBuilder(helper.toString(), "VerifyProfileNative", runId)
+        Process child = new ProcessBuilder(helper.toString(), syntheticActivation?"VerifyRecoveryRuntimeNative":"VerifyProfileNative", runId)
             .directory(helper.getParent().toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
         child.getOutputStream().close();
         try {

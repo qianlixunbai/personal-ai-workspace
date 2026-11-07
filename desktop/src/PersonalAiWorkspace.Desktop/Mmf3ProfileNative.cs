@@ -21,7 +21,8 @@ internal static class Mmf3ProfileNative
             ValidateHelper();
             var start = new ProcessStartInfo(Helper) { UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(Helper)! };
-            start.ArgumentList.Add("VerifyProfileNative"); start.ArgumentList.Add(launch.RunId);
+            launch.RecoveryActivation?.Validate();
+            start.ArgumentList.Add(launch.RecoveryActivation is null?"VerifyProfileNative":"VerifyRecoveryOwnerNative"); start.ArgumentList.Add(launch.RunId);
             using var process = Process.Start(start) ?? throw new IOException();
             try
             {
@@ -45,11 +46,15 @@ internal static class Mmf3ProfileNative
     }
 
     internal static void Provision(string runId, string pinnedJnaJar)
+        =>ProvisionCore(runId,pinnedJnaJar,false);
+    internal static void ProvisionRecovery(ProfileRecoveryCoordinator.SyntheticActivation activation,string pinnedJnaJar)
+    {activation.Validate();ProvisionCore(activation.TargetId,pinnedJnaJar,true);}
+    private static void ProvisionCore(string runId,string pinnedJnaJar,bool recovery)
     {
         Mmf3ProfileState.Verify(runId); ValidateHelper();
         var start = new ProcessStartInfo(Helper) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(Helper)! };
-        start.ArgumentList.Add("ProvisionProfileNative"); start.ArgumentList.Add(runId); start.ArgumentList.Add(pinnedJnaJar);
+        start.ArgumentList.Add(recovery?"ProvisionRecoveryNative":"ProvisionProfileNative"); start.ArgumentList.Add(runId); start.ArgumentList.Add(pinnedJnaJar);
         using var child = Process.Start(start) ?? throw new IOException();
         try { if (!child.WaitForExit(15000) || child.ExitCode != 0) throw new IOException(); }
         finally { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } }
@@ -66,8 +71,8 @@ internal static class Mmf3ProfileNative
                 throw new IOException();
         }
         (string suffix, string hash)[] payload = [
-            (".exe", "06f78c6dd753eecd3d8c424a4e53a3062ad3c3177a981d9115672a96209411d4"),
-            (".dll", "31bcd5675ec5f5a2b2e116e2705f7ea9f232116f082766df78008a6e783d57d7"),
+            (".exe", "816d253e5f707b1813eabc25a29a8ee5ba3da366fcf27e679cc7964a6c2abcf2"),
+            (".dll", "4a8536eca1f7c85e893003c3079a7bd3a7e4dffd6f9bcfbf37cd3b8bad6134fb"),
             (".deps.json", "27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885"),
             (".runtimeconfig.json", "3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6")];
         foreach (var item in payload)

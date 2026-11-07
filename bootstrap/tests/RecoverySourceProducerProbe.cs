@@ -9,15 +9,19 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Buffers.Binary;
 using System.Text;
+using System.Threading;
+using System.Linq;
+using PersonalAiWorkspace.Core;
 
 // One explicit native -> Java -> native integration in the new cluster owned by the runner.
-// It deliberately never creates a product source registration or invokes a real Profile Gate.
+// It never creates a personal source registration. Prepared/activation modes use the real
+// Gate only for newly allocated synthetic authority/target Profiles.
 internal static class RecoverySourceProducerProbe
 {
     private sealed record InterruptedAuthorization(int Version,string Kind,string State,string OperationId,string TargetProfileId,string ReadySha256,string RequestId,string Mode);
     private static async Task Main(string[] args)
     {
-        if (args.Length is not (4 or 5) || args.Length==5 && args[4] is not ("prepared" or "ready")) throw new IOException("Explicit synthetic fixture/tooling required");
+        if (args.Length is not (4 or 5) || args.Length==5 && args[4] is not ("prepared" or "ready" or "activate" or "interrupt")) throw new IOException("Explicit synthetic fixture/tooling required");
         var assembly = Assembly.LoadFrom(args[0]);
         var coordinator = assembly.GetType("PersonalAiWorkspace.Desktop.ProfileRecoveryCoordinator", true)!;
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
@@ -100,15 +104,15 @@ internal static class RecoverySourceProducerProbe
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
-            authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = args.Length!=5||args[4]!="ready",
-            applicationCredentialRetainedForReady = args.Length==5&&args[4]=="ready",
+            authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = args.Length!=5||args[4]=="prepared",
+            applicationCredentialRetainedForReady = args.Length==5&&args[4]!="prepared",
             restoredByNewProcessFromDurableRegistration = true, originalSourceProfileRetainedAt = retired,
             personalSourceRegistration = false, productPlanRejected = true, duplicateAttemptRejected = true,
             sourceRecord = record, sourceRecordSha256 = Convert.ToHexStringLower(SHA256.HashData(original)) }));
         Console.WriteLine("PASS: protected Workspace configuration -> app/admin database binding -> owned backup/role cleanup -> native configuration/ciphertext verification -> DPAPI readback.");
         Console.WriteLine("PASS: synthetic receipt cannot authorize a product plan; duplicate attempt rejected; exclusion released after child exit.");
         Console.WriteLine("PASS: producer exited -> DPAPI registration consumed by new JVM -> source database unavailable/Profile absent -> authenticated fresh target -> stores/index verified -> expected credential disposition checked.");
-        Console.WriteLine(args.Length==5?"PASS: real authority Native Gate -> pinned prepared-target helper -> canonical fixed data restore; no target JNA; candidate startup/replay denied.":
+        Console.WriteLine(args.Length==5?"PASS: real authority Native Gate -> pinned prepared target -> canonical fixed data; explicit mode result recorded separately.":
             "Personal maintenance remains BLOCKED; real Native Gate, personal target publication and activation were not exercised.");
     }
 
@@ -158,7 +162,7 @@ internal static class RecoverySourceProducerProbe
             "-Djna.boot.library.name=jnidispatch","-Djna.nosys=true","-Djna.noclasspath=true","-Djna.nounpack=true",
             "-Djava.io.tmpdir="+Path.Combine(root,"evidence"),"-Djna.tmpdir="+Path.Combine(root,"evidence"),"-cp",args[2],
             "io.github.qianlixunbai.workspace.backup.RecoverySourceProducerProbe","restore-registered",args[3],app,backupId})start.ArgumentList.Add(value);
-        if(args[4]=="ready")start.ArgumentList.Add("publish-ready");
+        if(args[4]!="prepared")start.ArgumentList.Add("publish-ready");
         using var job=(IDisposable)Owner("RuntimeProcessJob").GetMethod("Create",methods)!.Invoke(null,null)!;
         using var child=Process.Start(start)??throw new IOException();
         Owner("RuntimeProcessJob").GetMethod("Assign",methods)!.Invoke(job,[child]);
@@ -184,7 +188,7 @@ internal static class RecoverySourceProducerProbe
             string targetRoot=(string)state.GetMethod("Root",methods)!.Invoke(null,[target])!;
             File.WriteAllText(Path.Combine(isolated,"owned-prepared-target.json"),JsonSerializer.Serialize(new{targetProfileId=target,root=targetRoot,plan}));
             Write(target);child.StandardInput.Close();
-            if(Read()!=(args[4]=="ready"?"SYNTHETIC_CANDIDATE_CLOSED":"PREPARED_SYNTHETIC_RECOVERY_VERIFIED")||!child.WaitForExit(15000)||child.ExitCode!=0||child.StandardOutput.Read()!=-1)throw new IOException();
+            if(Read()!=(args[4]!="prepared"?"SYNTHETIC_CANDIDATE_CLOSED":"PREPARED_SYNTHETIC_RECOVERY_VERIFIED")||!child.WaitForExit(15000)||child.ExitCode!=0||child.StandardOutput.Read()!=-1)throw new IOException();
             errors.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             if(Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64"))||!File.Exists(Path.Combine(targetRoot,"data","RESTORE_VERIFIED.json")))throw new IOException();
             try{launchType.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);throw new Exception("Candidate admitted");}
@@ -193,7 +197,7 @@ internal static class RecoverySourceProducerProbe
             verify.ArgumentList.Add("VerifyProfileNative");verify.ArgumentList.Add(target);
             using var normal=Process.Start(verify)??throw new IOException();
             if(!normal.WaitForExit(15000)||normal.ExitCode!=10)throw new IOException();
-            if(args[4]=="ready")
+            if(args[4]!="prepared")
             {
                 var publish=coordinator.GetMethod("PublishSyntheticReady",methods)!;
                 publish.Invoke(owner,[target]);
@@ -226,6 +230,75 @@ internal static class RecoverySourceProducerProbe
                     if(Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64")))throw new IOException();
                 }
                 RefuseStartupAndProvision();
+                if(args[4] is "activate" or "interrupt")
+                {
+                    var authorize=coordinator.GetMethod("AuthorizeSyntheticActivation",methods)!;
+                    using var activation=(IDisposable)authorize.Invoke(owner,[target,Guid.NewGuid().ToString("N"),runtime,model])!;
+                    RefuseStartupAndProvision(); // Even this live owner's authorization is not ordinary admission.
+                    try{authorize.Invoke(owner,[target,Guid.NewGuid().ToString("N"),runtime,model]);throw new Exception("Authorization reused");}
+                    catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                    if(args[4]=="interrupt")
+                    {
+                        File.WriteAllText(Path.Combine(isolated,"synthetic-activation-evidence.json"),JsonSerializer.Serialize(new{
+                            targetProfileId=target,operationId=operation,readySha256=readyHash,ownerPid=Environment.ProcessId,
+                            authorizedOnce=true,ordinaryStartupRejected=true,authorizationReplayRejected=true,
+                            finalState="BLOCKED_AUTHORIZATION_OWNER_EXIT",activation=false,targetJnaAbsent=true,activeRecordAbsent=true}));
+                        return; // Owner exits normally without consuming authorization; caller verifies stale-owner rejection afterwards.
+                    }
+                    object activationProfile=activation.GetType().GetMethod("Provision",methods)!.Invoke(activation,null)!;
+                    try{activation.GetType().GetMethod("Provision",methods)!.Invoke(activation,null);throw new Exception("Native publication replayed");}
+                    catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                    Type runtimeType=Owner("DevelopmentRuntimeOwner");object? actualRuntime=null;
+                    using var client=(RuntimeClient)typeof(RuntimeClient).GetMethod("CreateMmf3Acceptance",methods)!.Invoke(null,
+                        [new Func<string?>(()=>actualRuntime is null?null:(string?)runtimeType.GetMethod("ReadCredential",methods)!.Invoke(actualRuntime,null))])!;
+                    using var ownedRuntime=(IDisposable)Activator.CreateInstance(runtimeType,methods,null,[activationProfile,client],null)!;
+                    actualRuntime=ownedRuntime;
+                    runtimeType.GetMethod("Start",methods)!.Invoke(actualRuntime,[CancellationToken.None]);
+                    var clock=Stopwatch.StartNew();bool ready=false;
+                    do{
+                        var startup=runtimeType.GetMethod("Snapshot",methods)!.Invoke(actualRuntime,null)!;
+                        ready=(bool)startup.GetType().GetProperty("CanQueryStorage")!.GetValue(startup)!;
+                        if(ready)break;if((string)startup.GetType().GetProperty("Runtime")!.GetValue(startup)! !="STARTING")
+                            throw new IOException("Activation runtime "+startup.GetType().GetProperty("Failure")!.GetValue(startup));
+                        Thread.Sleep(100);
+                    }while(clock.Elapsed<TimeSpan.FromSeconds(65));
+                    if(!ready)throw new IOException("Activation startup timeout");
+                    var memory=client.ListMemoryAsync(new MemoryQuery(),CancellationToken.None).GetAwaiter().GetResult();
+                    var conversations=client.ListConversationsAsync(ConversationStatus.ACTIVE,0,10,CancellationToken.None).GetAwaiter().GetResult();
+                    var knowledge=client.ListKnowledgeAsync("ACTIVE",0,CancellationToken.None).GetAwaiter().GetResult();
+                    if(memory.Items.Count==0||conversations.Items.Count==0||knowledge.Items.Length==0)throw new IOException("Restored stores missing");
+                    foreach(var conversation in conversations.Items)
+                        if(client.GetConversationAsync(conversation.Id,0,10,CancellationToken.None).GetAwaiter().GetResult().Turns.Count==0)throw new IOException();
+                    int revisions=0;
+                    foreach(var document in knowledge.Items)
+                    foreach(var revision in client.GetKnowledgeAsync(document.DocumentId,CancellationToken.None).GetAwaiter().GetResult().Revisions)
+                    {
+                        var preview=client.PreviewKnowledgeAsync(document.DocumentId,revision.SourceRevision,0,CancellationToken.None).GetAwaiter().GetResult();
+                        string source=Path.Combine(targetRoot,"data","knowledge","sources",document.DocumentId,revision.SourceRevision+".source");
+                        using var input=new FileStream(source,FileMode.Open,FileAccess.Read,FileShare.Read);
+                        if(input.Length!=revision.ByteLength||Convert.ToHexStringLower(SHA256.HashData(input))!=revision.SourceDigest||preview.Text.Length==0)throw new IOException();
+                        revisions++;
+                    }
+                    if(revisions==0)throw new IOException();
+                    // A helper launched by the coordinator cannot impersonate the claimed JVM.
+                    var impostor=new ProcessStartInfo(helper){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+                    impostor.ArgumentList.Add("VerifyRecoveryRuntimeNative");impostor.ArgumentList.Add(target);
+                    using(var rejected=Process.Start(impostor)??throw new IOException())
+                        if(!rejected.WaitForExit(15000)||rejected.ExitCode!=10)throw new IOException("Wrong process admitted");
+                    ((Task)runtimeType.GetMethod("CompleteRecoveryActivationAsync",methods)!.Invoke(actualRuntime,[CancellationToken.None])!).GetAwaiter().GetResult();
+                    using(var active=(IDisposable)inspect.Invoke(null,[target])!)
+                        if((string)active.GetType().GetField("Stage",methods)!.GetValue(active)! !="ACTIVE")throw new IOException();
+                    launchType.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]); // Verify only; no second Runtime.
+                    try{((Task)runtimeType.GetMethod("RestartAsync",methods)!.Invoke(actualRuntime,[CancellationToken.None])!).GetAwaiter().GetResult();throw new Exception("Activation restarted");}
+                    catch(IOException){}
+                    File.WriteAllText(Path.Combine(isolated,"synthetic-activation-evidence.json"),JsonSerializer.Serialize(new{
+                        targetProfileId=target,operationId=operation,readySha256=readyHash,runtimePid=runtimeType.GetProperty("OwnedProcessId",methods)!.GetValue(actualRuntime),
+                        authorizedOnce=true,ordinaryStartupRejectedBeforeActive=true,authorizationReplayRejected=true,nativeProvisionReplayRejected=true,
+                        wrongProcessRejected=true,activationRestartRejected=true,actualRuntimeStorageReady=true,memoryConversationKnowledgeReadback=true,
+                        sourceDigestsVerified=revisions,activePublishedAfterStorage=true,ordinaryActiveVerification=true,lastWorkspaceSelectionWritten=false,
+                        finalState="ACTIVE_SYNTHETIC",activation=true,personalAuthorization=false}));
+                    return;
+                }
                 // Model the disconnected draft's durable authorization in this newly owned
                 // synthetic candidate only. It is deliberately retained as UNKNOWN, never
                 // removed to retry or promoted to ACTIVE. This is not personal authorization.

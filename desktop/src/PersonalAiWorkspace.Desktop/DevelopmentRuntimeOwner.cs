@@ -27,6 +27,15 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     private bool disposed;
     internal event Action<StorageStartupStatus>? Changed;
     internal int? OwnedProcessId { get { lock (sync) return child?.Id; } }
+    internal bool OwnsReadyProcess(Process process){lock(sync)return ReferenceEquals(child,process)&&Snapshot().CanQueryStorage&&!process.HasExited;}
+    internal async Task CompleteRecoveryActivationAsync(CancellationToken cancellation)
+    {
+        if(profile.RecoveryActivation is null)return;
+        var status=await runtime.GetStorageStatusAsync(cancellation).ConfigureAwait(false);
+        if(status.Backend!="POSTGRESQL"||status.ConfigurationTrust!="TRUSTED_LOCAL"||!status.PostgresqlConfigured||status.Connection!="CONNECTED"
+            ||status.WorkspaceSchema!="V1_V2_READY"||status.KnowledgeSchema!="READY"||status.FinanceEnabled||status.ErrorCode!="NONE")throw new IOException();
+        profile.RecoveryActivation.PublishActive(this);
+    }
     internal string? RunningJarSha256
     {
         get { lock (sync) return state == "READY" && child is not null && !child.HasExited ? jarSha256 : null; }
@@ -138,11 +147,13 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             var start = sources.StartInfo(profile);
             job = RuntimeProcessJob.Create();
             ownership = ProfileRecoveryCoordinator.RuntimeAttempt.Begin(profile, sources.JarSha256);
+            profile.RecoveryActivation?.ConsumeLaunch();
             lifetime.Token.ThrowIfCancellationRequested();
             var process = Process.Start(start) ?? throw new IOException();
             lock (sync) { child = process; jarSha256 = sources.JarSha256; } // Hold the actual Process handle before any further operation can fail.
             job.Assign(process);
             ownership.RecordStarted(process);
+            profile.RecoveryActivation?.ClaimLaunch(process,sources.JarSha256);
             output = PumpAsync(process.StandardOutput, false, lifetime.Token);
             errors = PumpAsync(process.StandardError, true, lifetime.Token);
             var clock = Stopwatch.StartNew();
@@ -246,6 +257,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     }
     internal async Task RestartAsync(CancellationToken applicationLifetime)
     {
+        if(profile.RecoveryActivation is not null)throw new IOException("Recovery activation cannot replay a launch.");
         await StopAsync().ConfigureAwait(false);
         // Windows can still report the exited child's listener briefly after WaitForExit.
         // Wait only during an explicit restart; never contact/reuse a listener or stop an unrelated process.

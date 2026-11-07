@@ -19,11 +19,11 @@ internal static class Program
                 return 0;
             }
             if (args.Length < 2 || args[0] is not ("ProvisionTrustedNative" or "VerifyTrustedNative"
-                    or "ProvisionProfileNative" or "VerifyProfileNative")
+                    or "ProvisionProfileNative" or "VerifyProfileNative" or "ProvisionRecoveryNative" or "VerifyRecoveryOwnerNative" or "VerifyRecoveryRuntimeNative")
                 || args.Length != (args[0].StartsWith("Provision", StringComparison.Ordinal) ? 3 : 2))
                 throw new Rejected("ARGUMENTS");
             var result = TrustedNative.Run(args[0], args[1], args.Length == 3 ? args[2] : null);
-            if (args[0] == "VerifyProfileNative")
+            if (args[0] is "VerifyProfileNative" or "VerifyRecoveryOwnerNative" or "VerifyRecoveryRuntimeNative")
                 Console.WriteLine(result.JavaAdmission());
             else Console.WriteLine(JsonSerializer.Serialize(new
             {

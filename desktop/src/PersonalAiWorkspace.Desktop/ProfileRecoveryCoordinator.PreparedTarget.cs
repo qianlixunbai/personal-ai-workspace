@@ -7,6 +7,9 @@ using System.Security.Principal;
 using System.Text;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.NetworkInformation;
+using System.Threading;
+using PersonalAiWorkspace.Core;
 using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
@@ -88,9 +91,109 @@ internal sealed partial class ProfileRecoveryCoordinator
         }
         using var confirmed=SyntheticRecoveryPublication.Inspect(target);if(confirmed.Stage!="READY")throw Stop();
     }
-    // No activation entry yet. A durable authorization record alone cannot bind a
-    // unique launch or distinguish an interrupted launch from an authorized retry.
-    // Ordinary Desktop/Java/native gates therefore reject every registered candidate.
+    private sealed record SyntheticAuthorization(int Version,string Kind,string State,string OperationId,string TargetProfileId,
+        string ReadySha256,string RequestId,string Mode,int OwnerPid,long OwnerStartUtcTicks,int OwnerSessionId,string AuthorityProfileId);
+    private sealed record SyntheticLaunch(int Version,string Kind,string State,string OperationId,string TargetProfileId,
+        string AuthorizationSha256,int RuntimePid,long RuntimeStartUtcTicks,int RuntimeSessionId,string JarSha256);
+    private sealed record SyntheticActive(int Version,string Kind,string State,string OperationId,string TargetProfileId,
+        string LaunchSha256,string NativeIdentity,string StorageContract);
+
+    // Explicit isolated fixture call only. No personal/UI entry or selection write. The
+    // original consumer, both maintenance handles and coordinator must still be owned here.
+    private SyntheticActivation AuthorizeSyntheticActivation(string target,string requestId,FileStream runtimeLock,FileStream modelLock)
+    {
+        RequireHex(requestId,32);RequireSyntheticConsumerExited(target);
+        var activation=new SyntheticActivation(this,target,runtimeLock,modelLock);
+        activation.RequireMaintenance();
+        if(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p=>p.Port==18765))throw Stop();
+        using var evidence=SyntheticRecoveryPublication.Inspect(target);
+        if(evidence.Stage!="READY"||Exists(Path.Combine(evidence.Root,"jna-5.17.0-win32-x86-64")))throw Stop();
+        using var owner=Process.GetCurrentProcess();
+        var auth=new SyntheticAuthorization(1,"SYNTHETIC_ACTIVATION_AUTHORIZATION","ACTIVATION_AUTHORIZED",
+            SyntheticRecoveryPublication.Text(evidence.Offline,"OperationId"),target,evidence.Hashes["ready"],requestId,
+            "EXPLICIT_ISOLATED_SYNTHETIC",owner.Id,owner.StartTime.ToUniversalTime().Ticks,owner.SessionId,authority!.RunId);
+        PublishRecord(evidence.Entry,"authorization",SyntheticTargetEntropy(target,"authorization"),auth);
+        activation.Validate();return activation;
+    }
+
+    internal sealed class SyntheticActivation : IDisposable
+    {
+        private readonly ProfileRecoveryCoordinator coordinator;
+        private readonly FileStream authorityRuntime,authorityModel;
+        private readonly object sync=new();
+        private Process? child;
+        private bool disposed,provisionAttempted,launchAttempted;
+        internal string TargetId{get;}
+        internal SyntheticActivation(ProfileRecoveryCoordinator coordinator,string target,FileStream runtime,FileStream model)
+        {this.coordinator=coordinator;TargetId=target;authorityRuntime=runtime;authorityModel=model;}
+        internal void RequireMaintenance()
+        {
+            ObjectDisposedException.ThrowIf(disposed,this);coordinator.RequireSyntheticConsumerExited(TargetId);
+            string root=coordinator.authority!.Root;
+            foreach(var item in new[]{(authorityRuntime,Path.Combine(root,"evidence","runtime-admission.lock")),(authorityModel,Path.Combine(root,"model-state",".lock"))})
+            {
+                if(!item.Item1.CanRead||item.Item1.Length!=0||item.Item1.SafeFileHandle.IsClosed)throw Stop();
+                _=SyntheticRecoveryPublication.FileIdentity(item.Item1.SafeFileHandle,item.Item2,false);
+            }
+            if(!authorityRuntime.CanWrite)throw Stop();
+        }
+        internal void Validate()
+        {
+            lock(sync)
+            {
+                RequireMaintenance();using var evidence=SyntheticRecoveryPublication.Inspect(TargetId);
+                if(evidence.Stage is not ("ACTIVATION_AUTHORIZED" or "NATIVE_ATTEMPTED" or "LAUNCH_CLAIMED" or "ACTIVE"))throw Stop();
+                using var current=Process.GetCurrentProcess();SyntheticRecoveryPublication.MatchProcess(evidence.Records["authorization"],"Owner",current);
+                if(SyntheticRecoveryPublication.Text(evidence.Records["authorization"],"AuthorityProfileId")!=coordinator.authority!.RunId)throw Stop();
+                if(child is not null)SyntheticRecoveryPublication.MatchProcess(evidence.Records["launch"],"Runtime",child);
+            }
+        }
+        internal Mmf3AcceptanceLaunch Provision()
+        {
+            lock(sync)
+            {
+                Validate();if(provisionAttempted)throw Stop();provisionAttempted=true;
+                using var sources=TrustedDevelopmentRuntimeSources.Open();
+                Mmf3ProfileNative.ProvisionRecovery(this,sources.JnaJar);
+                return Mmf3AcceptanceLaunch.ForSyntheticActivation(this);
+            }
+        }
+        internal void ClaimLaunch(Process process,string jarSha256)
+        {
+            lock(sync)
+            {
+                Validate();if(!provisionAttempted||!launchAttempted||child is not null)throw Stop();RequireHex(jarSha256,64);
+                using var evidence=SyntheticRecoveryPublication.Inspect(TargetId);if(evidence.Stage!="NATIVE_ATTEMPTED")throw Stop();
+                _=process.SafeHandle;if(process.HasExited)throw Stop();
+                var claim=new SyntheticLaunch(1,"SYNTHETIC_ACTIVATION_LAUNCH","LAUNCH_CLAIMED",SyntheticRecoveryPublication.Text(evidence.Offline,"OperationId"),
+                    TargetId,evidence.Hashes["authorization"],process.Id,process.StartTime.ToUniversalTime().Ticks,process.SessionId,jarSha256);
+                PublishRecord(evidence.Entry,"launch",SyntheticTargetEntropy(TargetId,"launch"),claim);
+                child=process;Validate(); // Only now may this exact JVM leave its private-stdin barrier.
+                byte[] release=Encoding.ASCII.GetBytes("SYNTHETIC_ACTIVATION_V1");
+                process.StandardInput.BaseStream.Write(release);process.StandardInput.Close();
+            }
+        }
+        internal void ConsumeLaunch()
+        {
+            lock(sync){Validate();if(!provisionAttempted||launchAttempted)throw Stop();launchAttempted=true;}
+        }
+        internal void PublishActive(DevelopmentRuntimeOwner runtime)
+        {
+            lock(sync)
+            {
+                Validate();if(child is null||!runtime.OwnsReadyProcess(child))throw Stop();
+                using var evidence=SyntheticRecoveryPublication.Inspect(TargetId);if(evidence.Stage!="LAUNCH_CLAIMED")throw Stop();
+                string native=Path.Combine(evidence.Root,"jna-5.17.0-win32-x86-64","jnidispatch.dll");
+                using var dll=new FileStream(native,FileMode.Open,FileAccess.Read,FileShare.Read);
+                if(Convert.ToHexStringLower(SHA256.HashData(dll))!=Mmf3ProfileNative.DllHash)throw Stop();
+                var active=new SyntheticActive(1,"SYNTHETIC_RECOVERY_ACTIVE","ACTIVE",SyntheticRecoveryPublication.Text(evidence.Offline,"OperationId"),TargetId,
+                    evidence.Hashes["launch"],SyntheticRecoveryPublication.FileIdentity(dll.SafeFileHandle,native,false),"WORKSPACE_V1_V2_READY");
+                PublishRecord(evidence.Entry,"active",SyntheticTargetEntropy(TargetId,"active"),active);
+                SyntheticRecoveryPublication.RequireActive(TargetId);
+            }
+        }
+        public void Dispose(){lock(sync)disposed=true;} // Never restore READY or enable another launch.
+    }
 
     private static byte[] SyntheticTargetEntropy(string target,string name) =>
         Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/synthetic-target/v1/"+target+"/"+name);

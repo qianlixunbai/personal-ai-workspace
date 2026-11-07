@@ -64,7 +64,9 @@ public final class TrustedDatabaseConfiguration {
                         || !fileKey.equals(key(file, false))) throw new IOException();
                 encrypted = Arrays.copyOf(buffer.array(), buffer.position());
                 plaintext = Protection.unprotect(encrypted);
-                return parse(plaintext, finance);
+                var source=parse(plaintext, finance);
+                verifyRecoveryStartupDatabase(root,source,finance);
+                return source;
             } finally { Arrays.fill(buffer.array(), (byte) 0); }
         } catch (Failure controlled) { throw controlled; }
         catch (IOException | RuntimeException | LinkageError rejected) { throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
@@ -72,6 +74,42 @@ public final class TrustedDatabaseConfiguration {
             if (encrypted != null) Arrays.fill(encrypted, (byte) 0);
             if (plaintext != null) Arrays.fill(plaintext, (byte) 0);
         }
+    }
+
+    // Called with the normal configuration pin still held, after the complete target Gate.
+    // The helper rechecks the entire publication while this exact offline record is pinned.
+    // No administrator credential, new grant, or source database is used at activation.
+    private static void verifyRecoveryStartupDatabase(Path root,PropertySource<?> source,boolean finance) throws IOException {
+        Path entry=root.getParent().getParent().resolve("Recovery/synthetic-targets").resolve(root.getFileName());
+        try{Files.readAttributes(entry,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);}
+        catch(NoSuchFileException ordinary){return;}
+        if(finance||!(source instanceof Source local)||local.getSource().values==null)throw new Failure(Reason.CONFIGURATION_UNTRUSTED);
+        byte[] plaintext=null;
+        try(var pin=FileChannel.open(entry.resolve("offline.dpapi"),StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+                ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE)) {
+            WindowsNativeGate.requireRecoveryStartup(root);
+            if(pin.size()<1||pin.size()>LIMIT)throw new IOException();
+            var buffer=ByteBuffer.allocate((int)pin.size());while(buffer.hasRemaining())if(pin.read(buffer)<0)throw new IOException();
+            byte[] entropy=("PersonalAIWorkspace/Recovery/synthetic-target/v1/"+root.getFileName()+"/offline").getBytes(StandardCharsets.US_ASCII);
+            plaintext=com.sun.jna.platform.win32.Crypt32Util.cryptUnprotectData(buffer.array(),entropy,1,null);
+            var offline=JSON.readTree(plaintext);var values=local.getSource().values;
+            if(values.port!=offline.path("Port").intValue()||!values.database.equals(offline.path("DatabaseName").asString())
+                ||!values.username.equals(offline.path("AppRole").asString()))throw new IOException();
+            var ds=new org.postgresql.ds.PGSimpleDataSource();ds.setURL(values.url);ds.setUser(values.username);ds.setPassword(values.password);
+            ds.setCurrentSchema("workspace,pg_catalog");ds.setConnectTimeout(3);ds.setSocketTimeout(15);
+            try(var app=ds.getConnection()) {
+                verifyRecoveryApplication(app,values.port,offline.path("DatabaseOid").longValue(),offline.path("ApplicationRoleOid").longValue(),values.database,values.username);
+                try(var st=app.prepareStatement("SELECT c.system_identifier::text,d.datdba,o.oid,o.rolname,o.rolcanlogin "
+                    +"FROM pg_catalog.pg_control_system() c,pg_catalog.pg_database d,pg_catalog.pg_roles o "
+                    +"WHERE d.datname=current_database() AND o.oid=d.datdba" );var row=st.executeQuery()) {
+                    if(!row.next()||!offline.path("SystemIdentifier").asString().equals(row.getString(1))
+                        ||row.getLong(2)!=offline.path("OwnerRoleOid").longValue()||row.getLong(3)!=offline.path("OwnerRoleOid").longValue()
+                        ||!offline.path("OwnerRole").asString().equals(row.getString(4))||row.getBoolean(5)||row.next())throw new IOException();
+                }
+            }
+            WindowsNativeGate.requireRecoveryStartup(root);
+        }catch(Exception failure){throw new Failure(Reason.CONFIGURATION_UNTRUSTED);}
+        finally{if(plaintext!=null)Arrays.fill(plaintext,(byte)0);}
     }
 
     /** Native provisioning only; no HTTP or WebView configuration payload. Never overwrite or repair existing state. */
@@ -161,6 +199,39 @@ public final class TrustedDatabaseConfiguration {
         sanitized.setStackTrace(failure.getStackTrace());return sanitized; // Code locations only, never raw SQL/native messages.
     }
 
+    private static void verifyRecoveryApplication(Connection app,int port,long databaseOid,long appOid,String database,String appRole) throws Exception {
+            PostgresqlWorkspace.verify(app);
+            try(var s=app.createStatement();var r=s.executeQuery("SELECT d.oid,r.oid,d.datname,r.rolname FROM pg_database d,pg_roles r "
+                +"WHERE d.datname=current_database() AND r.rolname=session_user AND current_user=session_user AND r.rolcanlogin "
+                +"AND NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls OR r.rolinherit) "
+                +"AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE m.member=r.oid) "
+                +"AND current_setting('server_version_num')::int/10000=17 AND inet_server_addr()='127.0.0.1' "
+                +"AND inet_server_port()="+port+" AND has_database_privilege(current_user,d.oid,'CONNECT') "
+                +"AND NOT has_database_privilege(current_user,d.oid,'CREATE,TEMP,CONNECT WITH GRANT OPTION') "
+                +"AND has_schema_privilege(current_user,'workspace','USAGE') AND NOT has_schema_privilege(current_user,'workspace','CREATE,USAGE WITH GRANT OPTION') "
+                +"AND NOT has_schema_privilege(current_user,'public','USAGE,CREATE') "
+                +"AND NOT EXISTS(SELECT FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='workspace' AND has_function_privilege(current_user,p.oid,'EXECUTE')) "
+                +"AND NOT EXISTS(SELECT FROM pg_database other WHERE other.datallowconn AND other.oid<>d.oid AND has_database_privilege(current_user,other.oid,'CONNECT'))")){
+                if(!r.next()||r.getLong(1)!=databaseOid||r.getLong(2)!=appOid||!database.equals(r.getString(3))
+                    ||!appRole.equals(r.getString(4))||r.next())throw new IOException();
+            }
+            var privileges=List.of("SELECT","INSERT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER","MAINTAIN");
+            String columns=String.join(",",privileges.stream().map(p->"has_table_privilege(current_user,c.oid,'"+p+"')").toList());
+            String grantOptions=String.join(",",privileges.stream().map(p->p+" WITH GRANT OPTION").toList());
+            var seen=new HashSet<String>();
+            try(var s=app.createStatement();var r=s.executeQuery("SELECT c.relname,"+columns+",has_table_privilege(current_user,c.oid,'"+grantOptions
+                +"') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='workspace' AND c.relkind IN ('r','p')")){
+                while(r.next()){
+                    String table=r.getString(1),allowed=NativeProfileRecovery.PREPARED_PRIVILEGES.get(table);
+                    if(allowed==null||!seen.add(table))throw new IOException();
+                    var expected=Set.of(allowed.split(","));
+                    for(int i=0;i<privileges.size();i++)if(r.getBoolean(i+2)!=expected.contains(privileges.get(i)))throw new IOException();
+                    if(r.getBoolean(privileges.size()+2))throw new IOException();
+                }
+            }
+            if(!seen.equals(NativeProfileRecovery.PREPARED_PRIVILEGES.keySet()))throw new IOException();
+        }
+
     /** A private, pinned configuration connection provider; not a Runtime identity, READY
      * receipt or activation permission. Only the persistence owner can construct one. */
     public static final class PreparedDatabase implements javax.sql.DataSource,AutoCloseable {
@@ -209,36 +280,7 @@ public final class TrustedDatabaseConfiguration {
             catch(Exception failure){connection.close();throw preparedFailure(failure);}
         }
         private void verifyApplication(Connection app) throws Exception {
-            PostgresqlWorkspace.verify(app);
-            try(var s=app.createStatement();var r=s.executeQuery("SELECT d.oid,r.oid,d.datname,r.rolname FROM pg_database d,pg_roles r "
-                +"WHERE d.datname=current_database() AND r.rolname=session_user AND current_user=session_user AND r.rolcanlogin "
-                +"AND NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls OR r.rolinherit) "
-                +"AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE m.member=r.oid) "
-                +"AND current_setting('server_version_num')::int/10000=17 AND inet_server_addr()='127.0.0.1' "
-                +"AND inet_server_port()="+target.sourcePort()+" AND has_database_privilege(current_user,d.oid,'CONNECT') "
-                +"AND NOT has_database_privilege(current_user,d.oid,'CREATE,TEMP,CONNECT WITH GRANT OPTION') "
-                +"AND has_schema_privilege(current_user,'workspace','USAGE') AND NOT has_schema_privilege(current_user,'workspace','CREATE,USAGE WITH GRANT OPTION') "
-                +"AND NOT has_schema_privilege(current_user,'public','USAGE,CREATE') "
-                +"AND NOT EXISTS(SELECT FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='workspace' AND has_function_privilege(current_user,p.oid,'EXECUTE')) "
-                +"AND NOT EXISTS(SELECT FROM pg_database other WHERE other.datallowconn AND other.oid<>d.oid AND has_database_privilege(current_user,other.oid,'CONNECT'))")){
-                if(!r.next()||r.getLong(1)!=databaseOid||r.getLong(2)!=appOid||!target.database().equals(r.getString(3))
-                    ||!target.appRole().equals(r.getString(4))||r.next())throw new IOException();
-            }
-            var privileges=List.of("SELECT","INSERT","UPDATE","DELETE","TRUNCATE","REFERENCES","TRIGGER","MAINTAIN");
-            String columns=String.join(",",privileges.stream().map(p->"has_table_privilege(current_user,c.oid,'"+p+"')").toList());
-            String grantOptions=String.join(",",privileges.stream().map(p->p+" WITH GRANT OPTION").toList());
-            var seen=new HashSet<String>();
-            try(var s=app.createStatement();var r=s.executeQuery("SELECT c.relname,"+columns+",has_table_privilege(current_user,c.oid,'"+grantOptions
-                +"') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='workspace' AND c.relkind IN ('r','p')")){
-                while(r.next()){
-                    String table=r.getString(1),allowed=NativeProfileRecovery.PREPARED_PRIVILEGES.get(table);
-                    if(allowed==null||!seen.add(table))throw new IOException();
-                    var expected=Set.of(allowed.split(","));
-                    for(int i=0;i<privileges.size();i++)if(r.getBoolean(i+2)!=expected.contains(privileges.get(i)))throw new IOException();
-                    if(r.getBoolean(privileges.size()+2))throw new IOException();
-                }
-            }
-            if(!seen.equals(NativeProfileRecovery.PREPARED_PRIVILEGES.keySet()))throw new IOException();
+            verifyRecoveryApplication(app,target.sourcePort(),databaseOid,appOid,target.database(),target.appRole());
         }
         /** Correlate the actual protected-credential backend, not just connection strings. */
         public void verifyAdministrator(Connection administrator) throws IOException {

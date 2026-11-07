@@ -395,11 +395,13 @@ public final class UnifiedPostgresqlBackup {
             }
             stage="KNOWLEDGE_RESTORE";
             if(prepared==null)directory(candidate.resolve("knowledge"));else prepared.createKnowledge();
-            directory(candidate.resolve("knowledge/sources"));
+            if(prepared==null)directory(candidate.resolve("knowledge/sources"));
             for(var file:m.knowledgeFiles) {
                 Path target=resolveKnowledge(candidate.resolve("knowledge"),file.path);
-                if(!Files.exists(target.getParent()))directory(target.getParent());
-                copy(resolveKnowledge(backup.resolve("knowledge"),file.path),target);
+                if(prepared==null){
+                    if(!Files.exists(target.getParent()))directory(target.getParent());
+                    copy(resolveKnowledge(backup.resolve("knowledge"),file.path),target);
+                }else prepared.copyKnowledgeSource(resolveKnowledge(backup.resolve("knowledge"),file.path),file.path);
             }
             try(var db=owner.dataSource().getConnection()){verifyKnowledge(db,candidate.resolve("knowledge"),m.knowledgeFiles);}
             stage="STORE_AND_INDEX_VERIFICATION";readStoresAndRebuild(app,candidate,m);

@@ -31,7 +31,8 @@ internal static class TrustedNative
         if (!Regex.IsMatch(fixtureId, "\\A[0-9a-f]{32}\\z", RegexOptions.CultureInvariant))
             throw new Rejected("FIXTURE_ID");
         using var user = Win32.CurrentUser();
-        bool profileMode = mode is "ProvisionProfileNative" or "VerifyProfileNative";
+        bool activationMode=mode is "ProvisionRecoveryNative" or "VerifyRecoveryOwnerNative" or "VerifyRecoveryRuntimeNative";
+        bool profileMode = activationMode || mode is "ProvisionProfileNative" or "VerifyProfileNative";
         if (profileMode && user.Elevated) throw new Rejected("ELEVATED_PROFILE");
         string profile = Win32.Profile(user.Token);
         Win32.ValidatePath(profile);
@@ -41,6 +42,8 @@ internal static class TrustedNative
         string final = Path.Combine(native, "jnidispatch.dll");
         var pins = new List<SafeFileHandle>();
         using var profilePins = profileMode ? WindowsProfileSecurity.HoldDirectories(root) : null;
+        using var activation=activationMode?SyntheticRecoveryPublication.RequireHelperCaller(fixtureId,
+            mode=="VerifyRecoveryRuntimeNative",mode=="ProvisionRecoveryNative"):null;
         void Private(SafeFileHandle handle, bool directory)
         {
             if (profileMode) WindowsProfileSecurity.ValidatePrivate(handle, user.Sid, directory);
@@ -52,12 +55,13 @@ internal static class TrustedNative
             {
                 WindowsProfileSecurity.State(fixtureId, false);
                 string recovery=Path.Combine(Path.GetDirectoryName(parent)!,"Recovery");
-                // Recovery receipts are not a process-bound launch capability. Until that
-                // contract exists, even AUTHORIZED/ACTIVE-shaped records cannot provision
-                // native code or resume an interrupted candidate through the ordinary helper.
                 bool Exists(string path){try{_ = File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
                 if(Exists(Path.Combine(recovery,"targets",fixtureId)))throw new Rejected("PERSONAL_RECOVERY_BLOCKED");
-                if(Exists(Path.Combine(recovery,"synthetic-targets",fixtureId)))throw new Rejected("SYNTHETIC_RECOVERY_ACTIVATION_BLOCKED");
+                if(Exists(Path.Combine(recovery,"synthetic-targets",fixtureId))&&!activationMode)
+                {
+                    if(mode!="VerifyProfileNative")throw new Rejected("SYNTHETIC_RECOVERY_PROVISION_BLOCKED");
+                    SyntheticRecoveryPublication.RequireActive(fixtureId);
+                }
             }
             // Root-to-leaf identity/ACL checks; metadata directory handles are NOT rename pins.
             string part = Path.GetPathRoot(profile)!;
@@ -93,6 +97,15 @@ internal static class TrustedNative
             }
             // Authenticate source bytes before creating anything. Hash is compiled from the approved request.
             byte[]? bytes = provision ? Artifact(artifact!) : null;
+            if(mode=="ProvisionRecoveryNative")
+            {
+                if(Directory.Exists(native)||File.Exists(native))throw new Rejected("RECOVERY_PARTIAL_NATIVE");
+                // Durable single-use consumption before the first native-directory mutation.
+                // No retry, even if this helper dies before publishing any DLL bytes.
+                using var attempt=new FileStream(Path.Combine(activation!.Entry,"native-attempt"),FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None);
+                var acl=attempt.GetAccessControl();acl.SetAccessRuleProtection(true,true);WindowsProfileSecurity.ValidatePrivate(acl,user.Sid);
+                attempt.Flush(true);
+            }
             foreach (string directory in profileMode ? new[] { native } : new[] { root, native })
             {
                 SafeFileHandle handle;

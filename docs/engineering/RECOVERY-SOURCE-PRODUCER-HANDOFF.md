@@ -1,5 +1,33 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：绑定唯一进程的合成显式激活
+
+基于本地 `3ac330b`，沿权威恢复设计继续同一 owning 链路。**合成目标已实际从来源登记、恢复、READY 走到显式授权、JNA 发布、真实 Runtime/Store 启动和受保护 ACTIVE；个人恢复仍为 BLOCKED。** 入口仍是私有合成调用，没有开放个人恢复按钮或把合成授权当成完整停写证明。本阶段只做本地提交，不推送、合并或部署。
+
+- 授权必须从同一 coordinator 已正常退出的实际消费者和 READY 开始，并继续持有新建合成 authority 的 Runtime/model 排他句柄及目标 mutex。DPAPI 授权绑定 operation、READY 摘要、request、authority，以及原生 owner 的 PID、创建时间、session。普通 Desktop/Java/helper 在 AUTHORIZED 或 LAUNCH_CLAIMED 下仍拒绝启动。
+- 新 helper 显式命令从 OS 取得实际调用父进程，核对授权 owner；先 CREATE_NEW、force 写入 `native-attempt`，再按原有原生 CREATE_NEW 合同发布 DLL。重复尝试、部分目录、pending 和未知文件均不能补写、清除或回到 READY。helper 精确 EXE/DLL pins 已同步，旧的普通 Provision 不能用于恢复目标。
+- `DevelopmentRuntimeOwner` 只启动一个实际 Process，并先持久化其 PID/创建时间/session/JAR 摘要及授权摘要，再通过该进程的私有 stdin 释放启动屏障。Java 显式启动参数本身不授予准入；原 helper 在 JNA 加载前独立核对实际调用 JVM 和仍存活的 owner。失败后的内存能力不可复用，磁盘记录不能重建能力，激活 owner 的 Restart 直接拒绝。没有用记录中的 PID 去接管另一个 Runtime。
+- 完整目标 Native Gate 后，正常 DPAPI 配置加载在配置与离线记录持续 pin 时重新连接，复用 17 表 app 权限核验，并比对 PG system identifier、端口、DB/app/owner OID 和 owner 禁登。没有管理员材料、新 grant 或源库连接。目标 Runtime 存储就绪后才能写 ACTIVE；ACTIVE 绑定 launch 摘要、DLL 原生身份及存储合同。普通重开只接受完整 ACTIVE 链。AssistantApp 的既有成功处理已在保存选择前调用激活完成检查；本次未运行 WPF 选择流程、未写用户 `last-workspace`。
+
+实际联调发现并修复一个先前 READY 未覆盖的生成端缺口：`knowledge` 根已用原生私有 DACL 创建，但内部 `sources`、文档目录和源文件仍使用维护复制工具，继承了未保护 DACL。正常 `KnowledgeStore(DataSource, data, token)` 在准备文件域时拒绝。修复只改变新 prepared 目标的创建：通过既有候选能力和 WindowsPrivateAcl 创建受保护子目录/文件，再从已认证、持续 pin 的源文件复制并 force。普通 Runtime ACL、Known Folder、文件身份和无链接规则未放宽；没有修复或重放既有失败目标。显式合成启动失败只在本目标 evidence 写异常类型/代码位置，不保存异常正文、SQL 或凭据。
+
+复用一个现有 `RecoverySourceProducerProbe.cs/.java` 流程，按顺序使用 **3 个全新夹具**：首次在目标 KnowledgeStore 启动处拒绝；第二次仅增加安全代码位置诊断，定位同一问题；修复后第三次通过。前两次候选已领取授权/启动，均保留原记录、DLL、配置和数据库，未产生 ACTIVE；各自专属 PG 已停止。另一次无数据库、无 Runtime 启动的只读检查确认两个原 owner/已领取 JVM 已退出，普通 Verify/Provision、显式 owner/runtime Verify 和显式 Provision 全部拒绝，登记字节首尾相同。这是实际失败退出后的不重放证据，不是断电或任意指令边界崩溃验收。
+
+成功运行 `.verification/recovery-activation-verified/`：
+
+1. 目标 `c2d28d66b17d49a7a03ac0c172bd66fc`，operation `ca15e3a32c1a4f5da592c888b5f8481b`，库 `personal_ai_workspace_b3_ca15e3a32c1a`。原合成 Profile 路径不存在、源库恢复期间禁止连接；已有来源认证、原 snapshot/Finance sentinel 未变、配置 CRUD/权限、索引验证与临时明文清理断言继续通过。
+2. READY 和 AUTHORIZED 均不能普通启动；重复授权、重复 Provision、错误 JVM 调用身份及激活 Runtime 重启均拒绝。实际应用 JAR 经真实 Gate 启动，受控 Runtime PID `22792`，存储状态为 PG / TRUSTED_LOCAL / CONNECTED / V1_V2_READY / Knowledge READY / Finance disabled。
+3. 经实际 RuntimeClient 读取非空 Memory、终态 Conversation 和 Knowledge revision/preview；对受信目标文件域的 1 个 source 核对长度与运行时返回的 SHA-256。随后写 ACTIVE，并成功执行普通 Profile Parse/Native Verify，未启动第二个 Runtime。测试结束只收尾本次 Runtime；在 owner 退出后，独立 helper 的普通 Verify 仍通过，而旧的显式 owner/runtime 启动能力均被拒绝。
+4. 自建 PG17 端口 `56966`、PID `41352`，夹具 `C:\PAW-SourceProducer-1034fe2c22dd4930b2343194b0a6405c`，经 PID/创建时间/data directory/端口/程序路径核对后停止。生产者/消费者 `24516/29056` 与 Runtime 均已退出；无遗留 18765 listener。app 凭据保留在停止的合成实例中，不宣称已撤销。
+
+必要验证仅为 helper Release 构建、离线 Java package（跳过测试）及实际 JAR 审计、既有 C#/Java 探针编译、上述失败定位及修复后的单次流程、最终只读边界与 diff 检查。没有新增自动测试套件、全套测试、前端重建或模型生成。PG 16 MiB shared_buffers/12 connections，JVM 384 MiB/2 核，顺序执行；同机 KAG、共享 PostgreSQL、Ollama 和既有服务均未启停。五份未跟踪设计文件 SHA-256 保持不变。
+
+最终验证 JAR SHA-256 `e6f10b60529df13d01ab292bb0460f415efccdabd07574861672e6cd1b3f9014`；helper EXE `816d253e5f707b1813eabc25a29a8ee5ba3da366fcf27e679cc7964a6c2abcf2`、DLL `4a8536eca1f7c85e893003c3079a7bd3a7e4dffd6f9bcfbf37cd3b8bad6134fb`。READY 摘要 `7a5b1894f7d4b16e71115bdade62c229e97d0731243571389917b3745fdad505`，配置摘要 `0e636b06fd7c95000fe384307f8676ea57ba8abac5fa4799edfcd6b125de8ac2`。证据包括 `synthetic-activation-evidence.json`、`synthetic-recovery-evidence.json`（恢复阶段快照，其 `activation=false/targetJnaAbsent=true` 不代表后续最终状态）、`stale-owner-evidence.json`、`final-boundary-evidence.json`、独占 runner/manifest 和构建日志。失败证据分别在 `.verification/recovery-activation/` 与 `.verification/recovery-activation-diagnostic/`；这些 runner 和目标不可重放。
+
+实现先参考 GitHub 的 [.NET Process Windows 实现](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Windows.cs)；定位 ACL 后对照 [OpenJDK WindowsFileSystemProvider](https://github.com/openjdk/jdk21u/blob/master/src/java.base/windows/classes/sun/nio/fs/WindowsFileSystemProvider.java) 与 [WindowsSecurityDescriptor](https://github.com/openjdk/jdk21u/blob/master/src/java.base/windows/classes/sun/nio/fs/WindowsSecurityDescriptor.java)，结合本次目标实际 DACL 确认生成端问题，未修改第三方代码。
+
+**未完成与阻塞：** 真实个人维护仍返回 `BLOCKED / UNREGISTERED_WRITERS_UNPROVEN`、`ObservedExitedChildren=null`。完整停写、个人来源生产/消费授权、受保护卷上的个人恢复、正式原生确认 UI 到 AssistantApp 的生命周期交接及真实选择保存仍未完成；合成调用不能晋升为上述前置。未做断电、PID 重用、网络中断、部分 native 写入或 ACTIVE/偏好发布未知结果的故障注入，也没有启动第二个 Runtime 验证完整普通重开。部分 native 发布仍只能保留并另建目标，不支持原地续写。原业务库/Profile 不覆盖、不清理；本阶段不声称产品恢复可用或 Production GO。
+
 ## 最新阶段：合成 READY 发布，以及中断授权的启动／重放拒绝
 
 基于本地 `e82d318`。重连后核对工作树，断线草稿中的 `ACTIVATION_AUTHORIZED` 仅凭受保护记录就放行普通启动，不能绑定唯一启动进程，也不能区分首次启动和中断后的重放。本轮移除了这条放行路径和未验证的激活入口；保留并完成来源到合成 READY 的实际阶段。**没有实现或执行显式激活，没有 ACTIVE，也没有写用户上次工作区选择。个人恢复仍 BLOCKED。** 断线草稿差异保存在忽略目录 `.verification/recovery-ready/disconnected-draft.patch`，未覆盖用户文档。

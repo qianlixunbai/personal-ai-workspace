@@ -163,7 +163,28 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
         require(claimed);requireHeld();Path knowledge=data.resolve("knowledge");
         try{Files.readAttributes(knowledge,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);throw new IOException();}
         catch(NoSuchFileException absent){/* CREATE_NEW below; no existing tree is accepted. */}
-        WindowsPrivateAcl.createPreparedDirectory(this,knowledge);requireHeld();
+        WindowsPrivateAcl.createPreparedDirectory(this,knowledge);
+        WindowsPrivateAcl.createPreparedDirectory(this,knowledge.resolve("sources"));requireHeld();
+    }
+    /** Authenticated manifest paths only; create the final Runtime ACL at birth. Ordinary
+     * Files.createDirectory/copy would inherit an unprotected DACL accepted by maintenance
+     * but rejected by KnowledgeStore. Never repair an existing failed candidate. */
+    public void copyKnowledgeSource(Path authenticatedSource,String relative) throws IOException {
+        require(claimed&&relative.matches("sources/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*\\.source"));
+        requireHeld();Path destination=data.resolve("knowledge").resolve(relative),parent=destination.getParent();
+        try{Files.readAttributes(parent,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);WindowsPrivateAcl.verifyPreparedDirectory(this,parent);}
+        catch(NoSuchFileException absent){WindowsPrivateAcl.createPreparedDirectory(this,parent);}
+        try(var input=FileChannel.open(authenticatedSource,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+                com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE)) {
+            require(input.size()>0&&input.size()<=8*1024*1024);
+            WindowsPrivateAcl.createPreparedFile(this,destination);
+            try(var output=FileChannel.open(destination,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+                var buffer=ByteBuffer.allocate(65536);
+                while(input.read(buffer)!=-1){buffer.flip();while(buffer.hasRemaining())output.write(buffer);buffer.clear();}
+                output.force(true);
+            }
+        }
+        requireHeld();
     }
     public void writeMarker(String name,byte[] bytes) throws IOException {
         require(claimed&&Set.of("RESTORE_INCOMPLETE","RESTORE_VERIFIED.json").contains(name));requireHeld();writePrivate(data.resolve(name),bytes);requireHeld();

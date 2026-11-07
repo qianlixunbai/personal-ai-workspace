@@ -1,6 +1,7 @@
 using Microsoft.Win32.SafeHandles;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -53,12 +54,12 @@ internal static class SyntheticRecoveryPublication
             }
             string[] names=Directory.EnumerateFileSystemEntries(evidence.Entry).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
             string[] mandatory=["attempt.dpapi","offline.dpapi","plan.dpapi","prepared.dpapi"];
-            string[] stages=["OFFLINE_VERIFIED","READY"];
-            // Pending, authorization, active and unknown files are deliberately not
-            // recognized. An interrupted publication cannot be replayed or auto-promoted.
-            string[][] allowed=[mandatory,mandatory.Append("ready.dpapi").Order(StringComparer.Ordinal).ToArray()];
+            string[] stages=["OFFLINE_VERIFIED","READY","ACTIVATION_AUTHORIZED","NATIVE_ATTEMPTED","LAUNCH_CLAIMED","ACTIVE"];
+            string[][] allowed=new string[stages.Length][];allowed[0]=mandatory;
+            string[] additions=["ready.dpapi","authorization.dpapi","native-attempt","launch.dpapi","active.dpapi"];
+            for(int i=1;i<allowed.Length;i++)allowed[i]=allowed[i-1].Append(additions[i-1]).Order(StringComparer.Ordinal).ToArray();
             int stage=Array.FindIndex(allowed,items=>items.SequenceEqual(names));if(stage<0)throw Stop();evidence.Stage=stages[stage];
-            foreach(string name in names.Select(n=>Path.GetFileNameWithoutExtension(n)))
+            foreach(string name in names.Where(n=>n.EndsWith(".dpapi",StringComparison.Ordinal)).Select(n=>Path.GetFileNameWithoutExtension(n)))
             {
                 using var document=JsonDocument.Parse(ReadProtected(evidence,name,id),new JsonDocumentOptions{MaxDepth=4});
                 evidence.Records.Add(name,document.RootElement.Clone());
@@ -95,6 +96,69 @@ internal static class SyntheticRecoveryPublication
                 State(ready,"SYNTHETIC_RECOVERY_READY","READY",operation,id);
                 foreach(string name in new[]{"offline","plan","prepared","attempt"})Equal(Text(ready,char.ToUpperInvariant(name[0])+name[1..]+"Sha256"),evidence.Hashes[name]);
             }
+            if(stage>=2)
+            {
+                var auth=evidence.Records["authorization"];
+                Shape(auth,"Version Kind State OperationId TargetProfileId ReadySha256 RequestId Mode OwnerPid OwnerStartUtcTicks OwnerSessionId AuthorityProfileId");
+                State(auth,"SYNTHETIC_ACTIVATION_AUTHORIZATION","ACTIVATION_AUTHORIZED",operation,id);
+                Equal(Text(auth,"ReadySha256"),evidence.Hashes["ready"]);Hex(Text(auth,"RequestId"),32);
+                Hex(Text(auth,"AuthorityProfileId"),32);if(Text(auth,"AuthorityProfileId")==id)throw Stop();
+                Equal(Text(auth,"Mode"),"EXPLICIT_ISOLATED_SYNTHETIC");ProcessFields(auth,"Owner");
+            }
+            if(stage>=3)
+            {
+                var attemptFile=new FileStream(Path.Combine(evidence.Entry,"native-attempt"),FileMode.Open,FileAccess.Read,FileShare.Read);
+                evidence.Pins.Add(attemptFile);_=FileIdentity(attemptFile.SafeFileHandle,attemptFile.Name,false);
+                var acl=attemptFile.GetAccessControl();acl.SetAccessRuleProtection(true,true);WindowsProfileSecurity.ValidatePrivate(acl,user.User!);
+                if(attemptFile.Length!=0)throw Stop();
+            }
+            if(stage>=4)
+            {
+                var launch=evidence.Records["launch"];Shape(launch,"Version Kind State OperationId TargetProfileId AuthorizationSha256 RuntimePid RuntimeStartUtcTicks RuntimeSessionId JarSha256");
+                State(launch,"SYNTHETIC_ACTIVATION_LAUNCH","LAUNCH_CLAIMED",operation,id);
+                Equal(Text(launch,"AuthorizationSha256"),evidence.Hashes["authorization"]);Hex(Text(launch,"JarSha256"),64);ProcessFields(launch,"Runtime");
+                if(launch.GetProperty("RuntimePid").GetInt32()==evidence.Records["authorization"].GetProperty("OwnerPid").GetInt32()
+                    ||launch.GetProperty("RuntimeSessionId").GetInt32()!=evidence.Records["authorization"].GetProperty("OwnerSessionId").GetInt32())throw Stop();
+            }
+            if(stage>=5)
+            {
+                var active=evidence.Records["active"];Shape(active,"Version Kind State OperationId TargetProfileId LaunchSha256 NativeIdentity StorageContract");
+                State(active,"SYNTHETIC_RECOVERY_ACTIVE","ACTIVE",operation,id);Equal(Text(active,"LaunchSha256"),evidence.Hashes["launch"]);
+                Equal(Text(active,"StorageContract"),"WORKSPACE_V1_V2_READY");Hex(Text(active,"NativeIdentity"),48);
+                using var dll=new FileStream(Path.Combine(evidence.Root,"jna-5.17.0-win32-x86-64","jnidispatch.dll"),FileMode.Open,FileAccess.Read,FileShare.Read);
+                Equal(FileIdentity(dll.SafeFileHandle,dll.Name,false),Text(active,"NativeIdentity"));
+            }
+            return evidence;
+        }
+        catch{evidence.Dispose();throw;}
+    }
+    internal static void RequireActive(string id){using var evidence=Inspect(id);if(evidence.Stage!="ACTIVE")throw Stop();}
+    private static void ProcessFields(JsonElement value,string prefix)
+    {if(value.GetProperty(prefix+"Pid").GetInt32()<=0||value.GetProperty(prefix+"StartUtcTicks").GetInt64()<=0||value.GetProperty(prefix+"SessionId").GetInt32()<0)throw Stop();}
+    internal static void MatchProcess(JsonElement record,string prefix,Process process)
+    {
+        _=process.SafeHandle;
+        if(process.HasExited||record.GetProperty(prefix+"Pid").GetInt32()!=process.Id
+            ||record.GetProperty(prefix+"StartUtcTicks").GetInt64()!=process.StartTime.ToUniversalTime().Ticks
+            ||record.GetProperty(prefix+"SessionId").GetInt32()!=process.SessionId)throw Stop();
+    }
+    // The caller identity comes from the OS, never a CLI PID or a receipt-selected process.
+    // A replacement JVM/owner cannot borrow an interrupted authorization, even after PID reuse.
+    internal static Evidence RequireHelperCaller(string id,bool runtime,bool provision)
+    {
+        var evidence=Inspect(id);
+        try
+        {
+            if(runtime ? evidence.Stage is not ("LAUNCH_CLAIMED" or "ACTIVE")
+                : provision ? evidence.Stage!="ACTIVATION_AUTHORIZED"
+                : evidence.Stage is not ("NATIVE_ATTEMPTED" or "LAUNCH_CLAIMED" or "ACTIVE"))throw Stop();
+            using var self=Process.GetCurrentProcess();
+            if(NtQueryInformationProcess(self.SafeHandle,0,out var info,Marshal.SizeOf<BasicProcess>(),out _)!=0)throw Stop();
+            using var caller=Process.GetProcessById(checked((int)info.Parent));
+            MatchProcess(evidence.Records[runtime?"launch":"authorization"],runtime?"Runtime":"Owner",caller);
+            var authorization=evidence.Records["authorization"];
+            using var owner=Process.GetProcessById(authorization.GetProperty("OwnerPid").GetInt32());MatchProcess(authorization,"Owner",owner);
+            if(caller.SessionId!=self.SessionId||owner.SessionId!=self.SessionId)throw Stop();
             return evidence;
         }
         catch{evidence.Dispose();throw;}
@@ -134,6 +198,8 @@ internal static class SyntheticRecoveryPublication
         finally{Marshal.FreeHGlobal(input.Data);Marshal.FreeHGlobal(optional.Data);if(output.Data!=IntPtr.Zero){if(output.Length is >0 and <=16384)Marshal.Copy(new byte[output.Length],0,output.Data,output.Length);_ = LocalFree(output.Data);}}
     }
     private static IOException Stop()=>new("Synthetic recovery publication unavailable.");
+    [StructLayout(LayoutKind.Sequential)] private struct BasicProcess{public IntPtr Exit,Peb,Affinity,Priority,Pid,Parent;}
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)] [DllImport("ntdll.dll")] private static extern int NtQueryInformationProcess(SafeProcessHandle process,int kind,out BasicProcess info,int size,out int returned);
     [StructLayout(LayoutKind.Sequential)] private struct Blob{public int Length;public IntPtr Data;}
     [StructLayout(LayoutKind.Sequential)] private struct FileId{public ulong Volume,Low,High;}
     [StructLayout(LayoutKind.Sequential)] private struct Tag{public uint Attributes,ReparseTag;}

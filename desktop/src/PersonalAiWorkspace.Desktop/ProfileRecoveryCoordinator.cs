@@ -15,8 +15,9 @@ using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
 
-// Plans, source intents, registered-source preflight and owned-child observations. No SQL authority, target creation,
-// maintenance admission, READY or activation. A plan never proves stopped execution or backup trust.
+// Personal entry remains read-only planning/inspection. The private synthetic lifecycle owns
+// isolated targets, READY and explicit activation; it grants no personal maintenance/source authority.
+// A plan never proves stopped execution or backup trust.
 internal sealed partial class ProfileRecoveryCoordinator : IDisposable
 {
     internal const string InspectionArgument = "--inspect-profile-recovery-v1";
@@ -202,9 +203,8 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
 
-    // Additive denial only. Until the verified publication/activation slice exists, NO registered
-    // recovery target is startable, including a caller-written "ACTIVE" or READY-looking file.
-    // The caller supplies only an already-derived Profile root; this never reads record contents.
+    // Personal candidates remain blocked. Synthetic ordinary reopens require the complete
+    // protected ACTIVE chain; AUTHORIZED/LAUNCH records never admit an ordinary caller.
     internal static void RequireOrdinaryProfile(string profileRoot)
     {
         string id = Path.GetFileName(profileRoot);
@@ -227,7 +227,7 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
         {
             using var syntheticPins=WindowsProfileSecurity.HoldDirectories(syntheticTargets);
             WindowsProfileSecurity.ValidatePrivate(syntheticPins.Handles[^1],user.User!,directory:true);
-            if(Exists(Path.Combine(syntheticTargets,id)))throw Stop();
+            if(Exists(Path.Combine(syntheticTargets,id)))SyntheticRecoveryPublication.RequireActive(id);
         }
     }
 

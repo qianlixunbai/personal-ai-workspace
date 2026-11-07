@@ -22,6 +22,14 @@ internal sealed class Mmf3AcceptanceLaunch
         "webview2-profile", "chrome-profile", "browser-test-extension", "evidence", "logs"];
 #endif
     internal string RunId { get; }
+#if MMF3_PROFILE_ACCEPTANCE
+    internal ProfileRecoveryCoordinator.SyntheticActivation? RecoveryActivation {get;private set;}
+    internal static Mmf3AcceptanceLaunch ForSyntheticActivation(ProfileRecoveryCoordinator.SyntheticActivation activation)
+    {
+        activation.Validate();var launch=new Mmf3AcceptanceLaunch(activation.TargetId){RecoveryActivation=activation};
+        launch.Validate();Mmf3ProfileNative.Verify(launch);return launch;
+    }
+#endif
     internal string Root { get; }
     internal string Profile => Path.Combine(Root, "webview2-profile");
     internal string TokenFile => Path.Combine(Root, "credentials", "client-token");
@@ -62,7 +70,8 @@ internal sealed class Mmf3AcceptanceLaunch
 #if MMF3_PROFILE_ACCEPTANCE
         if (!string.Equals(Root, Mmf3ProfileState.Verify(RunId), StringComparison.OrdinalIgnoreCase))
             throw new IOException("MMF3 profile identity changed.");
-        ProfileRecoveryCoordinator.RequireOrdinaryProfile(Root);
+        if(RecoveryActivation is null)ProfileRecoveryCoordinator.RequireOrdinaryProfile(Root);
+        else {if(RecoveryActivation.TargetId!=RunId)throw new IOException();RecoveryActivation.Validate();}
 #else
         for (string? current = Root; current is not null; current = Path.GetDirectoryName(current))
             if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)

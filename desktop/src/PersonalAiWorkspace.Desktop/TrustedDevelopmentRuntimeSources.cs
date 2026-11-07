@@ -91,7 +91,12 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         }
         var start = new ProcessStartInfo(Java) { UseShellExecute = false, CreateNoWindow = true,
             WorkingDirectory = profile.Root, RedirectStandardOutput = true, RedirectStandardError = true,
-            RedirectStandardInput = databaseSetup || financeSetup || recoveryInspection };
+            RedirectStandardInput = databaseSetup || financeSetup || recoveryInspection || profile.RecoveryActivation is not null };
+        if(profile.RecoveryActivation is not null)
+        {
+            if(databaseSetup||financeSetup||recoveryInspection)throw new IOException();
+            start.ArgumentList.Add("-Xmx384m");start.ArgumentList.Add("-XX:ActiveProcessorCount=2");
+        }
         if (recoveryInspection) { start.ArgumentList.Add("-Xmx256m"); start.ArgumentList.Add("-XX:ActiveProcessorCount=2"); }
         string native = Path.Combine(profile.Root, "jna-5.17.0-win32-x86-64"), evidence = Path.Combine(profile.Root, "evidence");
         foreach (string option in new[] { "-Dworkspace.native.development-profile=" + profile.RunId,
@@ -101,6 +106,7 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         if (databaseSetup) start.ArgumentList.Add("--native-database-setup");
         if (financeSetup) start.ArgumentList.Add("--native-finance-setup");
         if (recoveryInspection) start.ArgumentList.Add("--native-profile-recovery-v1");
+        if(profile.RecoveryActivation is not null)start.ArgumentList.Add("--synthetic-recovery-activation-v1");
         foreach (string option in new[] { "--server.address=127.0.0.1", "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
             "--workspace.data-directory=" + Path.Combine(profile.Root, "data"), "--workspace.model-state-directory=" + Path.Combine(profile.Root, "model-state") })
             start.ArgumentList.Add(option);

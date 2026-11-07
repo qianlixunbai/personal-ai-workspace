@@ -200,7 +200,7 @@ public final class NativeProfileRecovery {
         Path syntheticTargets=recovery.resolve("synthetic-targets");
         try {
             requireDirectory(syntheticTargets,attributes(syntheticTargets));
-            try {attributes(syntheticTargets.resolve(verifiedProfileRoot.getFileName()));throw stopped();}
+            try {attributes(syntheticTargets.resolve(verifiedProfileRoot.getFileName()));WindowsNativeGate.requireRecoveryStartup(verifiedProfileRoot);}
             catch(NoSuchFileException absent){/* An unregistered Profile still uses the original Gate. */}
         }catch(NoSuchFileException absent){/* No synthetic target registry. */}
         try { attributes(targets.resolve(verifiedProfileRoot.getFileName())); }

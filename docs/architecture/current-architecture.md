@@ -97,9 +97,11 @@ v3 使用 completion version 3 与 `workspace-v3.zip`，固定 `scope=WORKSPACE_
 
 导出沿用 PostgreSQL 原生 `--schema=workspace` 与逐表 `--exclude-table-data`，额外禁止大对象、注释与安全标签，不先全库导出再过滤 manifest。选择参考 [PG17 官方合同](https://www.postgresql.org/docs/17/app-pgdump.html)及 [PostgreSQL 上游测试](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/bin/pg_dump/t/002_pg_dump.pl)；schema 过滤并不自动解决外部依赖，故另做固定 catalog／依赖检查。JDBC、pg_dump 和 pg_restore 共用确切端口。
 
-合成例外只由本进程成功 v3 备份产生的内部能力对象进入；公开旧恢复入口拒绝 v3，认证成功不授予 SQL 来源权限。新目标核对空对象集合后，在独立事务及 advisory 锁内将合成 preparation receipt 持久改为 `:restore-attempted:<uuid>`，提交完成才创建 candidate／调用 pg_restore；失败或未知目标即使仍空，换目录或能力对象也不能再次执行恢复，须另建目标。恢复最多发布内核 `RESTORE_VERIFIED`，保留原库与失败候选，不发布 Profile READY／激活状态，不复制凭据、启动 Runtime 或构造历史 task/job 队列。正式来源登记、维护 authority、新 Profile 凭据、发布与激活仍属后续切片。聚焦证据与限制见[当前状态](../STATUS.md)。
+Slice 1 的合成入口只接受本进程成功 v3 备份产生的内部能力对象；公开旧恢复入口拒绝 v3，认证成功不授予 SQL 来源权限。新目标核对空对象集合后，在独立事务及 advisory 锁内将合成 preparation receipt 持久改为 `:restore-attempted:<uuid>`，提交完成才创建 candidate／调用 pg_restore；失败或未知目标即使仍空，换目录或能力对象也不能再次执行恢复，须另建目标。该内核返回 `RESTORE_VERIFIED`，保留原库与失败候选，不复制凭据、启动 Runtime 或构造历史 task/job 队列；独立来源消费、Profile READY 和显式激活由下文的原生生命周期另行拥有。聚焦证据与限制见[当前状态](../STATUS.md)。
 
-恢复准备的 [Slice 2a](../engineering/RECOVERY-SLICE-2A-HANDOFF.md) 新增原生内部计划登记：固定应用目录 `Recovery/targets/<id>`，DPAPI CurrentUser、CREATE_NEW、force 和无覆盖发布，仅记录 `RECOVERY_PLAN_ONLY / PREPARING`。计划不是成功备份来源证明，也不产生 SQL／Profile 操作权限。Desktop 与 Java 正常准入都拒绝登记过的目标；登记未知不能当作未登记。尚无完整停写准入、实际目标准备或激活入口，候选一律不可启动。
+恢复准备的 [Slice 2a](../engineering/RECOVERY-SLICE-2A-HANDOFF.md) 新增原生内部计划登记：固定应用目录 `Recovery/targets/<id>`，DPAPI CurrentUser、CREATE_NEW、force 和无覆盖发布，仅记录 `RECOVERY_PLAN_ONLY / PREPARING`。计划不是成功备份来源证明，也不产生 SQL／Profile 操作权限。该个人命名空间的目标仍一律不可启动；登记未知不能当作未登记。
+
+后续[合成闭环](../engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md) 在隔离的 `synthetic-sources/synthetic-targets` 命名空间中实现持久来源消费、固定 Profile/data 恢复、新凭据/权限核验和 READY。显式激活需同一维护 owner 的内存能力；先持久授权，再单次 native 发布尝试，最后把启动领取绑定到实际 JVM Process。helper 从 OS 获取调用父进程，核对 PID/创建时间/session，授权记录本身不能普通启动或中断重放。完整 Native/数据库身份和实际 Runtime/Store 就绪后才写 ACTIVE；普通重开仅接受完整 ACTIVE 链。目标源文件从创建时就使用正常 Runtime 要求的私有受保护 DACL，不通过修补旧目标或放宽 ACL 检查达到激活。个人完整停写、受信来源授权及正式 UI/生命周期仍未闭环，恢复入口保持 BLOCKED；合成例外不能进入个人命名空间。
 
 默认逻辑备份及源数据可能为明文；统一加密备份不改变其他格式。恢复、迁移与真实数据操作必须遵守各自独立门禁，文档更新不改变权限或持久格式。
 
