@@ -85,6 +85,7 @@ internal static class RecoveryTrustedInspectionProbe
         if (!File.Exists(runtimeLock) || new FileInfo(runtimeLock).Length != 0) throw new IOException();
         // Only fixture setup creates an empty model lock. No runtime history or safe-stop
         // record is invented; the product must report that history as unknown.
+        stage = "MODEL_LOCK_FIXTURE";
         CreateFixtureFile(modelLock, []);
         string configFile = Path.Combine(root, "data", "database.dpapi");
         byte[] before = SHA256.HashData(File.ReadAllBytes(configFile));
@@ -150,10 +151,13 @@ internal static class RecoveryTrustedInspectionProbe
 
     private static void CreateFixtureFile(string path, byte[] bytes)
     {
-        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         var user = WindowsIdentity.GetCurrent().User!;
         var acl = new FileSecurity(); acl.SetOwner(user); acl.SetAccessRuleProtection(true, false);
         acl.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
-        file.SetAccessControl(acl); file.Write(bytes); file.Flush(true);
+        // Install the private descriptor at CREATE_NEW. A normal ReadWrite FileStream
+        // does not request WRITE_DAC, so SetAccessControl on that handle fails on Windows.
+        using var file = new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.Read | FileSystemRights.Write,
+            FileShare.None, 4096, FileOptions.None, acl);
+        file.Write(bytes); file.Flush(true);
     }
 }

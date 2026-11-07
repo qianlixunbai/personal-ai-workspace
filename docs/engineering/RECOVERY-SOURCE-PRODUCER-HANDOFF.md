@@ -1,6 +1,26 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
-## 最新阶段：认证后新建合成目标并恢复，真实入口仍阻塞
+## 最新阶段：独立同用户上下文打通真实 Native Gate 与来源只读检查
+
+基于 `07328b8`。先核对工作树、权威设计和既有失败证据，五份未跟踪设计文档保持原字节。本次找到并实测了**合成联调的非虚拟化执行环境**：经 Windows WMI `Win32_Process.Create` 启动同一 Windows 用户的隐藏 PowerShell，先创建一个随机、空的私有 `PAW-SyntheticContext-*` 目录，按产品相同的目录句柄访问/共享/无跟随标志核对最终路径。用户 SID 相同、无 reparse、最终路径与 Known Folder 下请求的路径一致。之后在同种上下文运行已有 `RecoveryTrustedInspectionProbe`，仍由原生 owner 直接启动 Java 子进程并完成原有 Gate；WMI 只用于启动外层手工验证执行器，没有成为产品启动器或来源信任根。
+
+线索先查 GitHub：[openai/codex#52698](https://github.com/openai/codex/issues/52698) 报告了 WMI 进程与 Codex 内部进程的 AppData 视图差异；旧 [#41665](https://github.com/openai/codex/issues/41665) 的 breakaway 失败不能推断 WMI 也失败。这些报告不是本机证明，本次结论来自新建空目录预检及下述真实 Gate 执行。没有修改包清单、系统安全配置、Known Folder、目录重定向、Profile ACL 合同、helper pin 或 Java Gate，也没有使用包缓存物理路径冒充受信根。**Codex 普通直接子进程的虚拟化没有被修复；验证成功限于本次独立执行上下文。**
+
+沿用同一手工流程，共执行 3 次（2 次失败、修正后 1 次通过），未扩展自动测试套件：
+
+1. 第一次已完成真实 Profile Prepare/Provision、Java Native Gate 与 `NativeDatabaseSetup` 保存合成配置；随后探针的 `CreateFixtureFile` 使用普通 ReadWrite 句柄调用 `SetAccessControl`，因没有 WRITE_DAC 失败。按 [.NET 原有问题说明](https://github.com/dotnet/runtime/issues/108658) 及 [FileSystemAclExtensions.Create 合同](https://learn.microsoft.com/en-us/dotnet/api/system.io.filesystemaclextensions.create)，改为 CREATE_NEW 时直接传入私有安全描述符，并补准确的夹具阶段名。只改变全新合成锁/guard 的创建，没有修补既有文件权限。
+2. 第二次已完成真实维护检查和 guard 拒绝，最后源快照核验因 Jackson JSON 节点的整数宽度差异失败（序列化的 long 行数与解析后的 int 节点比较）。改为反序列化到已有 `Snapshot` 后按原记录类型比较；保留全部表摘要、catalog、sequence、Finance sentinel 和无临时来源角色断言，没有改变 expected 数据或放宽判定。
+3. 第三次完整通过：固定 JAR/JVM/JNA → canonical 新合成 Profile → 真正 Native Provision/Gate → 合成受保护配置保存 → 原生 owner/直属维护 Java 句柄交接 → 应用只读连接及配置身份/摘要双端核对 → 未知退出历史保持 null → 未解决 guard 保留并拒绝读取来源 → 源 Workspace 快照和 Finance sentinel 不变。产品入口返回 BLOCKED，未启动 Spring/HTTP、模型或普通工作区，也未更改选择偏好。
+
+成功夹具为 `C:\PAW-SourceProducer-c4ef8eff27724dc3a764cdf7dd68732b`，随机 loopback 端口 `52055`，Profile ID `2cf471476f434b129b4b4df53135330d`。三次各用全新夹具与 Profile，失败目录不重用；三份独立 PG17 实例都经 PID/启动时间/可执行路径/data directory/端口核对后停止，postmaster.pid 均已不存在。每份 PG 为 16 MiB shared_buffers / 12 max_connections，Java 夹具及维护 JVM 受限；没有启停 KAG、共享 PostgreSQL、Ollama 或其他既有用户服务，没有访问真实 Profile/数据库。
+
+只重建修正后的 .NET 手工探针及 Desktop 必要依赖（0 warning / 0 error）并单独编译 Java 探针；复用前阶段已固定的应用 JAR/JVM/JNA（JAR SHA-256 `d00f51cd66eeecedc9fc6086303563f526e7d7a3b55bed48251c95e64a783b75`，其维护入口源码自原构建后未变）。没有重建完整当前应用 JAR、前端、分发包，未重跑备份恢复或全套测试。本次不新增产品恢复功能，仅修复被真实联调揭示的两个夹具错误，并解除这条受信来源检查的执行环境阻塞。
+
+本地证据在 `.verification/recovery-native-context/`：`context-preflight.ps1/json`、`preflight-launch.json`、`run-context-inspection.ps1` 与 `invoke-inspection.ps1`；根目录和 `fixed/` 保留前两次失败、所属夹具及关闭记录；`fixed/dotnet-build.log`、`verified/javac.log`、`verified/native-source-integration.log`、`verified/native-source-evidence.json`、`verified/fixture-result.json` 和 `final-boundary-evidence.json` 保存最终证据。复现应在同一正常用户的独立非虚拟化上下文中沿现有 runner 新建随机夹具；先核验 SID/最终路径，再执行真实 Gate；不可重跑已留下状态的同一 Profile、删除 guard 或改用真实资料。这里保存的是开发环境手工验证路径，不是部署脚本。
+
+**剩余产品阻塞仍明确保留：** `Admission=BLOCKED`、`WriterCoverage=UNREGISTERED_WRITERS_UNPROVEN`、`ObservedExitedChildren=null`。来源只读检查不能授权个人备份，不能构造完整停写证明；个人受信来源生产/持久登记消费、prepared target 与日常 CRUD 凭据绑定、READY、显式激活仍未完成。断电/网络中断、部分 CREATE 未知结果也未验证。下一步应利用已验证的执行上下文推进完整停写与个人来源 authority 的 owning 合同，不能直接把合成 Completed 或这次只读结果升级为个人恢复授权。未合并 main、部署或推送。
+
+## 前一阶段：认证后新建合成目标并恢复，真实入口仍阻塞
 
 基于 `5dc3fe8` 继续。先核对既有 NativeBootstrap 四份构建 pin，以 `VerifyProfileNative` 只读检查此前已记录的合成 ID；helper 返回 STOP/10，未 Provision，也没有证明从工作区可执行文件位置启动就获得非虚拟化目录视图。证据保存在 `.verification/recovery-profile-identity/pinned-native-readonly.json`。没有修改系统/包安全设置、替换 Known Folder、绕行 Gate、操作真实资料或启停既有服务。此前的最终路径分歧仍是实际产品入口的联调阻塞。
 

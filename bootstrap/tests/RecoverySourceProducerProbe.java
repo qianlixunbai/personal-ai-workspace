@@ -45,7 +45,9 @@ public final class RecoverySourceProducerProbe {
             var source=new Endpoint(expected.path("database").asString(),administrator.username(),administrator.password(),port);
             try(var db=source.dataSource().getConnection()){
                 require(value(db,"SHOW data_directory").replace('\\','/').equals(isolated.resolve("pgdata").toString().replace('\\','/')));
-                require(JSON.valueToTree(snapshot(db,true)).equals(expected.path("snapshot"))
+                // JSON tree integer widths change on parse (e.g. long row count 0 ->
+                // IntNode). Compare the typed snapshot, not the serialization node types.
+                require(snapshot(db,true).equals(JSON.treeToValue(expected.path("snapshot"),Snapshot.class))
                     &&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname LIKE 'workspace_backup_src_%'")==0
                     &&value(db,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE"));
             }
