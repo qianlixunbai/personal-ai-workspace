@@ -23,7 +23,11 @@ internal sealed partial class ProfileRecoveryCoordinator
         string Admission, string WriterCoverage, string ModelState, string SourceState,
         string? SourceConfigurationIdentity, string? SourceConfigurationSha256, uint SourceDatabaseOid, uint SourceApplicationRoleOid);
 
-    internal sealed record SourceReadiness(NativeMaintenanceInspection Native, int? ObservedExitedChildren);
+    internal sealed record SourceReadiness(NativeMaintenanceInspection Native, RuntimeHistoryInspection RuntimeHistory)
+    {
+        public int? ObservedExitedChildren => RuntimeHistory.State == "EXIT_OBSERVATIONS_COMPLETE"
+            ? RuntimeHistory.ObservedExitedChildren : null;
+    }
 
     // Uses the reviewed embedded source manifest, the original authority Gate and our direct
     // Process handle. This is a read-only product preflight, not the synthetic backup launcher.
@@ -44,10 +48,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             held.Add(runtime); held.Add(model); maintenanceRuntimeLock = runtime;
         }
         catch { model?.Dispose(); runtime.Dispose(); throw; }
-        int? exited = null;
-        try { exited = InspectRuntimeStops(authority.RunId); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or JsonException)
-        { /* Missing/incomplete/corrupt ownership history stays UNKNOWN, never zero or stopped. */ }
+        var history = InspectRuntimeHistory(authority.RunId);
         using var sources = TrustedDevelopmentRuntimeSources.Open();
         var launch = sources.StartInfo(authority, recoveryInspection: true);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -83,7 +84,7 @@ internal sealed partial class ProfileRecoveryCoordinator
                 || result.SourceState is not ("NOT_READ_MODEL_STATE_UNRESOLVED" or "CONFIGURATION_UNAVAILABLE"
                     or "CONFIGURATION_UNTRUSTED" or "CREDENTIAL_UNAVAILABLE")) throw Stop();
             authority.Validate();
-            return new(result, exited);
+            return new(result, history);
         }
         finally
         {

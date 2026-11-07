@@ -196,24 +196,34 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
             {
                 try { ownership?.ObserveExitBeforeOwnerCleanup(lifetime.IsCancellationRequested); }
                 catch (Exception) { State("STARTUP_CAUSE_UNAVAILABLE"); }
-                finally { ownership?.Dispose(); }
+                try { ownership?.BeginOwnerCleanup(); }
+                catch (Exception) { State("STARTUP_CAUSE_UNAVAILABLE"); }
             }
             finally // Receipt I/O, disposal or diagnostic callbacks cannot skip the existing cleanup.
             {
-                job?.Dispose();
-                Process? owned; lock (sync) owned = child;
-                if (owned is not null)
+                try
                 {
-                    try
+                    job?.Dispose();
+                    Process? owned; lock (sync) owned = child;
+                    if (owned is not null)
                     {
-                        if (!owned.HasExited) owned.Kill();
-                        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                        await owned.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
+                        try
+                        {
+                            if (!owned.HasExited) owned.Kill();
+                            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                            await owned.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
+                        }
+                        catch (InvalidOperationException) { }
                     }
-                    catch (InvalidOperationException) { }
+                    try { ownership?.ObserveExitAfterOwnerCleanup(); }
+                    catch (Exception) { State("STARTUP_CAUSE_UNAVAILABLE"); }
+                    await Task.WhenAny(Task.WhenAll(output, errors), Task.Delay(2000)).ConfigureAwait(false);
                 }
-                await Task.WhenAny(Task.WhenAll(output, errors), Task.Delay(2000)).ConfigureAwait(false);
-                sources?.Dispose();
+                finally
+                {
+                    try { ownership?.Dispose(); }
+                    finally { sources?.Dispose(); }
+                }
             }
         }
     }

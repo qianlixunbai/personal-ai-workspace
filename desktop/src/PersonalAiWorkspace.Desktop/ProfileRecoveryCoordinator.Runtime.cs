@@ -1,10 +1,13 @@
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Principal;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
@@ -95,12 +98,47 @@ internal sealed partial class ProfileRecoveryCoordinator
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             if (observation.State != "STARTED" || child is null) throw Stop();
-            if (!child.HasExited) return; // No exit assertion. Cleanup/kill must never fill it in later.
+            if (!ObserveKernelExit(0)) return; // No exit assertion. Cleanup must never fill this event in later.
             var exited = observation with { State = "EXIT_OBSERVED", ExitCode = child.ExitCode,
                 ExitUtcTicks = child.ExitTime.ToUniversalTime().Ticks,
                 ExitKind = ownerStopRequested ? "OWNER_STOP_REQUESTED" : "EXIT_BEFORE_OWNER_CLEANUP" };
             Publish("exited", exited);
             observation = exited;
+        }
+
+        internal void BeginOwnerCleanup()
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (observation.State != "STARTED" || child is null || ObserveKernelExit(0)) return;
+            // Persist before Job disposal/Kill. Failure must not prevent the owner's existing
+            // cleanup, and neither this intent nor a later exit proves remote model completion.
+            var cleanup = observation with { State = "OWNER_CLEANUP_INTENT" };
+            Publish("cleanup-intent", cleanup);
+            observation = cleanup;
+        }
+
+        internal void ObserveExitAfterOwnerCleanup()
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (observation.State != "OWNER_CLEANUP_INTENT" || child is null) return;
+            if (!ObserveKernelExit(10000)) return; // A timeout retains only the cleanup intent.
+            var exited = observation with { State = "OWNER_CLEANUP_EXIT_OBSERVED", ExitCode = child.ExitCode,
+                ExitUtcTicks = child.ExitTime.ToUniversalTime().Ticks, ExitKind = "OWNER_CLEANUP" };
+            Publish("cleanup", exited);
+            observation = exited;
+        }
+
+        private bool ObserveKernelExit(int timeoutMilliseconds)
+        {
+            if (child is null || child.SafeHandle.IsInvalid || child.SafeHandle.IsClosed) throw Stop();
+            // HasExited/WaitForExitAsync may accept an exit code before the process object is
+            // signaled (notably Job termination). The bounded synchronous overload waits on
+            // our retained kernel handle. Refresh drops any early cached exit code/time.
+            if (!child.WaitForExit(timeoutMilliseconds)) return false;
+            child.Refresh();
+            long exited = child.ExitTime.ToUniversalTime().Ticks;
+            if (exited < observation.RuntimeStartUtcTicks) throw Stop();
+            return true;
         }
 
         private void Publish(string name, RuntimeObservation value)
@@ -174,6 +212,29 @@ internal sealed partial class ProfileRecoveryCoordinator
 
     private int InspectRuntimeStops(string profileId)
     {
+        var history = ReadRuntimeHistory(profileId);
+        if (history.State != "EXIT_OBSERVATIONS_COMPLETE") throw Stop();
+        return history.ObservedExitedChildren!.Value;
+    }
+
+    // Counts describe only the registered direct children. Even a complete history does not
+    // cover legacy/manual writers or prove a provider finished an outstanding model request.
+    internal sealed record RuntimeHistoryInspection(string State, int? RegisteredAttempts,
+        int? ObservedExitedChildren, int? OwnerCleanupObserved, string[] Issues);
+
+    private RuntimeHistoryInspection InspectRuntimeHistory(string profileId)
+    {
+        try { return ReadRuntimeHistory(profileId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+        {
+            // Do not preserve partial counts from an unreadable/corrupt inventory.
+            return new("HISTORY_UNAVAILABLE", null, null, null, ["HISTORY_MISSING_OR_UNVERIFIABLE"]);
+        }
+    }
+
+    private RuntimeHistoryInspection ReadRuntimeHistory(string profileId)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
         RequireHex(profileId, 32);
         string recovery = Path.Combine(applicationRoot, "Recovery"), runtimes = Path.Combine(recovery, "runtimes");
         string profile = Path.Combine(runtimes, profileId);
@@ -181,6 +242,8 @@ internal sealed partial class ProfileRecoveryCoordinator
         string[] attempts = Directory.EnumerateFileSystemEntries(profile).Take(4097).ToArray();
         // Missing/empty history is UNKNOWN, not "never ran". No latest-file shortcut over old gaps.
         if (attempts.Length is < 1 or > 4096) throw Stop();
+        int exitedCount = 0, cleanupCount = 0;
+        var issues = new SortedSet<string>(StringComparer.Ordinal);
         foreach (string directory in attempts)
         {
             string attempt = Path.GetFileName(directory);
@@ -188,25 +251,62 @@ internal sealed partial class ProfileRecoveryCoordinator
             using var pin = WindowsProfileSecurity.HoldDirectories(directory);
             using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
             WindowsProfileSecurity.ValidatePrivate(pin.Handles[^1], user.User!, directory: true);
-            string[] files = Directory.EnumerateFileSystemEntries(directory).Take(4).Select(Path.GetFileName).ToArray()!;
-            if (files.Length != 3 || !files.Order(StringComparer.Ordinal).SequenceEqual(
-                new[] { "exited.dpapi", "intent.dpapi", "started.dpapi" })) throw Stop();
-            RuntimeObservation Read(string name) => ReadRecord<RuntimeObservation>(Path.Combine(directory, name + ".dpapi"),
-                RuntimeEntropy(profileId, attempt, name));
-            var intent = Read("intent"); var started = Read("started"); var exited = Read("exited");
-            RequireHex(intent.JarSha256, 64);
-            if (intent.Version != 1 || intent.State != "START_INTENT" || intent.ProfileId != profileId || intent.AttemptId != attempt
-                || intent.DesktopPid <= 0 || intent.DesktopStartUtcTicks <= 0 || intent.DesktopSessionId < 0
-                || intent.RuntimePid != 0 || intent.RuntimeStartUtcTicks != 0 || intent.RuntimeSessionId != 0
-                || intent.ExitCode is not null || intent.ExitUtcTicks is not null || intent.ExitKind is not null) throw Stop();
-            if (started.RuntimePid <= 0 || started.RuntimeStartUtcTicks <= 0 || started.RuntimeSessionId != intent.DesktopSessionId
-                || started != (intent with { State = "STARTED", RuntimePid = started.RuntimePid,
-                    RuntimeStartUtcTicks = started.RuntimeStartUtcTicks, RuntimeSessionId = started.RuntimeSessionId })) throw Stop();
-            if (exited.ExitCode != 0 || exited.ExitUtcTicks is null || exited.ExitUtcTicks < started.RuntimeStartUtcTicks
-                || exited != (started with { State = "EXIT_OBSERVED", ExitCode = 0, ExitUtcTicks = exited.ExitUtcTicks,
-                    ExitKind = "EXIT_BEFORE_OWNER_CLEANUP" })) throw Stop();
+            string[] files = Directory.EnumerateFileSystemEntries(directory).Take(5).Select(Path.GetFileName).ToArray()!;
+            string layout = string.Join(",", files.Order(StringComparer.Ordinal));
+            if (layout is not ("intent.dpapi" or "intent.dpapi,started.dpapi" or "exited.dpapi,intent.dpapi,started.dpapi"
+                or "cleanup-intent.dpapi,intent.dpapi,started.dpapi" or "cleanup-intent.dpapi,cleanup.dpapi,intent.dpapi,started.dpapi")) throw Stop();
+            // Keep every event pinned while comparing the chain. Never reopen a PID from disk.
+            var records = new List<FileStream>();
+            RuntimeObservation Read(string name)
+            {
+                var file = OpenRecord(Path.Combine(directory, name + ".dpapi"));
+                records.Add(file);
+                return ReadRecord<RuntimeObservation>(file, RuntimeEntropy(profileId, attempt, name));
+            }
+            try
+            {
+                var intent = Read("intent");
+                RequireHex(intent.JarSha256, 64);
+                if (intent.Version != 1 || intent.State != "START_INTENT" || intent.ProfileId != profileId || intent.AttemptId != attempt
+                    || intent.DesktopPid <= 0 || intent.DesktopStartUtcTicks <= 0 || intent.DesktopSessionId < 0
+                    || intent.RuntimePid != 0 || intent.RuntimeStartUtcTicks != 0 || intent.RuntimeSessionId != 0
+                    || intent.ExitCode is not null || intent.ExitUtcTicks is not null || intent.ExitKind is not null) throw Stop();
+                if (!files.Contains("started.dpapi")) { issues.Add("START_OUTCOME_UNCONFIRMED"); continue; }
+                var started = Read("started");
+                if (started.RuntimePid <= 0 || started.RuntimeStartUtcTicks <= 0 || started.RuntimeSessionId != intent.DesktopSessionId
+                    || started != (intent with { State = "STARTED", RuntimePid = started.RuntimePid,
+                        RuntimeStartUtcTicks = started.RuntimeStartUtcTicks, RuntimeSessionId = started.RuntimeSessionId })) throw Stop();
+                if (files.Contains("exited.dpapi"))
+                {
+                    var exited = Read("exited");
+                    if (exited.ExitCode is null || exited.ExitUtcTicks is null || exited.ExitUtcTicks < started.RuntimeStartUtcTicks
+                        || exited.ExitUtcTicks > DateTime.MaxValue.Ticks
+                        || exited.ExitKind is not ("EXIT_BEFORE_OWNER_CLEANUP" or "OWNER_STOP_REQUESTED")
+                        || exited != (started with { State = "EXIT_OBSERVED", ExitCode = exited.ExitCode,
+                            ExitUtcTicks = exited.ExitUtcTicks, ExitKind = exited.ExitKind })) throw Stop();
+                    if (exited.ExitKind == "OWNER_STOP_REQUESTED") issues.Add("OWNER_STOP_REQUESTED");
+                    if (exited.ExitCode != 0) issues.Add("CHILD_EXIT_FAILED");
+                    if (exited.ExitKind == "EXIT_BEFORE_OWNER_CLEANUP" && exited.ExitCode == 0) exitedCount++;
+                }
+                else if (files.Contains("cleanup-intent.dpapi"))
+                {
+                    var cleanup = Read("cleanup-intent");
+                    if (cleanup != (started with { State = "OWNER_CLEANUP_INTENT" })) throw Stop();
+                    if (!files.Contains("cleanup.dpapi")) { issues.Add("OWNER_CLEANUP_EXIT_UNOBSERVED"); continue; }
+                    var exited = Read("cleanup");
+                    if (exited.ExitCode is null || exited.ExitUtcTicks is null || exited.ExitUtcTicks < started.RuntimeStartUtcTicks
+                        || exited.ExitUtcTicks > DateTime.MaxValue.Ticks
+                        || exited != (started with { State = "OWNER_CLEANUP_EXIT_OBSERVED", ExitCode = exited.ExitCode,
+                            ExitUtcTicks = exited.ExitUtcTicks, ExitKind = "OWNER_CLEANUP" })) throw Stop();
+                    cleanupCount++;
+                    issues.Add("OWNER_CLEANUP_NOT_SAFE_STOP");
+                }
+                else issues.Add("CHILD_EXIT_UNOBSERVED");
+            }
+            finally { foreach (var file in records) file.Dispose(); }
         }
-        return attempts.Length;
+        return new(issues.Count == 0 ? "EXIT_OBSERVATIONS_COMPLETE" : "RUNTIME_HISTORY_UNRESOLVED",
+            attempts.Length, exitedCount, cleanupCount, issues.ToArray());
     }
 
     private static byte[] RuntimeEntropy(string profileId, string attempt, string name) =>

@@ -164,8 +164,7 @@ internal static class Program
             // and all Profile/file pins until the result dialog closes; inspection grants nothing.
             using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(authority);
             var inspection = coordinator.InspectSourceReadinessAsync().GetAwaiter().GetResult();
-            string history = inspection.ObservedExitedChildren is int count
-                ? "已核对 " + count + " 次登记的直属 Runtime 退出观察。" : "直属 Runtime 退出记录不完整或不可验证。";
+            string history = ProfileRecoveryWindow.DescribeRuntimeHistory(inspection.RuntimeHistory);
             string source = inspection.Native.SourceState == "BOUND_READ_ONLY"
                 ? "受保护 Workspace 配置与应用数据库连接只读核对通过。" : "Workspace 来源尚未通过核对（" + inspection.Native.SourceState + "）。";
             report("维护状态：BLOCKED（" + inspection.Native.WriterCoverage + "）。\n\n" + history + "\n" + source + "\n" +

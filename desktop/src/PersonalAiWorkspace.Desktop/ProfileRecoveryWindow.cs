@@ -67,11 +67,31 @@ internal sealed class ProfileRecoveryWindow : Window
 
     internal static string Describe(ProfileRecoveryCoordinator.SourceReadiness result) =>
         "维护状态：BLOCKED\n\n" +
-        (result.ObservedExitedChildren is int count ? "直属 Runtime：已核对 " + count + " 次正常退出观察。" : "直属 Runtime：退出历史不完整或不可验证。") +
+        DescribeRuntimeHistory(result.RuntimeHistory) +
         "\n完整停写：未证明旧版本、其他登录会话、手动 Java 和外部数据库客户端均停止。" +
         (result.Native.ModelState == "NO_GUARD_FILE_OBSERVED" ? "\n模型：未发现 guard 文件；这不能证明未知模型执行已结束。" : "\n模型：存在未解决状态，请在原工作流处理。") +
         (result.Native.SourceState == "BOUND_READ_ONLY" ? "\n来源配置：只读绑定核对通过；这不是备份或 SQL 来源授权。" : "\n来源配置：尚未通过只读绑定核对。") +
         "\n来源授权：个人备份生产与本机完成登记尚未开放。口令、文件选择或停写勾选不能替代来源授权。\n\n未备份、恢复或激活；保留现有数据和登记。";
+
+    internal static string DescribeRuntimeHistory(ProfileRecoveryCoordinator.RuntimeHistoryInspection history)
+    {
+        if (history.RegisteredAttempts is not int attempts)
+            return "直属 Runtime：登记缺失、不可读取或校验失败，历史仍为未知。请保留现有记录。";
+        string text = "直属 Runtime：已核对 " + attempts + " 次启动登记；其中 " + history.ObservedExitedChildren +
+            " 次在 owner 收尾前观察到退出码 0，" + history.OwnerCleanupObserved + " 次在 owner 收尾后观察到退出。";
+        foreach (string issue in history.Issues)
+            text += "\n• " + (issue switch
+            {
+                "START_OUTCOME_UNCONFIRMED" => "有启动意图未登记子进程身份；不能判定启动是否发生。",
+                "CHILD_EXIT_UNOBSERVED" => "有已登记子进程缺少退出观察；本次检查不会按历史 PID 接管进程。",
+                "OWNER_STOP_REQUESTED" => "退出前已请求停止，不能据此证明模型或写入已完成。",
+                "CHILD_EXIT_FAILED" => "有子进程以非零退出码结束，需保留失败证据。",
+                "OWNER_CLEANUP_EXIT_UNOBSERVED" => "已记录 owner 收尾意图，但退出结果未知。",
+                "OWNER_CLEANUP_NOT_SAFE_STOP" => "owner 收尾后退出只证明该子进程结束；模型执行及安全停写仍未证明。",
+                _ => "存在无法解释的历史状态，请保留现有记录。"
+            });
+        return text;
+    }
 
     // Only the owning coordinator creates this window after re-reading its exact READY target.
     internal static ProfileRecoveryWindow SyntheticReady(string targetId) => new(

@@ -1,5 +1,21 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：直属 Runtime 收尾结果与维护阻塞明细
+
+基于本地 `feb6737`，本模块补齐直属 Runtime 的可核验收尾事实和原生维护展示。**个人备份、恢复和激活仍未开放；没有签发完整停写能力、个人来源登记或管理员授权。** 新记录不能追溯补证历史未登记写入者，也不能证明远端模型任务完成。
+
+- `RuntimeAttempt` 在现有 Job/Kill 收尾前以 CREATE_NEW、DPAPI、force 和不覆盖发布记录 `cleanup-intent`；收尾后只从仍持有的实际子进程句柄记录 `cleanup`。中断、超时、发布/读回失败保留未知结果，不补写成功、不按磁盘 PID 接管进程，也不修改原退出/取消行为。收尾观察与原来的 `exited` 分支互斥，后者仍要求收尾前的真实退出。
+- 修复实际验证发现的进程退出观察竞态：Job 关闭后，`HasExited` / `WaitForExitAsync` 曾先返回，而 ExitTime 仍是零 FILETIME（转换后为 1601 年）。现在先用持有句柄上的 `WaitForExit(milliseconds)` 确认内核进程对象已发出结束信号，再 Refresh 并核对退出时间；提前观察为零等待，收尾观察最多等待 10 秒。拿不到信号/合法时间就不写退出事实。参考 GitHub [.NET ProcessManager.Windows.HasExited](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/ProcessManager.Windows.cs)、[Process.Windows.WaitForExitCore](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Windows.cs) 及 [Windows 进程终止语义](https://learn.microsoft.com/en-us/windows/win32/procthread/terminating-a-process)，没有修改第三方代码。
+- 历史检查严格校验 DPAPI 事件链、目录精确文件集及进程身份，比较时同时 pin 事件文件；完整遍历所有登记，不用最新成功记录掩盖旧缺口。诊断区分启动身份未确认、退出未观察、停止请求、非零退出、收尾退出未知、收尾退出已观察。损坏/缺失/额外文件丢弃局部计数，保持 UNKNOWN。只读维护 UI 与旧 inspection 命令复用同一说明；严格 `InspectRuntimeStops` 仍拒绝所有收尾/未解决记录，`SourceReadiness.ObservedExitedChildren` 在任一缺口下仍为 null。
+
+仅扩展已有 `RuntimeExitEvidenceNeverAuthorizesMaintenanceOrHidesInterruptedOwners` 一个聚焦用例。初次构建因现有 `RuntimeLifecycleProbe.PostgresqlConversation.cs` 与其他 partial 的编译符号不一致而失败；未修改无关 probe，随后使用已有 `RuntimeLifecycleProbe=true` 编译符号，仅由 testhost 运行指定用例。实际测试共 3 次：第一次暴露上述 Job 退出时间竞态；第二次因旧用例把异步返回当作内核信号而失败；修正产品观察及该用例的等待前提后，第三次 **1 passed / 0 failed / 0 skipped**，用例约 452 ms。每次均全新临时目录，失败证据保留，没有重放恢复目标。
+
+最终夹具为 `C:\Users\28421\AppData\Local\Temp\paw-recovery-runtime-59e0d02280fa471cbafdf49a32dea596`，只创建隐藏的、stdin 控制的 `cmd.exe` 直属子进程：一个正常退出，一个通过本次专属 Windows Job 关闭结束。核验 DPAPI 重开、精确进程绑定、重复观察不重复发布、收尾不升级停写、历史未完成意图不被遮蔽、损坏记录/持久 guard 拒绝、OS 锁保持及 UI 原因文本。没有访问 Known Folder 真实 Profile、数据库、Knowledge、模型或共享服务，没有 Java/PG 启停、完整 UI/备份恢复重测、全套测试或前端重建。Desktop 及测试程序集最终编译通过；此次未验证整个 `AssistantApp` 退出流程、突然断电或管理员生产链。
+
+证据位于忽略目录 `.verification/recovery-runtime-outcomes/`：`focused-test.log`（首次编译失败）、`focused-test-probe-flags.log` 与 `focused-test-final.log`（两次失败）、`focused-test-verified.log`、`results-verified/runtime-outcomes.trx`、文档首尾哈希及模块交付清单。五份未跟踪文档保持原字节；只作本地模块提交，不推送、不合并 main、不部署。
+
+**下一关键前置仍是完整执行归属/停止证明和个人管理员授权生产链。** 现有保护记录没有覆盖旧包、跨会话/手动 Java、外部 SQL 和未知模型任务的完整历史；不能用本模块的详细诊断、进程退出码、表锁、无 guard 或用户勾选替代。合成备份/恢复/激活的既有证据仍有效于各自记录的构建，本模块没有把它们转换为个人授权或增加可用的个人恢复按钮。
+
 ## 最新阶段：来源持续冻结与短期角色能力收紧
 
 基于本地 `13b33c9`，本轮继续停写/来源授权主线，完成 **实际 OS 排他 + SQL/文件持续冻结 → 单次短期角色 → 加密备份 → 角色回收/句柄关闭 → 合成来源登记** 的收紧。**这仍不是完整个人停写证明或个人来源生产入口；没有解禁 UI，也没有签发任何个人来源记录。** 原有直属退出日志不能追溯覆盖旧客户端、跨会话/手动执行和未知远端模型任务，不能用表锁或管理员口令替代这些证据。

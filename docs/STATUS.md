@@ -2,6 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
+2026-11-07 Recovery Runtime 收尾观察阶段：直属子进程新增受保护收尾意图/实际退出记录，修复 Job 结束时异步退出观察先于内核结束信号的竞态；原生维护界面可区分启动/退出未知、停止请求、失败退出和 owner 收尾。所有收尾记录仍拒绝安全停写准入，旧历史缺口不能由新成功记录覆盖。一个既有聚焦用例经两次失败诊断后最终通过；未访问真实 Profile/数据库、启动 Java/模型或启停共享服务。**个人恢复仍 BLOCKED**，完整历史归属/模型停止证明和个人管理员授权生产链未完成。详见[交接及准确验证范围](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。
+
 2026-11-07 Recovery 来源冻结阶段：绑定来源的合成备份已用实际 OS 排他、17 表 SHARE 锁、原文文件 pin 和单次能力替代调用者的停写布尔声明，贯穿短期角色授予、加密与回收。两套全新合成流程通过（第二次验证最终 endpoint/目录绑定），原数据/Finance sentinel 保留，能力关闭后不能重用，来源仍只能登记到合成命名空间。**完整个人停写证明和个人管理员授权生产链尚未完成；UI 仍仅只读维护，个人恢复保持 BLOCKED。** 未访问真实 Profile、启停既有服务或执行模型请求；详见[本阶段交接](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。
 
 2026-11-07 Recovery 维护 UI / Desktop 生命周期阶段：开发工作区选择器已提供原生只读维护入口，运行中托盘只给退出指引；完整停写、模型状态和来源授权分别显示，个人备份/恢复按钮保持禁用。一次全新合成流程验证取消确认不变、单次按钮授权、保留目标 mutex、真实 AssistantApp 启动回调发布 ACTIVE，以及其 RuntimeClient 的 Store/原文读回；个人选择文件未变，所属 Runtime/专用 PG 已退出。没有测试 WebView/托盘完整交互，也没有开放个人恢复。**个人恢复仍 BLOCKED**：旧包/跨会话/手动进程及外部写入者的完整停写无法补证，个人短期管理员授权到可信来源完成登记的生产链仍缺失。见[本阶段交接与证据](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。

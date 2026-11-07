@@ -64,12 +64,21 @@ public sealed class Mmf3AcceptanceTests
             { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException!).Throw(); throw; }
         }
         void Denied() { using var journal = Journal(); Assert.ThrowsAny<IOException>(() => Inspect(journal)); }
+        ProfileRecoveryCoordinator.RuntimeHistoryInspection History()
+        {
+            using var journal = Journal();
+            return (ProfileRecoveryCoordinator.RuntimeHistoryInspection)typeof(ProfileRecoveryCoordinator)
+                .GetMethod("InspectRuntimeHistory", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(journal, [id])!;
+        }
         Denied(); Assert.False(File.Exists(earlyLock)); // Maintenance never creates missing enrollment state.
         File.WriteAllBytes(earlyLock, []);
         Denied(); // Missing history is not "never ran".
+        Assert.Equal("HISTORY_UNAVAILABLE", History().State);
+        Assert.Null(History().RegisteredAttempts);
         using (var attempt = Attempt())
         {
             Denied(); // Durable intent, but no child identity yet.
+            Assert.Contains("START_OUTCOME_UNCONFIRMED", History().Issues);
             using var child = new Process { StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
                     RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app } };
@@ -80,9 +89,11 @@ public sealed class Mmf3AcceptanceTests
                 attempt.RecordStarted(child);
                 attempt.ObserveExitBeforeOwnerCleanup(false);
                 Denied(); // A live handle produces no exit event, regardless of a free port.
+                Assert.Contains("CHILD_EXIT_UNOBSERVED", History().Issues);
                 await child.StandardInput.WriteLineAsync("exit 0"); await child.StandardInput.FlushAsync();
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 await child.WaitForExitAsync(deadline.Token);
+                Assert.True(child.WaitForExit(10000)); // Observe the kernel signal before asserting an exit record exists.
                 attempt.ObserveExitBeforeOwnerCleanup(false);
                 Assert.Throws<IOException>(() => attempt.ObserveExitBeforeOwnerCleanup(false)); // No repeat publication.
             }
@@ -136,13 +147,51 @@ public sealed class Mmf3AcceptanceTests
         }
         File.WriteAllBytes(exitFile, [1, 2, 3]);
         using (var journal = Journal()) Assert.Throws<System.Security.Cryptography.CryptographicException>(() => Inspect(journal));
+        Assert.Equal("HISTORY_UNAVAILABLE", History().State);
+        Assert.Null(History().ObservedExitedChildren);
         File.WriteAllBytes(exitFile, encrypted);
         string pending = Path.Combine(directory, "exited.pending");
         File.WriteAllText(pending, "synthetic interrupted publication"); Denied(); File.Delete(pending);
         using (var journal = Journal()) Assert.Equal(1, Inspect(journal).ObservedExitedChildren);
+        // Actual Job cleanup of a second directly owned child produces an immutable negative
+        // observation. Reopening the journal must distinguish it from both a live child and
+        // an exit-before-cleanup, while continuing to reject maintenance admission.
+        using (var attempt = Attempt())
+        using (var job = RuntimeProcessJob.Create())
+        using (var child = new Process { StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+                RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app } })
+        {
+            child.StartInfo.ArgumentList.Add("/d"); child.StartInfo.ArgumentList.Add("/q");
+            Assert.True(child.Start());
+            try
+            {
+                job.Assign(child); attempt.RecordStarted(child);
+                attempt.ObserveExitBeforeOwnerCleanup(true); attempt.BeginOwnerCleanup();
+                Assert.Contains("OWNER_CLEANUP_EXIT_UNOBSERVED", History().Issues); Denied();
+                job.Dispose();
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await child.WaitForExitAsync(deadline.Token);
+                attempt.ObserveExitAfterOwnerCleanup();
+                attempt.ObserveExitAfterOwnerCleanup(); // No second write or result upgrade.
+            }
+            finally { if (!child.HasExited) { child.Kill(); child.WaitForExit(5000); } }
+        }
+        var cleanupHistory = History();
+        Assert.Equal(2, cleanupHistory.RegisteredAttempts);
+        Assert.Equal(1, cleanupHistory.ObservedExitedChildren);
+        Assert.Equal(1, cleanupHistory.OwnerCleanupObserved);
+        Assert.Equal(new[] { "OWNER_CLEANUP_NOT_SAFE_STOP" }, cleanupHistory.Issues);
+        Assert.Contains("安全停写仍未证明", ProfileRecoveryWindow.DescribeRuntimeHistory(cleanupHistory));
+        Denied();
         // An unfinished later intent is retained; disposal publishes no exit.
         using (Attempt()) { }
         Denied();
+        var interrupted = History();
+        Assert.Equal(3, interrupted.RegisteredAttempts);
+        Assert.Equal(1, interrupted.OwnerCleanupObserved);
+        Assert.Contains("START_OUTCOME_UNCONFIRMED", interrupted.Issues);
+        Assert.Contains("OWNER_CLEANUP_NOT_SAFE_STOP", interrupted.Issues);
         ProfileRecoveryCoordinator.RequireOrdinaryProfile(profile); // No change to ordinary Profile selection.
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(app, "Recovery", "targets")));
         Assert.False(Directory.Exists(Path.Combine(profile, "data")));
