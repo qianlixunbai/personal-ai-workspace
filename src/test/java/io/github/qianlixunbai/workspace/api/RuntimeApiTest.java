@@ -40,7 +40,17 @@ class RuntimeApiTest {
     private static final Path TOKEN = ISOLATED_ROOT.resolve("credentials/client-token");
     private static final Path MEMORY = ISOLATED_ROOT.resolve("data");
     private static Path temporaryMemoryDirectory() {
-        try { return Files.createTempDirectory("workspace-api-memory-"); }
+        try {
+            if (io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.isWindows()) {
+                // A normal Surefire JVM has no native authority. The opt-in Windows probe
+                // supplies a NEW admitted Profile; never repair a generic temporary directory.
+                Path root = io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot()
+                        .resolve("evidence").resolve("api-memory-" + java.util.UUID.randomUUID());
+                io.github.qianlixunbai.workspace.memory.PrivateMemoryDirectory.directory(root);
+                return root;
+            }
+            return Files.createTempDirectory("workspace-api-memory-");
+        }
         catch (java.io.IOException failure) { throw new ExceptionInInitializerError(failure); }
     }
     private static final AtomicInteger MODE = new AtomicInteger();
@@ -461,6 +471,13 @@ class RuntimeApiTest {
         assertEquals(1, item.path("revision").asLong());
         assertEquals("MANUAL", item.path("source").asString());
         assertEquals(content, tree(send("GET", path, null, true)).path("content").asString());
+        String recall = json.writeValueAsString(Map.of("query", "中文项目计划 PRIVATE", "type", "PROJECT_NOTE"));
+        var recalled = send("POST", "/api/v1/memory/recall", recall, true);
+        assertEquals(200, recalled.statusCode());
+        assertEquals("no-store", recalled.headers().firstValue("Cache-Control").orElseThrow());
+        assertEquals(item.path("id").asString(), tree(recalled).path("hits").get(0).path("item").path("id").asString());
+        assertEquals(1, tree(recalled).path("total").asInt());
+        assertEquals(400, send("POST", "/api/v1/memory/recall", "{\"query\":\"\"}", true).statusCode());
         assertEquals(1, tree(send("GET", endpoint + "?query=" + URLEncoder.encode("中文项", StandardCharsets.UTF_8), null, true)).path("total").asLong());
         assertEquals(20, tree(send("GET", endpoint, null, true)).path("limit").asInt());
         assertEquals(0, tree(send("GET", endpoint + "?query=memory-query-private-marker", null, true)).path("total").asLong());
@@ -474,6 +491,7 @@ class RuntimeApiTest {
             assertFalse(response.body().contains("memory.db"));
         }
         assertEquals(3,tree(send("POST",path+"/archive","{\"expectedRevision\":2}",true)).path("revision").asLong());
+        assertEquals(0, tree(send("POST", "/api/v1/memory/recall", recall, true)).path("total").asInt());
         assertEquals(0,tree(send("GET",endpoint,null,true)).path("total").asLong());
         assertEquals(1,tree(send("GET",endpoint+"?status=ARCHIVED&type=PREFERENCE",null,true)).path("total").asLong());
         assertEquals(204,send("POST","/api/v1/memory/index/rebuild",null,true).statusCode());
@@ -496,7 +514,8 @@ class RuntimeApiTest {
         String root="/api/v1/memory", collection=root+"/items", item=collection+"/00000000-0000-0000-0000-000000000000";
         List<String[]> routes=List.of(new String[]{"GET",collection},new String[]{"GET",item},new String[]{"POST",collection},
                 new String[]{"PUT",item},new String[]{"PATCH",item},new String[]{"POST",item+"/archive"},
-                new String[]{"POST",item+"/restore"},new String[]{"DELETE",item},new String[]{"POST",root+"/index/rebuild"});
+                new String[]{"POST",item+"/restore"},new String[]{"DELETE",item},new String[]{"POST",root+"/index/rebuild"},
+                new String[]{"POST",root+"/recall"});
         for (String[] route : routes) {
             String body=route[0].equals("GET") ? null : "{}";
             assertEquals(401,send(route[0],route[1],body,false).statusCode());

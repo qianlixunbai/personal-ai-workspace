@@ -7,6 +7,43 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed partial class RuntimeClient
 {
+    public async Task<MemoryRecallResult> RecallMemoryAsync(string query, MemoryType? type, CancellationToken cancellationToken)
+    {
+        new MemoryQuery(query, Type: type).Validate();
+        if (string.IsNullOrWhiteSpace(query)) throw new DesktopException(DesktopError.MemoryInvalid);
+        using var body = await SendMemoryAsync(HttpMethod.Post, "/api/v1/memory/recall",
+            new { query, type = type?.ToString() }, HttpStatusCode.OK, cancellationToken);
+        var root = body.RootElement;
+        MemoryFields(root, "hits", "total", "limit");
+        int total = MemoryInteger(root, "total");
+        var array = Property(root, "hits");
+        if (total is < 0 or > 1000 || MemoryInteger(root, "limit") != 20
+            || array.ValueKind != JsonValueKind.Array || array.GetArrayLength() != Math.Min(20, total)) throw Invalid();
+        var hits = new List<MemoryRecallHit>();
+        foreach (var entry in array.EnumerateArray())
+        {
+            MemoryFields(entry, "item", "score", "matchedTerms");
+            var item = ParseMemory(Property(entry, "item"), null);
+            int score = MemoryInteger(entry, "score");
+            var terms = Property(entry, "matchedTerms");
+            if (item.Status != MemoryStatus.ACTIVE || type.HasValue && item.Type != type
+                || score is < 1 or > 8192 || terms.ValueKind != JsonValueKind.Array
+                || terms.GetArrayLength() is < 1 or > 2048) throw Invalid();
+            var labels = terms.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString()! : throw Invalid()).ToArray();
+            if (labels.Any(x => !MemoryValidation.Unicode(x, 4096) || string.IsNullOrWhiteSpace(x))
+                || labels.Distinct(StringComparer.Ordinal).Count() != labels.Length
+                || score < labels.Length || score > labels.Length * 4 || hits.Any(x => x.Item.Id == item.Id)) throw Invalid();
+            if (hits.Count > 0)
+            {
+                var previous = hits[^1];
+                if (previous.Score < score || previous.Score == score && (previous.Item.UpdatedAt < item.UpdatedAt
+                    || previous.Item.UpdatedAt == item.UpdatedAt && string.CompareOrdinal(previous.Item.Id.ToString("D"), item.Id.ToString("D")) >= 0)) throw Invalid();
+            }
+            hits.Add(new(item, score, Array.AsReadOnly(labels)));
+        }
+        return new MemoryRecallResult(hits.AsReadOnly(), total);
+    }
+
     public async Task<MemoryPage> ListMemoryAsync(MemoryQuery query, CancellationToken cancellationToken)
     {
         query.Validate();

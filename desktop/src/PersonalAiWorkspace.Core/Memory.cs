@@ -17,6 +17,14 @@ public sealed record MemoryPage(IReadOnlyList<MemoryItem> Items, int Total, int 
     public bool HasNext => ((long)Page + 1) * Limit < Total;
     public override string ToString() => $"MemoryPage[total={Total},page={Page},limit={Limit}]";
 }
+public sealed record MemoryRecallHit(MemoryItem Item, int Score, IReadOnlyList<string> MatchedTerms)
+{
+    public override string ToString() => $"MemoryRecallHit[id={Item.Id:D},score={Score}]";
+}
+public sealed record MemoryRecallResult(IReadOnlyList<MemoryRecallHit> Hits, int Total)
+{
+    public override string ToString() => $"MemoryRecallResult[total={Total}]";
+}
 public sealed record MemoryCreateInput(MemoryType Type, string Title, string Content)
 {
     public void Validate() => MemoryValidation.Text(Type, Title, Content);

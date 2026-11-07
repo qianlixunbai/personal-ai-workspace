@@ -11,6 +11,64 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class MemoryAskTests
 {
+    [Fact]
+    public Task RelatedRecallRequiresPreviewAndExplicitSelectionBeforeAsk() => StaAsync(async () =>
+    {
+        bool stale = true, fail = false; int recalls = 0, submissions = 0;
+        using var client = new RuntimeClient(new Handler(async (request, ct) =>
+        {
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case "/api/v1/memory/recall":
+                    recalls++; Assert.Equal(HttpMethod.Post, request.Method);
+                    if (fail) throw new HttpRequestException();
+                    return Response(RecallResult(Item(revision: 9007199254740993)));
+                case "/api/v1/memory/items":
+                    Assert.Equal(HttpMethod.Get, request.Method); return Response(Page());
+                case "/api/v1/memory/ask/tasks":
+                    submissions++;
+                    using (var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct)))
+                    {
+                        var memory = payload.RootElement.GetProperty("memories")[0];
+                        Assert.Equal(Id, memory.GetProperty("id").GetGuid());
+                        Assert.Equal(9007199254740993, memory.GetProperty("revision").GetInt64());
+                    }
+                    return Accepted(Envelope());
+                default:
+                    Assert.Equal(HttpMethod.Get, request.Method);
+                    return Response(Item(revision: stale ? 9007199254740994 : 9007199254740993));
+            }
+        }), () => Token);
+        var picker = new MemorySelectionWindow(client);
+        picker.SearchBox.Text = "JAVA"; Assert.Equal(0, recalls);
+        await picker.RecallAsync(); Assert.Equal(1, recalls);
+        Assert.Empty(picker.SelectedList.Items); Assert.Null(picker.Selection); Assert.False(picker.UseButton.IsEnabled);
+        var candidate = (MemoryItem)picker.MemoryList.Items[0];
+        await picker.PreviewAsync(candidate); Assert.False(picker.AddButton.IsEnabled); // Changed since recall.
+        stale = false;
+        await picker.PreviewAsync(candidate); Assert.Contains("java", picker.StatusText.Text);
+        Assert.Equal(PrivateContent, picker.PreviewContent.Text);
+        picker.AddPreview(); Assert.Single(picker.SelectedList.Items.Cast<MemoryItem>());
+        Assert.Equal(0, submissions); // Neither search, preview nor add sends a task.
+        fail = true; await picker.RecallAsync(); Assert.Empty(picker.MemoryList.Items); Assert.False(picker.AddButton.IsEnabled);
+        Assert.Single(picker.SelectedList.Items.Cast<MemoryItem>()); // Explicit choices survive a failed search.
+        fail = false; await picker.RefreshAsync(search: true); Assert.Single(picker.MemoryList.Items.Cast<MemoryItem>());
+        picker.ConfirmSelection(); Assert.NotNull(picker.Selection); Assert.True(picker.IsClosed);
+        await client.SubmitMemoryAskAsync(new("question", picker.Selection!.Select(x => new MemoryReference(x.Id, x.Revision)).ToArray()), default);
+        Assert.Equal(1, submissions); Assert.Empty(picker.PreviewContent.Text);
+    });
+
+    [Fact]
+    public Task ClosedRelatedRecallDiscardsLateResultsAndCancelsRequest() => StaAsync(async () =>
+    {
+        var pending = new TaskCompletionSource<HttpResponseMessage>(); CancellationToken requestToken = default;
+        using var client = new RuntimeClient(new Handler((_, ct) => { requestToken = ct; return pending.Task; }), () => Token);
+        var picker = new MemorySelectionWindow(client); picker.SearchBox.Text = "java";
+        var request = picker.RecallAsync(); picker.Close();
+        Assert.True(requestToken.IsCancellationRequested); pending.SetResult(Response(RecallResult())); await request;
+        Assert.Empty(picker.MemoryList.Items); Assert.Empty(picker.PreviewContent.Text); Assert.Null(picker.Selection);
+    });
+
     private static readonly Guid TaskId = Guid.NewGuid();
     private static string Envelope(string version = "memory-ask-v1", string status = "QUEUED", string? error = null) => JsonSerializer.Serialize(new
     {

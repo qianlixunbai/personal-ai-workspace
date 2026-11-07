@@ -1,14 +1,15 @@
 <Window x:Class="PersonalAiWorkspace.Desktop.MemorySelectionWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Use Memory · This Ask only" Width="850" Height="700" MinWidth="700" MinHeight="550"
+        Title="选择本轮记忆" Width="950" Height="700" MinWidth="700" MinHeight="550"
         WindowStartupLocation="CenterOwner">
   <Grid Margin="18">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <TextBlock Text="Active only · Preview, then explicitly add 1–4 Memory. Reselecting replaces this Ask's previous selection.&#10;Four is a selection limit; combined content may still exceed the input budget." TextWrapping="Wrap"/>
+    <TextBlock Text="输入问题或关键词，点击“查找相关记忆”，或用“原文查找”匹配完整短语。只查找使用中的记忆。&#10;逐条预览后明确添加 1–4 条，再点击 Use selected；不会自动选用。四条仍可能超出输入预算。" TextWrapping="Wrap"/>
     <WrapPanel Grid.Row="1" Margin="0,10">
-      <TextBox x:Name="SearchBox" Width="240" IsUndoEnabled="False" MaxLength="320" KeyDown="SearchKeyDown"/>
-      <Button x:Name="SearchButton" Content="Search" Click="Search" Margin="8,0" Padding="12,5"/>
+      <TextBox x:Name="SearchBox" Width="240" IsUndoEnabled="False" MaxLength="320" KeyDown="SearchKeyDown" ToolTip="输入最多 160 个字符的问题或关键词" AutomationProperties.Name="记忆检索问题或关键词"/>
+      <Button x:Name="RecallButton" Content="查找相关记忆" Click="Recall" Margin="8,0,0,0" Padding="12,5"/>
+      <Button x:Name="SearchButton" Content="原文查找" Click="Search" Margin="8,0" Padding="12,5"/>
       <ComboBox x:Name="TypeFilter" Width="150" SelectedIndex="0" SelectionChanged="FilterChanged">
         <ComboBoxItem Content="All types"/><ComboBoxItem Content="Preference"/><ComboBoxItem Content="Project note"/>
       </ComboBox>

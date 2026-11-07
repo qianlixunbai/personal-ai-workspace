@@ -303,6 +303,12 @@ public final class MemoryStore implements AutoCloseable {
         });
     }
 
+    /** Search current source rows in a single read transaction, with the same ranking on either backend. */
+    public synchronized MemoryRecall.Result recall(String query, MemoryItem.Type type) {
+        var terms = MemoryRecall.terms(query);
+        return transaction(false, () -> MemoryRecall.query(connection, type, terms));
+    }
+
     /** All references are resolved in request order in one SQLite read transaction, before task admission. */
     public synchronized List<MemorySnapshot> snapshotForAsk(List<MemoryReference> references) {
         MemoryReference.validate(references);
@@ -334,7 +340,8 @@ public final class MemoryStore implements AutoCloseable {
             return item(result);
         }
     }
-    private static MemoryItem item(ResultSet result) throws SQLException {
+    // Shared internally with recall; there is no alternative Store constructor or admission path.
+    static MemoryItem item(ResultSet result) throws SQLException {
         return new MemoryItem(UUID.fromString(result.getString("id")), MemoryItem.Type.valueOf(result.getString("type")),
                 result.getString("title"), result.getString("content"), MemoryItem.Status.valueOf(result.getString("status")),
                 result.getLong("revision"), MemoryItem.Source.valueOf(result.getString("source")),

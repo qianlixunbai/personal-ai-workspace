@@ -20,6 +20,9 @@ public class MemoryController {
         @Override public String toString() { return "MemoryUpdate[expectedRevision=" + expectedRevision + ",type=" + type + "]"; }
     }
     public record Revision(Long expectedRevision) {}
+    public record Recall(String query, MemoryItem.Type type) {
+        @Override public String toString() { return "MemoryRecallRequest[type=" + type + "]"; }
+    }
     private static void nativeOnly() {
         if (!ClientIdentity.current().clientType().equals("native"))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "MEMORY");
@@ -46,6 +49,10 @@ public class MemoryController {
     @PutMapping("/items/{id}")
     MemoryItem update(@PathVariable UUID id, @RequestBody Update body) {
         nativeOnly(); return store.update(id, revision(body.expectedRevision()), body.type(), body.title(), body.content());
+    }
+    @PostMapping("/recall")
+    MemoryRecall.Result recall(@RequestBody Recall body) {
+        nativeOnly(); return store.recall(body.query(), body.type());
     }
     @PostMapping("/items/{id}/archive")
     MemoryItem archive(@PathVariable UUID id, @RequestBody Revision body) {

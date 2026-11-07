@@ -12,6 +12,45 @@ import static org.junit.jupiter.api.Assertions.*;
 import static io.github.qianlixunbai.workspace.memory.MemoryItem.*;
 
 class MemoryStoreTest {
+    @Test void recallRanksCurrentSourcesAndPreservesExplicitExactAdmission() throws Exception {
+        try (var store = open()) {
+            var titleMatch = store.create(Type.PROJECT_NOTE, "Java 项目", "编程习惯");
+            var bodyMatch = store.create(Type.PREFERENCE, "工作偏好", "java 项目");
+            var archived = store.create(Type.PROJECT_NOTE, "Java 项目", "java 项目");
+            store.archive(archived.id(), 1);
+            var result = store.recall("ＪＡＶＡ 项目计划", null);
+            assertEquals(List.of(titleMatch.id(), bodyMatch.id()), result.hits().stream().map(h -> h.item().id()).toList());
+            assertEquals(List.of("java", "项目"), result.hits().getFirst().matchedTerms());
+            assertEquals(6, result.hits().getFirst().score());
+            assertEquals(2, result.hits().getLast().score());
+            assertEquals(List.of(bodyMatch.id()), store.recall("Java 项目", Type.PREFERENCE).hits().stream().map(h -> h.item().id()).toList());
+            assertEquals(0, store.recall("totally-unrelated", null).total());
+            assertEquals(0, store.recall("😀 %_", null).total());
+            assertEquals(2, store.recall("项", null).total());
+            assertFalse(result.toString().contains("Java"));
+            assertFalse(result.hits().getFirst().toString().contains("项目"));
+            var refs = List.of(new MemoryReference(titleMatch.id(), result.hits().getFirst().item().revision()));
+            assertEquals("编程习惯", store.snapshotForAsk(refs).getFirst().content());
+            store.update(titleMatch.id(), 1, Type.PROJECT_NOTE, "新偏好", "已变更");
+            code(ErrorCode.MEMORY_SELECTION_STALE, () -> store.snapshotForAsk(refs));
+            assertEquals(1, store.recall("java", null).total());
+            store.delete(bodyMatch.id(), 1);
+            assertEquals(0, store.recall("java", null).total());
+            for (String invalid : List.of("", " ", "x".repeat(161), "\uD800", "x\0y"))
+                code(ErrorCode.MEMORY_INVALID, () -> store.recall(invalid, null));
+            code(ErrorCode.MEMORY_INVALID, () -> store.recall(null, null));
+            for (int i = 0; i < 25; i++) store.create(Type.PROJECT_NOTE, "bounded", "bounded bounded bounded");
+            sql("UPDATE memory_items SET updated_at=1893456000000");
+            var top = store.recall("bounded bounded", null);
+            assertEquals(25, top.total()); assertEquals(20, top.hits().size()); assertEquals(20, top.limit());
+            assertTrue(top.hits().stream().allMatch(h -> h.score() == 4)); // Repetition cannot inflate ranking.
+            assertEquals(top.hits().stream().map(h -> h.item().id().toString()).sorted().toList(),
+                    top.hits().stream().map(h -> h.item().id().toString()).toList());
+            assertEquals(top, store.recall("bounded", null));
+            assertEquals(2, store.get(titleMatch.id()).revision()); // Recall has no writes or admission side effects.
+        }
+    }
+
     @TempDir Path temporary;
     private Path data() { return temporary.resolve("data"); }
     private MemoryStore open() { return new MemoryStore(data(), temporary.resolve("auth/client-token")); }

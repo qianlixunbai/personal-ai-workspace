@@ -27,8 +27,43 @@ public sealed class MemoryClientTests
     internal static RuntimeClient Client(string json, HttpStatusCode status = HttpStatusCode.OK) =>
         new(new Handler((_, _) => Task.FromResult(Response(json, status))), () => Token);
     internal static string Error(string code) => JsonSerializer.Serialize(new { code, message = PrivateTitle + PrivateContent + Token, phase = "MEMORY" });
+    internal static string RecallResult(string? item = null) =>
+        $"{{\"hits\":[{{\"item\":{item ?? Item()},\"score\":3,\"matchedTerms\":[\"java\"]}}],\"total\":1,\"limit\":20}}";
     internal static void Safe(string text)
     { Assert.True(new[] { PrivateTitle, PrivateContent, Token }.All(x => !text.Contains(x, StringComparison.Ordinal)), "Private text leaked."); }
+
+    [Fact]
+    public async Task RecallValidatesRankedActiveResultsAndSendsPrivateQueryInBody()
+    {
+        using var client = new RuntimeClient(new Handler(async (request, ct) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/v1/memory/recall", request.RequestUri!.AbsolutePath);
+            Assert.Empty(request.RequestUri.Query);
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            Assert.Equal("JAVA", body.RootElement.GetProperty("query").GetString());
+            Assert.Equal("PROJECT_NOTE", body.RootElement.GetProperty("type").GetString());
+            return Response(RecallResult(Item(revision: 9007199254740993)));
+        }), () => Token);
+        var found = await client.RecallMemoryAsync("JAVA", MemoryType.PROJECT_NOTE, default);
+        Assert.Equal(9007199254740993, found.Hits[0].Item.Revision);
+        Assert.Equal("java", Assert.Single(found.Hits[0].MatchedTerms));
+        Safe(found.ToString()); Safe(found.Hits[0].ToString());
+        string valid = RecallResult();
+        foreach (string invalid in new[] { RecallResult(Item(status: "ARCHIVED")),
+            valid.Replace("\"total\":1", "\"total\":2"), valid.Replace("\"limit\":20", "\"limit\":21"),
+            valid.Replace("\"score\":3", "\"score\":0"), valid.Replace("[\"java\"]", "[]"),
+            valid.Replace("[\"java\"]", "[\"java\",\"java\"]"), valid.Replace("\"score\":3", "\"score\":8"),
+            valid.Replace("\"total\":1", "\"total\":1,\"total\":1") })
+        {
+            using var malformed = Client(invalid);
+            var error = await Assert.ThrowsAsync<DesktopException>(() => malformed.RecallMemoryAsync("java", null, default));
+            Assert.Equal(DesktopError.InvalidResponse, error.Error); Safe(error.ToString());
+        }
+        using var wrongType = Client(valid);
+        Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() =>
+            wrongType.RecallMemoryAsync("java", MemoryType.PREFERENCE, default))).Error);
+    }
 
 
 
