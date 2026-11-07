@@ -11,6 +11,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class VisionIdentityTest {
+    @Test void catalogServiceAuthorityDoesNotApplyToExecutableModulesOrUserAccounts(){
+        String cryptSvc="S-1-5-80-242729624-280608522-2219052887-3187409060-2225943459";
+        assertTrue(OllamaVisionEnvironment.systemAuthorityAllowed(cryptSvc,true));
+        assertFalse(OllamaVisionEnvironment.systemAuthorityAllowed(cryptSvc,false));
+        for(String sid:List.of("S-1-5-32-545","S-1-1-0","S-1-5-21-1-2-3-1001",cryptSvc+"0")){
+            assertFalse(OllamaVisionEnvironment.systemAuthorityAllowed(sid,true));
+            assertFalse(OllamaVisionEnvironment.systemAuthorityAllowed(sid,false));
+        }
+    }
     @Test
     @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
     void heldWindowsObjectsKeepIdentityAndFileLocksUntilSamplingEnds(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
@@ -121,7 +130,8 @@ class VisionIdentityTest {
         env.put("LLAMA_ARG_FIT_TARGET","1669");
         List<String> args=List.of("--model",models.resolve("blobs/sha256-"+OllamaVisionAdmission.LANGUAGE).toString(),
             "--mmproj",models.resolve("blobs/sha256-"+OllamaVisionAdmission.PROJECTOR).toString(),"--port","12345","--host","127.0.0.1",
-            "--offline","--no-webui","-c","8192","-np","1","--log-verbosity","4","--no-log-prefix","--no-log-timestamps");
+            "--offline","--no-webui","-c","8192","-np","1","--log-verbosity","4","--no-log-prefix","--no-log-timestamps",
+            "--load-mode","none","--context-shift","--keep","4");
         Path image=dist.resolve("lib/ollama/llama-server.exe");
         var runner=new OllamaVisionEnvironment.ProcessState(image,args,dist,env,42);
         // Synthetic trusted-side hash result at the pure policy seam; this does not hash a real model or admit NativeGate.
@@ -200,7 +210,11 @@ class VisionIdentityTest {
             public Path models(){return models;} public java.net.URI endpoint(){return java.net.URI.create("http://127.0.0.1:11435");}
             public String serverHash(){return "a".repeat(64);} public String pinsSha256(){return "b".repeat(64);}
             public OllamaVisionEnvironment.Pin driver(){return null;} public Map<String,OllamaVisionEnvironment.Pin> pins(){return Map.of();}
+            public Map<String,OllamaVisionEnvironment.Pin> platformModules(){return Map.of("System32/DriverStore/reviewed/fixture.dll",new OllamaVisionEnvironment.Pin(16,"c".repeat(64)));}
         };
+        assertEquals(new OllamaVisionEnvironment.Pin(16,"c".repeat(64)),OllamaVisionEnvironment.pinnedPlatformModule(instance,windows.resolve("System32/DriverStore/reviewed/fixture.dll"),windows));
+        assertNull(OllamaVisionEnvironment.pinnedPlatformModule(instance,windows.resolve("System32/DriverStore/other/fixture.dll"),windows));
+        assertNull(OllamaVisionEnvironment.pinnedPlatformModule(instance,dist.resolve("fixture.dll"),windows));
         Map<String,String> parent=new HashMap<>(Map.of("OLLAMA_HOST","127.0.0.1:11435","OLLAMA_MODELS",models.toString(),
             "OLLAMA_LLM_LIBRARY","cuda_v13","PATH",dist+";"+windows.resolve("System32")+";"+windows,"SYSTEMROOT",windows.toString()));
         var server=new OllamaVisionEnvironment.ProcessState(dist.resolve("ollama.exe"),List.of("serve"),dist,parent,1);
@@ -213,11 +227,50 @@ class VisionIdentityTest {
         OllamaVisionEnvironment.validateRole(instance,helperState,false,server,42,windows);
         List<String> runner=List.of("--model",models.resolve("blobs/sha256-"+OllamaVisionAdmission.LANGUAGE).toString(),
             "--mmproj",models.resolve("blobs/sha256-"+OllamaVisionAdmission.PROJECTOR).toString(),"--port","12345","--host","127.0.0.1",
-            "--offline","--no-webui","-c","8192","-np","1","--log-verbosity","4","--no-log-prefix","--no-log-timestamps");
+            "--offline","--no-webui","-c","8192","-np","1","--log-verbosity","4","--no-log-prefix","--no-log-timestamps",
+            "--load-mode","none","--context-shift","--keep","4");
         child.put("LLAMA_MEDIA_MARKER","<__ollama_media_"+"a".repeat(32)+"__>");
         child.put("CUDA_VISIBLE_DEVICES","GPU-12345678-1234-1234-1234-123456789abc"); // Synthetic ID, never a runtime expectation.
         var runnerState=new OllamaVisionEnvironment.ProcessState(helperState.image(),runner,dist,child,42);
         OllamaVisionEnvironment.validateRole(instance,runnerState,false,server,42,windows);
+        for(var replacement:List.of(Map.entry("--load-mode","dio"),Map.entry("--load-mode","mmap"),
+                Map.entry("--keep","0"),Map.entry("--keep","5"))){
+            var changed=new ArrayList<>(runner);changed.set(changed.indexOf(replacement.getKey())+1,replacement.getValue());
+            assertThrows(IOException.class,()->OllamaVisionEnvironment.validateRole(instance,
+                new OllamaVisionEnvironment.ProcessState(runnerState.image(),changed,dist,child,42),false,server,42,windows));
+        }
+        for(String missing:List.of("--load-mode","--keep","--context-shift")){
+            var changed=new ArrayList<>(runner);int at=changed.indexOf(missing);changed.remove(at);
+            if(!missing.equals("--context-shift"))changed.remove(at);
+            assertThrows(IOException.class,()->OllamaVisionEnvironment.validateRole(instance,
+                new OllamaVisionEnvironment.ProcessState(runnerState.image(),changed,dist,child,42),false,server,42,windows));
+        }
+        Map<Long,Path> omp=Map.of(100L,dist.resolve("lib/ollama/libomp.dll"));
+        var initialized=new HashMap<>(child);
+        initialized.put("KMP_BLOCKTIME","200");initialized.put("__KMP_REGISTERED_LIB_43","00007FFE1234ABCD-cafe1234-libomp.dll");
+        var live=new OllamaVisionEnvironment.ProcessState(runnerState.image(),runner,dist,initialized,42);
+        var launch=OllamaVisionEnvironment.runnerLaunchState(instance,live,43,omp);
+        assertEquals(runnerState,launch);assertEquals("200",live.environment().get("KMP_BLOCKTIME"));
+        assertThrows(IOException.class,()->OllamaVisionEnvironment.runnerLaunchState(instance,live,44,omp));
+        assertThrows(IOException.class,()->OllamaVisionEnvironment.runnerLaunchState(instance,live,43,Map.of()));
+        for(var invalid:List.of(Map.of("KMP_BLOCKTIME","0"),Map.of("KMP_DUPLICATE_LIB_OK","TRUE"),
+                Map.of("__KMP_REGISTERED_LIB_43","00007FFE1234ABCD-cafe1234-other.dll"),Map.of("OMP_NUM_THREADS","1"))){
+            var changed=new HashMap<>(initialized);changed.putAll(invalid);
+            assertThrows(IOException.class,()->OllamaVisionEnvironment.runnerLaunchState(instance,
+                new OllamaVisionEnvironment.ProcessState(runnerState.image(),runner,dist,changed,42),43,omp));
+        }
+        var console=new OllamaVisionEnvironment.ProcessState(windows.resolve("System32/conhost.exe"),List.of("0x4"),windows,child,43);
+        OllamaVisionEnvironment.validateConsoleHost(instance,console,launch,43,windows);
+        for(var changed:List.of(
+                new OllamaVisionEnvironment.ProcessState(dist.resolve("conhost.exe"),console.arguments(),windows,child,43),
+                new OllamaVisionEnvironment.ProcessState(console.image(),List.of("0x4","cmd.exe"),windows,child,43),
+                new OllamaVisionEnvironment.ProcessState(console.image(),List.of("--headless","0x4"),windows,child,43),
+                new OllamaVisionEnvironment.ProcessState(console.image(),console.arguments(),dist,child,43),
+                new OllamaVisionEnvironment.ProcessState(console.image(),console.arguments(),windows,initialized,43),
+                new OllamaVisionEnvironment.ProcessState(console.image(),console.arguments(),windows,child,44))){
+            assertThrows(IOException.class,()->OllamaVisionEnvironment.validateConsoleHost(instance,changed,launch,43,windows));
+        }
+        assertThrows(IOException.class,()->OllamaVisionEnvironment.validateConsoleHost(instance,console,server,43,windows));
         for(var invalid:List.of(Map.of("LLAMA_UNKNOWN","1"),Map.of("CUDA_VISIBLE_DEVICES","0,0"),
                 Map.of("SYSTEMROOT","D:/override"),Map.of("LLAMA_MEDIA_MARKER","invalid"),Map.of("cuda_visible_devices","0"))){
             var bad=new HashMap<>(child);bad.putAll(invalid);

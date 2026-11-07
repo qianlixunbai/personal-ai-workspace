@@ -110,7 +110,7 @@ public sealed class MemoryAskTests
         var window = new AssistantWindow(new Controller(), client); window.Show(); window.ActionSelector.SelectedIndex = 2;
         Assert.Equal(Visibility.Visible, window.MemoryAskPanel.Visibility); Assert.Empty(window.MemoryReferences);
         window.ApplyMemorySelection([new(Id, 1, PrivateTitle, MemoryType.PROJECT_NOTE)]);
-        Assert.Contains("1 selected", window.MemoryCountText.Text); Assert.Contains(PrivateTitle, window.MemorySelectionText.Text);
+        Assert.Equal("本次使用 1 条记忆", window.MemoryCountText.Text); Assert.Contains(PrivateTitle, window.MemorySelectionText.Text);
         window.MemoryAdmissionFailed(DesktopError.MemoryAskBudget); window.MemoryOperationEnded(false); Assert.Single(window.MemoryReferences);
         window.MemoryAdmissionFailed(DesktopError.MemorySelectionStale); Assert.True(window.MemoryNeedsReview); Assert.False(window.TranslateButton.IsEnabled);
         window.ApplyMemorySelection([new(Id, 2, PrivateTitle, MemoryType.PROJECT_NOTE)]); Assert.False(window.MemoryNeedsReview);

@@ -119,7 +119,7 @@ public final class OllamaProvider implements Provider {
 
     public String id() { return "ollama"; }
     public ModelProfile.Locality locality() { return ModelProfile.Locality.LOCAL; }
-    public Set<Capability> capabilities() { return Set.of(Capability.TEXT_GENERATION); }
+    public Set<Capability> capabilities() { return Set.of(Capability.TEXT_GENERATION, Capability.STRUCTURED_OUTPUT); }
 
     @PreDestroy
     public void close() { if (client != null) client.shutdownNow(); if (transportTimer != null) transportTimer.shutdownNow(); }
@@ -171,10 +171,20 @@ public final class OllamaProvider implements Provider {
         // v0.40.0's explicit local source rejects a cloud-backed replacement before forwarding inference.
         String requestModel = OllamaVisionAdmission.candidate(p.model(),reservation.model().runner(),reservation.model().digest())
             ? "sha256-"+reservation.model().digest()+":local" : p.model() + ":local";
-        byte[] payload = json.writeValueAsBytes(Map.of("model", requestModel, "runner", reservation.model().runner(), "stream", false, "think", false,
+        var requestBody = new java.util.LinkedHashMap<String, Object>(Map.of("model", requestModel, "runner", reservation.model().runner(), "stream", false, "think", false,
                 "messages", messages,
                 "options", Map.of("num_ctx", p.contextBudget(), "num_predict", p.outputBudget(),
                         "temperature", p.temperature())));
+        if (execution.responseFormat() != io.github.qianlixunbai.workspace.provider.ResponseFormat.TEXT) {
+            if (image != null) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "OUTPUT_CONTRACT");
+            requestBody.put("format", execution.responseFormat().schema());
+        }
+        byte[] payload = json.writeValueAsBytes(requestBody);
+        // Conservative whole-wire bound for this additional schema, without raising
+        // context/output budgets or silently dropping the requested contract.
+        if (execution.responseFormat() != io.github.qianlixunbai.workspace.provider.ResponseFormat.TEXT
+                && payload.length + p.outputBudget() > p.contextBudget())
+            throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "INPUT_BUDGET");
         Duration requestBudget=image==null ? settings.requestTimeout() : Duration.ofSeconds(120);
         if(image!=null && payload.length>6*1024*1024) throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"VISION_PAYLOAD");
         HttpRequest request = HttpRequest.newBuilder(base.resolve("/api/chat"))

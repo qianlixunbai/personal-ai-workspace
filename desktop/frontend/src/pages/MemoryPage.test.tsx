@@ -154,6 +154,36 @@ it('generates editable grounded memory candidates and saves only after explicit 
   expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
   expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(2)
 })
+it('refuses rewritten evidence and obvious translation without repairing, retrying or saving the candidate', async () => {
+  const port = new ConversationMemoryService()
+  const original = '我以前喜欢长段落，现在不再喜欢了。今后讨论琥珀项目时，我偏好简短要点。'
+  const value = { type: 'PREFERENCE', title: 'Prefer short points for Amber project',
+    content: 'User now prefers short bullet points instead of long paragraphs when discussing the Amber project.',
+    evidence: '我现在不再喜欢长段落，今后讨论琥珀项目时，我偏好简短要点。' }
+  port.detail.turns[0]!.userMessage.content = original
+  port.candidateResult = JSON.stringify({ candidate: value })
+  const { title, content } = await setupConversationDraft(port)
+  await chooseMessage('USER'); await click('生成记忆候选')
+  expect(screen.getByRole('alert').textContent).toContain('逐字一致的连续摘录')
+  expect(screen.queryByLabelText('候选标题')).toBeNull()
+  expect(content.value).toBe(original); expect(title.value).toBe('')
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(1)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+
+  // A second explicit click with synthetic exact evidence isolates the language
+  // guard; this is not an auto-repair or a real-model validation result.
+  port.candidateResult = JSON.stringify({ candidate: { ...value, evidence: '今后讨论琥珀项目时，我偏好简短要点。' } })
+  await click('生成记忆候选')
+  expect(screen.getByRole('alert').textContent).toContain('请保持原文语言')
+  expect(screen.queryByRole('button', { name: '采用候选到编辑器' })).toBeNull()
+  expect(content.value).toBe(original)
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(2)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+  edit(title, '琥珀项目文字偏好'); edit(content, '讨论琥珀项目时，我偏好简短要点。')
+  await click('保存')
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(2)
+})
 it('checks exact candidate duplicates with bounded reads, explicit review and no false completeness', async () => {
   const port = new ConversationMemoryService(), body = 'Synthetic duplicate 😀 body'
   port.candidateResult = JSON.stringify({ candidate: { type: 'PROJECT_NOTE', title: 'Candidate', content: body, evidence: 'Synthetic user 1' } })

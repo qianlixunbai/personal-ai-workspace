@@ -47,10 +47,32 @@ public final class V1IsolatedOllamaInstance implements OllamaVisionEnvironment.I
     public String id(){return ID;}
     public Path root(){return ROOT;}
     public Path distribution(){return ROOT.resolve("dist/0.40.1");}
-    public Path models(){return ROOT.resolve("models");}
+    public Path models(){
+        // Model storage belongs to the admitted private Profile. Repository ancestors
+        // are build inputs, not a private-data authority; never repair their ACLs.
+        try{return io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence/isolated-ollama-models");}
+        catch(java.io.IOException denied){throw new IllegalStateException("Isolated model Profile unavailable");}
+    }
     public URI endpoint(){return URI.create("http://127.0.0.1:11435");}
     public String serverHash(){return "74462c0d7caa1aeb547f086ef1662f2b23d1cb573f70d21027e72250679e9112";}
     public String pinsSha256(){return PINS_SHA;}
     public OllamaVisionEnvironment.Pin driver(){return new OllamaVisionEnvironment.Pin(4714728L,"3fe38dc3b7eb45f4c364d87df01dbf1c224c5ffd96b542cea8c0dca215330b84");}
+    // Read-only reviewed driver/C++ closure loaded by the pinned runner on this development
+    // machine. Each file also requires OS-protected storage and valid WinTrust evidence.
+    // No driver installation/update, wildcard directory trust, or image policy grant.
+    public Map<String,OllamaVisionEnvironment.Pin> platformModules(){
+        String root="System32/DriverStore/FileRepository/nv_dispi.inf_amd64_0373d825005116d0/";
+        return Map.of(
+            "System32/nvapi64.dll",new OllamaVisionEnvironment.Pin(572368L,"0cf848e18a9bdf8860e2cb4be1841eac236d2da1fe63894f8b30f12582adfe8a"),
+            "System32/MSVCP140.dll",new OllamaVisionEnvironment.Pin(643512L,"7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca"),
+            "System32/VCRUNTIME140.dll",new OllamaVisionEnvironment.Pin(178616L,"d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7"),
+            "System32/VCRUNTIME140_1.dll",new OllamaVisionEnvironment.Pin(50112L,"a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e"),
+            root+"nvapi64_impl.dll",new OllamaVisionEnvironment.Pin(5562712L,"df6455ccf83e43cfe68f405af1eec4e053c7f95da998bf358053b7583980c2f4"),
+            root+"nvcuda64.dll",new OllamaVisionEnvironment.Pin(32173288L,"a53459b5328cc90b9cff71269fbca70ca0d75e2b728f100f8b160ea53b7a47d6"),
+            root+"nvcudart_hybrid64.dll",new OllamaVisionEnvironment.Pin(1146088L,"22f8f0bf13d6b1df704e540671006cfed1157f21a4f63bac07b5bb233afe9b43"),
+            root+"nvdxgdmal64.dll",new OllamaVisionEnvironment.Pin(712424L,"7eff22a98927a07faeeae54e1fcb807e56d5285071f09af9ccf4d1290da825cf"),
+            root+"nvobjectloader64.dll",new OllamaVisionEnvironment.Pin(14654184L,"644d2bedc68b444549660de2bdb5a42174ec2b2878b7964d1a06b73d85cd0c71"),
+            root+"nvptxJitCompiler64.dll",new OllamaVisionEnvironment.Pin(29973224L,"93035b61192f535093a80bd72599209d4a9b94eb701f1efa14e33e3f02d1e92b"));
+    }
     public Map<String,OllamaVisionEnvironment.Pin> pins(){return files;}
 }

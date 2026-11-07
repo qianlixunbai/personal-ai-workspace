@@ -13,7 +13,7 @@ public sealed class AssistantOperation(RuntimeClient client, TimeSpan? pollingIn
     public bool Accepted { get; private set; }
     public bool AdmissionOutcomeUnknown { get; private set; }
     public async Task<RuntimeTask> RunAsync(AssistantInput input, Action<RuntimeTask> progress, CancellationToken lifetime,
-        IReadOnlyList<MemoryReference>? memories = null)
+        IReadOnlyList<MemoryReference>? memories = null, bool memoryCandidate = false)
     {
         Guid? id = null;
         bool terminal = false;
@@ -25,14 +25,16 @@ public sealed class AssistantOperation(RuntimeClient client, TimeSpan? pollingIn
             var selection = memories?.ToArray();
             bool memoryAsk = selection is { Length: > 0 };
             if (memoryAsk && input.Action != AssistantAction.Ask) throw new DesktopException(DesktopError.InvalidRequest);
+            if (memoryCandidate && (input.Action != AssistantAction.Ask || memoryAsk)) throw new DesktopException(DesktopError.InvalidRequest);
             capability = input.Action switch { AssistantAction.Translate => "translate", AssistantAction.Summarize => "summarize", AssistantAction.Ask => "ask", _ => throw new DesktopException(DesktopError.InvalidRequest) };
-            promptVersion = memoryAsk ? "memory-ask-v1" : capability + "-v1";
+            promptVersion = memoryCandidate ? "memory-candidate-v1" : memoryAsk ? "memory-ask-v1" : capability + "-v1";
             RuntimeTask task;
             try { task = await (input.Action switch
             {
                 AssistantAction.Translate => client.SubmitTranslateAsync(new(input.Text, input.TargetLanguage), lifetime),
                 AssistantAction.Summarize => client.SubmitSummarizeAsync(new(input.Text), lifetime),
                 AssistantAction.Ask => memoryAsk ? client.SubmitMemoryAskAsync(new(input.Text, selection!), lifetime)
+                    : memoryCandidate ? client.SubmitMemoryCandidateAsync(new(input.Text), lifetime)
                     : client.SubmitAskAsync(new(input.Text), lifetime),
                 _ => throw new DesktopException(DesktopError.InvalidRequest)
             }); }

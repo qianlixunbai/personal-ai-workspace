@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.List;
 
 public interface Provider {
-    enum Capability { TEXT_GENERATION }
+    enum Capability { TEXT_GENERATION, STRUCTURED_OUTPUT }
     String id();
     ModelProfile.Locality locality();
     Set<Capability> capabilities();
@@ -21,8 +21,12 @@ public interface Provider {
         @Override public String toString() { return "ChatMessage[redacted]"; }
     }
     record ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages,
-                             io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation reservation) {
-        public ProviderExecution { messages = List.copyOf(messages); }
+                             io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation reservation, ResponseFormat responseFormat) {
+        public ProviderExecution { messages = List.copyOf(messages); java.util.Objects.requireNonNull(responseFormat); }
+        public ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages,
+                                 io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation reservation) {
+            this(profile, privacyMode, system, input, messages, reservation, ResponseFormat.TEXT);
+        }
         public ProviderExecution(ModelProfile profile, PrivacyMode privacyMode, String system, String input, List<ChatMessage> messages) {
             this(profile, privacyMode, system, input, messages, null);
         }

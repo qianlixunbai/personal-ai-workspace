@@ -3,7 +3,7 @@ import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { OperationView } from '../bridge/contracts'
 import { validDraft } from '../bridge/memory'
 import type { MemoryDraft, MemoryType } from '../bridge/memory'
-import { candidatePrompt, checkCandidateDuplicates, parseCandidate } from './memoryCandidate'
+import { candidatePrompt, checkCandidateDuplicates, MemoryCandidateError, parseCandidate } from './memoryCandidate'
 import type { CandidateDuplicateCheck, MemoryCandidate, MemorySourceRole } from './memoryCandidate'
 
 const terminal = (value: OperationView) => !['QUEUED', 'RUNNING'].includes(value.status)
@@ -69,9 +69,13 @@ export function MemoryCandidatePanel({ bridge, enabled, draft, role, apply }: {
     try {
       const parsed = parseCandidate(value.result!, source.current!.draft.content)
       setCandidate(parsed)
-      setNotice(parsed ? '候选尚未保存。请对照摘录审阅、编辑，再采用到编辑器。' : '模型未提出适合长期保留的记忆；原草稿保持不变。')
-    } catch {
-      setRawResult(value.result!); setError('模型输出不符合候选格式、内容限制或原文摘录要求。未采用，未保存；可查看输出并手动整理原草稿。')
+      setNotice(parsed ? '候选尚未保存。请对照原文核对语言、项目与时间范围、否定关系和来源归属，审阅编辑后再采用。' : '模型未提出适合长期保留的记忆；原草稿保持不变。')
+    } catch (problem) {
+      const detail = problem instanceof MemoryCandidateError && problem.code === 'EVIDENCE'
+        ? '证据必须是原文中逐字一致的连续摘录，不能改写或拼接。'
+        : problem instanceof MemoryCandidateError && problem.code === 'LANGUAGE'
+          ? '候选标题或正文与来源文字明显不一致，请保持原文语言。' : ''
+      setRawResult(value.result!); setError('模型输出不符合候选格式、内容限制、原文摘录或语言要求。' + detail + '未采用，未保存；可查看输出并手动整理原草稿。')
       setNotice('')
     }
   }

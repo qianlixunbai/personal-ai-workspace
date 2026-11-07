@@ -58,6 +58,7 @@ class RuntimeApiTest {
     private static final AtomicInteger PROBE_CALLS = new AtomicInteger();
     private static final AtomicReference<String> BATCH_OUTPUT = new AtomicReference<>();
     private static final AtomicReference<JsonNode> LAST_CHAT = new AtomicReference<>();
+    private static final java.util.List<JsonNode> DESKTOP_CHATS = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile CountDownLatch slowEntered, slowRelease, slowExited;
     private static final int MOCK_PORT = freePort();
     private HttpServer mock;
@@ -71,6 +72,7 @@ class RuntimeApiTest {
     }
     @BeforeEach void resetFixture() throws Exception {
         MODE.set(0); CHAT_CALLS.set(0); PROBE_CALLS.set(0); BATCH_OUTPUT.set(null); LAST_CHAT.set(null);
+        DESKTOP_CHATS.clear();
         slowEntered = slowRelease = slowExited = null;
         mock = HttpServer.create();
         mock.createContext("/api/version", exchange -> {
@@ -111,6 +113,7 @@ class RuntimeApiTest {
             }
             CHAT_CALLS.incrementAndGet();
             LAST_CHAT.set(request);
+            if (Boolean.getBoolean("memory.desktop.fixture")) DESKTOP_CHATS.add(request);
             if (MODE.get() == 5) {
                 slowEntered.countDown();
                 try { slowRelease.await(5, TimeUnit.SECONDS); }
@@ -118,6 +121,9 @@ class RuntimeApiTest {
             }
             String output = MODE.get() == 4 ? "x".repeat(8193) :
                     BATCH_OUTPUT.get() == null ? "output-private-marker" : BATCH_OUTPUT.get();
+            if (Boolean.getBoolean("memory.desktop.fixture")) output = request.toString().contains("Propose at most one concise durable memory")
+                    ? "{\"candidate\":{\"type\":\"PREFERENCE\",\"title\":\"Amber concise replies\",\"content\":\"For project Amber, I prefer short bullet points.\",\"evidence\":\"I prefer short bullet points.\"}}"
+                    : "Synthetic provider reply. No real model was called.";
             byte[] bytes = (MODE.get() == 3 ? "malformed-private-marker" :
                     io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.completed(request.path("model").asString(), output)).getBytes(StandardCharsets.UTF_8);
             try (exchange) {
@@ -159,6 +165,42 @@ class RuntimeApiTest {
     }
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "memory.desktop.fixture", matches = "true")
+    void desktopMemoryWorkflowWithSyntheticProvider() throws Exception {
+        // The native owner creates a NEW Profile and holds its pin. No normal service,
+        // model or user credential is used. UI drives the real HTTP/Store contracts.
+        startMock();
+        Path evidence = io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence");
+        Path ready = evidence.resolve("desktop-ready.json"), done = evidence.resolve("desktop-done");
+        assertFalse(Files.exists(ready)); assertFalse(Files.exists(done));
+        token(); // Ensure the normal native credential has been created before publication.
+        Path writing = evidence.resolve("desktop-ready-writing.json");
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(writing);
+        Files.writeString(writing, JsonMapper.builder().build().writeValueAsString(
+                Map.of("port", port, "tokenFile", TOKEN.toString(), "syntheticProvider", true)));
+        Files.move(writing, ready, StandardCopyOption.ATOMIC_MOVE);
+        long deadline = System.nanoTime() + Duration.ofSeconds(220).toNanos();
+        while (!Files.exists(done) && System.nanoTime() < deadline) Thread.sleep(100);
+        assertTrue(Files.exists(done), "Desktop fixture timed out");
+        assertEquals("PASS", Files.readString(done));
+        assertEquals(5, DESKTOP_CHATS.size()); // source turn, candidate, retained twice, cleared turn
+        assertEquals(1, DESKTOP_CHATS.stream().filter(chat -> chat.toString().contains("Propose at most one concise durable memory")).count());
+        assertEquals(io.github.qianlixunbai.workspace.provider.ResponseFormat.MEMORY_CANDIDATE.schema(), DESKTOP_CHATS.get(1).path("format"));
+        for (int index : new int[]{0, 2, 3, 4}) assertFalse(DESKTOP_CHATS.get(index).has("format"));
+        var explicit = JsonMapper.builder().build().readTree(DESKTOP_CHATS.get(2).path("messages").get(1).path("content").asString());
+        assertEquals(1, explicit.path("explicitMemory").size());
+        assertEquals("For project Amber, I prefer short bullet points.", explicit.path("explicitMemory").get(0).path("content").asString());
+        assertEquals(DESKTOP_CHATS.get(2).path("messages").get(1), DESKTOP_CHATS.get(3).path("messages").get(1));
+        for (var chat : List.of(DESKTOP_CHATS.get(0), DESKTOP_CHATS.get(1), DESKTOP_CHATS.get(4)))
+            for (var message : chat.path("messages")) assertFalse(message.path("content").asString().startsWith("{\"explicitMemory\":"));
+        // Clearing explicit context does not erase prior source text from conversation history.
+        assertEquals("For project Amber, I prefer short bullet points.", DESKTOP_CHATS.get(4).path("messages").get(1).path("content").asString());
+        Path trace = evidence.resolve("desktop-provider-requests.json");
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(trace);
+        Files.writeString(trace, JsonMapper.builder().build().writeValueAsString(DESKTOP_CHATS));
+        System.out.println("DESKTOP_REAL_HTTP_SQLITE_SYNTHETIC_PROVIDER_VERIFIED");
+    }
     @Test
     @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.BEFORE_METHOD)
     void readinessV1FirstUseAndStrictQuery() throws Exception {
@@ -456,6 +498,50 @@ class RuntimeApiTest {
     private String memoryAskBody(String question, List<JsonNode> items) {
         return json.writeValueAsString(Map.of("question", question, "profile", "chat.balanced", "memories",
                 items.stream().map(item -> Map.of("id", item.path("id").asString(), "revision", item.path("revision").asLong())).toList()));
+    }
+
+    @Test
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD)
+    void nativeCandidateUsesFixedSchemaWithoutFallbackOrMemoryWrites() throws Exception {
+        startMock();
+        String endpoint = "/api/v1/ask/tasks";
+        String body = "{\"question\":\"Synthetic candidate extraction\",\"outputContract\":\"memory-candidate-v1\"}";
+        BATCH_OUTPUT.set("{\"candidate\":null}");
+        var result = submitAndPoll(endpoint, body);
+        assertEquals("SUCCEEDED", result.path("status").asString());
+        assertEquals("memory-candidate-v1", result.path("promptVersion").asString());
+        var schema = io.github.qianlixunbai.workspace.provider.ResponseFormat.MEMORY_CANDIDATE.schema();
+        assertEquals(schema, LAST_CHAT.get().path("format"));
+        assertEquals(AskPrompt.SYSTEM, LAST_CHAT.get().path("messages").get(0).path("content").asString());
+        assertFalse(LAST_CHAT.get().has("tools"));
+        assertTrue(LAST_CHAT.get().toString().getBytes(StandardCharsets.UTF_8).length + 2048 <= 8192);
+        assertEquals(0, tree(send("GET", "/api/v1/memory/items", null, true)).path("total").asInt());
+        var ordinary = submitAndPoll(endpoint, "{\"question\":\"ordinary\"}");
+        assertEquals("ask-v1", ordinary.path("promptVersion").asString());
+        assertFalse(LAST_CHAT.get().has("format"));
+
+        int calls = CHAT_CALLS.get();
+        for (String invalid : List.of(body.replace("memory-candidate-v1", "arbitrary-schema"),
+                "{\"question\":\"q\",\"format\":{\"type\":\"object\"}}",
+                "{\"question\":\"q\",\"outputContract\":{\"type\":\"object\"}}"))
+            assertEquals(400, send("POST", endpoint, invalid, true).statusCode());
+        var browserClient = pairBrowser("chrome-extension://" + "n".repeat(32));
+        assertEquals(403, browser("POST", endpoint, body, browserClient.credential(), browserClient.origin()).statusCode());
+        assertEquals(401, send("POST", endpoint, body, false).statusCode());
+        assertEquals(calls, CHAT_CALLS.get());
+
+        var oversized = submitAndPoll(endpoint, json.writeValueAsString(Map.of("question", "界".repeat(1800), "outputContract", "memory-candidate-v1")));
+        assertEquals("FAILED", oversized.path("status").asString());
+        assertEquals("INVALID_REQUEST", oversized.path("error").path("code").asString());
+        assertEquals(calls, CHAT_CALLS.get()); // No inference after schema pushes the wire envelope over budget.
+        MODE.set(3);
+        var rejected = submitAndPoll(endpoint, body);
+        assertEquals("FAILED", rejected.path("status").asString());
+        assertEquals("PROVIDER_RESPONSE_INVALID", rejected.path("error").path("code").asString());
+        assertEquals(calls + 1, CHAT_CALLS.get()); // No automatic retry without the schema.
+        // A malformed provider response intentionally quarantines this model generation;
+        // recreate the Spring fixture afterward, never force it ready to keep testing.
+        assertEquals(0, tree(send("GET", "/api/v1/memory/items", null, true)).path("total").asInt());
     }
 
     @Test void nativeMemoryCrudContractAndPrivateErrors() throws Exception {

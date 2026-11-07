@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "candidate": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["PREFERENCE", "PROJECT_NOTE"] },
+            "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "content": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "evidence": { "type": "string", "minLength": 1, "maxLength": 3000 }
+          },
+          "required": ["type", "title", "content", "evidence"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": ["candidate"],
+  "additionalProperties": false
+}

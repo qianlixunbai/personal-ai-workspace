@@ -41,7 +41,7 @@ public final class WindowsNativeGate {
         }catch(Exception failure){throw new IOException("Recovery startup unavailable");}
     }
     private static FileChannel owningJarPin;
-    private static Object owningJarKey;
+    private static String owningJarKey;
     private static Path owningJar;
     private static String owningJarHash;
     private static Class<?> isolatedClass;
@@ -136,8 +136,7 @@ public final class WindowsNativeGate {
         }
         admit(); // Never use a marker, fixture or caller-supplied expected digest to skip NativeGate.
         if (owningJarPin != null) {
-            if (!Objects.equals(owningJarKey, Files.readAttributes(owningJar,
-                    java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).fileKey())
+            if (!Objects.equals(owningJarKey, jarIdentity(owningJar))
                     || !owningJarPin.isOpen() || owningJarHash == null)
                 throw new IOException("Runtime owning JAR changed");
             return isolatedClass;
@@ -157,7 +156,8 @@ public final class WindowsNativeGate {
             for (Path parent = jar; parent != null; parent = parent.getParent())
                 if (!parent.equals(parent.toRealPath()) || Files.isSymbolicLink(parent)) throw new IOException();
             var before = Files.readAttributes(jar, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!before.isRegularFile() || before.fileKey() == null) throw new IOException();
+            if (!before.isRegularFile()) throw new IOException();
+            String beforeKey = jarIdentity(jar);
             pin = FileChannel.open(jar, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE);
             Map<Class<?>, String> keys = Map.of(dev,"classSha",WindowsNativeGate.class,"gateSha",owners.get(2),"providerSha",owners.get(3),"environmentSha");
             try (var zip = new java.util.zip.ZipFile(jar.toFile())) {
@@ -188,14 +188,19 @@ public final class WindowsNativeGate {
                 }
             }
             String fullHash = hashChannel(pin);
-            if (!Objects.equals(before.fileKey(), Files.readAttributes(jar,
-                    java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).fileKey())) throw new IOException();
-            owningJar = jar; owningJarKey = before.fileKey(); owningJarHash = fullHash; owningJarPin = pin; isolatedClass = dev;
+            if (!beforeKey.equals(jarIdentity(jar))) throw new IOException();
+            owningJar = jar; owningJarKey = beforeKey; owningJarHash = fullHash; owningJarPin = pin; isolatedClass = dev;
             pin = null;
             return dev;
         } catch (Exception | LinkageError failure) {
             throw new IOException("Runtime owning JAR STOP");
         } finally { if (pin != null) pin.close(); }
+    }
+    private static String jarIdentity(Path jar) throws IOException {
+        // Windows JDK fileKey may be null. Reuse the existing native volume +
+        // FILE_ID_128 check, including final path, disk type and single-link rules.
+        // The original NOSHARE_WRITE/NOSHARE_DELETE channel remains held for life.
+        return io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.Identity.read(jar, false);
     }
     private static Properties readBuildMarker(java.io.InputStream stream) throws IOException {
         byte[] bytes = stream.readNBytes(16385);

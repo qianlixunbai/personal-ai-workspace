@@ -64,16 +64,22 @@ public sealed partial class RuntimeClient : IDisposable
         input.Validate();
         return SubmitTaskAsync("ask", new { question = input.Question, profile = "chat.balanced" }, cancellationToken);
     }
-    private async Task<RuntimeTask> SubmitTaskAsync(string capability, object request, CancellationToken cancellationToken)
+    public Task<RuntimeTask> SubmitMemoryCandidateAsync(AskInput input, CancellationToken cancellationToken)
+    {
+        input.Validate();
+        return SubmitTaskAsync("ask", new { question = input.Question, profile = "chat.balanced", outputContract = "memory-candidate-v1" },
+            cancellationToken, "memory-candidate-v1");
+    }
+    private async Task<RuntimeTask> SubmitTaskAsync(string capability, object request, CancellationToken cancellationToken, string? promptVersion = null)
     {
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(request);
         using var body = await SendAsync(HttpMethod.Post, $"/api/v1/{capability}/tasks", payload, true, HttpStatusCode.Accepted, cancellationToken,
             (response, document) =>
             {
-                var task = ParseTask(document.RootElement, null, capability);
+                var task = ParseTask(document.RootElement, null, capability, promptVersion);
                 if (response.Headers.Location?.OriginalString != $"/api/v1/tasks/{task.TaskId:D}") throw Invalid();
             });
-        return ParseTask(body.RootElement, null, capability);
+        return ParseTask(body.RootElement, null, capability, promptVersion);
     }
 
     public Task<RuntimeTask> GetAsync(Guid taskId, CancellationToken cancellationToken) => TaskRequest(HttpMethod.Get, taskId, cancellationToken, null);

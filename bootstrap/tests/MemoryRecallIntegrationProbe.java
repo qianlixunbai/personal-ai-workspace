@@ -23,11 +23,16 @@ public final class MemoryRecallIntegrationProbe {
         WindowsNativeGate.admit();
         WindowsNativeGate.profileRoot();
         System.out.println("MEMORY_RECALL_NATIVE_ADMITTED");
-        var request = LauncherDiscoveryRequestBuilder.request()
-                .selectors(selectMethod("io.github.qianlixunbai.workspace.memory.MemoryStoreTest",
+        boolean postgresql = System.getProperty("memory.postgresql.fixture") != null;
+        var builder = LauncherDiscoveryRequestBuilder.request();
+        if (postgresql) builder.selectors(selectMethod("io.github.qianlixunbai.workspace.backup.MemoryPostgresqlLifecycleTest",
+                "freshPostgresqlPreservesReviewedMemoryLifecycleAndConversationReferences"));
+        else builder.selectors(selectMethod("io.github.qianlixunbai.workspace.memory.MemoryStoreTest",
                                 "recallRanksCurrentSourcesAndPreservesExplicitExactAdmission"),
                         selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest", "nativeMemoryCrudContractAndPrivateErrors"),
-                        selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest", "memoryAuthorizationAndEveryMutationBodyAreBounded"))
+                        selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest", "nativeCandidateUsesFixedSchemaWithoutFallbackOrMemoryWrites"),
+                        selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest", "memoryAuthorizationAndEveryMutationBodyAreBounded"));
+        var request = builder
                 .configurationParameter("junit.jupiter.tempdir.factory.default", PrivateTemp.class.getName())
                 .configurationParameter("junit.jupiter.tempdir.cleanup.mode.default", "NEVER")
                 .configurationParameter("junit.jupiter.execution.parallel.enabled", "false").build();
@@ -43,6 +48,6 @@ public final class MemoryRecallIntegrationProbe {
             for (var frame : error.getStackTrace()) if (frame.getClassName().startsWith("io.github.qianlixunbai"))
                 System.out.println("FRAME " + frame); // No private assertion messages or values.
         }
-        System.exit(result.getTestsSucceededCount() == 3 && result.getTotalFailureCount() == 0 ? 0 : 10);
+        System.exit(result.getTestsSucceededCount() == (postgresql ? 1 : 4) && result.getTotalFailureCount() == 0 ? 0 : 10);
     }
 }

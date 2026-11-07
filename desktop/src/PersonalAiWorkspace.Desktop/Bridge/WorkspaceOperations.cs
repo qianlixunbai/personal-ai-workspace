@@ -78,12 +78,12 @@ internal sealed class WorkspaceOperations : IDisposable
     internal Task<WorkspaceOperationView> SubmitAsync(string session, AssistantInput input, SelectedMemoryRef[] references)
         => SubmitCoreAsync(session, input, references, consumeSelection: true);
 
-    // Candidate generation is a stateless local Ask. It neither uses nor consumes
+    // Candidate generation is a stateless local Ask with a fixed output contract. It neither uses nor consumes
     // a selection held by the ordinary assistant UI, and has no Memory write path.
     internal Task<WorkspaceOperationView> ProposeMemoryAsync(string session, string text)
-        => SubmitCoreAsync(session, new(AssistantAction.Ask, text), [], consumeSelection: false);
+        => SubmitCoreAsync(session, new(AssistantAction.Ask, text), [], consumeSelection: false, memoryCandidate: true);
 
-    private async Task<WorkspaceOperationView> SubmitCoreAsync(string session, AssistantInput input, SelectedMemoryRef[] references, bool consumeSelection)
+    private async Task<WorkspaceOperationView> SubmitCoreAsync(string session, AssistantInput input, SelectedMemoryRef[] references, bool consumeSelection, bool memoryCandidate = false)
     {
         input.Validate();
         MemoryReference[] memories;
@@ -109,7 +109,7 @@ internal sealed class WorkspaceOperations : IDisposable
         var entry = new Entry(session, runner)
         {
             Capability = input.Action.ToString().ToLowerInvariant(),
-            PromptVersion = memories.Length > 0 ? "memory-ask-v1" : input.Action.ToString().ToLowerInvariant() + "-v1"
+            PromptVersion = memoryCandidate ? "memory-candidate-v1" : memories.Length > 0 ? "memory-ask-v1" : input.Action.ToString().ToLowerInvariant() + "-v1"
         };
         async Task Run()
         {
@@ -130,7 +130,7 @@ internal sealed class WorkspaceOperations : IDisposable
                         if (task.Terminal) entry.Finished = now();
                         admitted.TrySetResult(View(id, entry));
                     }
-                }, lifetime.Token, memories);
+                }, lifetime.Token, memories, memoryCandidate);
             }
             catch (DesktopException error)
             {

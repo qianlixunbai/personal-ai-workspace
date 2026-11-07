@@ -41,6 +41,7 @@ final class OllamaVisionEnvironment {
     interface Instance {
         String id(); Path root(); Path distribution(); Path models(); java.net.URI endpoint();
         String serverHash(); String pinsSha256(); Pin driver(); Map<String,Pin> pins();
+        default Map<String,Pin> platformModules(){return Map.of();}
     }
     private static Instance boundInstance;
     private static Path boundProfile;
@@ -284,7 +285,8 @@ final class OllamaVisionEnvironment {
                     || key.startsWith("GGML_") && !(key.equals("GGML_BACKEND_PATH")&&!server)
                     || key.startsWith("LLAMA_") || key.startsWith("LD_") || key.startsWith("DYLD_")
                     || key.startsWith("CUDA_") || key.startsWith("HIP_") || key.startsWith("ROCR_")
-                    || key.startsWith("NVIDIA_") || key.startsWith("VK_"))throw new IOException();
+                    || key.startsWith("NVIDIA_") || key.startsWith("VK_") || key.startsWith("KMP_")
+                    || key.startsWith("__KMP_") || key.startsWith("OMP_"))throw new IOException();
         }
         List<String> paths=new ArrayList<>();
         if(!server){paths.add(instance.distribution().resolve("lib/ollama").toString());paths.add(instance.distribution().resolve("lib/ollama/cuda_v13").toString());}
@@ -312,8 +314,8 @@ final class OllamaVisionEnvironment {
             }
         }else if(marker!=null || env.containsKey("LLAMA_ARG_FIT_TARGET"))throw new IOException();
         List<String> args=state.arguments();Map<String,String> values=new HashMap<>();Set<String> flags=new HashSet<>();
-        Set<String> allowedValues=Set.of("--model","--mmproj","--port","--host","-c","-np","--log-verbosity","--flash-attn","-b","-ub","-ngl","-t","--cache-type-k","--cache-type-v","--chat-template");
-        Set<String> allowedFlags=Set.of("--no-webui","--offline","--verbose","--no-log-prefix","--no-log-timestamps","--no-jinja","--no-mmproj-offload");
+        Set<String> allowedValues=Set.of("--model","--mmproj","--port","--host","-c","-np","--log-verbosity","--flash-attn","-b","-ub","-ngl","-t","--cache-type-k","--cache-type-v","--chat-template","--load-mode","--keep");
+        Set<String> allowedFlags=Set.of("--no-webui","--offline","--verbose","--no-log-prefix","--no-log-timestamps","--no-jinja","--no-mmproj-offload","--context-shift");
         for(int i=0;i<args.size();i++){
             String name=args.get(i);if(name.length()>16384)throw new IOException();
             if(allowedFlags.contains(name)){if(!flags.add(name))throw new IOException();}
@@ -328,6 +330,10 @@ final class OllamaVisionEnvironment {
         }
         if(!modelBlob(instance,OllamaVisionAdmission.LANGUAGE).toString().equals(values.get("--model"))
                 || !modelBlob(instance,OllamaVisionAdmission.PROJECTOR).toString().equals(values.get("--mmproj")))throw new IOException();
+        // Fixed 0.40.1 Windows defaults, reviewed against llm/llama_server.go.
+        // Remain part of the full snapshot/preprocessing identity; no image policy is granted.
+        if(!"none".equals(values.get("--load-mode")) || !flags.contains("--context-shift")
+                || !"4".equals(values.get("--keep")))throw new IOException();
         for(String key:List.of("-c","-np","-b","-ub","-ngl","-t"))if(values.containsKey(key)
                 && (!values.get(key).matches("[1-9][0-9]{0,5}") || Integer.parseInt(values.get(key))>262144))throw new IOException();
         if(!values.containsKey("-c") || !values.containsKey("-np") || !"4".equals(values.get("--log-verbosity"))
@@ -396,6 +402,33 @@ final class OllamaVisionEnvironment {
         }
         public void close(){com.sun.jna.platform.win32.Kernel32.INSTANCE.CloseHandle(handle);}
     }
+    // llama.cpp initializes libomp in the child after exec. Validate its fixed default
+    // and PID-bound registration before comparing the launch environment to the parent.
+    // The original, unmodified state still participates in both stable snapshots.
+    static ProcessState runnerLaunchState(Instance instance,ProcessState state,long pid,Map<Long,Path> modules)throws IOException {
+        Map<String,String> env=new HashMap<>(state.environment());
+        String registration="__KMP_REGISTERED_LIB_"+pid;
+        boolean initialized=env.containsKey("KMP_BLOCKTIME") || env.containsKey(registration);
+        if(initialized){
+            if(pid<=0 || !state.image().equals(instance.distribution().resolve("lib/ollama/llama-server.exe"))
+                    || !state.arguments().contains("--model") || !"200".equals(env.get("KMP_BLOCKTIME"))
+                    || !env.getOrDefault(registration,"").matches("[0-9A-F]{16}-cafe[0-9a-f]{4}-libomp\\.dll")
+                    || !modules.containsValue(instance.distribution().resolve("lib/ollama/libomp.dll")))throw new IOException();
+            env.remove("KMP_BLOCKTIME");env.remove(registration);
+        }
+        // Unknown keys and inherited OpenMP overrides must never be normalized away.
+        for(String key:env.keySet())if(key.startsWith("KMP_") || key.startsWith("__KMP_") || key.startsWith("OMP_"))throw new IOException();
+        return new ProcessState(state.image(),state.arguments(),state.cwd(),env,state.parent());
+    }
+    static void validateConsoleHost(Instance instance,ProcessState console,ProcessState parent,long parentPid,Path windows)throws IOException {
+        // Microsoft terminal ConsoleArgumentsTests: legacy system-loader server handle.
+        // No client command, arbitrary executable, flags, or separate environment is admitted.
+        if(parent==null || parentPid<=0 || console.parent()!=parentPid
+                || !console.image().equals(windows.resolve("System32/conhost.exe")) || !console.cwd().equals(windows)
+                || !console.arguments().equals(List.of("0x4"))
+                || !parent.image().equals(instance.distribution().resolve("lib/ollama/llama-server.exe"))
+                || !parent.arguments().contains("--model") || !console.environment().equals(parent.environment()))throw new IOException();
+    }
     private static Sample sampleIsolated(NativeSession session,Cancellation cancellation)throws Exception {
         long deadline=Math.min(session.deadline,System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos());
         session.checkGeneration(cancellation,deadline);
@@ -416,10 +449,18 @@ final class OllamaVisionEnvironment {
                         maps.put(entry.getKey(),modules(api,process.handle));
                     }
                     verifyTree(session,held,states,cancellation,deadline);
+                    Map<Long,ProcessState> launchStates=new TreeMap<>();
+                    for(var entry:states.entrySet())launchStates.put(entry.getKey(),
+                        runnerLaunchState(session.instance,entry.getValue(),entry.getKey(),maps.get(entry.getKey())));
+                    Set<Long> consoleParents=new HashSet<>();
                     for(var entry:states.entrySet()){
                         check(cancellation,deadline);
-                        validateRole(session.instance,entry.getValue(),entry.getKey()==session.server.process.pid(),
-                            session.state,session.server.process.pid(),windowsRoot(),session.verifiedProjectorSha);
+                        ProcessState state=launchStates.get(entry.getKey());
+                        if(state.image().equals(windowsRoot().resolve("System32/conhost.exe"))){
+                            if(!consoleParents.add(state.parent()))throw new IOException();
+                            validateConsoleHost(session.instance,state,launchStates.get(state.parent()),state.parent(),windowsRoot());
+                        }else validateRole(session.instance,state,entry.getKey()==session.server.process.pid(),
+                                session.state,session.server.process.pid(),windowsRoot(),session.verifiedProjectorSha);
                     }
                     return new Snapshot(session.generation()+(runner==null?"/unloaded":"/"+runner.generation()),session.state.arguments(),
                         runner==null?List.of():states.get(runner.process.pid()).arguments(),runner==null?Map.of():maps.get(runner.process.pid()),states,maps);
@@ -427,6 +468,12 @@ final class OllamaVisionEnvironment {
                 public String hashModules(Snapshot snapshot,Cancellation cancel,long until)throws Exception {
                     String payload=null;
                     for(var entry:snapshot.roles().entrySet()){
+                        if(entry.getValue().image().equals(windowsRoot().resolve("System32/conhost.exe"))){
+                            Map<Long,Path> system=snapshot.roleModules().get(entry.getKey());
+                            if(system.isEmpty() || !system.containsValue(entry.getValue().image()))throw new IOException();
+                            for(Path path:system.values())verifySystemModule(session.instance,path,cancel,until,pinned);
+                            continue;
+                        }
                         boolean runner=entry.getValue().arguments().contains("--model");
                         String digest=hashPinnedModules(session.instance,snapshot.roleModules().get(entry.getKey()),runner,cancel,until,pinned);
                         if(runner)payload=digest;
@@ -502,30 +549,44 @@ final class OllamaVisionEnvironment {
     }
     private static final Set<String> OS_AUTHORITIES=Set.of("S-1-5-18","S-1-5-32-544",
         "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464");
+    private static final String CATALOG_SERVICE="S-1-5-80-242729624-280608522-2219052887-3187409060-2225943459";
+    static boolean systemAuthorityAllowed(String sid,boolean catalog){
+        return OS_AUTHORITIES.contains(sid) || catalog && CATALOG_SERVICE.equals(sid);
+    }
+    static Pin pinnedPlatformModule(Instance instance,Path path,Path windows){
+        if(path.equals(windows.resolve("System32/nvcuda.dll")))return instance.driver();
+        for(var entry:instance.platformModules().entrySet())
+            if(path.equals(windows.resolve(entry.getKey())))return entry.getValue();
+        return null;
+    }
     private static void verifySystemModule(Instance instance,Path path,Cancellation cancellation,long deadline,List<HeldFile> pins)throws Exception {
         Path windows=windowsRoot();
         if(!path.startsWith(windows.resolve("System32")) && !path.startsWith(windows.resolve("WinSxS")))throw new IOException();
         String basename=path.getFileName().toString();
+        Pin platform=pinnedPlatformModule(instance,path,windows);
         for(String installed:instance.pins().keySet())
-            if(Path.of(installed).getFileName().toString().equalsIgnoreCase(basename))throw new IOException();
+            if(Path.of(installed).getFileName().toString().equalsIgnoreCase(basename) && platform==null)throw new IOException();
         var file=new HeldFile(path,false,false);pins.add(file);
         systemAuthority(file.handle);
         // The system tree may contain legitimate component-store hardlinks; install/model files cannot.
         for(Path parent=path.getParent();parent!=null && parent.startsWith(windows);parent=parent.getParent()){
             var dir=new HeldFile(parent,true,false);pins.add(dir);systemAuthority(dir.handle);
         }
-        if(path.equals(windows.resolve("System32/nvcuda.dll")))file.hash(instance.driver().bytes(),instance.driver().sha256(),cancellation,deadline);
+        if(platform!=null)file.hash(platform.bytes(),platform.sha256(),cancellation,deadline);
         else {long bytes=Files.size(path);if(bytes<1 || bytes>512L*1024*1024)throw new IOException();file.hash(bytes,null,cancellation,deadline);}
         check(cancellation,deadline);
-        if(!trustedSignature(file,cancellation,deadline,pins))throw new IOException();
+        if(!trustedSignature(file,cancellation,deadline,pins,platform!=null))throw new IOException();
         file.check();check(cancellation,deadline);
     }
     private static void systemAuthority(com.sun.jna.platform.win32.WinNT.HANDLE file)throws Exception {
+        systemAuthority(file,false);
+    }
+    private static void systemAuthority(com.sun.jna.platform.win32.WinNT.HANDLE file,boolean catalog)throws Exception {
         var api=com.sun.jna.platform.win32.Advapi32.INSTANCE;
         var owner=new com.sun.jna.ptr.PointerByReference();var dacl=new com.sun.jna.ptr.PointerByReference();var descriptor=new com.sun.jna.ptr.PointerByReference();
         if(api.GetSecurityInfo(file,1,5,owner,null,dacl,null,descriptor)!=0)throw new IOException();
         try {
-            if(owner.getValue()==null || dacl.getValue()==null || !OS_AUTHORITIES.contains(com.sun.jna.platform.win32.Advapi32Util.convertSidToStringSid(new com.sun.jna.platform.win32.WinNT.PSID(owner.getValue()))))throw new IOException();
+            if(owner.getValue()==null || dacl.getValue()==null || !systemAuthorityAllowed(com.sun.jna.platform.win32.Advapi32Util.convertSidToStringSid(new com.sun.jna.platform.win32.WinNT.PSID(owner.getValue())),catalog))throw new IOException();
             var acl=new com.sun.jna.platform.win32.WinNT.ACL(dacl.getValue());
             for(int i=0;i<Short.toUnsignedInt(acl.AceCount);i++){
                 var entry=new com.sun.jna.ptr.PointerByReference();if(!api.GetAce(acl,i,entry))throw new IOException();var ace=entry.getValue();
@@ -533,15 +594,15 @@ final class OllamaVisionEnvironment {
                 if(type==1 || (flags&8)!=0)continue;
                 if(type!=0 || Short.toUnsignedInt(ace.getShort(2))<16)throw new IOException();
                 String sid=com.sun.jna.platform.win32.Advapi32Util.convertSidToStringSid(new com.sun.jna.platform.win32.WinNT.PSID(ace.share(8)));
-                if((ace.getInt(4)&0x500d0156)!=0 && !OS_AUTHORITIES.contains(sid))throw new IOException();
+                if((ace.getInt(4)&0x500d0156)!=0 && !systemAuthorityAllowed(sid,catalog))throw new IOException();
             }
         }finally{if(descriptor.getValue()!=null)com.sun.jna.platform.win32.Kernel32.INSTANCE.LocalFree(descriptor.getValue());}
     }
-    private static boolean trustedSignature(HeldFile file,Cancellation cancellation,long deadline,List<HeldFile> pins)throws Exception {
+    private static boolean trustedSignature(HeldFile file,Cancellation cancellation,long deadline,List<HeldFile> pins,boolean pinnedPlatformFile)throws Exception {
         var api=com.sun.jna.Native.load("wintrust",NativeTrust.class);
         try(var name=wide(file.path.toString());var info=new com.sun.jna.Memory(32)){
             info.clear();info.setInt(0,32);info.setPointer(8,name);info.setPointer(16,file.handle.getPointer());
-            if(winTrust(api,1,info,!file.path.equals(windowsRoot().resolve("System32/nvcuda.dll"))))return true;
+            if(winTrust(api,1,info,!pinnedPlatformFile))return true;
         }
         check(cancellation,deadline);
         var admin=new com.sun.jna.ptr.PointerByReference();
@@ -560,12 +621,20 @@ final class OllamaVisionEnvironment {
                     char[] text=description.getCharArray(4,260);int end=0;while(end<text.length&&text[end]!=0)end++;
                     if(end==0 || end==text.length)throw new IOException();Path path=Path.of(new String(text,0,end));
                     if(!path.startsWith(windowsRoot().resolve("System32/CatRoot")) && !path.startsWith(windowsRoot().resolve("WinSxS/Catalogs")))throw new IOException();
-                    var held=new HeldFile(path,false,false);pins.add(held);systemAuthority(held.handle);
+                    // CryptSvc manages the OS catalog database. Its service SID is
+                    // accepted only here, never for executables, modules or model files.
+                    var held=new HeldFile(path,false,false);pins.add(held);systemAuthority(held.handle,true);
+                    Path windows=windowsRoot();
+                    for(Path parent=path.getParent();parent!=null && parent.startsWith(windows);parent=parent.getParent()){
+                        var dir=new HeldFile(parent,true,false);pins.add(dir);
+                        systemAuthority(dir.handle,parent.startsWith(windows.resolve("System32/CatRoot"))
+                            || parent.startsWith(windows.resolve("WinSxS/Catalogs")));
+                    }
                     try(var catName=wide(path.toString());var member=wide(file.path.toString());
                             var tag=wide(HexFormat.of().withUpperCase().formatHex(hash.getByteArray(0,32)));var info=new com.sun.jna.Memory(72)){
                         info.clear();info.setInt(0,72);info.setPointer(8,catName);info.setPointer(16,tag);info.setPointer(24,member);
                         info.setPointer(32,file.handle.getPointer());info.setPointer(40,hash);info.setInt(48,32);info.setPointer(64,admin.getValue());
-                        check(cancellation,deadline);return winTrust(api,2,info,!file.path.equals(windowsRoot().resolve("System32/nvcuda.dll")));
+                        check(cancellation,deadline);return winTrust(api,2,info,!pinnedPlatformFile);
                     }
                 }
             }
@@ -581,7 +650,7 @@ final class OllamaVisionEnvironment {
             data.setInt(48,1);data.setInt(72,0x1000|0x10|0x2000); // Cache-only, no UI/network, no MD2/MD4.
             try{
                 if(api.WinVerifyTrust(com.sun.jna.Pointer.createConstant(-1),action.getPointer(),data)!=0)return false;
-                if(!system)return true; // Only the independently full-SHA-pinned nvcuda anchor uses this branch.
+                if(!system)return true; // Only independently full-SHA-pinned platform files use this branch.
                 var provider=api.WTHelperProvDataFromStateData(data.getPointer(56));if(provider==null)throw new IOException();
                 var signer=api.WTHelperGetProvSignerFromChain(provider,0,false,0);
                 if(signer==null || signer.getInt(0)!=64 || signer.getInt(40)!=0)throw new IOException();

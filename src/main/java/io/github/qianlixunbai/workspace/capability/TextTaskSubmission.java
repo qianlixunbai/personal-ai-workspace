@@ -26,6 +26,14 @@ public class TextTaskSubmission {
     public TaskView submit(String capability, String profileId, String promptVersion, String system, String input) {
         return submit(capability, profileId, promptVersion, system, input, input == null ? 0 : input.length(), output -> output);
     }
+    public TaskView submitStructured(String capability, String profileId, String promptVersion, String system, String input,
+                                     ResponseFormat format) {
+        if (!ClientIdentity.NATIVE.equals(ClientIdentity.current()))
+            throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        var reservation = reserve(capability, profileId, promptVersion);
+        try { return submitReserved(reservation, capability, system, input, input == null ? 0 : input.length(), output -> output, format); }
+        finally { reservation.closeUnlessTransferred(); }
+    }
     public TaskView submitMapped(String capability, String profileId, String promptVersion, String system, String input,
                                  int textCharacters, Function<String, TaskResult> mapping) {
         return submit(capability, profileId, promptVersion, system, input, textCharacters, mapping);
@@ -48,6 +56,10 @@ public class TextTaskSubmission {
     }
     public TaskView submitReserved(ActiveModelManager.Reservation reservation, String capability, String system, String input,
                                    int textCharacters, Function<String, ?> mapping) {
+        return submitReserved(reservation, capability, system, input, textCharacters, mapping, ResponseFormat.TEXT);
+    }
+    private TaskView submitReserved(ActiveModelManager.Reservation reservation, String capability, String system, String input,
+                                   int textCharacters, Function<String, ?> mapping, ResponseFormat format) {
         var client = ClientIdentity.current();
         if (!client.allowedCapabilities().contains(capability)) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = reservation.profile();
@@ -60,8 +72,10 @@ public class TextTaskSubmission {
         policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
         if (!provider.capabilities().contains(Provider.Capability.TEXT_GENERATION))
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
+        if (format != ResponseFormat.TEXT && !provider.capabilities().contains(Provider.Capability.STRUCTURED_OUTPUT))
+            throw new WorkspaceException(ErrorCode.POLICY_DENIED, "OUTPUT_CONTRACT");
         Provider.ProviderExecution execution = new Provider.ProviderExecution(profile, PrivacyMode.LOCAL_ONLY, system, input,
-                List.of(new Provider.ChatMessage("user", input)), reservation);
+                List.of(new Provider.ChatMessage("user", input)), reservation, format);
         reservation.transferToTask();
         try { return tasks.submit(java.util.UUID.randomUUID(), client.clientId(), capability, profile, reservation.promptVersion(), cancellation -> {
             policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);

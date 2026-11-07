@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>PersonalAiWorkspace.Desktop.Tests</AssemblyName>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="MemoryDesktopAcceptanceProbe.cs" />
+    <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
+  </ItemGroup>
+</Project>

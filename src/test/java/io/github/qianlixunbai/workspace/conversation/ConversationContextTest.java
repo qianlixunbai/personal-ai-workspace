@@ -48,13 +48,16 @@ class ConversationContextTest {
     }
     @Test void escapedSystemAndProviderEnvelopeAreReservedWithinContextAndOutputBudget() {
         var profile=TestSettings.ask();
-        var context=ConversationContext.assemble(profile,"中".repeat(1810),List.of(),List.of());
+        // The explicit clearing/history guidance consumes more of the unchanged
+        // wire budget. Verify a fitting payload and rejection across that boundary.
+        var context=ConversationContext.assemble(profile,"中".repeat(1760),List.of(),List.of());
         var messages=new ArrayList<Map<String,String>>();messages.add(Map.of("role","system","content",ConversationContext.SYSTEM));
         for(var message:context.messages())messages.add(Map.of("role",message.role(),"content",message.content()));
         byte[] payload=tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(Map.of("model",profile.model(),"stream",false,"think",false,
             "messages",messages,"options",Map.of("num_ctx",profile.contextBudget(),"num_predict",profile.outputBudget(),"temperature",profile.temperature())));
         assertTrue(payload.length+profile.outputBudget()<=profile.contextBudget());
+        assertEquals(ErrorCode.INVALID_REQUEST,assertThrows(WorkspaceException.class,()->ConversationContext.assemble(profile,"中".repeat(1810),List.of(),List.of())).error().code());
         var longModel=new io.github.qianlixunbai.workspace.model.ModelProfile(profile.id(),profile.provider(),"x".repeat(1000),profile.locality(),profile.version(),profile.contextBudget(),profile.outputBudget(),profile.temperature(),profile.maxTextCharacters());
-        assertEquals(ErrorCode.INVALID_REQUEST,assertThrows(WorkspaceException.class,()->ConversationContext.assemble(longModel,"中".repeat(1810),List.of(),List.of())).error().code());
+        assertEquals(ErrorCode.INVALID_REQUEST,assertThrows(WorkspaceException.class,()->ConversationContext.assemble(longModel,"中".repeat(1760),List.of(),List.of())).error().code());
     }
 }

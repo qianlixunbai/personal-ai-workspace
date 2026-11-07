@@ -1,5 +1,7 @@
 # 显式相关记忆检索：完成与验证
 
+后续最终状态：本报告仅代表原检索增量；后续完整应用／真实模型、重启持久化、合成桌面回归和 PostgreSQL Store 综合场景已通过必要验收。见[整个显式记忆系统完成报告](MEMORY-SYSTEM-COMPLETION-REPORT.md)；[历史 WIP 与失败记录](MEMORY-SYSTEM-ACCEPTANCE-WIP.md)保留，不以检索单项代替整个模块验收。
+
 2026-11-07。基线 `32819ceb468c8bc95b02b9142d3c4d744030f530`，分支 `codex/recovery-v3-workspace-core`。本增量完成必要验证；仍为 Development-only。此前的排查过程保留在 [WIP 交接](MEMORY-RECALL-WIP-HANDOFF.md)，其中“尚未通过完整联调”的结论已由本文更新。
 
 ## 使用与实现

@@ -3,7 +3,8 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 
-// A fresh synthetic Profile only. No existing Profile, credential or service can be supplied.
+// Always creates a fresh synthetic Profile. Optional PostgreSQL input is a fresh fixture
+// whose private path, cluster and process ownership are checked before database mutation.
 internal static class MemoryRecallIntegrationProbe
 {
     private const BindingFlags Methods = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -13,7 +14,7 @@ internal static class MemoryRecallIntegrationProbe
         string stage = "INPUT";
         try
         {
-            if (args.Length != 4) return 2;
+            if (args.Length is not (4 or 5)) return 2;
             string java = Path.GetFullPath(args[0]), jna = Path.GetFullPath(args[1]),
                 classpath = File.ReadAllText(args[2]).Trim(), evidence = Path.GetFullPath(args[3]);
             var assembly = typeof(PersonalAiWorkspace.Desktop.MemorySelectionWindow).Assembly;
@@ -36,7 +37,11 @@ internal static class MemoryRecallIntegrationProbe
                 "-Dworkspace.native.bootstrap=" + helper, "-Djna.boot.library.path=" + Path.Combine(root, "jna-5.17.0-win32-x86-64"),
                 "-Djna.boot.library.name=jnidispatch", "-Djna.nosys=true", "-Djna.noclasspath=true", "-Djna.nounpack=true",
                 "-Djava.io.tmpdir=" + Path.Combine(root, "evidence"), "-Djna.tmpdir=" + Path.Combine(root, "evidence"),
-                "-cp", classpath, "MemoryRecallIntegrationProbe" }) start.ArgumentList.Add(option);
+                "-cp", classpath }) start.ArgumentList.Add(option);
+            // Optional, fresh synthetic PostgreSQL fixture; the Java test verifies its private
+            // path, owning process and empty cluster before any database mutation.
+            if (args.Length == 5) start.ArgumentList.Add("-Dmemory.postgresql.fixture=" + Path.GetFullPath(args[4]));
+            start.ArgumentList.Add("MemoryRecallIntegrationProbe");
             stage = "JAVA";
             using var job = (IDisposable)Owner("RuntimeProcessJob").GetMethod("Create", Methods)!.Invoke(null, null)!;
             using var child = Process.Start(start) ?? throw new IOException();
@@ -62,7 +67,7 @@ internal static class MemoryRecallIntegrationProbe
             Console.WriteLine("MEMORY_RECALL_STOP stage=" + stage + " type=" + actual.GetType().Name);
             Console.WriteLine("FRAMES " + string.Join(" | ", new StackTrace(actual).GetFrames().Select(f =>
                 f.GetMethod()?.DeclaringType?.Name + "." + f.GetMethod()?.Name)));
-            if (args.Length == 4 && Directory.Exists(args[3]) && !File.Exists(Path.Combine(args[3], "failure.json"))) File.WriteAllText(Path.Combine(args[3], "failure.json"),
+            if (args.Length >= 4 && Directory.Exists(args[3]) && !File.Exists(Path.Combine(args[3], "failure.json"))) File.WriteAllText(Path.Combine(args[3], "failure.json"),
                 JsonSerializer.Serialize(new { stage, type = actual.GetType().Name, frames = new StackTrace(actual).GetFrames()
                     .Select(f => f.GetMethod()?.DeclaringType?.Name + "." + f.GetMethod()?.Name).ToArray() }));
             return 10;

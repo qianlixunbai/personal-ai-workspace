@@ -28,6 +28,7 @@ public sealed class WorkspaceOperationsTests
         internal CancellationToken PostToken;
         internal readonly List<string> Paths = [];
         internal readonly List<int> MemoryCounts = [];
+        internal readonly List<bool> CandidateContracts = [];
         private readonly Dictionary<Guid, (string Capability, string Version)> tasks = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellation)
         {
@@ -42,13 +43,16 @@ public sealed class WorkspaceOperationsTests
                 using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellation));
                 var root = body.RootElement;
                 bool memory = path == "/api/v1/memory/ask/tasks";
+                bool candidate = root.TryGetProperty("outputContract", out var contract);
+                if (candidate) Assert.Equal("memory-candidate-v1", contract.GetString());
+                CandidateContracts.Add(candidate);
                 string capability = path.Contains("summarize") ? "summarize" : path.Contains("translate") ? "translate" : "ask";
-                Assert.Equal(memory || capability == "translate" ? 3 : 2, root.EnumerateObject().Count());
+                Assert.Equal(memory || candidate || capability == "translate" ? 3 : 2, root.EnumerateObject().Count());
                 MemoryCounts.Add(memory ? root.GetProperty("memories").GetArrayLength() : 0);
                 if (memory) Assert.Equal(9007199254740993L, root.GetProperty("memories")[0].GetProperty("revision").GetInt64());
                 if (Stale && memory) return RuntimeClientTests.Response(HttpStatusCode.Conflict,
                     "{\"code\":\"MEMORY_SELECTION_STALE\",\"message\":\"private raw memory\",\"phase\":\"ADMISSION\"}");
-                id = Guid.NewGuid(); lock (tasks) tasks.Add(id, (capability, memory ? "memory-ask-v1" : capability + "-v1"));
+                id = Guid.NewGuid(); lock (tasks) tasks.Add(id, (capability, candidate ? "memory-candidate-v1" : memory ? "memory-ask-v1" : capability + "-v1"));
                 if (Hold is not null) await Hold.Task;
             }
             else id = Guid.Parse(path.Split('/').Last());
@@ -129,9 +133,11 @@ public sealed class WorkspaceOperationsTests
         await f.Receive(request); string id = f.Id;
         Assert.Equal(TaskState.SUCCEEDED, (await f.Terminal(id)).Status);
         Assert.Equal("/api/v1/ask/tasks", f.Handler.Paths[0]); Assert.Equal([0], f.Handler.MemoryCounts);
+        Assert.Equal([true], f.Handler.CandidateContracts);
         await f.Receive(request); Assert.Equal(1, f.Handler.Posts);
         await f.Assistant(refs: Fixture.Refs()); await f.Terminal(f.Id);
         Assert.Equal(new[] { 0, 1 }, f.Handler.MemoryCounts);
+        Assert.Equal(new[] { true, false }, f.Handler.CandidateContracts);
         f.Handler.Finish = false; await f.Call("assistant.proposeMemory", new { text = "Synthetic cancellation" }); string active = f.Id;
         await f.Call("operations.cancel", new { operationId = active });
         Assert.Equal(TaskState.CANCELLED, (await f.Terminal(active)).Status);
