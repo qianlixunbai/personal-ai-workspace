@@ -48,22 +48,42 @@ internal sealed partial class ProfileRecoveryCoordinator
         ObjectDisposedException.ThrowIf(disposed, this);
         if (maintenanceRuntimeLock is not null || sourceReadiness is not null) throw Stop();
         RequireHex(profileId, 32);
-        foreach (string directory in new[] { "evidence", "model-state" }) HoldPrivateDirectory(Path.Combine(root, directory));
         using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-        var runtime = OpenRecord(Path.Combine(root, "evidence", "runtime-admission.lock"), write: true);
-        FileStream? model = null;
+        FileStream? runtime = null, model = null;
+        string sourceState = "NOT_READ_RUNTIME_EXCLUSION_UNAVAILABLE";
+        string modelState;
         try
         {
+            HoldPrivateDirectory(Path.Combine(root, "evidence"));
+            runtime = OpenRecord(Path.Combine(root, "evidence", "runtime-admission.lock"), write: true);
+            ValidateFileAcl(runtime, user.User!);
+            if (runtime.Length != 0) throw Stop();
+            sourceState = "NOT_READ_MODEL_EXCLUSION_UNAVAILABLE";
+            HoldPrivateDirectory(Path.Combine(root, "model-state"));
             model = OpenRecord(Path.Combine(root, "model-state", ".lock"));
-            ValidateFileAcl(runtime, user.User!); ValidateFileAcl(model, user.User!);
-            if (runtime.Length != 0 || model.Length != 0) throw Stop();
+            ValidateFileAcl(model, user.User!);
+            if (model.Length != 0) throw Stop();
+            string[] names = Directory.EnumerateFileSystemEntries(Path.Combine(root, "model-state"))
+                .Take(4).Select(Path.GetFileName).ToArray()!;
+            modelState = names.Length <= 3 && names.All(name => name is ".lock" or "active-model.json" or "validation-required.json")
+                ? "NO_GUARD_FILE_OBSERVED" : "UNRESOLVED_MODEL_STATE";
             held.Add(runtime); held.Add(model); maintenanceRuntimeLock = runtime;
         }
-        catch { model?.Dispose(); runtime.Dispose(); throw; }
-        string[] names = Directory.EnumerateFileSystemEntries(Path.Combine(root, "model-state"))
-            .Take(4).Select(Path.GetFileName).ToArray()!;
-        string modelState = names.Length <= 3 && names.All(name => name is ".lock" or "active-model.json" or "validation-required.json")
-            ? "NO_GUARD_FILE_OBSERVED" : "UNRESOLVED_MODEL_STATE";
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            model?.Dispose(); runtime?.Dispose();
+            // A historical DPAPI observation can be inspected without granting maintenance.
+            // Without the live exclusion, never call this a complete/stable writer inventory.
+            var history = InspectRuntimeHistory(profileId);
+            if (history.RegisteredAttempts is not null)
+                history = history with { State = "HISTORY_OBSERVED_WITHOUT_EXCLUSION",
+                    Issues = history.Issues.Append("WRITER_EXCLUSION_UNAVAILABLE").ToArray() };
+            sourceReadiness = new(new(1, "WORKSPACE_NATIVE_PREFLIGHT", 0, profileId, "BLOCKED",
+                "UNREGISTERED_WRITERS_UNPROVEN", "NOT_INSPECTED_EXCLUSION_UNAVAILABLE", sourceState,
+                null, null, 0, 0), history);
+            return sourceReadiness;
+        }
+        catch { model?.Dispose(); runtime?.Dispose(); throw; }
         sourceReadiness = new(new(1, "WORKSPACE_NATIVE_PREFLIGHT", 0, profileId, "BLOCKED",
             "UNREGISTERED_WRITERS_UNPROVEN", modelState, modelState == "NO_GUARD_FILE_OBSERVED"
                 ? "NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED" : "NOT_READ_MODEL_STATE_UNRESOLVED",

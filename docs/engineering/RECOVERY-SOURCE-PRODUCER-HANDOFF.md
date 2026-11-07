@@ -1,5 +1,24 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：已授权的真实只读核查与排他失败分项诊断
+
+基于本地 `21b9159`。用户另行明确同意读取当前工作区的受保护 Runtime 历史，以及使用本机已有应用配置连接数据库、只读核对连接／角色等元数据；仍禁止读取业务数据、展示／另存密码、停止服务和实际备份／恢复。**这一只读许可已获得，不应再次把相同检查描述为等待用户授权。** 本阶段真实连接检查被缺失的安全前置阻断，而非缺少用户同意。
+
+实际检查始终比较先前已确认的选择 ID 与当前 `DevelopmentWorkspaceSelection.Read()`，仅匹配时继续；具体个人 ID／路径不写入新的结果或仓库。沿正常 `Mmf3AcceptanceLaunch.Parse`、NativeBootstrap Verify、`OpenForPlanning` 核对同一真实 Profile。第一次在 `RUNTIME_HISTORY_AND_EXCLUSION` 返回 IOException，未启动 Java、读取配置或连接数据库。随后先在新建合成目录验证下面的分项诊断，再对同一授权只读范围做一次实际复核（2026-11-07 05:33 UTC）：
+
+- 已保存身份未改变；Desktop／NativeBootstrap 的原生 Profile 校验通过。**没有运行 Java WindowsNativeGate 或普通 Runtime**，不能把这一结果称为完整 Runtime／存储准入。
+- `evidence/runtime-admission.lock` 的文件元数据为 `MISSING`；现有 `model-state/.lock` 为 `EXISTING_EMPTY_FILE`。没有创建缺失文件、修复权限、清 guard 或重新运行应用来补证。
+- 对受保护历史的只读核验返回 `HISTORY_UNAVAILABLE / HISTORY_MISSING_OR_UNVERIFIABLE`，所有次数为 null。它表示无法取得可核验历史，不是零次启动／零个写入者。
+- `SourceState=NOT_READ_RUNTIME_EXCLUSION_UNAVAILABLE`、模型为 `NOT_INSPECTED_EXCLUSION_UNAVAILABLE`。**数据库连接／角色元数据核对尚未执行**；没有读取／解密应用配置、接触密码或业务行。`READ_ONLY_INSPECTION_COMPLETED` 仅指前置检查已返回分项结果，不能解读为数据库检查完成。没有实际个人备份／恢复。
+
+核心改动位于原 coordinator 的停写检查：排他句柄失败后仍可沿固定 canonical 登记路径、原 DPAPI／ACL／无链接校验读取历史；失败先释放本次已取得的文件句柄，不创建或修复任何文件。可读历史只标 `HISTORY_OBSERVED_WITHOUT_EXCLUSION` 并附 `WRITER_EXCLUSION_UNAVAILABLE`，不把它称为稳定完整清单，`SourceReadiness.ObservedExitedChildren` 仍为 null；历史缺失／损坏继续 UNKNOWN。原生 UI 区分 Runtime 排他不可用、模型排他不可用、未检查模型和未解决 guard；连接按钮及 owner 检查继续拒绝，没有新增成功停写或个人备份能力。
+
+仅扩展并运行已有一个聚焦用例，首次通过（1 passed / 0 failed，686 ms）：全新私有合成目录中的缺 Runtime 锁、冲突句柄及缺模型锁均返回分项拒绝，同时能核对新建的 DPAPI 启动意图；不丢失历史缺口、不补锁、不变成完整停写、配置／guard 字节保留，连接入口仍拒绝。原有不可读配置与原生取消／显式确认断言继续通过。Desktop／检查工具编译均为 0 warning / 0 error。未增加测试用例数量，未运行全量测试、Java／PG／备份恢复流程或模型请求，未修改 helper pins 和 Java 实现。
+
+新工具只读确认既有 JAR SHA-256 `4c1d3da059943cd900e06dfbf555828057c70d4f8a8c72d662b7df10708ebb32`，从明确的本地 JDK/JNA/该 JAR 生成新的工具路径＋摘要清单；没有读取旧被拒绝的 `runtime-sources.local.json`。工具和构建清单仅在 `.verification/recovery-authorized-inspection/`，没有产品通用授权开关。实际未进入来源确认／连接分支。证据为 `personal-result.json`（首次笼统阻断）、`personal-final-result.json`（分项前置结果）、`focused-test.log`、`results/exclusion-diagnostics.trx`、`build.log`、`final-build.log`、五份文档首尾摘要及 `final-boundary-evidence.json`。
+
+**仍未完成：** 完整停写与个人来源生产／恢复链仍 BLOCKED。当前 Profile 缺少早期 Runtime 登记文件与可核验退出历史，不能通过新增空锁、零监听、一个新的成功退出或用户同意倒填历史；未知模型／未登记写入者的归属也未证明。后续需要解决历史工作区首次建立可验证执行边界的设计和实际证据；普通应用未来产生的新登记同样不能追溯补齐旧历史。本轮不申请创建锁、启动应用、修改配置／权限或停止服务来继续检查。五份未跟踪文档、个人源数据／设置和现有服务保持原样，不合并 main、不推送、不部署。
+
 ## 最新阶段：默认停写检查不读凭据，来源连接核对单独授权
 
 基于本地 `254d5b1`。核对主设计后发现此前 `InspectSourceReadinessAsync` 虽名为“只读检查”，仍自动启动 Java、解密固定 `database.dpapi` 并使用应用凭据连接 PostgreSQL。这超过用户本次仅身份／进程元数据检查的许可。本阶段补齐这一授权边界；**没有实现完整停写成功能力，也没有开放个人备份、恢复或来源登记。**

@@ -98,13 +98,20 @@ internal sealed partial class ProfileRecoveryWindow : Window
         "维护状态：BLOCKED\n\n" +
         DescribeRuntimeHistory(result.RuntimeHistory) +
         "\n完整停写：未证明旧版本、其他登录会话、手动 Java 和外部数据库客户端均停止。" +
-        (result.Native.ModelState == "NO_GUARD_FILE_OBSERVED" ? "\n模型：未发现 guard 文件；这不能证明未知模型执行已结束。" : "\n模型：存在未解决状态，请在原工作流处理。") +
+        "\n模型：" + (result.Native.ModelState switch
+        {
+            "NO_GUARD_FILE_OBSERVED" => "未发现 guard 文件；这不能证明未知模型执行已结束。",
+            "NOT_INSPECTED_EXCLUSION_UNAVAILABLE" => "未取得完整排他访问，模型状态尚未核对。",
+            _ => "存在未解决状态，请在原工作流处理。"
+        }) +
         "\n来源配置：" + (result.Native.SourceState switch
         {
             "BOUND_READ_ONLY" => "只读绑定核对通过；这不是备份或 SQL 来源授权。",
             "NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED" => "尚未授权；未读取应用凭据，也未连接数据库。",
             "NOT_READ_AUTHORIZATION_CANCELLED" => "已取消本次授权；未读取应用凭据，也未连接数据库。",
             "NOT_READ_MODEL_STATE_UNRESOLVED" => "模型状态未解决，未读取应用凭据或连接数据库。",
+            "NOT_READ_RUNTIME_EXCLUSION_UNAVAILABLE" => "无法取得既有 Runtime 排他句柄；未读取应用凭据或连接数据库。不会创建锁、修复权限或停止进程。",
+            "NOT_READ_MODEL_EXCLUSION_UNAVAILABLE" => "无法取得既有模型排他句柄；未读取应用凭据或连接数据库。不会创建锁、修复权限或停止进程。",
             _ => "尚未通过只读绑定核对。"
         }) +
         "\n来源授权：个人备份生产与本机完成登记尚未开放。口令、文件选择或停写勾选不能替代来源授权。\n\n未备份、恢复或激活；保留现有数据和登记。";
@@ -138,6 +145,7 @@ internal sealed partial class ProfileRecoveryWindow : Window
                 "CHILD_EXIT_FAILED" => "有子进程以非零退出码结束，需保留失败证据。",
                 "OWNER_CLEANUP_EXIT_UNOBSERVED" => "已记录 owner 收尾意图，但退出结果未知。",
                 "OWNER_CLEANUP_NOT_SAFE_STOP" => "owner 收尾后退出只证明该子进程结束；模型执行及安全停写仍未证明。",
+                "WRITER_EXCLUSION_UNAVAILABLE" => "未取得当前排他访问；这些历史观察不能证明本次清单完整或写入已停止。",
                 _ => "存在无法解释的历史状态，请保留现有记录。"
             });
         return text;

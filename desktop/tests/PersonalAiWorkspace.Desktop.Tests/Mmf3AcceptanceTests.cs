@@ -101,6 +101,36 @@ public sealed class Mmf3AcceptanceTests
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
         await completion.Task.WaitAsync(TimeSpan.FromSeconds(20));
         Assert.Equal(original, File.ReadAllBytes(configuration));
+        // Missing/conflicting exclusion must not hide protected history, invent a lock or
+        // authorize a connection. Only this new fixture is changed between observations.
+        using ((ProfileRecoveryCoordinator.RuntimeAttempt)typeof(ProfileRecoveryCoordinator.RuntimeAttempt)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null,
+                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string)], null)!.Invoke([NewOwner(), id, new string('a', 64)])) { }
+        File.Delete(runtimeLock);
+        async Task CheckUnavailable(string expectedState)
+        {
+            using var owner = NewOwner();
+            var result = (ProfileRecoveryCoordinator.SourceReadiness)inspect.Invoke(owner, [id, root])!;
+            Assert.Equal(expectedState, result.Native.SourceState);
+            Assert.Equal("NOT_INSPECTED_EXCLUSION_UNAVAILABLE", result.Native.ModelState);
+            Assert.Equal("HISTORY_OBSERVED_WITHOUT_EXCLUSION", result.RuntimeHistory.State);
+            Assert.Equal(1, result.RuntimeHistory.RegisteredAttempts);
+            Assert.Contains("START_OUTCOME_UNCONFIRMED", result.RuntimeHistory.Issues);
+            Assert.Contains("WRITER_EXCLUSION_UNAVAILABLE", result.RuntimeHistory.Issues);
+            Assert.Null(result.ObservedExitedChildren);
+            Assert.Equal(0, result.Native.ChildPid); Assert.Null(result.Native.SourceConfigurationSha256);
+            await Assert.ThrowsAsync<IOException>(() => owner.RequestSourceBindingInspectionAsync());
+        }
+        await CheckUnavailable("NOT_READ_RUNTIME_EXCLUSION_UNAVAILABLE");
+        Assert.False(File.Exists(runtimeLock));
+        File.WriteAllBytes(runtimeLock, []);
+        using (var reader = new FileStream(runtimeLock, FileMode.Open, FileAccess.Read, FileShare.Read))
+            await CheckUnavailable("NOT_READ_RUNTIME_EXCLUSION_UNAVAILABLE");
+        File.Delete(modelLock);
+        await CheckUnavailable("NOT_READ_MODEL_EXCLUSION_UNAVAILABLE");
+        Assert.False(File.Exists(modelLock));
+        Assert.Equal(original, File.ReadAllBytes(configuration));
+        Assert.Equal("synthetic unresolved evidence", File.ReadAllText(guard));
         Console.WriteLine("Synthetic inspection fixture retained: " + app);
     }
 
