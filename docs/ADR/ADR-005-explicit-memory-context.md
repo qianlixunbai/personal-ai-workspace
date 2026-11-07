@@ -27,3 +27,13 @@ Do not persist questions, answers, selections, snapshots, prompts or provider pa
 ## Consequences
 
 Users control each turn and can see every context entry before confirmation. Exact revisions can produce intentional stale conflicts requiring reselecting. The Runtime remains final authority. The model may still misunderstand or ignore supplied context; an acceptance example demonstrates transmission/use only. Export/restore, Conversation and RAG require separate scope and decisions.
+
+## 2026-11-07 addendum: explicit continued use in Conversations
+
+The original one-Ask behavior above remains unchanged. Conversations now offers a default-off checkbox to reuse an explicitly selected set on subsequent manually sent turns in the same active Conversation page and document session. This addresses repeated selection of stable preferences during a conversation. It is not automatic retrieval, automatic memory writing, or a persistent conversation preference.
+
+The existing `conversations.send` Bridge request accepts an optional boolean `retainMemories` (omitted means false). A nonempty exact selection authorized by the native picker is still required. Only successful admission with this flag preserves picker authority; it does not send the flag to Runtime or cache memory bodies. Every turn continues through Runtime's existing exact ID/revision validation, immutable admission snapshot and context budgets. Changed, archived or missing memory blocks the request; no newer revision is substituted.
+
+The checkbox, ordered IDs, revisions and display metadata remain temporary. Turning the option off keeps the selection for the next ordinary single turn; Clear Memory removes it immediately. A changed picker selection resets the option, while cancelling the picker preserves it. Switching conversations, leaving/disabling the Conversation page, archiving, or resetting/closing the document clears continued use. A stale response disables continued use and requires reselection or clearing; unknown or other send failures clear the UI selection, and Native consumes authorization after non-stale posting failures. Generation/selection-epoch guards prevent late responses from restoring revoked selections.
+
+Clearing stops future explicit references; it does not withdraw an admitted task, erase history, or remove memory-derived information already present in historical answers. No schema, storage, model configuration, service, background process or remote dependency is added. Verification and remaining real-model/desktop limits are recorded in [the delivery report](../engineering/CONVERSATION-MEMORY-RETENTION-REPORT.md).

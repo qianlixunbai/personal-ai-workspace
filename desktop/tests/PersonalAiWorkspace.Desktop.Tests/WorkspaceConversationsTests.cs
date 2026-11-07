@@ -68,9 +68,11 @@ public sealed class WorkspaceConversationsTests
                 Posts++; if (Hold is not null) await Hold.Task;
                 if (Unknown) throw new HttpRequestException("private SQL/body/token");
                 if (GenericUnknown) throw new InvalidOperationException("private unexpected body");
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                var json = await request.Content!.ReadAsStringAsync(ct);
+                Assert.DoesNotContain("retainMemories", json); // Desktop lifetime option never changes Runtime's contract.
+                using var body = JsonDocument.Parse(json);
                 var refs = body.RootElement.GetProperty("memories"); Counts.Add(refs.GetArrayLength());
-                if (refs.GetArrayLength() > 0) Assert.Equal(long.MaxValue, refs[0].GetProperty("revision").GetInt64());
+                if (refs.GetArrayLength() > 0) { Assert.Equal(MemoryId, refs[0].GetProperty("id").GetGuid()); Assert.Equal(long.MaxValue, refs[0].GetProperty("revision").GetInt64()); }
                 if (Stale) return Error("MEMORY_SELECTION_STALE", HttpStatusCode.Conflict);
                 var reply = Reply(new { conversationId = Id, turnId = TurnId, taskId = TaskId, status = "QUEUED", memoryCount = refs.GetArrayLength(), admittedSequences = AdmittedSequences, inputCharacters = 12, inputBytes = 12 }, HttpStatusCode.Accepted);
                 reply.Headers.Location = new Uri($"/api/v1/tasks/{TaskId:D}", UriKind.Relative); return reply;
@@ -110,7 +112,9 @@ public sealed class WorkspaceConversationsTests
         internal Task Call(string method, object? payload = null) => Bridge.ReceiveAsync(Document, Document, Request(method, payload));
         internal Task List() => Call("conversations.list", new { status = Handler.Status, page = 0 });
         internal Task Get() => Call("conversations.get", new { conversationId = Id, page = 0 });
-        internal Task Send(object[]? refs = null, string message = "Synthetic user") => Call("conversations.send", new { conversationId = Id, message, selectedMemoryRefs = refs ?? [] });
+        internal Task Send(object[]? refs = null, string message = "Synthetic user", bool retainMemories = false) => Call("conversations.send", retainMemories
+            ? new { conversationId = Id, message, selectedMemoryRefs = refs ?? [], retainMemories = true }
+            : new { conversationId = Id, message, selectedMemoryRefs = refs ?? [] });
         internal static object[] Refs() => [new { memoryId = MemoryId, revision = long.MaxValue.ToString(), position = 0 }];
         internal JsonElement Last { get { using var parsed = JsonDocument.Parse(Sent.Last()); return parsed.RootElement.Clone(); } }
         internal string Code => Last.GetProperty("error").GetProperty("code").GetString()!;
@@ -176,6 +180,44 @@ public sealed class WorkspaceConversationsTests
         f.Rotate(); await f.List(); await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
         await f.Get(); Assert.DoesNotContain("admittedSequences", f.Sent.Last()); Assert.DoesNotContain("memoryCount", f.Sent.Last());
     }
+    [Fact] public async Task RetainedMemoryRequiresExplicitSelectionAndStaysWithinExactConversationAndSession()
+    {
+        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List();
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
+        await f.Send(retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(0, f.Handler.Posts);
+        await f.Call("conversations.selectMemories", f.Identity);
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        f.NextSelection = null; await f.Call("conversations.selectMemories", f.Identity); // Cancel preserves the exact selection.
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        Assert.Equal(new[] { 1, 1 }, f.Handler.Counts);
+        await f.Send([new { memoryId = MemoryId, revision = "1", position = 0 }], retainMemories: true);
+        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
+        f.Handler.CreatedId = Other; await f.Call("conversations.create");
+        await f.Call("conversations.send", new { conversationId = Other, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = true });
+        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
+        await f.Send(Fixture.Refs()); Assert.True(f.Last.GetProperty("ok").GetBoolean()); // Opt-out consumes on this turn.
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
+        Assert.Equal(new[] { 1, 1, 1 }, f.Handler.Counts);
+        f.NextSelection = Selection; await f.Call("conversations.selectMemories", f.Identity);
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        f.Rotate(); await f.List(); await f.Send(Fixture.Refs(), retainMemories: true);
+        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(4, f.Handler.Posts);
+    }
+    [Fact] public async Task RetainedMemoryStopsOnStaleUnknownAndExplicitRevocationDuringAdmission()
+    {
+        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
+        f.Handler.Stale = true; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MemorySelectionStale", f.Code);
+        f.Handler.Stale = false; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(1, f.Handler.Posts);
+        f.NextSelection = null; await f.Call("conversations.selectMemories", f.Identity);
+        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
+        f.NextSelection = Selection; await f.Call("conversations.selectMemories", f.Identity);
+        f.Handler.Unknown = true; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("OutcomeUnknown", f.Code);
+        f.Handler.Unknown = false; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
+        await f.Call("conversations.selectMemories", f.Identity);
+        f.Handler.HoldGet = new(); var send = f.Send(Fixture.Refs(), retainMemories: true);
+        await f.Call("conversations.clearMemories", f.Identity); f.Handler.HoldGet.SetResult(); await send;
+        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
+    }
     [Fact] public async Task StaleMemoryRequiresReviewAndClearRevokesPickerAuthorization()
     {
         using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity); f.Handler.Stale = true;
@@ -214,6 +256,9 @@ public sealed class WorkspaceConversationsTests
         await f.Call("conversations.cancelPending", new { conversationId = Id, taskId = TaskId });
         await f.Call("conversations.send", new { conversationId = Id, message = new string('x', 3001), selectedMemoryRefs = new object[0] });
         await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = new[] { new { memoryId = MemoryId, revision = "9223372036854775808", position = 0 } } });
+        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = "true" });
+        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = (bool?)null });
+        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = true, persist = true });
         Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Posts);
     }
     [Fact] public async Task ReloadDuringAdmissionSuppressesOldReplyWithoutCancellingOrReplay()

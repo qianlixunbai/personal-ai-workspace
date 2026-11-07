@@ -149,9 +149,11 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
             return new { changed = true, selectedMemoryRefs = state.Selection };
         }
     }
-    internal async Task<object> SendAsync(string session, Guid id, string message, SelectedMemoryRef[] references)
+    internal async Task<object> SendAsync(string session, Guid id, string message, SelectedMemoryRef[] references, bool retainMemories = false)
     {
         new AskInput(message).Validate();
+        if (retainMemories && references.Length == 0)
+            throw new WorkspaceOperationException("MEMORY_SELECTION_REQUIRED", "请先选择要连续使用的记忆。");
         Session state; long epoch;
         lock (sync)
         {
@@ -177,7 +179,9 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
             }
             posting = true;
             var accepted = await runtime.SubmitConversationTurnAsync(id, message, memories, CancellationToken.None);
-            consume = true;
+            // Only explicit opt-in preserves the exact picker authority for another
+            // manually submitted turn. Runtime still validates/snapshots every turn.
+            consume = !retainMemories;
             return new
             {
                 accepted = true, conversationId = accepted.ConversationId, turnId = accepted.TurnId,

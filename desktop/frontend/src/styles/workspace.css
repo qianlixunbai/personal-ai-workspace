@@ -266,6 +266,7 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .conversation-composer-toolbar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .conversation-composer .memory-choice { flex: 1 1 240px; gap: 6px; margin: 0; font-size: 12px; }
 .conversation-composer .memory-choice ol { padding-inline-start: 20px; margin-top: 0; }
+.conversation-memory-retention { display: flex; align-items: center; gap: 6px; width: 100%; }
 .conversation-composer .conversation-send { align-self: start; margin: 0 0 0 auto; gap: 6px; }
 .conversation-detail > [role=status] { font-size: 12px; margin: 8px 0 0; }
 .conversation-detail > [role=status]:empty { display: none; }

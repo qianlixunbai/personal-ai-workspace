@@ -280,7 +280,8 @@ internal sealed class WorkspaceBridge : IDisposable
                     "conversations.create" => await conversations.CreateAsync(session, cancellation),
                     "conversations.selectMemories" => await conversations.SelectAsync(session, id, cancellation),
                     "conversations.clearMemories" => conversations.ClearMemories(session, id),
-                    "conversations.send" => await conversations.SendAsync(session, id, payload.GetProperty("message").GetString()!, ReadReferences(payload)),
+                    "conversations.send" => await conversations.SendAsync(session, id, payload.GetProperty("message").GetString()!, ReadReferences(payload),
+                        payload.TryGetProperty("retainMemories", out var retain) && retain.GetBoolean()),
                     "conversations.cancelPending" => await conversations.CancelAsync(session, id, Guid.ParseExact(payload.GetProperty("turnId").GetString()!, "D"), cancellation),
                     _ => await conversations.MutateAsync(session, id, method, method == "conversations.rename" ? payload.GetProperty("title").GetString() : null, cancellation)
                 };
@@ -526,7 +527,8 @@ internal sealed class WorkspaceBridge : IDisposable
         {
             "conversations.get" => ["conversationId", "page"],
             "conversations.rename" => ["conversationId", "title"],
-            "conversations.send" => ["conversationId", "message", "selectedMemoryRefs"],
+            "conversations.send" => payload.TryGetProperty("retainMemories", out _)
+                ? ["conversationId", "message", "selectedMemoryRefs", "retainMemories"] : ["conversationId", "message", "selectedMemoryRefs"],
             "conversations.cancelPending" => ["conversationId", "turnId"],
             _ => ["conversationId"]
         };
@@ -536,7 +538,8 @@ internal sealed class WorkspaceBridge : IDisposable
             "conversations.get" => Page(payload),
             // 160 Unicode scalar values may occupy 320 UTF-16 units. Core validates text.
             "conversations.rename" => Text(payload, "title", 320, out _),
-            "conversations.send" => Text(payload, "message", 3000, out _) && ValidReferences(payload),
+            "conversations.send" => Text(payload, "message", 3000, out _) && ValidReferences(payload)
+                && (!payload.TryGetProperty("retainMemories", out var retain) || retain.ValueKind is JsonValueKind.True or JsonValueKind.False),
             "conversations.cancelPending" => Text(payload, "turnId", 36, out var turn) && CanonicalId(turn),
             _ => true
         };

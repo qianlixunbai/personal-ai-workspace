@@ -24,6 +24,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
   const [memories, setMemories] = useState<SelectedMemory[]>([])
+  const [retainMemories, setRetainMemories] = useState(false)
   const [previewTurn, setPreviewTurn] = useState<string | null>(null)
   const [stale, setStale] = useState(false)
   const [title, setTitle] = useState<string | null>(null)
@@ -112,7 +113,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
           const turn = next.turns.find(x => x.status === 'PENDING')
           setPending(turn ? { turnId: turn.turnId, canCancel: turn.canCancel } : null)
         }
-        if (next.conversation.status === 'ARCHIVED') { setMemories([]); setStale(false) }
+        if (next.conversation.status === 'ARCHIVED') { setMemories([]); setRetainMemories(false); setStale(false) }
         setPollingError(false)
       } catch (problem) {
         if (token === generation.current) { setError(safeText(problem)); setPollingError(true) }
@@ -128,7 +129,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     selectedRef.current = id; detailRef.current = null; actionLock.current = false; composing.current = false
     historyFocus.current = null; setTurnNumber('')
     setPreviewTurn(null)
-    setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
+    setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
     setTitle(null); setDeleting(false); setBusy(false); setError(''); setNotice(''); setPollingError(false); setHistoryLoading(!!id)
     try {
       if (old) await bridge.clearConversationMemories(old)
@@ -148,7 +149,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       setPreviewTurn(null)
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
-      setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
+      setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
       setTitle(null); setDeleting(false); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
       composing.current = false
       if (visible && bridge.ready) void loadList('ACTIVE', 0)
@@ -157,6 +158,13 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
   useEffect(() => { if (!enabled || !visible) setPreviewTurn(null) }, [enabled, visible])
+  useEffect(() => {
+    if ((enabled && visible) || !retainMemories) return
+    // Leaving the active page revokes continued use, including an in-flight
+    // admission whose response will be ignored by the view's generation guard.
+    setRetainMemories(false); setMemories([]); setStale(false)
+    if (selectedRef.current) void bridge.clearConversationMemories(selectedRef.current).catch(() => {})
+  }, [bridge, enabled, visible, retainMemories])
   useEffect(() => {
     const target = historyFocus.current
     if (!visible || !target || target.generation !== generation.current || target.conversationId !== detail?.conversation.id) return
@@ -197,14 +205,16 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     void run(async (id, token) => {
       setAdmission(null); setNotice('Submitting…')
       try {
-        const accepted = await bridge.sendConversation(id, draft, memories.map(({ memoryId, revision, position }) => ({ memoryId, revision, position })))
+        const accepted = await bridge.sendConversation(id, draft, memories.map(({ memoryId, revision, position }) => ({ memoryId, revision, position })), retainMemories)
         if (token !== generation.current) return
         setAdmission(accepted)
-        setDraft(''); setMemories([]); setStale(false); setNotice('已接受；正在读取持久历史。')
+        setDraft(''); if (!retainMemories) setMemories([])
+        setStale(false); setNotice('已接受；正在读取持久历史。')
       } catch (problem) {
         if (token !== generation.current) return
+        setRetainMemories(false)
         if (problem instanceof BridgeError && ['MemorySelectionStale', 'MEMORY_SELECTION_REQUIRED'].includes(problem.code)) setStale(true)
-        if (problem instanceof BridgeError && !['MemorySelectionStale', 'MEMORY_SELECTION_REQUIRED'].includes(problem.code)) {
+        else {
           setMemories([]); setStale(false)
           try { await bridge.clearConversationMemories(id) } catch { /* Host also consumes uncertain selections. */ }
         }
@@ -248,14 +258,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     <section className="card conversation-detail" aria-labelledby="conversation-detail-title" aria-busy={historyLoading}>
       <div className="card-heading"><h2 id="conversation-detail-title"><bdi>{detail?.conversation.title ?? '选择或新建会话'}</bdi></h2>
         <button disabled={!enabled || busy} onClick={() => { setError(''); void loadList(); if (selected) void loadDetail(selected) }}>刷新</button></div>
-      {!detail && <p className="empty-state">从左侧选择对话，或新建一个对话。每次使用记忆都需要你明确选择。</p>}
+      {!detail && <p className="empty-state">从左侧选择对话，或新建一个对话。记忆由你明确选择，可选择在当前会话连续使用。</p>}
       {detail && <>
         <div className="conversation-actions"><span>{detail.conversation.status === 'ACTIVE' ? '使用中' : '已归档'}</span>
           <button disabled={busy} onClick={() => setTitle(detail.conversation.title)}>重命名</button>
           <button disabled={busy} onClick={() => { void run(async (id, token) => {
             const value = detail.conversation.status === 'ACTIVE' ? await bridge.archiveConversation(id) : await bridge.unarchiveConversation(id)
             if (token !== generation.current) return
-            setMemories([]); setStale(false); setStatus(value.status); setPages(previous => ({ ...previous, [value.status]: 0 }))
+            setMemories([]); setRetainMemories(false); setStale(false); setStatus(value.status); setPages(previous => ({ ...previous, [value.status]: 0 }))
             await loadDetail(id); await loadList(value.status, 0)
           }) }}>{detail.conversation.status === 'ACTIVE' ? '归档' : '恢复'}</button>
           <button ref={deleteButton} className="destructive" disabled={busy || !!pending} onClick={() => setDeleting(true)}>删除</button>
@@ -317,12 +327,19 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
         <div className="conversation-composer-toolbar">
         <div className="memory-choice"><button disabled={!enabled || historyLoading || pollingError || busy || !!pending || detail.conversation.status !== 'ACTIVE'} onClick={() => { void run(async (id, token) => {
           const choice = await bridge.selectConversationMemories(id)
-          if (token === generation.current && choice.changed) { setMemories(choice.selectedMemoryRefs); setStale(false) }
+          if (token === generation.current && choice.changed) { setMemories(choice.selectedMemoryRefs); setRetainMemories(false); setStale(false) }
         }) }}>{memories.length ? '更换记忆…' : '选择记忆…'}</button>
           <button disabled={busy || !memories.length && !stale} onClick={() => { void run(async (id, token) => {
-            await bridge.clearConversationMemories(id); if (token === generation.current) { setMemories([]); setStale(false) }
-          }) }}>清除记忆</button><span>{memories.length ? `本次使用 ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
-          {memories.length > 0 && <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>}
+            await bridge.clearConversationMemories(id); if (token === generation.current) { setMemories([]); setRetainMemories(false); setStale(false) }
+          }) }}>清除记忆</button><span>{memories.length ? `${retainMemories ? '连续使用' : '本次使用'} ${memories.length} 条` : '仅使用你本次选择的记忆'}</span>
+          {memories.length > 0 && <>
+            <ol>{memories.map(memory => <li key={memory.memoryId}><bdi>{memory.title}</bdi> · 版本 {memory.revision}</li>)}</ol>
+            <label className="conversation-memory-retention"><input type="checkbox" checked={retainMemories} disabled={!sendAllowed}
+              aria-describedby="conversation-memory-scope" onChange={event => setRetainMemories(event.target.checked)} />在当前会话连续使用这组记忆</label>
+            <p id="conversation-memory-scope" className="hint">{retainMemories
+              ? '每次发送都使用以上版本。切换会话、离开此页或重开窗口会清除；记忆变更须重新选择。'
+              : '当前选择仅用于下一次发送；勾选后才会连续使用。'} 清除记忆会停止后续引用，已发送内容和历史不会被撤回。</p>
+          </>}
           {stale && <p role="alert">记忆已变更，请重新选择或清除后再发送。</p>}</div>
         <div className="conversation-send"><button className="primary" disabled={!sendAllowed || invalid} onClick={send}>发送</button>
           <button disabled={!pending?.canCancel || busy} onClick={() => { void run(async (id, token) => {

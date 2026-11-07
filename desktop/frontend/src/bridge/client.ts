@@ -162,7 +162,9 @@ export class WorkspaceClient {
   deleteConversation(conversationId: string) { return this.request('conversations.delete', { conversationId }) as Promise<{ deleted: true }> }
   selectConversationMemories(conversationId: string) { return this.request('conversations.selectMemories', { conversationId }) as Promise<MemoryChoice> }
   clearConversationMemories(conversationId: string) { return this.request('conversations.clearMemories', { conversationId }) as Promise<{ cleared: true }> }
-  sendConversation(conversationId: string, message: string, selectedMemoryRefs: MemoryRef[]) { return this.request('conversations.send', { conversationId, message, selectedMemoryRefs }) as Promise<ConversationAdmission> }
+  sendConversation(conversationId: string, message: string, selectedMemoryRefs: MemoryRef[], retainMemories = false) {
+    return this.request('conversations.send', { conversationId, message, selectedMemoryRefs, ...(retainMemories ? { retainMemories: true } : {}) }) as Promise<ConversationAdmission>
+  }
   cancelConversationPending(conversationId: string, turnId: string) { return this.request('conversations.cancelPending', { conversationId, turnId }) as Promise<{ requested: true }> }
   listMemory(query: MemoryQuery) { return this.request('memory.list', query) as Promise<MemoryList> }
   getMemory(memoryId: string) { return this.request('memory.get', { memoryId }) as Promise<MemoryItem> }

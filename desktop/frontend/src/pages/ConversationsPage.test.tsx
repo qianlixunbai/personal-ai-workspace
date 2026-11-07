@@ -218,6 +218,60 @@ it('accepted send clears exact untrimmed draft and per-turn Memory; subsequent T
   fireEvent.change(input, { target: { value: 'Synthetic uncertain' } }); await click('发送')
   expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
 })
+it('explicit continuous memory reuses exact references, preserves picker cancel and returns to one-turn use on opt-out', async () => {
+  const { port, input } = await setup(); await click('选择记忆…')
+  const option = () => screen.getByRole('checkbox', { name: '在当前会话连续使用这组记忆' }) as HTMLInputElement
+  expect(option().checked).toBe(false)
+  fireEvent.click(option()); expect(option().checked).toBe(true)
+  port.choiceChanged = false; await click('更换记忆…'); expect(option().checked).toBe(true)
+  const refs = [{ memoryId: memory.memoryId, revision: memory.revision, position: 0 }]
+  for (const message of ['Synthetic first', 'Synthetic follow-up']) {
+    fireEvent.change(input, { target: { value: message } }); await click('发送')
+    expect(port.sent.filter(x => x.method === 'conversations.send').at(-1)?.payload).toEqual({ conversationId: conversation.id, message, selectedMemoryRefs: refs, retainMemories: true })
+    expect(input.value).toBe(''); expect(screen.getByText('连续使用 1 条')).toBeTruthy(); expect(option().checked).toBe(true)
+    port.state = 'SUCCEEDED'; await click('刷新')
+  }
+  expect(port.sent.filter(x => x.method === 'conversations.selectMemories')).toHaveLength(2)
+  expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(2)
+  fireEvent.click(option()); expect(screen.getByText(/当前选择仅用于下一次发送/)).toBeTruthy()
+  fireEvent.change(input, { target: { value: 'Synthetic last selected turn' } }); await click('发送')
+  expect(port.sent.filter(x => x.method === 'conversations.send').at(-1)?.payload).toEqual({ conversationId: conversation.id, message: 'Synthetic last selected turn', selectedMemoryRefs: refs })
+  expect(screen.queryByRole('checkbox')).toBeNull()
+  port.state = 'SUCCEEDED'; await click('刷新')
+  fireEvent.change(input, { target: { value: 'Synthetic without memory' } }); await click('发送')
+  expect(port.sent.filter(x => x.method === 'conversations.send').at(-1)?.payload).toEqual({ conversationId: conversation.id, message: 'Synthetic without memory', selectedMemoryRefs: [] })
+})
+it('continuous memory stops on changed selection, stale, unknown, switch, session reset and navigation during admission', async () => {
+  const { port, bridge, view, input } = await setup({ total: 2 })
+  const option = () => screen.getByRole('checkbox', { name: '在当前会话连续使用这组记忆' }) as HTMLInputElement
+  const selectAndRetain = async () => { await click('选择记忆…'); fireEvent.click(option()) }
+  await selectAndRetain(); await click('更换记忆…'); expect(option().checked).toBe(false)
+  fireEvent.click(option()); port.error = 'MemorySelectionStale'
+  fireEvent.change(input, { target: { value: 'Synthetic draft' } }); await click('发送')
+  expect(option().checked).toBe(false); expect(option().disabled).toBe(true); expect(input.value).toBe('Synthetic draft')
+  port.choiceChanged = false; await click('更换记忆…'); expect(option().disabled).toBe(true)
+  await click('清除记忆'); expect(screen.queryByRole('checkbox')).toBeNull()
+  port.choiceChanged = true; await selectAndRetain(); port.error = 'OutcomeUnknown'; await click('发送')
+  expect(screen.queryByRole('checkbox')).toBeNull(); expect(input.value).toBe('Synthetic draft')
+  expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(2)
+  expect(port.sent.some(x => x.method === 'conversations.clearMemories')).toBe(true)
+  port.error = null; await selectAndRetain(); await click('Synthetic conversation 2 2026/10/4')
+  expect(screen.queryByRole('checkbox')).toBeNull()
+  await selectAndRetain(); await act(async () => { port.session(uuid(909)) }); await screen.findByLabelText('会话消息')
+  expect(screen.queryByRole('checkbox')).toBeNull()
+  await selectAndRetain(); port.holdSend = true
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'Synthetic delayed' } }); await click('发送')
+  const index = port.sent.map(x => x.method).lastIndexOf('conversations.send')
+  const clearCount = port.sent.filter(x => x.method === 'conversations.clearMemories').length
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible={false} />)
+  await act(async () => {})
+  expect(port.sent.filter(x => x.method === 'conversations.clearMemories')).toHaveLength(clearCount + 1)
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible />); await screen.findByLabelText('会话消息')
+  await act(async () => { port.reply(index, { accepted: true, conversationId: conversation.id, turnId: uuid(103), admittedSequences: [1], memoryCount: 1 }) })
+  expect(screen.queryByRole('checkbox')).toBeNull(); expect(screen.queryByText(/本次接纳上下文/)).toBeNull()
+  expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(3)
+  expect(port.sent.some(x => ['memory.create', 'memory.update', 'conversations.cancelPending'].includes(String(x.method)))).toBe(false)
+})
 it.each(['OutcomeUnknown'])('%s preserves draft, clears unsafe selection, refreshes history and never resends', async error => {
   const { port, input } = await setup({ error }); await click('选择记忆…'); fireEvent.change(input, { target: { value: 'Synthetic draft' } }); await click('发送')
   expect(input.value).toBe('Synthetic draft'); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy()
