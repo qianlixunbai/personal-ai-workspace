@@ -31,15 +31,14 @@ public final class LegacySourceFenceProbe {
         catch(SQLException rejected){require("28000".equals(rejected.getSQLState()));}
     }
     private static String sha(byte[] bytes) throws Exception {return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}
-    private static void replaceOwned(Path hba,byte[] expected,byte[] next,String suffix) throws Exception {
-        require(Arrays.equals(Files.readAllBytes(hba),expected));
-        Path temporary=hba.resolveSibling("pg_hba."+suffix);
-        try(var output=FileChannel.open(temporary,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)){
-            var bytes=java.nio.ByteBuffer.wrap(next);while(bytes.hasRemaining())output.write(bytes);output.force(true);
-        }
-        require(Arrays.equals(Files.readAllBytes(hba),expected));
-        Files.move(temporary,hba,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
-        require(Arrays.equals(Files.readAllBytes(hba),next));
+    private static String nativeRules(Path root,Path tool,String action) throws Exception {
+        Path output=root.resolve("native-"+action+"-"+UUID.randomUUID()+".log");
+        var start=new ProcessBuilder(tool.toString(),"--legacy-rule-fixture",root.toString(),action);
+        start.redirectOutput(output.toFile());start.redirectError(ProcessBuilder.Redirect.DISCARD);
+        Process process=start.start();
+        try {require(process.waitFor(15,TimeUnit.SECONDS)&&process.exitValue()==0);}
+        finally {if(process.isAlive()){process.destroyForcibly();require(process.waitFor(5,TimeUnit.SECONDS));}}
+        return Files.readString(output).trim();
     }
     public static void main(String[] args) {
         try { run(args); }
@@ -52,6 +51,7 @@ public final class LegacySourceFenceProbe {
         require(root.equals(root.toRealPath())&&root.getFileName().toString().matches("paw-legacy-fence-[0-9a-f]{32}")
             &&fixture.equals(root.resolve("fixture.json")));
         Path data=root.resolve("pgdata"),tools=Path.of(input.path("tools").asString());
+        Path ruleTool=Path.of(input.path("ruleTool").asString());
         int port=input.path("port").asInt();require(port>1024&&port!=5432);
         var pid=Files.readAllLines(data.resolve("postmaster.pid"));
         require(pid.get(1).equals(data.toString().replace('\\','/'))&&pid.get(3).equals(Integer.toString(port))
@@ -88,10 +88,9 @@ public final class LegacySourceFenceProbe {
                 String rules="host "+source+" "+reader+" 127.0.0.1/32 scram-sha-256\r\n"
                     +"host "+source+" all 0.0.0.0/0 reject\r\n"+"host "+source+" all ::0/0 reject\r\n";
                 installed=(rules+new String(original,StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
-                Files.write(root.resolve("hba-original.retained"),original,StandardOpenOption.CREATE_NEW);
-                Files.writeString(root.resolve("fence-intent.json"),JSON.writeValueAsString(Map.of("source",source,"originalHbaSha256",sha(original),
-                    "installedHbaSha256",sha(installed),"legacyHistory","UNKNOWN","personalAdmission",false)),StandardOpenOption.CREATE_NEW);
-                replaceOwned(hba,original,installed,"install");
+                Files.write(root.resolve("synthetic-rules.input"),installed,StandardOpenOption.CREATE_NEW);
+                require(nativeRules(root,ruleTool,"install").equals("Installed"));
+                require(nativeRules(root,ruleTool,"inspect").equals("Installed"));
                 try(var hbaPin=FileChannel.open(hba,StandardOpenOption.READ,ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE)){
                     require(value(control,"SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL").equals("0"));
                     denied(port,source,app,appPassword);denied(port,source,admin,secret);
@@ -136,7 +135,13 @@ public final class LegacySourceFenceProbe {
                 }
             }
             stage="RESTORE_ONLY_OUR_HBA_CHANGE";
-            replaceOwned(hba,installed,original,"restore");restored=true;
+            // Terminate the fixture owner between its two no-overwrite renames. A fresh
+            // process must classify the actual files without automatically repairing them.
+            require(nativeRules(root,ruleTool,"restore-interrupted").equals("RestoreInterrupted"));
+            require(!Files.exists(hba));
+            require(nativeRules(root,ruleTool,"inspect").equals("RestoreInterrupted"));
+            require(!Files.exists(hba));
+            require(nativeRules(root,ruleTool,"restore").equals("Restored"));restored=true;
             try(var reopened=connect(port,source,app,appPassword)){
                 require(value(reopened,"SELECT value FROM workspace.synthetic_source WHERE id=1").equals("LEGACY_DRAINED"));
             }
@@ -147,12 +152,15 @@ public final class LegacySourceFenceProbe {
             evidence.put("existingSessionVoluntarilyClosed",true);evidence.put("unrelatedDatabaseAccessibleAndUnchanged",true);
             evidence.put("freshRestrictedPgDumpImportedHeldSnapshot",true);evidence.put("sourceFileWriteDenied",true);
             evidence.put("hbaOriginalBytesRestored",true);evidence.put("originalAppPermissionsUnchanged",true);
+            evidence.put("nativeDpapiIntentReread",true);evidence.put("interruptedRestoreIndependentlyInspected",true);
+            evidence.put("restorePreservedOriginalFileIdentity",true);evidence.put("inspectionDidNotReplayMutation",true);
             evidence.put("runtimeHistoryOrLockCreated",false);evidence.put("modelStopProven",false);evidence.put("personalAdmission",false);
             Files.writeString(root.resolve("probe-result.json"),JSON.writeValueAsString(evidence),StandardOpenOption.CREATE_NEW);
             System.out.println(JSON.writeValueAsString(evidence));
         }finally{
-            // No broad rollback or replay: restore only when the exact installed bytes remain.
-            if(installed!=null&&!restored&&Arrays.equals(Files.readAllBytes(hba),installed))replaceOwned(hba,installed,original,"failure-restore");
+            // Explicit cleanup of this synthetic fixture only. Native reconciliation refuses
+            // replaced/edited objects and retains evidence; it never overwrites another change.
+            if(installed!=null&&!restored&&Files.exists(root.resolve("rule-change/intent.dpapi")))nativeRules(root,ruleTool,"restore");
         }
     }
 }

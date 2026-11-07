@@ -19,6 +19,8 @@ public static partial class RuntimeLifecycleProbe
     {
         if (args is ["--x1-execution-lifecycle-fixture"]) return RunX1ExecutionLifecycleFixture();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (args is ["--legacy-rule-fixture", var ruleRoot, var action]) return LegacyBoundaryTests.RunRuleFixture(ruleRoot, action);
+        if (args is ["--legacy-model-fixture", var modelRoot, var mode]) return LegacyBoundaryTests.RunModelFixture(modelRoot, mode);
         if (args is ["--x1-selection-fixture"]) return RunX1SelectionFixture();
         if (args is ["--prepare-profile"])
         {

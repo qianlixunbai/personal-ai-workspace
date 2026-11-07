@@ -5,11 +5,13 @@ param()
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$evidence=Join-Path $repo '.verification/recovery-legacy-enrollment'
+$evidence=Join-Path $repo '.verification/recovery-legacy-boundary-v2'
 [IO.Directory]::CreateDirectory($evidence) | Out-Null
 $classes=Join-Path $evidence 'classes'
 [IO.Directory]::CreateDirectory($classes) | Out-Null
 $classpath=[IO.File]::ReadAllText((Join-Path $repo '.verification/recovery-v3-classpath.txt')).Trim()
+$ruleTool=Join-Path $repo 'desktop/tests/PersonalAiWorkspace.Desktop.Tests/bin/Debug/net10.0-windows/PersonalAiWorkspace.Desktop.Tests.exe'
+if(!(Test-Path -LiteralPath $ruleTool)){throw 'Build the opt-in Desktop test apphost with RuntimeLifecycleProbe=true first'}
 & 'D:\MC\JAVA\JAVA21\bin\javac.exe' -encoding UTF-8 -cp $classpath -d $classes (Join-Path $repo 'bootstrap/tests/LegacySourceFenceProbe.java') 2> (Join-Path $evidence 'javac.log')
 if($LASTEXITCODE -ne 0){throw 'Synthetic fence compilation failed'}
 $root=Join-Path ([IO.Path]::GetTempPath()) ('paw-legacy-fence-'+[Guid]::NewGuid().ToString('N'))
@@ -28,6 +30,9 @@ $passwordFile=Join-Path $root 'init-password';$data=Join-Path $root 'pgdata';$fi
 [IO.File]::WriteAllText($passwordFile,$password,[Text.UTF8Encoding]::new($false))
 $postgresPid=0;$postgresStartTicks=0;$result=1;$stopped=$false
 try {
+    # Provision the fresh, empty directory with the native boundary's protected ACL before
+    # initdb. Never repair or relax permissions on an existing cluster to admit it.
+    [IO.FileSystemAclExtensions]::Create([IO.DirectoryInfo]::new($data),$acl)
     & 'D:\PostgreSQL\bin\initdb.exe' -D $data -U legacy_fixture_admin --pwfile=$passwordFile --auth=scram-sha-256 --encoding=UTF8 --locale=C 1> (Join-Path $root 'initdb.log') 2> (Join-Path $root 'initdb.err')
     if($LASTEXITCODE -ne 0){throw 'Isolated initdb failed'}
     Remove-Item -LiteralPath $passwordFile
@@ -38,7 +43,7 @@ try {
     $postgresPid=[int]$pidLines[0];$process=Get-Process -Id $postgresPid
     if($process.Path -ine 'D:\PostgreSQL\bin\postgres.exe'){throw 'Owned executable rejected'}
     $postgresStartTicks=$process.StartTime.ToUniversalTime().Ticks
-    [ordered]@{root=$root;port=$port;processId=$postgresPid;adminUsername='legacy_fixture_admin';adminPassword=$password;tools='D:\PostgreSQL\bin'} | ConvertTo-Json | Set-Content -Encoding utf8NoBOM -LiteralPath $fixture
+    [ordered]@{root=$root;port=$port;processId=$postgresPid;adminUsername='legacy_fixture_admin';adminPassword=$password;tools='D:\PostgreSQL\bin';ruleTool=$ruleTool} | ConvertTo-Json | Set-Content -Encoding utf8NoBOM -LiteralPath $fixture
     $password=$null
     [ordered]@{root=$root;port=$port;processId=$postgresPid;startUtcTicks=$postgresStartTicks;owned=$true} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $evidence 'owned-fixture.json')
     & 'D:\MC\JAVA\JAVA21\bin\java.exe' '-Xmx256m' '-XX:ActiveProcessorCount=2' -cp ($classes+';'+$classpath) io.github.qianlixunbai.workspace.backup.LegacySourceFenceProbe $fixture 1> (Join-Path $evidence 'probe.log') 2> (Join-Path $evidence 'probe-errors.log')

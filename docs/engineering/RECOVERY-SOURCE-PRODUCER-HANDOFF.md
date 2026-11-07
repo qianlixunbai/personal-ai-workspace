@@ -1,5 +1,23 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：规则中断收尾与自有模型进程树结束核对
+
+基于本地 `2e23419`。新增原生 `ProfileRecoveryCoordinator.LegacyRules.cs` 和 `RecoveryOwnedModelExecution.cs`；二者仅在 opt-in Debug 验收构建编译，工厂私有、仅由隔离验收反射调用。**个人工厂、个人来源登记及恢复仍未开放。** 现有 `recovery-before-legacy-enrollment-d788361` 恢复标签保留，五份未跟踪文档再次逐字节摘要核对不变。
+
+- 规则 owner 将版本、合成种类、操作 ID、确切路径及原始／候选文件身份和摘要写入 DPAPI CurrentUser 意图，CREATE_NEW、Flush(true)、无覆盖发布并重读。重开必须取得原 owner 锁，核对私有目录、准确记录集合、ACL、链接及文件身份；只读分类 Prepared / InstallInterrupted / Installed / RestoreInterrupted / Restored / Conflict，不自动继续执行。
+- 安装／撤销均以持有 DELETE 权限且不共享 WRITE/DELETE 的实际文件句柄移动，目标必须不存在。原始文件保留原身份／ACL；撤销只移动已匹配的本次对象。第三方替换为相同字节、不同文件身份也拒绝覆盖。Dispose 不修改规则；中断后须显式核对、撤销，未知布局保持证据。
+- 这不是原子替换：两次移动之间 HBA 名称暂缺，可能拒绝**整个实例**的新连接，中断可延长不可用时间。不能把局部库规则描述为绝不影响其他库。真实使用还缺确切 PG system ID／DB OID／服务 ACL／Profile 与原生 owner 通道绑定、维护窗口批准和实机验证；本轮没有修改共享规则。
+- 模型 owner 用 CREATE_SUSPENDED 创建自己唯一的新根进程，先加入不允许 breakaway 的匿名 Job 再 ResumeThread。观察真实根句柄的内核退出，并要求 Job ActiveProcesses=0、根正常退出后才允许同一 operation 消费一次结束结果；owner 清理先使结果失效，不能把 kill-on-close 当成功。无 PID 重开、无可从 JSON 重建的成功票据。
+- 此证明仅覆盖经过审查、直接 CreateProcess 派生的专属本地进程树。通过 WMI／服务代理启动的执行、已有共享 Ollama/KAG、远程模型及原持久 guard 均不在证明范围；尚未把任何真实提供方绑定此 owner，也没有清理 guard 或声明未知模型结束。
+
+必要验证只做一个原生聚焦用例和一次 PG 集成流程的失败后修正重跑：原生首次发现 FILE_RENAME_INFO 目标字符串终止符遗漏，修正后 1/1 通过；覆盖安装／撤销中断、重开只读、相同内容替换冲突、主进程退出但 runner 存活拒绝、全树结束后单次消费。PG 首次因 initdb 新 data 目录继承 ACL 被原生目录检查拒绝，在下一新建空目录上从创建时设置受保护 ACL 后通过；未放宽检查或修复既有目录。
+
+通过的 PG17 实例为端口 `60062`／PID `17040`，失败实例为端口 `59974`／PID `36624`，均已按 data／端口／启动时间／可执行路径核对后停止。实际 PG 集成保留已有“拒绝新连接→已有连接自然结束→锁／快照／文件 pin→受限 pg_dump”检查，并经独立原生进程安装、重读、在撤销两次移动之间退出、只读识别中断、显式恢复原文件，再验证 app 重新连接。这个 PG 探针仍标记 MODEL_UNPROVEN；独立的合成模型树验证不被包装成该数据库或真实工作区的模型证明。
+
+证据在 `.verification/recovery-legacy-boundary-v2/`：`native-boundary.trx/log`、`probe-result.json`、`fixture-result.json`、`owned-fixture.json`、`preserved-documents.json`，以及 `first-native-*`／`first-pg-*` 失败证据。只编译涉及的 Desktop 和手动 Java probe，未运行 Maven／前端重建／全套测试或真实模型；JVM 256 MiB/2 核，PG 16 MiB shared_buffers/12 connections。未接触真实 Profile、业务数据、凭据、现有服务，未合并 main、推送或部署。
+
+下一步应完成已有只读授权覆盖的登记前原生上下文，确定真实源元数据；再将受审查的实际提供方证明、具体 HBA 操作计划及活体 owner 生命周期接入来源生产者。不能用本轮合成意图／模型布尔结果替代这条授权链。详细机制、依据和最小实际权限见 [受控登记补充设计](LEGACY-PROFILE-ENROLLMENT-DESIGN.md)。
+
 ## 最新阶段：旧工作区受控登记方案与单库连接围栏实验
 
 基于本地 `d788361`，按用户要求研究 PostgreSQL/pgBackRest/Borg 的当前离线状态、禁止新增并等待已有操作结束及一致性快照方案，形成 [LEGACY-PROFILE-ENROLLMENT-DESIGN.md](LEGACY-PROFILE-ENROLLMENT-DESIGN.md)。方向是建立本次可验证的当前边界，将此前历史保留为 UNKNOWN，而非要求永久补齐旧退出日志；主设计原字节和个人准入检查均未改动。

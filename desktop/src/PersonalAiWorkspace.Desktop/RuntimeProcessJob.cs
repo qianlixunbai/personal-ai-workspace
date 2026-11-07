@@ -21,7 +21,17 @@ internal sealed class RuntimeProcessJob : SafeHandleZeroOrMinusOneIsInvalid
     }
     internal void Assign(Process process)
     {
-        if (!AssignProcessToJobObject(this, process.SafeHandle)) throw new Win32Exception();
+        Assign(process.SafeHandle);
+    }
+    internal void Assign(SafeProcessHandle process)
+    { if (!AssignProcessToJobObject(this, process)) throw new Win32Exception(); }
+    internal uint ActiveProcessCount
+    {
+        get
+        {
+            if (!QueryInformationJobObject(this, 1, out var accounting, (uint)Marshal.SizeOf<Accounting>(), IntPtr.Zero)) throw new Win32Exception();
+            return accounting.ActiveProcesses;
+        }
     }
     protected override bool ReleaseHandle() => CloseHandle(handle);
     [StructLayout(LayoutKind.Sequential)] private struct BasicLimits
@@ -36,6 +46,12 @@ internal sealed class RuntimeProcessJob : SafeHandleZeroOrMinusOneIsInvalid
         internal ulong ReadOperations, WriteOperations, OtherOperations, ReadBytes, WriteBytes, OtherBytes;
         internal UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
     }
+    [StructLayout(LayoutKind.Sequential)] private struct Accounting
+    {
+        internal long UserTime, KernelTime, PeriodUserTime, PeriodKernelTime;
+        internal uint PageFaultCount, TotalProcesses, ActiveProcesses, TerminatedProcesses;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(RuntimeProcessJob job, int kind, out Accounting data, uint length, IntPtr returned);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern RuntimeProcessJob CreateJobObjectW(IntPtr attributes, string? name);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(RuntimeProcessJob job, int kind, ref ExtendedLimits limits, uint length);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AssignProcessToJobObject(RuntimeProcessJob job, SafeProcessHandle process);

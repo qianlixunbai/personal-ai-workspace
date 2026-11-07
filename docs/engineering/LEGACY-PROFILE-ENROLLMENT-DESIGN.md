@@ -1,6 +1,6 @@
 # 旧工作区受控登记：建立当前边界，保留未知历史
 
-2026-11-07；基线 `d788361`。这是 [主设计](CURRENT-PROFILE-RECOVERY-DESIGN.md) 的实施补充提案，**不是已开放的个人迁移入口**。原设计文件保持原字节。只实现了新建专属 PG17 上的一次边界实验；真实 Profile、实例配置、服务、凭据和业务数据本轮未访问或修改。
+2026-11-07；基线 `d788361`，在 `2e23419` 后补充原生规则收尾与专属模型执行树核对。这是 [主设计](CURRENT-PROFILE-RECOVERY-DESIGN.md) 的实施补充提案，**不是已开放的个人迁移入口**。原设计文件保持原字节。实现均只在新建隔离环境验证；真实 Profile、实例配置、服务、凭据和业务数据本轮未访问或修改。
 
 ## 结论与范围
 
@@ -60,6 +60,22 @@ HBA 是实例级配置文件，即使规则只匹配一个库，语法错误、�
 
 结果为 `SYNTHETIC_DATABASE_FENCE_VERIFIED_MODEL_UNPROVEN`，不是 v3 完整备份／恢复验证（实验表是单独的 synthetic_source），也不是受保护卷、故障恢复或完整 Native Gate 实机验收。证据在 `.verification/recovery-legacy-enrollment/` 的 `probe-result.json`、`fixture-result.json`、`owned-fixture.json`、编译／执行日志和文档摘要。
 
+## 新增：规则中断核对和模型结束证据
+
+原生 `LegacyRuleChange` 为后续 owner 提供实际文件操作原语，目前唯一私有工厂明确限定合成临时根。DPAPI 意图只记录操作、路径、文件身份与摘要，不记录凭据，不是 SQL 准入。持有私有父目录和操作锁后，按实际四处文件（当前 HBA、原始保留、候选、已撤销规则）的身份／摘要组合识别 Prepared、InstallInterrupted、Installed、RestoreInterrupted、Restored；其他组合或访问失败均为冲突／未知。重新打开和 Dispose 不执行修复，也不把磁盘意图转换成新安装许可。
+
+安装先用原始文件的排他 DELETE 句柄移动到保留名，再用候选的排他句柄移动到 HBA 名；每次移动的目标必须为空。撤销对称执行，保留原始文件身份和 ACL。这样避免“先按路径核对、随后覆盖另一对象”的竞争；第三方同内容替换也不会被覆盖。原始／候选字节、记录未完成发布、被占用、异常链接或并发插入对象都不能靠自动重试绕过。[Windows FILE_RENAME_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_rename_info)
+
+**代价与适用限制：** 两次移动间 HBA 名称会暂缺，可能影响共享实例所有新连接，owner 中断会延长此状态。故不是原子配置热更新，不得承诺仅源库短暂不可用；正式使用必须批准该维护窗口，或改用经独立验证的等价方案。合成根只允许私有 ACL，尚不支持任意 PG 服务账户的真实 ACL。跨进程的 Java 验收桥只是夹具，未建立个人 Profile／PG system ID／DB OID 与整个活体句柄生命周期绑定。掉电时文件系统持久化顺序、异常布局及管理员并发变化仍应保留证据人工核对，不能保证自动恢复服务，更不能保证业务数据回滚。
+
+`RecoveryOwnedModelExecution` 仅为新的、专属的本地执行树实现结束核对。CreateProcess 挂起创建→加入匿名 Job→恢复主线程，关闭先启动后加入的逃逸窗口；Job 不允许 breakaway，没有添加第二个根的入口。根进程的真实句柄退出、整个 Job ActiveProcesses 为零且根正常退出后，同一活体 owner／operation 仅可消费一次结果。清理／Dispose 先失效，再关闭 Job；外部 PID、历史 JSON、监听缺失、空模型列表均不能生成结果。[CREATE_SUSPENDED](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags)、[Job accounting](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_accounting_information)
+
+Job 不是未知模型的通用隔离器：WMI 创建的进程不自动加入父 Job，服务代理／远端工作也不属于该树。将来只可接入已审查且全部执行都归属于该 Job 的提供方，并绑定完整受信产物、Profile、请求及持久 guard；本轮没有此真实提供方适配。根退出与 Job 清空不证明业务成功，不授权清除失败／未知 guard。[Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
+
+新增的一个原生聚焦用例验证：安装中断后只读重开；显式撤销；相同内容但不同文件身份拒绝覆盖；撤销中断后恢复；主进程退出时 runner 仍存活而拒绝结束；runner 自愿结束后才单次通过。原生首次因目标字符串 NUL 遗漏失败，修复后通过。PG 集成首次被新 data 目录继承 ACL 拒绝；改为在下一新建空目录创建时设置保护后通过。没有放宽产品 ACL、修复旧目录或扩大测试集。
+
+通过的专属 PG17 端口 `60062`／PID `17040` 已停止；首次失败的 `59974`／`36624` 也已停止。真实 pg_dump 仍导入持有的 snapshot；原生规则 owner 在撤销中途退出，独立进程检查不改变 HBA，明确撤销后原文件身份／字节恢复，app 重连成功。独立模型树使用两个轻量合成程序，不加载模型、不访问 Ollama/KAG；它不为该 PG 探针或个人工作区提供模型准入。证据及失败记录在 `.verification/recovery-legacy-boundary-v2/`，旧阶段证据保留。
+
 ## 后续需要的最小具体授权
 
 已有“当前 Profile 身份、Runtime 历史、应用配置连接元数据”的只读许可不重问。完成新的只读登记前上下文后，可据该许可确认源身份。以下操作仍需先给出具体目标和回退方案，再获得相应批准：
@@ -68,4 +84,4 @@ HBA 是实例级配置文件，即使规则只匹配一个库，语法错误、�
 2. 读取该 Profile 的模型执行归属／guard 等必要元数据；若需结束某个已确认服务或 runner，另列 PID／创建时间／服务名／共享消费者影响。不能用宽泛授权停止 KAG 或身份未知进程。
 3. 在当前边界全部成立后，写入该 Profile 缺失的锁与独立 epoch；以及读取业务数据／源文件、创建加密备份和新的恢复目标。实际备份、恢复和激活仍分别绑定具体对象，尚未执行。
 
-近期实现重点是安全的登记前只读上下文、原生 HBA 变更 owner 及其崩溃后只读核对消费者、当前模型结束证据接口，然后把活体边界接入既有来源生产链。不能直接把实验中的字符串规则或 JSON 结果当作可用的个人准入能力。
+近期实现重点是安全的登记前只读上下文、原生规则 owner 与真实数据库／服务身份和批准计划绑定、实际模型提供方与 guard 的结束证据适配，然后把持续持有的活体边界接入既有来源生产链。本轮原语和合成验证不替代这些绑定，不能直接把字符串规则、意图 JSON 或合成模型结果当作个人准入能力。
