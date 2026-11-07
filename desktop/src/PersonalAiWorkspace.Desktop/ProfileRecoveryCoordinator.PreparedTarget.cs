@@ -17,6 +17,8 @@ namespace PersonalAiWorkspace.Desktop;
 internal sealed partial class ProfileRecoveryCoordinator
 {
     private readonly Dictionary<string,Process> syntheticConsumers=new(StringComparer.Ordinal);
+    private readonly Dictionary<string,SingleInstance> syntheticInstances=new(StringComparer.Ordinal);
+    private readonly int entryThread=Environment.CurrentManagedThreadId;
     internal sealed record SyntheticTargetPlan(int Version, string Kind, string State, string OperationId,
         string TargetProfileId, string BackupId, string SourceRegistrationSha256, string PayloadSha256,
         string ManifestSha256, string DatabaseName, string OwnerRole, string AppRole, string OwnershipReceipt);
@@ -66,6 +68,7 @@ internal sealed partial class ProfileRecoveryCoordinator
         PublishRecord(entry,"prepared",SyntheticTargetEntropy(target,"prepared"),prepared);
         if(ReadRecord<PreparedTargetIdentity>(Path.Combine(entry,"prepared.dpapi"),SyntheticTargetEntropy(target,"prepared"))!=prepared)throw Stop();
         syntheticConsumers.Add(target,consumer);
+        syntheticInstances.Add(target,single);
         return plan; // No JNA provision, credentials, database, READY or selection mutation.
     }
 
@@ -98,6 +101,20 @@ internal sealed partial class ProfileRecoveryCoordinator
     private sealed record SyntheticActive(int Version,string Kind,string State,string OperationId,string TargetProfileId,
         string LaunchSha256,string NativeIdentity,string StorageContract);
 
+    // Private fixture-only UI entry. The completed consumer, retained locks and READY chain
+    // remain the authority; showing a window or knowing a target id grants nothing.
+    private SyntheticActivation? ConfirmSyntheticActivation(string target,FileStream runtimeLock,FileStream modelLock,
+        Action<ProfileRecoveryWindow>? isolatedDialog=null)
+    {
+        if(Environment.CurrentManagedThreadId!=entryThread||Thread.CurrentThread.GetApartmentState()!=ApartmentState.STA)throw Stop();
+        RequireSyntheticConsumerExited(target);
+        using(var evidence=SyntheticRecoveryPublication.Inspect(target))if(evidence.Stage!="READY")throw Stop();
+        var window=ProfileRecoveryWindow.SyntheticReady(target);
+        isolatedDialog?.Invoke(window);
+        string? request=window.ConfirmSyntheticActivation();
+        return request is null?null:AuthorizeSyntheticActivation(target,request,runtimeLock,modelLock);
+    }
+
     // Explicit isolated fixture call only. No personal/UI entry or selection write. The
     // original consumer, both maintenance handles and coordinator must still be owned here.
     private SyntheticActivation AuthorizeSyntheticActivation(string target,string requestId,FileStream runtimeLock,FileStream modelLock)
@@ -124,6 +141,16 @@ internal sealed partial class ProfileRecoveryCoordinator
         private Process? child;
         private bool disposed,provisionAttempted,launchAttempted;
         internal string TargetId{get;}
+        internal SingleInstance DesktopInstance
+        {
+            get
+            {
+                Validate();
+                if(Environment.CurrentManagedThreadId!=coordinator.entryThread
+                    ||!coordinator.syntheticInstances.TryGetValue(TargetId,out var instance)||!instance.IsPrimary)throw Stop();
+                return instance;
+            }
+        }
         internal SyntheticActivation(ProfileRecoveryCoordinator coordinator,string target,FileStream runtime,FileStream model)
         {this.coordinator=coordinator;TargetId=target;authorityRuntime=runtime;authorityModel=model;}
         internal void RequireMaintenance()

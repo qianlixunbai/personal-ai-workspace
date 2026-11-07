@@ -52,18 +52,28 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     private bool databaseSettingsOpen;
     private bool developmentStartupHandled;
     private int developmentStartupGeneration;
+    private readonly bool syntheticLifecycleProbe;
+    private readonly TaskCompletionSource<string> developmentStartup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task<string> DevelopmentStartupCompletion => developmentStartup.Task;
     internal bool SwitchDevelopmentProfileRequested { get; private set; }
 #endif
 #endif
     internal AssistantApp(SingleInstance single, CredentialStore? testCredentials = null
 #if MMF3_ACCEPTANCE && DEBUG
         , Mmf3AcceptanceLaunch? acceptance = null
+#if MMF3_PROFILE_ACCEPTANCE
+        , bool syntheticLifecycleProbe = false
+#endif
 #endif
         )
     {
         this.single = single;
 #if MMF3_ACCEPTANCE && DEBUG
         this.acceptance = acceptance;
+#if MMF3_PROFILE_ACCEPTANCE
+        if (syntheticLifecycleProbe && acceptance?.RecoveryActivation is null) throw new InvalidOperationException("Synthetic activation required.");
+        this.syntheticLifecycleProbe = syntheticLifecycleProbe;
+#endif
         if (acceptance is not null)
         {
             acceptance.Validate();
@@ -103,6 +113,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         base.OnStartup(e);
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         StartDevelopmentRuntime();
+        // A capability-bound synthetic fixture exercises this Application/Dispatcher and the
+        // same startup callback without installing hotkeys, tray UI or WebView on the user's desktop.
+        if (syntheticLifecycleProbe) return;
 #endif
         window = new AssistantWindow(this, runtime);
 #if MMF3_ACCEPTANCE && DEBUG
@@ -143,6 +156,9 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                 if (exitRequested) return;
                 await ExitAsync(switchDevelopmentProfile: true);
             });
+            trayMenu.Items.Add("备份与恢复维护说明…", null, (_, _) => MessageBox.Show(
+                ProfileRecoveryWindow.Scope + "\n\n" + ProfileRecoveryWindow.RunningGuidance,
+                "Personal AI Workspace · 备份与恢复维护", MessageBoxButton.OK, MessageBoxImage.Information));
         }
 #endif
         trayMenu.Items.Add("退出", null, async (_, _) => await ExitAsync());
@@ -552,6 +568,8 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             if (exitRequested || generation != developmentStartupGeneration) return;
             if (failure is not null)
             {
+                developmentStartup.TrySetResult(failure);
+                if (syntheticLifecycleProbe) return;
                 string reason = failure switch
                 {
                     "DATABASE_AUTHENTICATION_FAILED" or "NATIVE_AUTHENTICATION_UNAVAILABLE" or "AUTHENTICATION_FAILED" => "工作区认证失败。",
@@ -565,13 +583,22 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
                     await ExitAsync(switchDevelopmentProfile: true);
                 return;
             }
+            // Isolated activation is never a request to change the user's default workspace.
+            // Real ordinary selection continues through the existing Save path below.
+            if (acceptance?.RecoveryActivation is not null)
+            {
+                developmentStartup.TrySetResult("ACTIVE_SYNTHETIC");
+                return;
+            }
             try
             {
                 acceptance!.Validate();
                 DevelopmentWorkspaceSelection.Save(acceptance.RunId);
+                developmentStartup.TrySetResult("READY_SELECTION_SAVED");
             }
             catch (Exception)
             {
+                developmentStartup.TrySetResult("READY_SELECTION_UNSAVED");
                 MessageBox.Show(workspace ?? (Window)window, "工作区已打开，但无法保存上次使用的工作区记录。下次启动可能需要重新选择；现有工作区和数据库配置未改写。",
                     "Personal AI Workspace · 无法记住工作区", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
@@ -673,6 +700,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         single.StopListening();
         lifetime.Cancel();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        developmentStartup.TrySetResult("CLOSED");
         runtimeOwner?.Dispose();
 #endif
         hotkey?.Dispose();

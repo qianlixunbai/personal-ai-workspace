@@ -103,6 +103,8 @@ Slice 1 的合成入口只接受本进程成功 v3 备份产生的内部能力�
 
 后续[合成闭环](../engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md) 在隔离的 `synthetic-sources/synthetic-targets` 命名空间中实现持久来源消费、固定 Profile/data 恢复、新凭据/权限核验和 READY。显式激活需同一维护 owner 的内存能力；先持久授权，再单次 native 发布尝试，最后把启动领取绑定到实际 JVM Process。helper 从 OS 获取调用父进程，核对 PID/创建时间/session，授权记录本身不能普通启动或中断重放。完整 Native/数据库身份和实际 Runtime/Store 就绪后才写 ACTIVE；普通重开仅接受完整 ACTIVE 链。目标源文件从创建时就使用正常 Runtime 要求的私有受保护 DACL，不通过修补旧目标或放宽 ACL 检查达到激活。个人完整停写、受信来源授权及正式 UI/生命周期仍未闭环，恢复入口保持 BLOCKED；合成例外不能进入个人命名空间。
 
+正式开发版选择器现有只读维护窗口，在正常 AssistantApp 创建之前持有 authority/mutex，关闭即结束维护；运行中入口只提示退出。窗口分别显示停写/模型/配置/来源授权缺口，个人操作仍禁用。私有合成确认窗口与 Program 的生命周期移交已接线：同 STA 线程保留原目标 mutex，进入真实 AssistantApp 启动回调后发布 ACTIVE；合成启动不写个人选择。隔离探针运行该 Application/Dispatcher 与实际 Store，但不安装桌面快捷键、托盘或打开 WebView，未完成完整 UI 交互验收。上述个人阻塞不因这段合成生命周期而解除。
+
 默认逻辑备份及源数据可能为明文；统一加密备份不改变其他格式。恢复、迁移与真实数据操作必须遵守各自独立门禁，文档更新不改变权限或持久格式。
 
 ## 架构决策与历史

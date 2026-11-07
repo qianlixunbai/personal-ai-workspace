@@ -11,6 +11,8 @@ using System.Buffers.Binary;
 using System.Text;
 using System.Threading;
 using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
 using PersonalAiWorkspace.Core;
 
 // One explicit native -> Java -> native integration in the new cluster owned by the runner.
@@ -21,7 +23,7 @@ internal static class RecoverySourceProducerProbe
     private sealed record InterruptedAuthorization(int Version,string Kind,string State,string OperationId,string TargetProfileId,string ReadySha256,string RequestId,string Mode);
     private static async Task Main(string[] args)
     {
-        if (args.Length is not (4 or 5) || args.Length==5 && args[4] is not ("prepared" or "ready" or "activate" or "interrupt")) throw new IOException("Explicit synthetic fixture/tooling required");
+        if (args.Length is not (4 or 5) || args.Length==5 && args[4] is not ("prepared" or "ready" or "activate" or "interrupt" or "desktop")) throw new IOException("Explicit synthetic fixture/tooling required");
         var assembly = Assembly.LoadFrom(args[0]);
         var coordinator = assembly.GetType("PersonalAiWorkspace.Desktop.ProfileRecoveryCoordinator", true)!;
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
@@ -82,7 +84,13 @@ internal static class RecoverySourceProducerProbe
             RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app };
         foreach (string value in new[] { "-Xmx384m", "-XX:ActiveProcessorCount=2", "-cp", args[2],
             "io.github.qianlixunbai.workspace.backup.RecoverySourceProducerProbe", "restore-registered", args[3], app, backupId }) restore.ArgumentList.Add(value);
-        if(args.Length==5) RunPrepared(assembly,coordinator,args,app,backupId,payload,manifest,isolated);
+        if(args.Length==5)
+        {
+            Exception? failure=null;
+            var entry=new Thread(()=>{try{RunPrepared(assembly,coordinator,args,app,backupId,payload,manifest,isolated);}catch(Exception error){failure=error;}});
+            entry.SetApartmentState(ApartmentState.STA);entry.Start();entry.Join();
+            if(failure is not null)throw new IOException("Prepared lifecycle failed",failure);
+        }
         else using (var child = Process.Start(restore) ?? throw new IOException())
         {
             var errors = child.StandardError.BaseStream.CopyToAsync(Stream.Null);
@@ -114,6 +122,94 @@ internal static class RecoverySourceProducerProbe
         Console.WriteLine("PASS: producer exited -> DPAPI registration consumed by new JVM -> source database unavailable/Profile absent -> authenticated fresh target -> stores/index verified -> expected credential disposition checked.");
         Console.WriteLine(args.Length==5?"PASS: real authority Native Gate -> pinned prepared target -> canonical fixed data; explicit mode result recorded separately.":
             "Personal maintenance remains BLOCKED; real Native Gate, personal target publication and activation were not exercised.");
+    }
+
+    private static void RunDesktopLifecycle(Assembly assembly,Type coordinator,object owner,string target,string targetRoot,
+        string entry,string operation,string readyHash,FileStream runtime,FileStream model,string isolated)
+    {
+        const BindingFlags methods=BindingFlags.NonPublic|BindingFlags.Public|BindingFlags.Static|BindingFlags.Instance;
+        Type Owner(string name)=>assembly.GetType("PersonalAiWorkspace.Desktop."+name,true)!;
+        var confirm=coordinator.GetMethod("ConfirmSyntheticActivation",methods)!;
+        Action<object> Dialog(bool click)=>value=>
+        {
+            var window=(Window)value;window.Opacity=0;window.ShowInTaskbar=false;
+            window.Loaded+=(_,_)=>
+            {
+                if(!click){window.Close();return;}
+                var button=((StackPanel)window.Content).Children.OfType<Button>().Single(b=>b.Name=="ActivateSyntheticRecovery");
+                if(button.IsDefault||!button.IsEnabled)throw new IOException("Explicit activation button required");
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            };
+        };
+        if(confirm.Invoke(owner,[target,runtime,model,Dialog(false)]) is not null
+            ||File.Exists(Path.Combine(entry,"authorization.dpapi"))||Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64")))throw new IOException("Cancelled confirmation mutated target");
+        using var activation=(IDisposable)confirm.Invoke(owner,[target,runtime,model,Dialog(true)])!;
+        if(activation is null)throw new IOException("Explicit synthetic click missing");
+        try{confirm.Invoke(owner,[target,runtime,model,Dialog(true)]);throw new Exception("Confirmation replayed");}
+        catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+        var launch=Owner("Mmf3AcceptanceLaunch");string argument=(string)launch.GetField("Argument",methods)!.GetRawConstantValue()!;
+        try{launch.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);throw new Exception("Authorized ordinary startup admitted");}
+        catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+        string preference=Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(targetRoot)!)!,"last-workspace");
+        string? PreferenceHash()=>File.Exists(preference)?Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(preference))):null;
+        string? before=PreferenceHash();Exception? failure=null;int? runtimePid=null;int revisions=0;bool callbackCompleted=false;
+        Action<object> observe=value=>
+        {
+            var app=(Application)value;
+            app.Startup+=async(_,_)=>
+            {
+                try
+                {
+                    string result=await ((Task<string>)value.GetType().GetProperty("DevelopmentStartupCompletion",methods)!.GetValue(value)!).WaitAsync(TimeSpan.FromSeconds(75));
+                    if(result!="ACTIVE_SYNTHETIC")throw new IOException("Desktop startup result: "+result);
+                    var runtimeOwner=value.GetType().GetProperty("DevelopmentRuntime",methods)!.GetValue(value)!;
+                    var runtimeType=runtimeOwner.GetType();runtimePid=(int?)runtimeType.GetProperty("OwnedProcessId",methods)!.GetValue(runtimeOwner);
+                    if(runtimePid is null)throw new IOException();
+                    var client=(RuntimeClient)value.GetType().GetField("runtime",methods)!.GetValue(value)!;
+                    var memory=await client.ListMemoryAsync(new MemoryQuery(),CancellationToken.None);
+                    var conversations=await client.ListConversationsAsync(ConversationStatus.ACTIVE,0,10,CancellationToken.None);
+                    var knowledge=await client.ListKnowledgeAsync("ACTIVE",0,CancellationToken.None);
+                    if(memory.Items.Count==0||conversations.Items.Count==0||knowledge.Items.Length==0)throw new IOException("Desktop stores missing");
+                    foreach(var conversation in conversations.Items)
+                        if((await client.GetConversationAsync(conversation.Id,0,10,CancellationToken.None)).Turns.Count==0)throw new IOException();
+                    foreach(var document in knowledge.Items)
+                    foreach(var revision in (await client.GetKnowledgeAsync(document.DocumentId,CancellationToken.None)).Revisions)
+                    {
+                        var preview=await client.PreviewKnowledgeAsync(document.DocumentId,revision.SourceRevision,0,CancellationToken.None);
+                        using var input=new FileStream(Path.Combine(targetRoot,"data","knowledge","sources",document.DocumentId,revision.SourceRevision+".source"),FileMode.Open,FileAccess.Read,FileShare.Read);
+                        if(input.Length!=revision.ByteLength||Convert.ToHexStringLower(SHA256.HashData(input))!=revision.SourceDigest||preview.Text.Length==0)throw new IOException();
+                        revisions++;
+                    }
+                    if(revisions==0||!File.Exists(Path.Combine(entry,"active.dpapi")))throw new IOException();
+                    launch.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);
+                    try{activation.GetType().GetMethod("Provision",methods)!.Invoke(activation,null);throw new Exception("Provision replayed");}
+                    catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                    try{await (Task)runtimeType.GetMethod("RestartAsync",methods)!.Invoke(runtimeOwner,[CancellationToken.None])!;throw new Exception("Runtime restarted");}
+                    catch(IOException){}
+                    bool conflictingPrimary=true;
+                    var competitor=new Thread(()=>
+                    {
+                        using var single=(IDisposable)Activator.CreateInstance(Owner("SingleInstance"),methods,null,[".MMF3."+target],null)!;
+                        conflictingPrimary=(bool)single.GetType().GetProperty("IsPrimary",methods)!.GetValue(single)!;
+                    });competitor.Start();competitor.Join();
+                    if(conflictingPrimary||PreferenceHash()!=before)throw new IOException("Desktop ownership/selection mismatch");
+                    callbackCompleted=true;
+                    await (Task)runtimeType.GetMethod("StopAsync",methods)!.Invoke(runtimeOwner,null)!;
+                }
+                catch(Exception error){failure=error;}
+                finally{app.Shutdown(failure is null?0:1);}
+            };
+        };
+        int exit=(int)Owner("Program").GetMethod("RunSyntheticRecoveryDesktop",methods)!.Invoke(null,[activation,observe])!;
+        if(exit!=0||failure is not null||!callbackCompleted||PreferenceHash()!=before)throw new IOException("Desktop lifecycle failed",failure);
+        if(readyHash!=Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(entry,"ready.dpapi")))))throw new IOException();
+        File.WriteAllText(Path.Combine(isolated,"synthetic-activation-evidence.json"),JsonSerializer.Serialize(new{
+            targetProfileId=target,operationId=operation,readySha256=readyHash,runtimePid,
+            cancelledConfirmationUnchanged=true,nativeExplicitSyntheticClick=true,confirmationReplayRejected=true,
+            ordinaryStartupRejectedBeforeActive=true,actualAssistantAppRun=true,assistantStartupPublishedActive=true,
+            ownedTargetMutexRetained=true,oneRuntimeOnly=true,activationRestartRejected=true,nativeProvisionReplayRejected=true,
+            desktopClientStoresRead=true,sourceDigestsVerified=revisions,lastWorkspaceSelectionUnchanged=true,
+            shellPresentationExercised=false,personalAuthorization=false,finalState="ACTIVE_SYNTHETIC_DESKTOP_STOPPED"}));
     }
 
     // Keep native mutex acquisition/disposal on this one thread. All processes and Profiles
@@ -230,6 +326,11 @@ internal static class RecoverySourceProducerProbe
                     if(Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64")))throw new IOException();
                 }
                 RefuseStartupAndProvision();
+                if(args[4]=="desktop")
+                {
+                    RunDesktopLifecycle(assembly,coordinator,owner,target,targetRoot,entry,operation,readyHash,runtime,model,isolated);
+                    return;
+                }
                 if(args[4] is "activate" or "interrupt")
                 {
                     var authorize=coordinator.GetMethod("AuthorizeSyntheticActivation",methods)!;

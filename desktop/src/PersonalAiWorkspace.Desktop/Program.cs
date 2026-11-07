@@ -14,6 +14,21 @@ internal static class Program
         if (args.Length > 0 && args[0] is "--clipboard-snapshot" or "--clipboard-read" or "--clipboard-restore")
             return NativeCopyPort.RunWorker(args[0], args);
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (args.Length > 0 && args[0].StartsWith("--recover-development-workspace", StringComparison.Ordinal))
+        {
+            try
+            {
+                if (args.Length != 2 || args[0] != ProfileRecoveryWindow.Argument) throw new System.IO.IOException();
+                ShowRecoveryMaintenance(Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, args[1]]));
+                return 3; // Inspection completed; personal maintenance remains BLOCKED.
+            }
+            catch (Exception)
+            {
+                MessageBox.Show("恢复维护未打开（BLOCKED）。请检查请求与工作区安全状态。\n\n" + ProfileRecoveryWindow.RunningGuidance,
+                    "Personal AI Workspace · 恢复维护", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return 4;
+            }
+        }
         // A maintenance request is terminal, including malformed/unknown versions and failures.
         // Never fall through to the chooser, AssistantApp, Runtime startup or preference saving.
         if (args.Length > 0 && args[0].StartsWith("--inspect-profile-recovery", StringComparison.Ordinal))
@@ -110,6 +125,28 @@ internal static class Program
         return result;
     }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    private static void ShowRecoveryMaintenance(Mmf3AcceptanceLaunch authority)
+    {
+        using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(authority);
+        ProfileRecoveryWindow.ShowInspection(coordinator);
+    }
+
+    // Retain the coordinator's target mutex, authority locks and capability on this STA thread
+    // through AssistantApp cleanup. The optional callback has no command-line entry.
+    internal static int RunSyntheticRecoveryDesktop(ProfileRecoveryCoordinator.SyntheticActivation activation,
+        Action<AssistantApp>? isolatedProbe = null)
+    {
+        if (System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA)
+            throw new System.IO.IOException("Recovery desktop requires its owning STA thread.");
+        var single = activation.DesktopInstance;
+        var profile = activation.Provision();
+        using var paths = Mmf3ProfileState.Pin(profile.RunId);
+        profile.Validate();
+        var app = new AssistantApp(single, acceptance: profile, syntheticLifecycleProbe: isolatedProbe is not null);
+        try { isolatedProbe?.Invoke(app); return app.Run(); }
+        finally { app.Cleanup(); }
+    }
+
     internal static int InspectRecoveryMaintenance(string[] args, Action<string> report)
     {
         string id;
@@ -195,10 +232,9 @@ internal static class Program
 
     private static string? ChooseDevelopmentProfile()
     {
-        var choice = MessageBox.Show("仅开发版：使用经过本机审查的构建和工具链，正式发布准入尚未完成。\n\n是：创建独立开发工作区（仅为新目录设置私有权限；不修复已有 ACL）。\n否：选择已有开发工作区。\n取消：退出。",
-            "Personal AI Workspace · 开发工作区", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
-        if (choice == MessageBoxResult.Cancel) return null;
-        if (choice == MessageBoxResult.No)
+        string? choice = ProfileRecoveryWindow.ChooseAction();
+        if (choice is null) return null;
+        if (choice is "open" or "recovery")
         {
             var picker = new Microsoft.Win32.OpenFolderDialog
             {
@@ -209,6 +245,11 @@ internal static class Program
             string runId = System.IO.Path.GetFileName(picker.FolderName);
             if (!string.Equals(System.IO.Path.GetFullPath(picker.FolderName), Mmf3ProfileState.Root(runId), StringComparison.OrdinalIgnoreCase))
                 throw new System.IO.IOException();
+            if (choice == "recovery")
+            {
+                ShowRecoveryMaintenance(Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, runId]));
+                return null; // Maintenance is terminal; closing must never start the authority.
+            }
             return runId;
         }
         using var sources = TrustedDevelopmentRuntimeSources.Open();

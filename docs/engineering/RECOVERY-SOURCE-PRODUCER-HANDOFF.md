@@ -1,5 +1,24 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：原生维护入口与 AssistantApp 合成生命周期
+
+基于本地 `2d417c6`，新增开发版原生维护界面，并用 **1 次全新隔离合成端到端流程** 接通确认窗口、同线程互斥锁移交和真实 `AssistantApp.Run` / Dispatcher 启动回调。**用户现在可以进入只读恢复维护并看到具体阻断；个人备份、恢复和激活仍未开放。** 下文上一阶段的“正式 UI/生命周期未接线”已由本节限定更新，不能把合成结果当作个人恢复授权或完整 UI 实机验收。
+
+- 开发工作区选择器新增“备份与恢复维护”；也可用 `PersonalAiWorkspace.Desktop.exe --recover-development-workspace-v1 <ProfileId>`。受信 Profile 解析后、正常 AssistantApp 创建前取得现有 coordinator/mutex；检查期间保留全部锁，窗口关闭后结束维护，不能落入正常启动或保存选择。未知参数/版本同样终止。原有 `--inspect-profile-recovery-v1` 保留兼容。
+- 窗口说明 Workspace 范围、Finance 排除、模型重新准入、原数据保留和同机登记/完整 authority 限制；分别显示直属 Runtime 历史、未覆盖写入者、模型 guard 和配置绑定结果。备份/恢复按钮禁用，没有包选择、停写勾选或 `trust-sql-source` 式授权。运行中托盘入口只给出范围和退出后打开选择器的命令；不调用取消、Stop 或退出流程制造停写证明。
+- 私有合成 owner 在重读 READY 后显示单独激活窗口。取消不写任何授权；按钮不是默认 Enter 动作，点击才产生 request。确认后的授权仍由原消费者、实际锁句柄及 READY 复核授予，窗口返回值自身不是能力。目标 mutex 从创建一直由同一个 STA 线程持有，Program 在 JNA 发布前检查线程与已有实例，再把原实例借给 AssistantApp；清理完成后由 coordinator 释放。
+- `AssistantApp` 的原有存储启动处理调用激活完成检查并发布 ACTIVE。附着合成能力的启动不会保存个人 `last-workspace`；普通工作区的既有保存语义不变。探针运行真实 Application/Dispatcher/Runtime owner 和该回调，但以仅合成能力允许的无 shell 展示模式跳过快捷键、托盘和 WebView；这不是完整交互式 Desktop/UI 验收，也不是用户手动点击证据。确认窗口通过 WPF 按钮事件自动模拟了本次已授权的合成点击。
+
+此次流程结果：目标 `0c3b0dbf9b924f7da3aa756ae6867995`，operation `c5cf8e6277304993ba984e00af00c9ef`，新库 `personal_ai_workspace_b3_c5cf8e627730`（OID 16592）。先取消确认验证 READY/JNA 不变，再显式确认；重复确认、AUTHORIZED 普通启动、重复 Provision 和 Runtime Restart 都拒绝。AssistantApp 发布 ACTIVE 后，使用它持有的真实 RuntimeClient 读取 Memory、Conversation turns、Knowledge 全 revision preview，并核对 1 个原文 digest；另一线程无法取得目标 mutex。个人选择文件前后摘要一致，READY/config 摘要不变。
+
+夹具 `C:\PAW-SourceProducer-d5b8ede2adcf4e5cb551b416c93f6dfe`，专属 PG 端口 55968、PID 33588，生产者/消费者/Runtime PID 52708/38688/3180。全部所属进程已退出；仅经 PID/启动时间/data/端口/可执行路径核对的自建 PG 被停止。最终状态 `ACTIVE_SYNTHETIC_DESKTOP_STOPPED`。owner 退出后普通 Native Verify 成功，显式 owner/runtime Verify 返回拒绝码 10；没有再启动 Runtime。共享 PG 5432/PID 4980、Ollama 11434/PID 6280 保持原样，未操作 KAG/模型。
+
+必要验证仅为 Desktop/既有探针编译、上述单次流程及只读边界核对；Java/helper 无代码变化，沿用已审计 JAR `e6f10b60529df13d01ab292bb0460f415efccdabd07574861672e6cd1b3f9014`，没有 Maven/全套测试/前端重建。最终补充的 STA/已有 mutex 前置检查和维护命令说明另经编译，未重复恢复。证据在 `.verification/recovery-desktop-lifecycle/` 的 `synthetic-activation-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json` 及构建日志。READY 密文摘要 `f2f554af2ef20226a4cb06aa212019c45eee6a144262cc9d6002ddf7aa3db25d`；配置摘要 `07d34d397aa48db4b49fe732a1b720e24a2667a9b3e5f9497f824cdc6b7f8a65`。`synthetic-recovery-evidence.json` 仍是激活前快照，不能单独用于判断最终状态。五份未跟踪文档与原摘要一致；未推送、合并、部署。
+
+**仍无法安全补齐的具体前置：** 直属 Runtime 的观察日志无法追溯证明旧包、跨会话/手动 Java、外部 SQL 客户端和未知模型执行全部停止；缺少该证据时，即使配置只读绑定通过也不能签发个人备份能力。个人来源生产者还须在完整停写成立后，通过原生短期管理员授权、受保护卷 staging、实际源身份/密文绑定和临时角色回收，才可发布独立 `sources` 完成登记；目前没有这条可用授权入口。合成 `synthetic-sources` 登记仍不能用于个人 plan，口令或 manifest 不能弥补。故本轮没有为真实 Profile 创建 intent/角色/备份/目标或读取个人配置，也没有请求用户用确认按钮代替这些证明。后续须先解决上述归属/授权合同，再实现个人包选择与 provision；不应直接解禁 UI 按钮。
+
+WPF 单 STA/模态窗口与 Application 生命周期接线先参考上游 [Application.cs](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationFramework/System/Windows/Application.cs) 和 [Window.cs](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationFramework/System/Windows/Window.cs)，本地单次实际运行是本阶段结论的依据。
+
 ## 最新阶段：绑定唯一进程的合成显式激活
 
 基于本地 `3ac330b`，沿权威恢复设计继续同一 owning 链路。**合成目标已实际从来源登记、恢复、READY 走到显式授权、JNA 发布、真实 Runtime/Store 启动和受保护 ACTIVE；个人恢复仍为 BLOCKED。** 入口仍是私有合成调用，没有开放个人恢复按钮或把合成授权当成完整停写证明。本阶段只做本地提交，不推送、合并或部署。
