@@ -1,5 +1,23 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：默认停写检查不读凭据，来源连接核对单独授权
+
+基于本地 `254d5b1`。核对主设计后发现此前 `InspectSourceReadinessAsync` 虽名为“只读检查”，仍自动启动 Java、解密固定 `database.dpapi` 并使用应用凭据连接 PostgreSQL。这超过用户本次仅身份／进程元数据检查的许可。本阶段补齐这一授权边界；**没有实现完整停写成功能力，也没有开放个人备份、恢复或来源登记。**
+
+- 默认原生检查继续持有原 Profile mutex、目录及 Runtime/model 排他句柄，检查既有 DPAPI Runtime 退出历史和模型状态文件名，返回 `WORKSPACE_NATIVE_PREFLIGHT / BLOCKED`。不启动 Java，不打开数据库配置，不连接数据库；无 guard 时明确为 `NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED`，未知 guard 仍保留并阻断。缺失 Runtime 历史仍为 UNKNOWN，零进程或完整直属退出观察均不升级为完整停写。
+- 原生维护窗口新增单独的“核对来源连接”动作，明确展示同一受信 Profile ID，以及读取／解密应用配置、使用应用凭据查询数据库／角色／结构元数据的具体范围。取消为默认动作，Enter 不授权。确认由同一持锁 coordinator 发起，返回后重核 authority；不接受调用方传入的授权布尔值或 CLI 开关。同一内存 owner 的尝试在窗口打开前消费，取消、失败或未知结果后均不能重放。配置路径、端点及角色仍由受保护配置解析，不能由确认窗口覆盖。
+- 只有显式确认后才进入原有固定构建／Native Gate／直属 Process／私有管道／应用连接绑定路径。该结果始终为 BLOCKED，不签发备份能力。旧 `--inspect-profile-recovery-v1` 命令只运行默认检查，并提示连接核对需另行授权；窗口 Loaded 重入不会重放检查。已有合成 probe 已跟随新的两阶段接口更新，自动确认只匹配其新建的随机合成 Profile。
+
+**授权范围仍须区分：** 产品默认检查仍会验证 Native Gate 并读受保护 Runtime 历史，它不等同于本次获准的纯目录／进程元数据检查。因此本轮没有在个人 Profile 上调用产品维护入口或新增连接动作。真正执行的个人检查仅复用已审查的 `DevelopmentWorkspaceSelection.Read()` 和 `WindowsProfileSecurity.State(id, false)`，读取非敏感选择标识与目录权限／身份；以及限定的 CIM 元数据查询，未读取 Profile 文件、token、数据库配置、密码、命令行或业务正文。
+
+本轮实际元数据结果：已保存的工作区目录为 `SAVED_SELECTION_PRIVATE_DIRECTORIES_VERIFIED`；命名 `PersonalAiWorkspace.Desktop.exe` 查询成功且为 0，因此无其直属子进程；限定 `127.0.0.1:18765` 的监听查询也成功且为 0。这是该时刻的有限观察，**不是原生 Gate admission、活动 Profile 归属、数据库连接核对或完整停写证明**。具体 Profile 标识／路径仅在本地忽略证据目录中，不提交。
+
+**必要验证：** 只新增并运行一个聚焦用例，首次通过（1 passed / 0 failed，544 ms）。它仅使用全新私有临时合成目录：独占配置文件使之不可读取，默认检查仍返回无子进程、无配置／数据库身份的 BLOCKED；重复检查拒绝、Runtime 排他句柄保持、缺历史不变成零历史、未解决 guard 保留、目录／配置字节不变。另在同一用例中以两个原生 UI 夹具分别关闭取消／显式点击，验证默认取消和确切 Profile 范围；这不是个人用户确认，也没有执行连接路径。Desktop、测试程序集、两个已有合成 probe 编译通过；后两者均为 0 warning / 0 error。未重跑 Java／PG／备份恢复链、未修改 helper pins 或 Java 代码、未运行全套测试／前端重建／模型请求。现有合成全链路证据仍只属于其原构建，不能宣称本轮重新验收。
+
+证据在 `.verification/recovery-inspection-authorization/`：`focused-test.log`、`results/inspection-authorization.trx`、两份 `*-probe-build.log`、`identity-build.log`、`identity-metadata.json`、`process-metadata.json`、文档首尾摘要及 `final-boundary-evidence.json`。五份未跟踪文档保持原字节。没有启停共享 PostgreSQL、Ollama、KAG 或用户服务，没有真实备份／恢复、Profile 内容／设置变更、main 合并、推送或部署。实现参考上游 [WPF Window 的模态窗口／DialogResult 生命周期](https://github.com/dotnet/wpf/blob/v10.0.0/src/Microsoft.DotNet.Wpf/src/PresentationFramework/System/Windows/Window.cs)，实际 UI 结论来自本地上述聚焦用例。
+
+**未完成边界与后续具体操作：** 仍缺可独立验证的历史未登记写入者覆盖及未知模型执行终止证明，不能靠检查按钮、当前无监听、guard 消失或管理员密码补齐；个人 `Recovery/sources` 生产链与个人恢复仍无可用授权入口。若下一步要核对真实来源，具体额外动作是：对当前已确认工作区做受信 Native Gate／Runtime 历史读取，再经本次新增原生确认解密固定应用配置并发起只读数据库／角色／结构元数据连接，以确定实际源与权限身份。它超出现有“仅身份与进程元数据”的许可，本轮未执行；即使另获许可并核对通过，也仍不替代完整停写，不能据此开始备份。当前不需要用户在聊天中提供密码。
+
 ## 最新阶段：合成进度／失败结果界面与限定的只读身份核对
 
 基于本地 `728fb82`，合成生产者现直接打开原生进度窗口，在子进程操作和其 finally 返回后展示结果，用户关闭确认后才返回所属验收流程。此 UI 没有个人来源入口；没有把阶段、窗口确认或异常转换成停写／SQL 来源授权。

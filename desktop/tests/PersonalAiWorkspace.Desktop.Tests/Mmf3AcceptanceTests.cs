@@ -14,6 +14,97 @@ public sealed class Mmf3AcceptanceTests
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     [Fact]
+    public async Task RecoveryPreflightDoesNotReadCredentialsAndNativeConnectionConsentIsExplicit()
+    {
+        // A new private surrogate only. The configuration is deliberately unreadable while
+        // the default product preflight runs; no Known Folder/Profile/helper/Java/SQL access.
+        string app = Path.Combine(Path.GetTempPath(), "paw-recovery-inspection-" + Guid.NewGuid().ToString("N"));
+        string id = Guid.NewGuid().ToString("N");
+        var sid = WindowsIdentity.GetCurrent().User!;
+        void DirectoryNew(string path) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(path, sid);
+        DirectoryNew(app);
+        string profiles = Path.Combine(app, "Profiles"), root = Path.Combine(profiles, id);
+        DirectoryNew(profiles); DirectoryNew(root);
+        foreach (string name in new[] { "evidence", "model-state", "data" }) DirectoryNew(Path.Combine(root, name));
+        string runtimeLock = Path.Combine(root, "evidence", "runtime-admission.lock");
+        string modelLock = Path.Combine(root, "model-state", ".lock");
+        File.WriteAllBytes(runtimeLock, []); File.WriteAllBytes(modelLock, []);
+        string configuration = Path.Combine(root, "data", "database.dpapi");
+        byte[] original = "SYNTHETIC_UNREADABLE_CONFIGURATION"u8.ToArray();
+        File.WriteAllBytes(configuration, original);
+        string[] before = Directory.GetFileSystemEntries(app, "*", SearchOption.AllDirectories).Order().ToArray();
+        var inspect = typeof(ProfileRecoveryCoordinator).GetMethod("InspectSourceReadiness",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        ProfileRecoveryCoordinator NewOwner() => (ProfileRecoveryCoordinator)typeof(ProfileRecoveryCoordinator)
+            .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
+        using (var exclusive = new FileStream(configuration, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            using var owner = NewOwner();
+            var result = (ProfileRecoveryCoordinator.SourceReadiness)inspect.Invoke(owner, [id, root])!;
+            Assert.Equal("NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED", result.Native.SourceState);
+            Assert.Equal(0, result.Native.ChildPid);
+            Assert.Equal("BLOCKED", result.Native.Admission);
+            Assert.Null(result.Native.SourceConfigurationIdentity); Assert.Null(result.Native.SourceConfigurationSha256);
+            Assert.Equal(0u, result.Native.SourceDatabaseOid); Assert.Null(result.ObservedExitedChildren);
+            Assert.Contains("未读取应用凭据", ProfileRecoveryWindow.Describe(result));
+            Assert.IsType<IOException>(Assert.Throws<TargetInvocationException>(() => inspect.Invoke(owner, [id, root])).InnerException);
+            // A metadata result/private fixture cannot authorize the real product connection entry.
+            await Assert.ThrowsAsync<IOException>(() => owner.RequestSourceBindingInspectionAsync());
+            Assert.Throws<IOException>(() => new FileStream(runtimeLock, FileMode.Open, FileAccess.Read, FileShare.Read));
+        }
+        Assert.Equal(original, File.ReadAllBytes(configuration));
+        Assert.Equal(before, Directory.GetFileSystemEntries(app, "*", SearchOption.AllDirectories).Order().ToArray());
+        string guard = Path.Combine(root, "model-state", "execution-guard.pending");
+        File.WriteAllText(guard, "synthetic unresolved evidence");
+        using (var owner = NewOwner())
+        {
+            var result = (ProfileRecoveryCoordinator.SourceReadiness)inspect.Invoke(owner, [id, root])!;
+            Assert.Equal("NOT_READ_MODEL_STATE_UNRESOLVED", result.Native.SourceState);
+            Assert.Equal("synthetic unresolved evidence", File.ReadAllText(guard));
+        }
+
+        // Native UI fixtures exercise close/explicit click only; they do not mint backup or
+        // stop evidence and never call the connected inspection. Scope is this random ID.
+        int dialogs = 0;
+        bool allow = false;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                System.Windows.EventManager.RegisterClassHandler(typeof(System.Windows.Window), System.Windows.FrameworkElement.LoadedEvent,
+                    new System.Windows.RoutedEventHandler((sender, _) =>
+                    {
+                        if (sender is not System.Windows.Window window || window.Title != ProfileRecoveryWindow.SourceInspectionTitle
+                            || window.Content is not System.Windows.Controls.StackPanel panel
+                            || !panel.Children.OfType<System.Windows.Controls.TextBlock>().Any(text => text.Text.Contains(id, StringComparison.Ordinal))) return;
+                        Interlocked.Increment(ref dialogs);
+                        var button = panel.Children.OfType<System.Windows.Controls.Button>().Single(value => value.Name == "AuthorizeSourceInspection");
+                        Assert.False(button.IsDefault);
+                        Assert.True(panel.Children.OfType<System.Windows.Controls.Button>().Single(value => Equals(value.Content, "取消")).IsDefault);
+                        Assert.Contains("解密", string.Join("\n", panel.Children.OfType<System.Windows.Controls.TextBlock>().Select(text => text.Text)));
+                        window.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (allow) button.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                            else window.Close();
+                        }));
+                    }));
+                Assert.False(ProfileRecoveryWindow.ConfirmSourceBindingInspection(id));
+                allow = true;
+                Assert.True(ProfileRecoveryWindow.ConfirmSourceBindingInspection(id));
+                Assert.Equal(2, dialogs);
+                completion.SetResult();
+            }
+            catch (Exception failure) { completion.TrySetException(failure); }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        await completion.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(original, File.ReadAllBytes(configuration));
+        Console.WriteLine("Synthetic inspection fixture retained: " + app);
+    }
+
+    [Fact]
     public async Task SyntheticBackupFeedbackRetainsFailuresUntilAcknowledgedAfterCleanup()
     {
         // Native presentation fixtures only: no source, process, SQL, credential or receipt.

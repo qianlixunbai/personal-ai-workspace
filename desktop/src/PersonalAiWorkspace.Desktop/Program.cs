@@ -164,12 +164,8 @@ internal static class Program
             // and all Profile/file pins until the result dialog closes; inspection grants nothing.
             using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(authority);
             var inspection = coordinator.InspectSourceReadinessAsync().GetAwaiter().GetResult();
-            string history = ProfileRecoveryWindow.DescribeRuntimeHistory(inspection.RuntimeHistory);
-            string source = inspection.Native.SourceState == "BOUND_READ_ONLY"
-                ? "受保护 Workspace 配置与应用数据库连接只读核对通过。" : "Workspace 来源尚未通过核对（" + inspection.Native.SourceState + "）。";
-            report("维护状态：BLOCKED（" + inspection.Native.WriterCoverage + "）。\n\n" + history + "\n" + source + "\n" +
-                "模型状态：" + inspection.Native.ModelState + "。\n旧版本、未登记进程及外部数据库客户端的停止状态尚未证明。\n\n" +
-                "本次仅检查，未启动工作区，也未备份、恢复或激活。完整 PostgreSQL Profile 恢复仍未开放。");
+            report(ProfileRecoveryWindow.Describe(inspection) + "\n检查代码：" + inspection.Native.SourceState + "。\n" +
+                "连接核对需要在原生维护窗口单独授权；此命令不会读取应用凭据或连接数据库。");
             return 3;
         }
         catch (Exception)

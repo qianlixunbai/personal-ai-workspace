@@ -29,26 +29,68 @@ internal sealed partial class ProfileRecoveryCoordinator
             ? RuntimeHistory.ObservedExitedChildren : null;
     }
 
-    // Uses the reviewed embedded source manifest, the original authority Gate and our direct
-    // Process handle. This is a read-only product preflight, not the synthetic backup launcher.
-    internal async Task<SourceReadiness> InspectSourceReadinessAsync()
+    private SourceReadiness? sourceReadiness;
+    private bool sourceBindingInspectionAttempted;
+
+    // Default inspection never opens database.dpapi, launches Java or connects to a database.
+    // Runtime history and guard names are observations, not complete stopped-writer proof.
+    internal Task<SourceReadiness> InspectSourceReadinessAsync()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (authority is null || maintenanceRuntimeLock is not null) throw Stop();
         authority.Validate(); Mmf3ProfileNative.Verify(authority);
-        foreach (string directory in new[] { "evidence", "model-state" }) HoldPrivateDirectory(Path.Combine(authority.Root, directory));
+        return Task.FromResult(InspectSourceReadiness(authority.RunId, authority.Root));
+    }
+
+    // Private seam for new isolated fixtures; never derives authority from a caller path.
+    private SourceReadiness InspectSourceReadiness(string profileId, string root)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (maintenanceRuntimeLock is not null || sourceReadiness is not null) throw Stop();
+        RequireHex(profileId, 32);
+        foreach (string directory in new[] { "evidence", "model-state" }) HoldPrivateDirectory(Path.Combine(root, directory));
         using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-        var runtime = OpenRecord(Path.Combine(authority.Root, "evidence", "runtime-admission.lock"), write: true);
+        var runtime = OpenRecord(Path.Combine(root, "evidence", "runtime-admission.lock"), write: true);
         FileStream? model = null;
         try
         {
-            model = OpenRecord(Path.Combine(authority.Root, "model-state", ".lock"));
+            model = OpenRecord(Path.Combine(root, "model-state", ".lock"));
             ValidateFileAcl(runtime, user.User!); ValidateFileAcl(model, user.User!);
             if (runtime.Length != 0 || model.Length != 0) throw Stop();
             held.Add(runtime); held.Add(model); maintenanceRuntimeLock = runtime;
         }
         catch { model?.Dispose(); runtime.Dispose(); throw; }
-        var history = InspectRuntimeHistory(authority.RunId);
+        string[] names = Directory.EnumerateFileSystemEntries(Path.Combine(root, "model-state"))
+            .Take(4).Select(Path.GetFileName).ToArray()!;
+        string modelState = names.Length <= 3 && names.All(name => name is ".lock" or "active-model.json" or "validation-required.json")
+            ? "NO_GUARD_FILE_OBSERVED" : "UNRESOLVED_MODEL_STATE";
+        sourceReadiness = new(new(1, "WORKSPACE_NATIVE_PREFLIGHT", 0, profileId, "BLOCKED",
+            "UNREGISTERED_WRITERS_UNPROVEN", modelState, modelState == "NO_GUARD_FILE_OBSERVED"
+                ? "NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED" : "NOT_READ_MODEL_STATE_UNRESOLVED",
+            null, null, 0, 0), InspectRuntimeHistory(profileId));
+        return sourceReadiness;
+    }
+
+    // This entry itself owns the native confirmation. No caller boolean, CLI flag, existing
+    // receipt or read-only metadata result can authorize decrypting app credentials/SQL access.
+    internal async Task<SourceReadiness> RequestSourceBindingInspectionAsync()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (authority is null || maintenanceRuntimeLock is null || sourceReadiness is null
+            || sourceReadiness.Native.ProfileId != authority.RunId || sourceBindingInspectionAttempted
+            || sourceReadiness.Native.ModelState != "NO_GUARD_FILE_OBSERVED") throw Stop();
+        authority.Validate(); Mmf3ProfileNative.Verify(authority);
+        sourceBindingInspectionAttempted = true; // Cancelled/unknown results cannot replay this attempt.
+        if (!ProfileRecoveryWindow.ConfirmSourceBindingInspection(authority.RunId))
+            return sourceReadiness with { Native = sourceReadiness.Native with { SourceState = "NOT_READ_AUTHORIZATION_CANCELLED" } };
+        // Recheck the live authority after the dialog; all original exclusion handles remain held.
+        authority.Validate(); Mmf3ProfileNative.Verify(authority);
+        return await InspectAuthorizedSourceBindingAsync(sourceReadiness.RuntimeHistory).ConfigureAwait(false);
+    }
+
+    private async Task<SourceReadiness> InspectAuthorizedSourceBindingAsync(RuntimeHistoryInspection history)
+    {
+        if (authority is null || !sourceBindingInspectionAttempted || maintenanceRuntimeLock is null) throw Stop();
         using var sources = TrustedDevelopmentRuntimeSources.Open();
         var launch = sources.StartInfo(authority, recoveryInspection: true);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));

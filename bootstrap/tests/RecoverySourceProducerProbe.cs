@@ -286,13 +286,16 @@ internal static class RecoverySourceProducerProbe
             file.Flush(true);
         }
         NewLock(Path.Combine(root,"evidence","runtime-admission.lock"));NewLock(Path.Combine(root,"model-state",".lock"));
-        // Exercise the actual pinned application-JAR product entry after updating helper pins.
+        // Default product preflight now stays native and never reads app credentials/SQL.
+        // Source-binding inspection needs its own exact-Profile native confirmation.
         using(var inspect=(IDisposable)coordinator.GetMethod("OpenForPlanning",methods)!.Invoke(null,[profile])!)
         {
             var task=(Task)coordinator.GetMethod("InspectSourceReadinessAsync",methods)!.Invoke(inspect,null)!;task.GetAwaiter().GetResult();
             var observed=task.GetType().GetProperty("Result")!.GetValue(task)!;
             var native=observed.GetType().GetProperty("Native")!.GetValue(observed)!;
             if((string)native.GetType().GetProperty("Admission")!.GetValue(native)! !="BLOCKED"
+                ||(string)native.GetType().GetProperty("SourceState")!.GetValue(native)! !="NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED"
+                ||(long)native.GetType().GetProperty("ChildPid")!.GetValue(native)! !=0
                 ||observed.GetType().GetProperty("ObservedExitedChildren")!.GetValue(observed) is not null)throw new IOException();
             File.WriteAllText(Path.Combine(isolated,"product-maintenance-observation.json"),JsonSerializer.Serialize(observed));
         }

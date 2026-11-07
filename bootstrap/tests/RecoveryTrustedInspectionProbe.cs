@@ -97,6 +97,27 @@ internal static class RecoveryTrustedInspectionProbe
             var task = (Task)coordinator.GetMethod("InspectSourceReadinessAsync", Instance)!.Invoke(owner, null)!;
             task.GetAwaiter().GetResult();
             observation = task.GetType().GetProperty("Result")!.GetValue(task)!;
+            var preliminary = observation.GetType().GetProperty("Native")!.GetValue(observation)!;
+            if ((string)preliminary.GetType().GetProperty("SourceState")!.GetValue(preliminary)! != "NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED"
+                || (long)preliminary.GetType().GetProperty("ChildPid")!.GetValue(preliminary)! != 0) throw new IOException();
+            // Only this newly created, explicitly synthetic Profile is auto-confirmed by the
+            // manual probe. Product default inspection cannot authorize credential/SQL access.
+            System.Windows.EventManager.RegisterClassHandler(typeof(System.Windows.Window), System.Windows.FrameworkElement.LoadedEvent,
+                new System.Windows.RoutedEventHandler((sender, _) =>
+                {
+                    if (sender is not System.Windows.Window window || window.Content is not System.Windows.Controls.StackPanel panel
+                        || window.Title != "Personal AI Workspace · 只读来源连接授权") return;
+                    bool matches = false;
+                    foreach (object item in panel.Children)
+                        if (item is System.Windows.Controls.TextBlock text && text.Text.Contains(profileId, StringComparison.Ordinal)) matches = true;
+                    if (!matches) return;
+                    foreach (object item in panel.Children)
+                        if (item is System.Windows.Controls.Button button && button.Name == "AuthorizeSourceInspection")
+                            window.Dispatcher.BeginInvoke(new Action(() => button.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent))));
+                }));
+            task = (Task)coordinator.GetMethod("RequestSourceBindingInspectionAsync", Instance)!.Invoke(owner, null)!;
+            task.GetAwaiter().GetResult();
+            observation = task.GetType().GetProperty("Result")!.GetValue(task)!;
             var native = observation.GetType().GetProperty("Native")!.GetValue(observation)!;
             object? Field(string name) => native.GetType().GetProperty(name)!.GetValue(native);
             if ((string)Field("Admission")! != "BLOCKED" || (string)Field("SourceState")! != "BOUND_READ_ONLY"

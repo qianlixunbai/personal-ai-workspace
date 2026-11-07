@@ -16,6 +16,7 @@ namespace PersonalAiWorkspace.Desktop;
 internal sealed partial class ProfileRecoveryWindow : Window
 {
     internal const string Argument = "--recover-development-workspace-v1";
+    internal const string SourceInspectionTitle = "Personal AI Workspace · 只读来源连接授权";
     internal const string Scope = "范围：当前 PostgreSQL 工作区的 Memory、Conversations 和 Knowledge。\n" +
         "Finance 不恢复；模型需重新准入；运行中任务不重放。恢复只创建全新工作区，保留原数据。\n" +
         "同机同用户恢复需要完整的本机来源登记，以及至少一个仍可通过安全校验的工作区。";
@@ -58,13 +59,34 @@ internal sealed partial class ProfileRecoveryWindow : Window
 
     internal static void ShowInspection(ProfileRecoveryCoordinator coordinator)
     {
-        var window = new ProfileRecoveryWindow("Personal AI Workspace · 备份与恢复维护", "正在只读核对维护前置条件…");
+        var window = new ProfileRecoveryWindow("Personal AI Workspace · 备份与恢复维护", "正在核对原生互斥、Runtime 退出登记和模型状态文件名；尚不读取数据库配置或连接数据库…");
         window.AddButton("创建备份（条件未满足）", () => { }).IsEnabled = false;
         window.AddButton("从备份恢复（来源授权未开放）", () => { }).IsEnabled = false;
+        Button? binding = null;
+        binding = window.AddButton("核对来源连接（需单独授权）", async () =>
+        {
+            binding!.IsEnabled = false;
+            window.inspecting = true; window.close.IsEnabled = false;
+            try { window.status.Text = Describe(await coordinator.RequestSourceBindingInspectionAsync()); }
+            catch (Exception)
+            {
+                window.status.Text = "BLOCKED（SOURCE_BINDING_UNCONFIRMED）\n本次连接核对结果未确认；不会自动重试，也未获得备份或恢复授权。\n" + RunningGuidance;
+            }
+            finally { window.inspecting = false; window.close.IsEnabled = true; }
+        });
+        binding.IsEnabled = false;
         window.inspecting = true; window.close.IsEnabled = false;
+        bool loaded = false;
         window.Loaded += async (_, _) =>
         {
-            try { window.status.Text = Describe(await coordinator.InspectSourceReadinessAsync()); }
+            if (loaded) return;
+            loaded = true;
+            try
+            {
+                var result = await coordinator.InspectSourceReadinessAsync();
+                window.status.Text = Describe(result);
+                binding.IsEnabled = result.Native.ModelState == "NO_GUARD_FILE_OBSERVED";
+            }
             catch (Exception) { window.status.Text = "BLOCKED（INSPECTION_UNAVAILABLE）\n无法核对独占访问、完整退出记录或受信来源。\n" + RunningGuidance; }
             finally { window.inspecting = false; window.close.IsEnabled = true; }
         };
@@ -77,8 +99,29 @@ internal sealed partial class ProfileRecoveryWindow : Window
         DescribeRuntimeHistory(result.RuntimeHistory) +
         "\n完整停写：未证明旧版本、其他登录会话、手动 Java 和外部数据库客户端均停止。" +
         (result.Native.ModelState == "NO_GUARD_FILE_OBSERVED" ? "\n模型：未发现 guard 文件；这不能证明未知模型执行已结束。" : "\n模型：存在未解决状态，请在原工作流处理。") +
-        (result.Native.SourceState == "BOUND_READ_ONLY" ? "\n来源配置：只读绑定核对通过；这不是备份或 SQL 来源授权。" : "\n来源配置：尚未通过只读绑定核对。") +
+        "\n来源配置：" + (result.Native.SourceState switch
+        {
+            "BOUND_READ_ONLY" => "只读绑定核对通过；这不是备份或 SQL 来源授权。",
+            "NOT_READ_SOURCE_BINDING_NOT_AUTHORIZED" => "尚未授权；未读取应用凭据，也未连接数据库。",
+            "NOT_READ_AUTHORIZATION_CANCELLED" => "已取消本次授权；未读取应用凭据，也未连接数据库。",
+            "NOT_READ_MODEL_STATE_UNRESOLVED" => "模型状态未解决，未读取应用凭据或连接数据库。",
+            _ => "尚未通过只读绑定核对。"
+        }) +
         "\n来源授权：个人备份生产与本机完成登记尚未开放。口令、文件选择或停写勾选不能替代来源授权。\n\n未备份、恢复或激活；保留现有数据和登记。";
+
+    internal static bool ConfirmSourceBindingInspection(string profileId)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(profileId, "\\A[a-f0-9]{32}\\z")
+            || Thread.CurrentThread.GetApartmentState() != ApartmentState.STA) throw new IOException();
+        var window = new ProfileRecoveryWindow(SourceInspectionTitle,
+            "工作区：" + profileId + "\n\n" +
+            "仅本次：读取并解密此工作区固定的受保护数据库配置，使用其中的应用凭据连接其 PostgreSQL，核对数据库、角色和结构元数据。\n" +
+            "不读取业务正文，不修改配置、权限或数据，不停止服务。凭据不会显示或保存到检查结果。\n\n" +
+            "这超出仅身份／进程元数据检查的范围。即使核对通过，历史写入者及未知模型执行仍未证明停止，备份与恢复仍为 BLOCKED。");
+        window.close.Content = "取消"; window.close.IsDefault = true;
+        window.AddButton("仅授权本次只读连接核对", () => window.DialogResult = true).Name = "AuthorizeSourceInspection";
+        return window.ShowDialog() == true;
+    }
 
     internal static string DescribeRuntimeHistory(ProfileRecoveryCoordinator.RuntimeHistoryInspection history)
     {
