@@ -12,8 +12,8 @@ import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 
-/** One authenticated v3 backup -> fresh synthetic database -> verified, disabled target.
- * No CLI, product source authority, READY or activation. The optional prepared capability
+/** One authenticated v3 backup -> fresh synthetic database -> verified synthetic target.
+ * No CLI, product source authority or activation. Native READY requires successful child exit. The optional prepared capability
  * binds a fresh native candidate but does not admit it as a Runtime. In particular the
  * in-process Completed capability cannot be reconstructed from a passphrase or a JSON file;
  * the restart path separately requires a pinned, independently protected source registration.
@@ -80,8 +80,18 @@ final class WorkspaceRecovery {
     }
     static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
             char[] passphrase,Endpoint administrator,SyntheticPreparation preparation,SyntheticConfigurationCheck configurationCheck) throws IOException {
+        return restoreRegisteredSyntheticTarget(source,tools,staging,passphrase,administrator,preparation,configurationCheck,false);
+    }
+    /** Separate synthetic publication attempt. This cannot accept personal source records. */
+    static Verified restoreRegisteredSyntheticForPublication(RegisteredRecoverySource source,Path tools,Path staging,
+            char[] passphrase,Endpoint administrator,SyntheticPreparation preparation,SyntheticConfigurationCheck configurationCheck) throws IOException {
+        require(preparation!=null);
+        return restoreRegisteredSyntheticTarget(source,tools,staging,passphrase,administrator,preparation,configurationCheck,true);
+    }
+    private static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
+            char[] passphrase,Endpoint administrator,SyntheticPreparation preparation,SyntheticConfigurationCheck configurationCheck,boolean publication) throws IOException {
         String stage="REGISTERED_SOURCE";boolean decoded=false;Verified verified;
-        PreparedRecoveryTarget prepared=null;
+        PreparedRecoveryTarget prepared=null;NewTarget target=null;
         try {
             require(source!=null&&source.synthetic());source.requireHeld();
             require(administrator.database().equals("postgres")&&administrator.port()==source.port()&&source.port()!=5432);
@@ -92,8 +102,7 @@ final class WorkspaceRecovery {
             source.requireHeld();stage="FRESH_TARGET_PREPARATION";
             var identity=new WorkspaceSourceBackup.SourceIdentity(source.systemIdentifier(),source.databaseOid(),
                 source.port(),source.database(),null);
-            var target=new NewTarget(source.backupId(),identity,authenticated.origin(),administrator,staging,source.registrationSha256(),prepared);
-            try {
+            target=new NewTarget(source.backupId(),identity,authenticated.origin(),administrator,staging,source.registrationSha256(),prepared);
                 target.prepare();source.requireHeld();stage="RESTORE_AND_VERIFY";
                 var engine=new UnifiedPostgresqlBackup(tools);
                 var result=prepared==null?engine.restoreWorkspace(authenticated.clear().backup(),target.owner(),target.app(),
@@ -103,16 +112,23 @@ final class WorkspaceRecovery {
                 TrustedDatabaseConfiguration.PreparedDatabase.Observation configuration=null;
                 if(prepared!=null){stage="PREPARED_CONFIGURATION";configuration=target.bindConfiguration(prepared,configurationCheck);}
                 verified=new Verified(target.operation,target.database,target.databaseOid,target.ownerRole,target.ownerOid,
-                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED",configuration);
-            }finally{target.close();}
+                    target.appRole,target.appOid,result,publication?"OWNER_DISABLED_APP_RETAINED_SYNTHETIC_ONLY":"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED",configuration);
+                if(publication){
+                    stage="SYNTHETIC_PUBLICATION_CLEANUP";require(prepared!=null&&configuration!=null);
+                    MaintenanceStaging.clean(staging.toAbsolutePath().normalize());decoded=false;
+                    require(!java.nio.file.Files.exists(staging.resolve("backup"),java.nio.file.LinkOption.NOFOLLOW_LINKS));
+                    source.requireHeld();target.finishSyntheticPublication(prepared);source.requireHeld();
+                    prepared.publishSyntheticOffline(configuration); // Not READY. Native owner must observe this child exit successfully.
+                }
         }catch(Exception failure){
             if(failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().contains("TARGET_CREDENTIAL_CLEANUP_REQUIRED"))throw io;
             var stopped=new IOException("Synthetic registered recovery stopped: "+stage+"; no activation; retain target and attempt");
             stopped.setStackTrace(failure.getStackTrace());throw stopped; // Preserve safe code location, never raw SQL/native messages.
         }finally{
             if(passphrase!=null)Arrays.fill(passphrase,'\0');
-            try{if(decoded)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());}
-            finally{if(prepared!=null)prepared.close();}
+            try{if(target!=null)target.close();}
+            finally{try{if(decoded)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());}
+                finally{if(prepared!=null)prepared.close();}}
         }
         source.requireHeld();
         write(staging.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"),JSON.writeValueAsBytes(verified));
@@ -128,6 +144,7 @@ final class WorkspaceRecovery {
         private final String operation,database,ownerRole,appRole,receipt,roleReceipt;
         private final String ownerPassword=password(),appPassword=password();
         private Connection db;
+        private boolean closed;
         private long ownerOid,appOid,databaseOid;
         NewTarget(String backupId,WorkspaceSourceBackup.SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup,
                 Endpoint administrator,Path staging,String registrationSha256){
@@ -221,24 +238,39 @@ final class WorkspaceRecovery {
                 require(observation.equals(reloaded.observation()));
             }
             verifyDatabase(true);return observation;
-            // The synthetic caller still revokes BOTH logins on exit. A verified connection
-            // observation does not mean the retained configuration remains usable or READY.
+            // Ordinary synthetic checks revoke both logins. The separate publication path
+            // retires the owner, retains the verified app login and closes all SQL first.
+        }
+        void finishSyntheticPublication(PreparedRecoveryTarget prepared) throws Exception {
+            verifyDatabase(true);
+            require(registrationSha256!=null&&prepared.database().equals(database));
+            cleanupRole(ownerRole,ownerOid);
+            require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid="+appOid+" AND rolname='"+appRole+"' AND rolcanlogin AND rolpassword IS NOT NULL "
+                +"AND shobj_description(oid,'pg_authid')='"+roleReceipt+"'")==1);
+            sql(db,"ALTER ROLE "+appRole+" VALID UNTIL 'infinity'");
+            try(var reloaded=NativeProfileRecovery.readPreparedDatabase(prepared,db,databaseOid,ownerOid,appOid)){
+                reloaded.observation();
+            }
+            require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE usesysid IN ("+ownerOid+","+appOid+")")==0);
+            db.close();closed=true; // A close failure leaves normal failure cleanup armed; no completion is published.
+        }
+        private void cleanupRole(String role,long oid) throws Exception {
+            if(oid==0)return;
+            long count=scalar(db,"SELECT count(*) FROM pg_roles WHERE oid="+oid+" OR rolname='"+role+"'");
+            if(count==0)return;
+            require(count==1&&scalar(db,"SELECT count(*) FROM pg_roles WHERE oid="+oid+" AND rolname='"+role
+                +"' AND shobj_description(oid,'pg_authid')='"+roleReceipt+"'")==1);
+            sql(db,"ALTER ROLE "+role+" NOLOGIN PASSWORD NULL");
+            require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid="+oid+" AND NOT rolcanlogin AND rolpassword IS NULL")==1
+                &&scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE usesysid="+oid)==0);
         }
         @Override public void close() throws IOException {
-            if(db==null)return;
+            if(db==null||closed)return;
             try {
                 if(!db.getAutoCommit()){db.rollback();db.setAutoCommit(true);}
                 Exception cleanupFailure=null;
                 for(int i=0;i<2;i++)try{
-                    String role=i==0?ownerRole:appRole;long oid=i==0?ownerOid:appOid;
-                    if(oid==0)continue; // No credentials were enabled before both OIDs were known.
-                    long count=scalar(db,"SELECT count(*) FROM pg_roles WHERE oid="+oid+" OR rolname='"+role+"'");
-                    if(count==0)continue; // Verified rollback of role creation on this connection.
-                    require(count==1&&scalar(db,"SELECT count(*) FROM pg_roles WHERE oid="+oid+" AND rolname='"+role
-                        +"' AND shobj_description(oid,'pg_authid')='"+roleReceipt+"'")==1);
-                    sql(db,"ALTER ROLE "+role+" NOLOGIN PASSWORD NULL");
-                    require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid="+oid+" AND NOT rolcanlogin AND rolpassword IS NULL")==1
-                        &&scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE usesysid="+oid)==0);
+                    cleanupRole(i==0?ownerRole:appRole,i==0?ownerOid:appOid);
                 }catch(Exception failure){cleanupFailure=failure;} // Attempt both known roles.
                 if(cleanupFailure!=null)throw cleanupFailure;
             }catch(Exception failure){throw new IOException("Synthetic recovery stopped: TARGET_CREDENTIAL_CLEANUP_REQUIRED; retain target and attempt");}

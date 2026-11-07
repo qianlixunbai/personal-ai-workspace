@@ -21,7 +21,7 @@ public final class RecoverySourceProducerProbe {
     private static Path diagnosticRoot;
     private static String stage="FIXTURE";
     public static void main(String[] args) throws Exception {
-        try { if(args.length==4)restoreRegistered(args);else if(args.length==2)trustedInspectionFixture(args);else run(args); }
+        try { if(args.length==4||args.length==5)restoreRegistered(args);else if(args.length==2)trustedInspectionFixture(args);else run(args); }
         catch(Exception | LinkageError failure){
             Throwable cause=failure instanceof java.lang.reflect.InvocationTargetException wrapper?wrapper.getCause():failure;
             if(diagnosticRoot!=null)write(diagnosticRoot.resolve("probe-failure.json"),JSON.writeValueAsBytes(Map.of(
@@ -201,7 +201,8 @@ public final class RecoverySourceProducerProbe {
     }
 
     private static void restoreRegistered(String[] args) throws Exception {
-        require(args[0].equals("restore-registered"));
+        require(args[0].equals("restore-registered")&&(args.length==4||args[4].equals("publish-ready")));
+        boolean publication=args.length==5;
         var output=System.out;System.setOut(System.err);
         MaintenanceExclusion nativeExclusion=null;
         if(!System.getProperty("workspace.native.development-profile","").isEmpty()){
@@ -287,18 +288,21 @@ public final class RecoverySourceProducerProbe {
                     stage="REGISTERED_RECOVERY";
                     Path restored=isolated.resolve("restored-target");
                     Path[] targetData={restored.resolve("candidate")};String[] preparedId={null};
-                    var recovery=WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator,
-                        authorityExclusion==null?null:()->{
+                    WorkspaceRecovery.SyntheticPreparation preparation=authorityExclusion==null?null:()->{
                             writeFrame(output,"SYNTHETIC_SOURCE_AUTHENTICATED_V1\t"+backupId+"\t"+registered.payloadSha256()+"\t"+registered.manifestSha256());
                             String target=readFrame(System.in);require(target.matches("[0-9a-f]{32}")&&System.in.read()==-1);
                             var prepared=PreparedRecoveryTarget.openSynthetic(authorityExclusion,target,registered);
                             preparedId[0]=target;targetData[0]=prepared.data();return prepared;
-                        },(prepared,binding)->verifyPreparedConfiguration(prepared,binding,db,port,
-                            JSON.treeToValue(expected.path("manifest"),Manifest.class)));
+                        };
+                    WorkspaceRecovery.SyntheticConfigurationCheck check=(prepared,binding)->verifyPreparedConfiguration(prepared,binding,db,port,
+                        JSON.treeToValue(expected.path("manifest"),Manifest.class));
+                    var recovery=publication?WorkspaceRecovery.restoreRegisteredSyntheticForPublication(registered,tools,restored,password.clone(),administrator,preparation,check)
+                        :WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator,preparation,check);
                     require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
                         &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup"))
                         &&databases+1==scalar(db,"SELECT count(*) FROM pg_database")&&roles+2==scalar(db,"SELECT count(*) FROM pg_roles")
-                        &&scalar(db,"SELECT count(*) FROM pg_authid WHERE oid IN ("+recovery.ownerRoleOid()+","+recovery.appRoleOid()+") AND NOT rolcanlogin AND rolpassword IS NULL")==2);
+                        &&scalar(db,"SELECT count(*) FROM pg_authid WHERE oid IN ("+recovery.ownerRoleOid()+","+recovery.appRoleOid()+") AND NOT rolcanlogin AND rolpassword IS NULL")== (publication?1:2));
+                    if(publication)require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid="+recovery.appRoleOid()+" AND rolcanlogin AND rolpassword IS NOT NULL AND rolvaliduntil='infinity'")==1);
                     var restoredAdmin=new Endpoint(recovery.database(),administrator.username(),administrator.password(),port);
                     try(var target=restoredAdmin.dataSource().getConnection()){
                         require(scalar(target,"SELECT count(*) FROM workspace.memory_items")==1&&scalar(target,"SELECT count(*) FROM workspace.conversations")==1
@@ -338,14 +342,15 @@ public final class RecoverySourceProducerProbe {
                         evidence.put("preparedTargetConsumedOnce",true);evidence.put("candidateStartupRejected",true);evidence.put("targetJnaAbsent",true);
                         evidence.put("preparedConfigurationReadBackConnected",true);evidence.put("preparedApplicationPrivilegesVerified",true);
                         evidence.put("preparedConfigurationStoreCrudVerified",true);evidence.put("preparedConfigurationPinnedNoOverwrite",true);
-                        evidence.put("preparedConfigurationCredentialRevokedAfterSyntheticCheck",true);
+                        evidence.put("preparedConfigurationCredentialRevokedAfterSyntheticCheck",!publication);
+                        evidence.put("offlinePublicationRequested",publication);
                     }
                     evidence.put("nativeGateExercised",authorityExclusion!=null);evidence.put("activation",false);
                     write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(evidence));
                     registered.close();
                     try{registered.requireHeld();throw new IllegalStateException("Closed source reused");}catch(IOException denied){}
                     if(authorityExclusion==null)output.print("REGISTERED_SYNTHETIC_RECOVERY_VERIFIED");
-                    else writeFrame(output,"PREPARED_SYNTHETIC_RECOVERY_VERIFIED");
+                    else writeFrame(output,publication?"SYNTHETIC_CANDIDATE_CLOSED":"PREPARED_SYNTHETIC_RECOVERY_VERIFIED");
                 }finally{
                     if(disabled)sql(db,"ALTER DATABASE "+database+" ALLOW_CONNECTIONS true");
                 }

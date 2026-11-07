@@ -32,7 +32,8 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
     private final List<WinNT.HANDLE> directories=new ArrayList<>();
     private final List<FileChannel> files=new ArrayList<>();
     private final Map<Path,String> identities=new LinkedHashMap<>();
-    private Plan plan;private Identity identity;private boolean closed,claimed,restored;
+    private Plan plan;private Identity identity;private boolean closed,claimed,restored,offline;
+    private String preparedHash,attemptHash;
 
     public static PreparedRecoveryTarget openSynthetic(MaintenanceExclusion exclusion,String targetId,RegisteredRecoverySource source) throws IOException {
         require(source!=null&&source.synthetic());source.requireHeld();
@@ -67,6 +68,7 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
         byte[] encrypted=new byte[(int)channel.size()];ByteBuffer buffer=ByteBuffer.wrap(encrypted);
         while(buffer.hasRemaining())if(channel.read(buffer)<0)throw new IOException();
         if(name.equals("plan"))planHash=hash(encrypted);
+        if(name.equals("prepared"))preparedHash=hash(encrypted);
         try{return Crypt32Util.cryptUnprotectData(encrypted,entropy(name),1,null);}
         finally{Arrays.fill(encrypted,(byte)0);}
     }
@@ -109,7 +111,8 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
     }
     private void entries(boolean attempted) throws IOException {
         try(var list=Files.list(entry)){
-            require(list.limit(4).map(p->p.getFileName().toString()).sorted().toList().equals(attempted
+            require(list.limit(5).map(p->p.getFileName().toString()).sorted().toList().equals(offline
+                ?List.of("attempt.dpapi","offline.dpapi","plan.dpapi","prepared.dpapi"):attempted
                 ?List.of("attempt.dpapi","plan.dpapi","prepared.dpapi"):List.of("plan.dpapi","prepared.dpapi")));
         }
     }
@@ -150,7 +153,7 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
         try{encrypted=Crypt32Util.cryptProtectData(plain,entropy("attempt"),1,"",null);}
         finally{Arrays.fill(plain,(byte)0);}
         Path pending=entry.resolve("attempt.pending"),finalFile=entry.resolve("attempt.dpapi");
-        writePrivate(pending,encrypted);Files.move(pending,finalFile);claimed=true;
+        writePrivate(pending,encrypted);Files.move(pending,finalFile);claimed=true;attemptHash=hash(encrypted);
         files.add(FileChannel.open(finalFile,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
             com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE));
         requireHeld();
@@ -168,6 +171,37 @@ public final class PreparedRecoveryTarget implements AutoCloseable {
     }
     // A marker found on disk alone never recreates this in-process transition.
     void requireRestored() throws IOException {requireHeld();require(claimed&&restored);}
+    /** Synthetic terminal evidence only. Native publication still requires successful child
+     * exit, fresh identity checks and a separate explicit activation request. */
+    public void publishSyntheticOffline(TrustedDatabaseConfiguration.PreparedDatabase.Observation configuration) throws IOException {
+        requireRestored();require(!offline&&configuration!=null&&configuration.permissionContract().equals("WORKSPACE_APP_V1"));
+        Path file=data.resolve("database.dpapi");WindowsPrivateAcl.verifyPreparedConfiguration(this);
+        try(var pin=FileChannel.open(file,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+            com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE)){
+            require(pin.size()>0&&pin.size()<=16384&&configuration.configurationIdentity().equals(TrustedDatabaseConfiguration.Identity.read(file,false))
+                &&configuration.configurationSha256().equals(hash(Files.readAllBytes(file)))
+                &&configuration.systemIdentifier().equals(sourceSystemIdentifier)&&configuration.databaseOid()!=sourceDatabaseOid);
+        }
+        var result=new LinkedHashMap<String,Object>();
+        result.put("Version",1);result.put("Kind","SYNTHETIC_RECOVERY_OFFLINE");result.put("State","OFFLINE_VERIFIED");
+        result.put("OperationId",plan.OperationId);result.put("TargetProfileId",targetId);
+        result.put("PlanSha256",planHash);result.put("PreparedSha256",preparedHash);result.put("AttemptSha256",attemptHash);
+        result.put("SourceRegistrationSha256",plan.SourceRegistrationSha256);result.put("PayloadSha256",plan.PayloadSha256);result.put("ManifestSha256",plan.ManifestSha256);
+        result.put("RootIdentity",identity.RootIdentity);result.put("DataIdentity",identity.DataIdentity);
+        result.put("DatabaseName",plan.DatabaseName);result.put("OwnerRole",plan.OwnerRole);result.put("AppRole",plan.AppRole);
+        result.put("SystemIdentifier",configuration.systemIdentifier());result.put("DatabaseOid",configuration.databaseOid());
+        result.put("OwnerRoleOid",configuration.ownerRoleOid());result.put("ApplicationRoleOid",configuration.applicationRoleOid());result.put("Port",sourcePort);
+        result.put("ConfigurationIdentity",configuration.configurationIdentity());result.put("ConfigurationSha256",configuration.configurationSha256());
+        result.put("PermissionContract",configuration.permissionContract());result.put("ValidationContract","WORKSPACE_OFFLINE_V1");
+        result.put("CredentialState","OWNER_DISABLED_APP_RETAINED_SYNTHETIC_ONLY");result.put("PlaintextCleanup","COMPLETE");result.put("NativeGate","PENDING_EXPLICIT_ACTIVATION");
+        byte[] plain=JSON.writeValueAsBytes(result),encrypted;
+        try{encrypted=Crypt32Util.cryptProtectData(plain,entropy("offline"),1,"",null);}
+        finally{Arrays.fill(plain,(byte)0);}
+        requireHeld();Path pending=entry.resolve("offline.pending"),destination=entry.resolve("offline.dpapi");
+        writePrivate(pending,encrypted);Files.move(pending,destination);offline=true;
+        files.add(FileChannel.open(destination,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+            com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE));requireHeld();
+    }
     int sourcePort(){return sourcePort;}
     String sourceSystemIdentifier(){return sourceSystemIdentifier;}
     long sourceDatabaseOid(){return sourceDatabaseOid;}

@@ -48,7 +48,17 @@ internal static class TrustedNative
         }
         try
         {
-            if (profileMode) WindowsProfileSecurity.State(fixtureId, false);
+            if (profileMode)
+            {
+                WindowsProfileSecurity.State(fixtureId, false);
+                string recovery=Path.Combine(Path.GetDirectoryName(parent)!,"Recovery");
+                // Recovery receipts are not a process-bound launch capability. Until that
+                // contract exists, even AUTHORIZED/ACTIVE-shaped records cannot provision
+                // native code or resume an interrupted candidate through the ordinary helper.
+                bool Exists(string path){try{_ = File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
+                if(Exists(Path.Combine(recovery,"targets",fixtureId)))throw new Rejected("PERSONAL_RECOVERY_BLOCKED");
+                if(Exists(Path.Combine(recovery,"synthetic-targets",fixtureId)))throw new Rejected("SYNTHETIC_RECOVERY_ACTIVATION_BLOCKED");
+            }
             // Root-to-leaf identity/ACL checks; metadata directory handles are NOT rename pins.
             string part = Path.GetPathRoot(profile)!;
             if (!profileMode)

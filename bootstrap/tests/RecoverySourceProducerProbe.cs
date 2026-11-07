@@ -14,9 +14,10 @@ using System.Text;
 // It deliberately never creates a product source registration or invokes a real Profile Gate.
 internal static class RecoverySourceProducerProbe
 {
+    private sealed record InterruptedAuthorization(int Version,string Kind,string State,string OperationId,string TargetProfileId,string ReadySha256,string RequestId,string Mode);
     private static async Task Main(string[] args)
     {
-        if (args.Length is not (4 or 5) || args.Length==5 && args[4]!="prepared") throw new IOException("Explicit synthetic fixture/tooling required");
+        if (args.Length is not (4 or 5) || args.Length==5 && args[4] is not ("prepared" or "ready")) throw new IOException("Explicit synthetic fixture/tooling required");
         var assembly = Assembly.LoadFrom(args[0]);
         var coordinator = assembly.GetType("PersonalAiWorkspace.Desktop.ProfileRecoveryCoordinator", true)!;
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
@@ -99,13 +100,14 @@ internal static class RecoverySourceProducerProbe
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
-            authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = true,
+            authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = args.Length!=5||args[4]!="ready",
+            applicationCredentialRetainedForReady = args.Length==5&&args[4]=="ready",
             restoredByNewProcessFromDurableRegistration = true, originalSourceProfileRetainedAt = retired,
             personalSourceRegistration = false, productPlanRejected = true, duplicateAttemptRejected = true,
             sourceRecord = record, sourceRecordSha256 = Convert.ToHexStringLower(SHA256.HashData(original)) }));
         Console.WriteLine("PASS: protected Workspace configuration -> app/admin database binding -> owned backup/role cleanup -> native configuration/ciphertext verification -> DPAPI readback.");
         Console.WriteLine("PASS: synthetic receipt cannot authorize a product plan; duplicate attempt rejected; exclusion released after child exit.");
-        Console.WriteLine("PASS: producer exited -> DPAPI registration consumed by new JVM -> source database unavailable/Profile absent -> authenticated fresh target -> stores/index verified -> target logins disabled.");
+        Console.WriteLine("PASS: producer exited -> DPAPI registration consumed by new JVM -> source database unavailable/Profile absent -> authenticated fresh target -> stores/index verified -> expected credential disposition checked.");
         Console.WriteLine(args.Length==5?"PASS: real authority Native Gate -> pinned prepared-target helper -> canonical fixed data restore; no target JNA; candidate startup/replay denied.":
             "Personal maintenance remains BLOCKED; real Native Gate, personal target publication and activation were not exercised.");
     }
@@ -156,6 +158,7 @@ internal static class RecoverySourceProducerProbe
             "-Djna.boot.library.name=jnidispatch","-Djna.nosys=true","-Djna.noclasspath=true","-Djna.nounpack=true",
             "-Djava.io.tmpdir="+Path.Combine(root,"evidence"),"-Djna.tmpdir="+Path.Combine(root,"evidence"),"-cp",args[2],
             "io.github.qianlixunbai.workspace.backup.RecoverySourceProducerProbe","restore-registered",args[3],app,backupId})start.ArgumentList.Add(value);
+        if(args[4]=="ready")start.ArgumentList.Add("publish-ready");
         using var job=(IDisposable)Owner("RuntimeProcessJob").GetMethod("Create",methods)!.Invoke(null,null)!;
         using var child=Process.Start(start)??throw new IOException();
         Owner("RuntimeProcessJob").GetMethod("Assign",methods)!.Invoke(job,[child]);
@@ -176,12 +179,12 @@ internal static class RecoverySourceProducerProbe
             if(Read()!="SYNTHETIC_TARGET_NATIVE_V1\t"+child.Id+"\t"+id)throw new IOException();
             long remote=(long)coordinator.GetMethod("DuplicateExclusion",methods)!.Invoke(null,[runtime,child])!;Write(remote.ToString(System.Globalization.CultureInfo.InvariantCulture));
             if(Read()!="SYNTHETIC_SOURCE_AUTHENTICATED_V1\t"+backupId+"\t"+payload+"\t"+manifest)throw new IOException();
-            object plan=coordinator.GetMethod("PrepareSyntheticTarget",methods)!.Invoke(owner,[app,backupId])!;
+            object plan=coordinator.GetMethod("PrepareSyntheticTarget",methods)!.Invoke(owner,[app,backupId,child])!;
             string target=(string)plan.GetType().GetProperty("TargetProfileId")!.GetValue(plan)!;
             string targetRoot=(string)state.GetMethod("Root",methods)!.Invoke(null,[target])!;
             File.WriteAllText(Path.Combine(isolated,"owned-prepared-target.json"),JsonSerializer.Serialize(new{targetProfileId=target,root=targetRoot,plan}));
             Write(target);child.StandardInput.Close();
-            if(Read()!="PREPARED_SYNTHETIC_RECOVERY_VERIFIED"||!child.WaitForExit(15000)||child.ExitCode!=0||child.StandardOutput.Read()!=-1)throw new IOException();
+            if(Read()!=(args[4]=="ready"?"SYNTHETIC_CANDIDATE_CLOSED":"PREPARED_SYNTHETIC_RECOVERY_VERIFIED")||!child.WaitForExit(15000)||child.ExitCode!=0||child.StandardOutput.Read()!=-1)throw new IOException();
             errors.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             if(Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64"))||!File.Exists(Path.Combine(targetRoot,"data","RESTORE_VERIFIED.json")))throw new IOException();
             try{launchType.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);throw new Exception("Candidate admitted");}
@@ -190,6 +193,61 @@ internal static class RecoverySourceProducerProbe
             verify.ArgumentList.Add("VerifyProfileNative");verify.ArgumentList.Add(target);
             using var normal=Process.Start(verify)??throw new IOException();
             if(!normal.WaitForExit(15000)||normal.ExitCode!=10)throw new IOException();
+            if(args[4]=="ready")
+            {
+                var publish=coordinator.GetMethod("PublishSyntheticReady",methods)!;
+                publish.Invoke(owner,[target]);
+                Type reader=assembly.GetType("PersonalAiWorkspace.WindowsSecurity.SyntheticRecoveryPublication",true)!;
+                var inspect=reader.GetMethod("Inspect",methods)!;
+                string entry,operation,readyHash;
+                using(var observed=(IDisposable)inspect.Invoke(null,[target])!)
+                {
+                    var type=observed.GetType();
+                    if((string)type.GetField("Stage",methods)!.GetValue(observed)! !="READY")throw new IOException();
+                    entry=(string)type.GetField("Entry",methods)!.GetValue(observed)!;
+                    var offline=(JsonElement)type.GetProperty("Offline",methods)!.GetValue(observed)!;
+                    operation=offline.GetProperty("OperationId").GetString()!;
+                    readyHash=Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(entry,"ready.dpapi"))));
+                }
+                try{publish.Invoke(owner,[target]);throw new Exception("READY replayed");}
+                catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                void RefuseStartupAndProvision()
+                {
+                    try{launchType.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);throw new Exception("Recovery candidate admitted");}
+                    catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                    foreach(string action in new[]{"VerifyProfileNative","ProvisionProfileNative"})
+                    {
+                        var attempt=new ProcessStartInfo(helper){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+                        attempt.ArgumentList.Add(action);attempt.ArgumentList.Add(target);
+                        if(action.StartsWith("Provision",StringComparison.Ordinal))attempt.ArgumentList.Add((string)sourcesType.GetProperty("JnaJar",methods)!.GetValue(sources)!);
+                        using var blocked=Process.Start(attempt)??throw new IOException();
+                        if(!blocked.WaitForExit(15000)||blocked.ExitCode!=10)throw new IOException();
+                    }
+                    if(Directory.Exists(Path.Combine(targetRoot,"jna-5.17.0-win32-x86-64")))throw new IOException();
+                }
+                RefuseStartupAndProvision();
+                // Model the disconnected draft's durable authorization in this newly owned
+                // synthetic candidate only. It is deliberately retained as UNKNOWN, never
+                // removed to retry or promoted to ACTIVE. This is not personal authorization.
+                var authorization=new InterruptedAuthorization(1,"SYNTHETIC_ACTIVATION_AUTHORIZATION","ACTIVATION_AUTHORIZED",
+                    operation,target,readyHash,Guid.NewGuid().ToString("N"),"EXPLICIT_ISOLATED_SYNTHETIC");
+                coordinator.GetMethod("PublishRecord",methods)!.MakeGenericMethod(typeof(InterruptedAuthorization)).Invoke(null,
+                    [entry,"authorization",Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/synthetic-target/v1/"+target+"/authorization"),authorization]);
+                RefuseStartupAndProvision();
+                try{using var unexpected=(IDisposable)inspect.Invoke(null,[target])!;throw new Exception("Interrupted authorization promoted");}
+                catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                try{publish.Invoke(owner,[target]);throw new Exception("Interrupted attempt replayed");}
+                catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
+                if(readyHash!=Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(entry,"ready.dpapi"))))
+                    ||File.Exists(Path.Combine(entry,"active.dpapi")))throw new IOException();
+                File.WriteAllText(Path.Combine(isolated,"synthetic-ready-evidence.json"),JsonSerializer.Serialize(new {
+                    targetProfileId=target,operationId=operation,readySha256=readyHash,readyPublishedAfterChildExit=true,
+                    independentReadyReadback=true,readyReplayRejected=true,readyStartupAndProvisionRejected=true,
+                    interruptedAuthorizationRejected=true,interruptedReplayRejected=true,readyRecordUnchanged=true,
+                    targetJnaAbsent=true,activeRecordAbsent=true,finalState="BLOCKED_INTERRUPTED_AUTHORIZATION_FIXTURE",
+                    applicationCredentialRetained=true,activation=false,personalAuthorization=false }));
+                Console.WriteLine("PASS: offline verification/cleanup -> child exit -> independent DPAPI READY; READY and interrupted authorization cannot start/provision/replay.");
+            }
         }
         finally{if(!child.HasExited){job.Dispose();if(!child.HasExited)child.Kill();child.WaitForExit(5000);}}
     }

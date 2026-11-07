@@ -1,5 +1,30 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：合成 READY 发布，以及中断授权的启动／重放拒绝
+
+基于本地 `e82d318`。重连后核对工作树，断线草稿中的 `ACTIVATION_AUTHORIZED` 仅凭受保护记录就放行普通启动，不能绑定唯一启动进程，也不能区分首次启动和中断后的重放。本轮移除了这条放行路径和未验证的激活入口；保留并完成来源到合成 READY 的实际阶段。**没有实现或执行显式激活，没有 ACTIVE，也没有写用户上次工作区选择。个人恢复仍 BLOCKED。** 断线草稿差异保存在忽略目录 `.verification/recovery-ready/disconnected-draft.patch`，未覆盖用户文档。
+
+功能与边界：
+
+- `WorkspaceRecovery.restoreRegisteredSyntheticForPublication` 是独立的合成分支，只接受合成来源和 prepared capability。沿用完整认证、固定目标恢复、17 表最小 app 权限、真实配置重读及 Store/索引验证；临时明文 backup 清理后，将 owner 退役为 NOLOGIN/PASSWORD NULL，保留已验证的 app 凭据，复核目标连接已关闭，关闭管理员连接，再写 `offline.dpapi`。普通合成检查仍撤销两个角色。
+- `PreparedRecoveryTarget` 的离线记录绑定 plan/prepared/attempt 密文摘要、来源登记与包摘要、根/data 文件身份、数据库/角色 OID、配置文件身份与摘要、权限/验证/清理合同。它不是 READY；最后的文件句柄关闭、结果写入或子进程退出失败，都不能让原生 owner 发布 READY。
+- `ProfileRecoveryCoordinator` 保留实际消费者 Process 引用，仅在其退出码为 0、authority 重核通过且离线记录独立读回后，用 CREATE_NEW、Flush 和不覆盖移动发布 `SYNTHETIC_RECOVERY_READY`。`SyntheticRecoveryPublication` 严格检查字段、DPAPI entropy、身份、ACL、句柄 pin、配置摘要和记录链；pending、authorization、active 或未知附加文件均拒绝。该私有合成入口没有开放个人来源或 UI 恢复入口。
+- Java/Desktop 普通启动继续无条件拒绝已登记候选。Native Helper 新增同样的拒绝，阻止绕过普通入口直接 Verify/Provision 恢复候选；helper EXE/DLL 的准确摘要同步到 Java/Desktop。不存在“已有授权记录就自动前进”的例外。原有 Profile 的 Gate、配置和权限检查未放宽。
+
+只在全新夹具执行 **1 次**现有探针的 `ready` 模式，退出码为 0：
+
+1. 独立来源生产者退出，新 JVM 从 DPAPI 登记恢复。恢复时原合成 Profile 路径不存在，源数据库禁止连接；错误口令不建库/角色，来源与密文 pin、现有尝试不可重放、源 snapshot 和 Finance sentinel 不变等原有断言继续通过。
+2. 新目标 `df1e155dd8f2428692560793d5e2fbb3`，operation `3ba3df9322354b9ca7ad96c697008c04`，数据库 `personal_ai_workspace_b3_3ba3df932235`（OID 16592，owner/app OID 16590/16591）。固定 data 配置重读连接、Memory/终态 Conversation/Knowledge 原文与索引、app 日常 Store CRUD、无 Finance/DDL 权限均通过。owner 已退役；app 登录保留，并不是“两角色已撤销”。
+3. 消费者成功退出后发布 READY，原生独立读回与重复发布拒绝通过；READY 本身不能普通启动，也不能 Native Provision。
+4. 仅在此新合成候选内写入与断线草稿相同形状的 DPAPI 授权记录，模拟中断留存。Desktop Parse、Native Verify/Provision、发布检查及 READY 重放全部拒绝，READY 原始摘要未变，没有 JNA 或 ACTIVE。**负向检查之后该候选最终状态是 `BLOCKED_INTERRUPTED_AUTHORIZATION_FIXTURE`；未删除授权记录、修复状态或重放此目标。** 此记录不是个人授权或完整停写证明。
+
+夹具 `C:\PAW-SourceProducer-3609d300577b4469bb54f7ab51ff3d6c`，PG17 端口 59007、PID 37364，生产者/消费者 PID 57460/28172。仅自建 PG 按 PID/启动时间/data directory/端口/可执行路径确认后停止；最终 postmaster.pid 不存在，上述进程及维护检查进程均已退出。app 凭据保留在已停止的合成实例内。JVM 顺序执行、384 MiB/2 核，PG shared_buffers 16 MiB/12 connections，预检可用内存约 15.4 GiB；未启停既有服务或 KAG，未执行模型请求，也未访问真实 Profile/数据库。
+
+必要验证为 Native Helper Release 编译、Java 离线 package（跳过测试）及实际 JAR 审计、既有 C#/Java 探针编译、上述单次流程、最终只读边界和 `git diff --check`。没有运行全套测试。实际 JAR SHA-256 `d936ded5708bbf4b321eb923a7de50735c5cccecb9cb8a049c6d815e7214f6b4`；helper EXE `06f78c6dd753eecd3d8c424a4e53a3062ad3c3177a981d9115672a96209411d4`、DLL `31bcd5675ec5f5a2b2e116e2705f7ea9f232116f082766df78008a6e783d57d7`；目标配置 SHA-256 `e93f43b7e1d9d62d2e3b706e17aad8fc5d853cbf3a5b3ac30afd7e4d86fdec6e`；READY 密文 SHA-256 `5f5882656efdea4d0449a765c8377a70186667a734997f3c9fc7b0c23fd83ef4`。证据和同用户 WMI 执行脚本位于 `.verification/recovery-ready/`，包括 `synthetic-ready-evidence.json`、`synthetic-recovery-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json` 和构建日志；旧 runner/目标禁止重放。
+
+剩余关键前置：显式激活需要与唯一启动、实际进程身份及持有的维护权能绑定的合同，失败/进程中断后只能只读核对，不得把授权记录当普通启动许可；随后才可 Provision、目标 Gate/存储启动、ACTIVE 及 AssistantApp 成功后的选择保存。本轮并未完成这段。真实产品维护检查仍返回 `BLOCKED / UNREGISTERED_WRITERS_UNPROVEN`、`ObservedExitedChildren=null`；旧包、跨会话/手动 Java 与未知模型执行仍缺可信历史归属，个人受信来源生产/消费亦未闭环。没有做断电、网络中断或真实启动部分发布实验，不能将合成授权文件模拟等同于这些实验。晚期失败可能留存合成 app 登录和未发布候选，禁止自动恢复/重放，不声称跨数据库/文件的自动回滚。五份未跟踪设计文件 SHA-256 均与之前一致；不推送、不合并 main、不部署。
+
+
 ## 最新阶段：prepared 配置持久写入、真实连接与日常 Store 权限核验
 
 基于本地 `16a9c8e`，本轮选择设计 §4 的 prepared 配置 owning 接口，完成“独立来源 → 新 canonical 目标恢复 → 固定 `data/database.dpapi` → 磁盘重读后的真实 app 连接 → Store/权限核验”的合成阶段。**没有发布 READY 或激活；合成收尾仍撤销两角色登录并清密，留下的配置不能当作可用的日常配置，更不能继续激活此候选。** 完整停写中旧包、跨会话/手动 Java、未知模型执行的归属仍无可信历史可补证；本轮未改写这些条件或修改真实环境来制造证据。

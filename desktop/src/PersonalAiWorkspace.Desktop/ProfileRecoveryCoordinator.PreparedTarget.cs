@@ -5,12 +5,15 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using System.Collections.Generic;
+using System.Diagnostics;
 using PersonalAiWorkspace.WindowsSecurity;
 
 namespace PersonalAiWorkspace.Desktop;
 
 internal sealed partial class ProfileRecoveryCoordinator
 {
+    private readonly Dictionary<string,Process> syntheticConsumers=new(StringComparer.Ordinal);
     internal sealed record SyntheticTargetPlan(int Version, string Kind, string State, string OperationId,
         string TargetProfileId, string BackupId, string SourceRegistrationSha256, string PayloadSha256,
         string ManifestSha256, string DatabaseName, string OwnerRole, string AppRole, string OwnershipReceipt);
@@ -20,10 +23,10 @@ internal sealed partial class ProfileRecoveryCoordinator
     // Called only by the isolated native fixture after its own child's authenticated-source
     // response. There is no UI/CLI/product mutation entry: full personal stop proof is absent.
     // Synthetic sources remain in their own namespace and can never reserve a product plan.
-    private SyntheticTargetPlan PrepareSyntheticTarget(string syntheticApplication, string backupId)
+    private SyntheticTargetPlan PrepareSyntheticTarget(string syntheticApplication, string backupId,Process consumer)
     {
         ObjectDisposedException.ThrowIf(disposed,this);
-        if(authority is null || !Path.GetFileName(syntheticApplication).StartsWith("paw-source-producer-",StringComparison.Ordinal))throw Stop();
+        if(authority is null || consumer.HasExited || !Path.GetFileName(syntheticApplication).StartsWith("paw-source-producer-",StringComparison.Ordinal))throw Stop();
         authority.Validate(); Mmf3ProfileNative.Verify(authority); RequireHex(backupId,32);
         string sourceDirectory=Path.Combine(syntheticApplication,"Recovery","synthetic-sources",backupId);
         foreach(string path in new[]{syntheticApplication,Path.Combine(syntheticApplication,"Recovery"),Path.GetDirectoryName(sourceDirectory)!,sourceDirectory})
@@ -59,8 +62,35 @@ internal sealed partial class ProfileRecoveryCoordinator
             Convert.ToHexStringLower(SHA256.HashData(planFile)),rootIdentity,dataIdentity);
         PublishRecord(entry,"prepared",SyntheticTargetEntropy(target,"prepared"),prepared);
         if(ReadRecord<PreparedTargetIdentity>(Path.Combine(entry,"prepared.dpapi"),SyntheticTargetEntropy(target,"prepared"))!=prepared)throw Stop();
+        syntheticConsumers.Add(target,consumer);
         return plan; // No JNA provision, credentials, database, READY or selection mutation.
     }
+
+    private sealed record SyntheticReady(int Version,string Kind,string State,string OperationId,string TargetProfileId,
+        string OfflineSha256,string PlanSha256,string PreparedSha256,string AttemptSha256);
+    private void RequireSyntheticConsumerExited(string target)
+    {
+        ObjectDisposedException.ThrowIf(disposed,this);
+        if(authority is null||!syntheticConsumers.TryGetValue(target,out var child)||!child.HasExited||child.ExitCode!=0)throw Stop();
+        authority.Validate();Mmf3ProfileNative.Verify(authority);
+        // This fresh fixture authority is not a personal stopped-writer certificate.
+        if(Directory.EnumerateFileSystemEntries(Path.Combine(authority.Root,"model-state")).Select(Path.GetFileName).Any(n=>n!=".lock"))throw Stop();
+    }
+    private void PublishSyntheticReady(string target)
+    {
+        RequireSyntheticConsumerExited(target);
+        using(var evidence=SyntheticRecoveryPublication.Inspect(target))
+        {
+            if(evidence.Stage!="OFFLINE_VERIFIED"||Directory.Exists(Path.Combine(evidence.Root,"jna-5.17.0-win32-x86-64")))throw Stop();
+            var ready=new SyntheticReady(1,"SYNTHETIC_RECOVERY_READY","READY",SyntheticRecoveryPublication.Text(evidence.Offline,"OperationId"),target,
+                evidence.Hashes["offline"],evidence.Hashes["plan"],evidence.Hashes["prepared"],evidence.Hashes["attempt"]);
+            PublishRecord(evidence.Entry,"ready",SyntheticTargetEntropy(target,"ready"),ready);
+        }
+        using var confirmed=SyntheticRecoveryPublication.Inspect(target);if(confirmed.Stage!="READY")throw Stop();
+    }
+    // No activation entry yet. A durable authorization record alone cannot bind a
+    // unique launch or distinguish an interrupted launch from an authorized retry.
+    // Ordinary Desktop/Java/native gates therefore reject every registered candidate.
 
     private static byte[] SyntheticTargetEntropy(string target,string name) =>
         Encoding.ASCII.GetBytes("PersonalAIWorkspace/Recovery/synthetic-target/v1/"+target+"/"+name);
