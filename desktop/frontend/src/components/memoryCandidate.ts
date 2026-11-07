@@ -1,9 +1,35 @@
 import { exactFields, isObject } from '../bridge/contracts'
 import { unicode, validDraft } from '../bridge/memory'
 import type { MemoryDraft } from '../bridge/memory'
+import type { MemoryMetadata } from '../bridge/memory'
+import type { WorkspaceClient } from '../bridge/client'
 
 export type MemorySourceRole = 'USER' | 'ASSISTANT'
 export interface MemoryCandidate { draft: MemoryDraft; evidence: string }
+export interface CandidateDuplicateCheck { matches: MemoryMetadata[]; checked: number; total: number; complete: boolean }
+
+// The literal prefix necessarily occurs in an exact duplicate. Bound the work to
+// one search page, then verify authoritative bodies and revisions, never titles alone.
+export async function checkCandidateDuplicates(bridge: WorkspaceClient, content: string, current: () => boolean): Promise<CandidateDuplicateCheck | null> {
+  const page = await bridge.listMemory({ query: [...content].slice(0, 160).join(''), status: 'ACTIVE', type: null, page: 0 })
+  if (!current()) return null
+  const result: CandidateDuplicateCheck = { matches: [], checked: 0, total: page.total, complete: page.total <= page.items.length }
+  for (const metadata of page.items) {
+    if (!current()) return null
+    try {
+      const item = await bridge.getMemory(metadata.id)
+      if (!current()) return null
+      if (item.id !== metadata.id || item.revision !== metadata.revision || item.status !== 'ACTIVE') { result.complete = false; continue }
+      result.checked++
+      if (item.content === content) result.matches.push(metadata)
+    } catch {
+      if (!current()) return null
+      result.complete = false
+      break // Do not amplify a storage failure into a page of automatic retries.
+    }
+  }
+  return result
+}
 // Advisory prompt only. The output remains untrusted until the user reviews and
 // explicitly saves through the existing Memory editor; there is no model write tool.
 const instructions = 'Propose at most one concise durable memory from the supplied excerpt for human review. '

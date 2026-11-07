@@ -3,8 +3,8 @@ import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { OperationView } from '../bridge/contracts'
 import { validDraft } from '../bridge/memory'
 import type { MemoryDraft, MemoryType } from '../bridge/memory'
-import { candidatePrompt, parseCandidate } from './memoryCandidate'
-import type { MemoryCandidate, MemorySourceRole } from './memoryCandidate'
+import { candidatePrompt, checkCandidateDuplicates, parseCandidate } from './memoryCandidate'
+import type { CandidateDuplicateCheck, MemoryCandidate, MemorySourceRole } from './memoryCandidate'
 
 const terminal = (value: OperationView) => !['QUEUED', 'RUNNING'].includes(value.status)
 const safeError = (problem: unknown) => problem instanceof BridgeError ? problem.message : '候选生成暂时不可用，请检查本机模型状态。'
@@ -21,6 +21,12 @@ export function MemoryCandidatePanel({ bridge, enabled, draft, role, apply }: {
   const [rawResult, setRawResult] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [duplicateResult, setDuplicateResult] = useState<CandidateDuplicateCheck | null>(null)
+  const [duplicateChecking, setDuplicateChecking] = useState(false)
+  const [duplicateError, setDuplicateError] = useState('')
+  const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false)
+  const duplicateGeneration = useRef(0)
+  const duplicateLock = useRef(false)
   const generation = useRef(0)
   const locked = useRef(false)
   const cancelled = useRef(false)
@@ -29,6 +35,30 @@ export function MemoryCandidatePanel({ bridge, enabled, draft, role, apply }: {
   const active = submitting || !!operation && !terminal(operation)
   const unchanged = source.current?.role === role && source.current.draft.content === draft.content
     && source.current.draft.title === draft.title && source.current.draft.type === draft.type
+  const needsDuplicateReview = !!duplicateError || !!duplicateResult && (!duplicateResult.complete || duplicateResult.matches.length > 0)
+  const duplicateAllowsAdoption = !duplicateChecking && (!needsDuplicateReview || duplicateAcknowledged)
+
+  useEffect(() => {
+    duplicateGeneration.current++; duplicateLock.current = false
+    setDuplicateResult(null); setDuplicateChecking(false); setDuplicateError(''); setDuplicateAcknowledged(false)
+    return () => { duplicateGeneration.current++ }
+  }, [bridge, candidate])
+  useEffect(() => {
+    if (!enabled && duplicateLock.current) {
+      duplicateGeneration.current++; duplicateLock.current = false; setDuplicateChecking(false)
+      setDuplicateError('检查已中断，不能判断是否已有相同正文。请重新检查。')
+    }
+  }, [enabled])
+  const checkDuplicates = async () => {
+    if (!enabled || !candidate || !validDraft(candidate.draft) || duplicateLock.current) return
+    const token = ++duplicateGeneration.current
+    duplicateLock.current = true; setDuplicateChecking(true); setDuplicateResult(null); setDuplicateError(''); setDuplicateAcknowledged(false)
+    try {
+      const result = await checkCandidateDuplicates(bridge, candidate.draft.content, () => token === duplicateGeneration.current)
+      if (token === duplicateGeneration.current) setDuplicateResult(result)
+    } catch { if (token === duplicateGeneration.current) setDuplicateError('未能完成重复检查，不能判断是否已有相同正文。请重试或明确选择继续。') }
+    finally { if (token === duplicateGeneration.current) { duplicateLock.current = false; setDuplicateChecking(false) } }
+  }
 
   const accept = (value: OperationView) => {
     setOperation(value); setUnknown(false); setError('')
@@ -126,7 +156,22 @@ export function MemoryCandidatePanel({ bridge, enabled, draft, role, apply }: {
       <label htmlFor="candidate-content">候选正文</label><textarea id="candidate-content" value={candidate.draft.content} readOnly={!enabled} autoComplete="off" spellCheck={false} onChange={event => setCandidate({ ...candidate, draft: { ...candidate.draft, content: event.target.value } })} />
       {!unchanged && <p className="error">原草稿已变更，不能用本次候选覆盖。可保留参考，或重新生成。</p>}
       {!validDraft(candidate.draft) && <p className="error">请检查候选标题、正文及长度限制后再采用。</p>}
-      <div className="operation-actions"><button type="button" disabled={!enabled || !unchanged || !validDraft(candidate.draft)} onClick={() => { if (unchanged && validDraft(candidate.draft)) apply(candidate.draft) }}>采用候选到编辑器</button>
+      <section aria-label="候选重复检查">
+        <button type="button" disabled={!enabled || duplicateChecking || !validDraft(candidate.draft)} onClick={() => { void checkDuplicates() }}>检查已有记忆</button>
+        <p className="hint">可选检查：只比较使用中的记忆正文，最多核对 20 条匹配记录；不检查语义相似或已归档记忆。编辑候选后需重新检查。</p>
+        {duplicateChecking && <p role="status">正在检查可能重复的记忆…</p>}
+        {!duplicateChecking && !duplicateResult && !duplicateError && <p className="hint">尚未检查重复。</p>}
+        {duplicateError && <p role="alert" className="error">{duplicateError}</p>}
+        {duplicateResult && <>
+          {duplicateResult.matches.length > 0 ? <><p>已找到正文完全相同的记忆：</p><ul>{duplicateResult.matches.map(item => <li key={item.id}><bdi>{item.title}</bdi> · 版本 {item.revision}</li>)}</ul></>
+            : <p>本次已核对的 {duplicateResult.checked} 条记录中，未发现正文完全相同项。</p>}
+          {!duplicateResult.complete && <p role="alert" className="error">检查不完整：存在未检查、已变更或读取失败的记录，不能据此排除重复。</p>}
+          <p className="hint">搜索返回 {duplicateResult.total} 条匹配记录，本次核对 {duplicateResult.checked} 条。检查后记录仍可能变化，不会自动合并或覆盖。</p>
+        </>}
+        {needsDuplicateReview && <label><input type="checkbox" checked={duplicateAcknowledged} disabled={!enabled}
+          onChange={event => setDuplicateAcknowledged(event.target.checked)} />我已了解重复项或检查限制，仍要采用候选</label>}
+      </section>
+      <div className="operation-actions"><button type="button" disabled={!enabled || !unchanged || !validDraft(candidate.draft) || !duplicateAllowsAdoption} onClick={() => { if (unchanged && validDraft(candidate.draft) && !duplicateLock.current && duplicateAllowsAdoption) apply(candidate.draft) }}>采用候选到编辑器</button>
         <button type="button" onClick={() => { setCandidate(null); setNotice('已丢弃候选，原草稿保留。') }}>丢弃候选</button></div>
       <p className="hint">采用会替换编辑器中的类型、标题和正文；还需点击编辑器的“保存”才写入记忆。</p>
     </>}

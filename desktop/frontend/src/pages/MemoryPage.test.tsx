@@ -154,6 +154,69 @@ it('generates editable grounded memory candidates and saves only after explicit 
   expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
   expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(2)
 })
+it('checks exact candidate duplicates with bounded reads, explicit review and no false completeness', async () => {
+  const port = new ConversationMemoryService(), body = 'Synthetic duplicate 😀 body'
+  port.candidateResult = JSON.stringify({ candidate: { type: 'PROJECT_NOTE', title: 'Candidate', content: body, evidence: 'Synthetic user 1' } })
+  port.items = [
+    { ...memoryItem(1), type: 'PREFERENCE', title: 'Already saved under another title', content: body },
+    { ...memoryItem(2), title: body, content: 'Only the title matches' },
+    { ...memoryItem(3), status: 'ARCHIVED', content: body },
+    { ...memoryItem(4), content: body + ' extra' },
+  ]
+  const { bridge, title, content } = await setupConversationDraft(port)
+  await chooseMessage('USER'); await click('生成记忆候选')
+  const before = port.sent.length
+  expect(screen.getByText('尚未检查重复。')).toBeTruthy()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查已有记忆' })); fireEvent.click(screen.getByRole('button', { name: '检查已有记忆' })) })
+  expect(port.sent.slice(before).map(x => ({ method: x.method, payload: x.payload }))).toEqual([
+    { method: 'memory.list', payload: { query: body, status: 'ACTIVE', type: null, page: 0 } },
+    ...[1, 2, 4].map(n => ({ method: 'memory.get', payload: { memoryId: memoryItem(n).id } })),
+  ])
+  const review = screen.getByRole('region', { name: '候选重复检查' })
+  expect(within(review).getAllByRole('listitem')).toHaveLength(1)
+  expect(within(review).getByText('Already saved under another title')).toBeTruthy()
+  expect(screen.getByRole('button', { name: '采用候选到编辑器' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.click(within(review).getByRole('checkbox'))
+  expect(screen.getByRole('button', { name: '采用候选到编辑器' }).hasAttribute('disabled')).toBe(false)
+  expect(title.value).toBe(''); expect(content.value).toBe('Synthetic user 1')
+
+  edit(screen.getByLabelText('候选标题'), 'Edited candidate')
+  expect(screen.getByText('尚未检查重复。')).toBeTruthy()
+  port.items = Array.from({ length: 21 }, (_, i) => ({ ...memoryItem(i + 10), content: i === 20 ? body : body + ` different ${i}` }))
+  const bounded = port.sent.length; await click('检查已有记忆')
+  expect(port.sent.slice(bounded).filter(x => x.method === 'memory.get')).toHaveLength(20)
+  expect(within(review).getByText(/本次已核对的 20 条记录中/)).toBeTruthy()
+  expect(within(review).getByRole('alert').textContent).toContain('检查不完整')
+  expect(screen.getByRole('button', { name: '采用候选到编辑器' }).hasAttribute('disabled')).toBe(true)
+
+  port.failList = true; await click('检查已有记忆')
+  expect(within(review).getByRole('alert').textContent).toContain('未能完成重复检查')
+  expect(within(review).queryByText(/未发现正文完全相同项/)).toBeNull()
+  port.failList = false; port.items = [{ ...memoryItem(51), content: body }]
+  const changing = vi.spyOn(bridge, 'getMemory').mockResolvedValueOnce({ ...port.items[0]!, revision: '9007199254740994' })
+  await click('检查已有记忆'); changing.mockRestore()
+  expect(within(review).getByRole('alert').textContent).toContain('检查不完整')
+  expect(within(review).queryByRole('listitem')).toBeNull()
+
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  const late = vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('检查已有记忆')
+  edit(screen.getByLabelText('候选正文'), 'Edited during duplicate read')
+  const afterEdit = port.sent.length
+  await act(async () => complete(port.items[0]!)); late.mockRestore()
+  expect(port.sent).toHaveLength(afterEdit)
+  expect(screen.getByText('尚未检查重复。')).toBeTruthy()
+  expect(within(review).queryByRole('listitem')).toBeNull()
+
+  edit(screen.getByLabelText('候选正文'), '😀'.repeat(160) + 'tail'); port.items = []
+  await click('检查已有记忆')
+  expect(port.sent.at(-1)?.payload).toEqual({ query: '😀'.repeat(160), status: 'ACTIVE', type: null, page: 0 })
+  expect(within(review).queryByRole('alert')).toBeNull()
+  expect(within(review).getByText(/搜索返回 0 条匹配记录/)).toBeTruthy()
+  expect(port.sent.slice(before).every(x => ['memory.list', 'memory.get'].includes(String(x.method)))).toBe(true)
+  expect(port.sent.filter(x => x.method === 'assistant.proposeMemory')).toHaveLength(1)
+  expect(port.sent.some(x => x.method === 'memory.create' || x.method === 'memory.update')).toBe(false)
+})
 it('keeps candidate cancellation, unknown outcomes and late task replies from writing or replacing drafts', async () => {
   const port = new ConversationMemoryService()
   const { bridge, content } = await setupConversationDraft(port)

@@ -15,7 +15,7 @@
 | 日常会话定位 | 指定轮次直接跳转、回到最新，保留当前草稿／记忆选择 | [2026-11-07 交付](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)；源码与前端构建完成，真实 Windows 包未验收 |
 | 记忆检索预览 | 单条按需只读正文与字面搜索高亮，保留编辑草稿 | [2026-11-07 交付](../engineering/MEMORY-READ-PREVIEW-REPORT.md)；无自动记忆，真实 Windows 包未验收 |
 | 会话记忆引用 | 按需查看本轮引用，与当前记录核对版本，不将新版正文当作旧版 | [2026-11-07 交付](../engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)；无历史正文重建，真实 Windows 包未验收 |
-| 对话记忆候选 | 用户发起本地提取、摘录对照、编辑／丢弃／采用后明确保存 | [2026-11-07 交付](../engineering/MEMORY-CANDIDATE-GENERATION-REPORT.md)；合成流程验证，真实模型质量和 Windows 流程未验收，无自动写入 |
+| 对话记忆候选 | 用户发起本地提取、摘录对照、可选正文查重、编辑／丢弃／采用后明确保存 | [候选生成](../engineering/MEMORY-CANDIDATE-GENERATION-REPORT.md)、[查重范围](../engineering/MEMORY-CANDIDATE-DUPLICATE-REVIEW-REPORT.md)；合成流程验证，真实模型质量和 Windows 流程未验收，无自动写入 |
 | M5 | React / WebView2 Main Workspace、WPF 原生边界与资产构建 | [M5E closing](../milestones/M5E-CLOSING-REPORT.md)；历史阶段通过不等于当前正式发布 |
 | K1–K3 | Knowledge 导入／管理、词法检索、显式问答和引用 | [K1](../milestones/K1-CLOSING-REPORT.md)、[K2](../milestones/K2-CLOSING-REPORT.md)、[K3](../milestones/K3-CLOSING-REPORT.md)；不再标记 NOT STARTED |
 | T0 | 测试体系收敛、既有 WorkspaceSanity 验收入口 | [T0 报告](../engineering/T0-TEST-SUITE-SLIMMING.md)；不因文档更新重跑历史全套 |
