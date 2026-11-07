@@ -338,6 +338,7 @@ public final class TrustedDatabaseConfiguration {
         WindowsPrivateAcl.verify(root.resolve("data/database.dpapi"), false);
         RecoverySource source = pinRecoverySource(root);
         try {
+            source.exclusion = exclusion;
             WindowsPrivateAcl.verify(root.resolve("data/database.dpapi"), false);
             WindowsNativeGate.maintenanceProfileRoot(exclusion);
             source.requireUnchanged();
@@ -353,6 +354,16 @@ public final class TrustedDatabaseConfiguration {
         catch (Exception | LinkageError rejected) { source.close(); throw new Failure(Reason.CONFIGURATION_UNTRUSTED); }
     }
 
+    // The explicit fixture may exercise the real handle contract without pretending to have
+    // passed NativeGate. This factory cannot address the canonical personal Profiles namespace.
+    private static RecoverySource pinSyntheticRecoverySource(Path root,MaintenanceExclusion exclusion) throws IOException {
+        if(root.getParent()==null||!root.getParent().getFileName().toString().equals("Profiles")
+            ||!root.getParent().getParent().getFileName().toString().matches("paw-source-producer-[0-9a-f]{32}"))throw new IOException();
+        var source=pinRecoverySource(root);
+        try {source.exclusion=exclusion;source.syntheticExclusion=true;source.requireMaintenanceHeld();return source;}
+        catch(IOException|RuntimeException failure){source.close();throw failure;}
+    }
+
     /** A pinned source binding, never a maintenance capability or a writable configuration.
      * Credentials stay here; callers supply only temporary administrator credentials. */
     public static final class RecoverySource implements AutoCloseable {
@@ -362,6 +373,8 @@ public final class TrustedDatabaseConfiguration {
         private FileChannel pin;
         private Values values;
         private DatabaseIdentity databaseIdentity;
+        private MaintenanceExclusion exclusion;
+        private boolean syntheticExclusion;
         private boolean closed;
         private RecoverySource(Path root) { this.root = root; data = root.resolve("data"); file = data.resolve("database.dpapi"); }
         public record DatabaseIdentity(String systemIdentifier, long databaseOid, long applicationRoleOid) {
@@ -422,6 +435,17 @@ public final class TrustedDatabaseConfiguration {
         public String configurationSha256() throws IOException { requireUnchanged(); return configurationSha256; }
         public DatabaseIdentity databaseIdentity() throws IOException {
             requireUnchanged(); if (databaseIdentity == null) throw new Failure(Reason.CONNECTION_FAILED); return databaseIdentity;
+        }
+
+        /** Actual exclusion handles, not complete writer coverage or permission to back up a
+         * personal source. Re-check at each mutation/publication boundary; never reacquire. */
+        public void requireMaintenanceHeld() throws IOException {
+            requireUnchanged();if(exclusion==null)throw new IOException("Source exclusion unavailable");
+            if(syntheticExclusion)exclusion.requireHandles(root);else exclusion.requireHeld(root);
+            try(var entries=Files.list(root.resolve("model-state"))) {
+                if(entries.anyMatch(path->!path.getFileName().toString().equals(".lock")))
+                    throw new IOException("Unresolved model state; no source authorization");
+            }
         }
 
         public record ApplicationObservation(long databaseOid, long applicationRoleOid) {}

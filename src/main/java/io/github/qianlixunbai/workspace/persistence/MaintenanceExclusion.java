@@ -69,7 +69,7 @@ public final class MaintenanceExclusion implements AutoCloseable {
         WindowsPrivateAcl.verify(runtimeFile,false);WindowsPrivateAcl.verify(modelDirectory,true);WindowsPrivateAcl.verify(modelFile,false);
     }
 
-    private void requireHandles(Path expectedRoot) throws IOException {
+    void requireHandles(Path expectedRoot) throws IOException {
         if(closed||!root.equals(expectedRoot)||model==null||!model.isOpen()||model.size()!=0
             ||!runtimeIdentity.equals(identity(transferred,runtimeFile,false,true))
             ||!runtimeIdentity.equals(identity(runtimePin,runtimeFile,false,true))

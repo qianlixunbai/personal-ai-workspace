@@ -1,5 +1,24 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
+## 最新阶段：来源持续冻结与短期角色能力收紧
+
+基于本地 `13b33c9`，本轮继续停写/来源授权主线，完成 **实际 OS 排他 + SQL/文件持续冻结 → 单次短期角色 → 加密备份 → 角色回收/句柄关闭 → 合成来源登记** 的收紧。**这仍不是完整个人停写证明或个人来源生产入口；没有解禁 UI，也没有签发任何个人来源记录。** 原有直属退出日志不能追溯覆盖旧客户端、跨会话/手动执行和未知远端模型任务，不能用表锁或管理员口令替代这些证据。
+
+- `RecoverySource` 现在可以保留实际 `MaintenanceExclusion` 并逐边界复核已转移的 Runtime 排他句柄、model 锁、固定 Profile/配置及模型目录；关闭/缺少句柄即拒绝，不重新获取锁。生产配置仍由既有 NativeGate factory 冻结；测试使用私有、仅 `paw-source-producer-*` 命名空间的 OS 夹具接口，明确没有伪造 NativeGate 准入。
+- 在既有 `WorkspaceSourceBackup` 中增加 `FrozenSource`，没有新通用模块或服务。其唯一工厂仍限合成来源，管理员用户名/口令不能选择另一个 endpoint。先用受保护 app 配置关联实际管理员连接，再核对源 system/database 身份、无其他 backend/预备事务，持有 17 表 SHARE NOWAIT 事务锁以及全部 revision 原文的禁止写入/删除句柄，核对 catalog、终态任务、领域数据及 snapshot，之后才允许创建短期角色。锁贯穿加密、角色回收和最终源核对；没有修改日常 app grants、关闭共享服务或终止未知连接。
+- 绑定来源的 `backupSynthetic` 不再接受 `writersStopped` 布尔声明，改为消费这份存活的一次性能力。加密引擎只能使用本次实际 provision 返回的同一个短期角色 endpoint 和固定原文目录；只排除该能力持有并持续核对的真实 JDBC backend，不能传一个 PID 豁免其他连接。每个关键边界重核实际 `pg_locks`、配置/原文、源快照与目录结构，旧合成 CLI/无绑定接口仍保留原有限制，没有升级成个人入口。
+- 管理员输入数组和备份口令数组在成功/失败时清零；临时 endpoint 引用随冻结关闭释放。JDBC 使用的不可变 String 不声称已可靠擦除。只有短期角色撤销/回收、源再次核验及冻结连接/文件成功关闭后才返回完成能力；源角色清理未知仍为 `CREDENTIAL_CLEANUP_REQUIRED`。原生父进程原有实际 child 退出、配置/密文独立摘要核对与 DPAPI 无覆盖登记规则未改。
+
+必要验证使用既有来源探针，共 **2 次全新合成流程，均成功**：初次通过后，因新增实际 endpoint/目录绑定边界，在另一新夹具复验最终候选，未重放旧目标。两次都验证额外 SQL 会话在角色创建前被拒绝；冻结中的无数据变更 UPDATE 因锁冲突返回 `55P03`；原文 WRITE open 被 Windows sharing 拒绝；管理员输入数组已清零；关闭后的能力不能再次创建输出；源 snapshot/Finance sentinel 不变。随后真实加密、角色回收、原生来源登记、生产者退出、独立消费者在源 DB 不可用/Profile 原路径缺失时恢复到新库、Store/原文核验通过；合成来源仍不能生成个人 plan。没有全套测试、Desktop/UI 重测、模型请求或个人数据操作。
+
+最终夹具 `C:\PAW-SourceProducer-da83585c0a024bdbb20545abe5b26c62`，PG 49324/PID 31148，生产者/消费者 PID 35384/52692；均已退出，仅停止经原身份核对的自建 PG。backup `081019d4db5a4102a75bb857e60d7aff`，来源登记 SHA-256 `afb8165b0e5470590a2ac2149e3fb34b4cfeca8dbb67edea0cf6abe705d39a58`。新目标库 `personal_ai_workspace_b3_5a3a07f47eed`，最终 `RESTORE_VERIFIED / WINDOWS_ADMISSION_PENDING`，两目标角色禁登/清密；此轮没有 canonical 目标 Profile、READY、JNA 或 ACTIVE。前一套夹具 `C:\PAW-SourceProducer-bd2c8dcd10e84977b8eec299f0547fca`（PG 62545/PID 4680）也已停止并保留证据。
+
+最终 Java 离线 package 和实际 JAR 审计通过，SHA-256 `de756d51f25fc89ce2bc53f8d18e18ada8632e4983d803b167752acae4dac905`；探针按同次编译类执行，复用未修改的 C# 驱动，没有重新编译 helper 或改 pins。最终证据在 `.verification/recovery-source-freeze-bound/` 的 `source-freeze-evidence.json`、`native-source-evidence.json`、`synthetic-recovery-evidence.json`、`fixture-result.json`、`final-boundary-evidence.json`；前次在 `.verification/recovery-source-freeze/`。两次 JVM 顺序执行、384 MiB/2 核，专属 PG 16 MiB；最终预检可用内存约 13.6 GiB。共享 PG 5432/PID 4980、Ollama 11434/PID 6280 和五份受保护文档未变，不推送/合并/部署。
+
+**UI 接线评估与剩余限制：** 现有开发版仅可做只读维护检查，不能把这个合成工厂接成个人“备份”按钮。仍需经审查且可实际提供的完整执行归属/停止证明，包括历史未登记写入者与远端模型状态；当前没有可签发成功的个人 admission。随后才可开放原生一次性管理员安全输入/私有管道、个人受保护卷 staging 与个人 `sources` 完成登记生产链。此轮没有实现或测试这些成功入口，不以冻结结果、未发现 guard、无端口监听、口令或 UI 确认替代它们。评估结论是继续 BLOCKED，而不是放宽数据库名称/命名空间或挂一个总是成功的“停写”开关。
+
+实现前参考 PostgreSQL 17 上游 [lock.c 的冲突矩阵](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/storage/lmgr/lock.c) 和 [aclchk.c 的权限授予路径](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/catalog/aclchk.c)；结论以本地实际锁拒绝和来源生命周期结果为依据。
+
 ## 最新阶段：原生维护入口与 AssistantApp 合成生命周期
 
 基于本地 `2d417c6`，新增开发版原生维护界面，并用 **1 次全新隔离合成端到端流程** 接通确认窗口、同线程互斥锁移交和真实 `AssistantApp.Run` / Dispatcher 启动回调。**用户现在可以进入只读恢复维护并看到具体阻断；个人备份、恢复和激活仍未开放。** 下文上一阶段的“正式 UI/生命周期未接线”已由本节限定更新，不能把合成结果当作个人恢复授权或完整 UI 实机验收。

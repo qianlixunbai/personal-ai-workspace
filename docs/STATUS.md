@@ -2,6 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
+2026-11-07 Recovery 来源冻结阶段：绑定来源的合成备份已用实际 OS 排他、17 表 SHARE 锁、原文文件 pin 和单次能力替代调用者的停写布尔声明，贯穿短期角色授予、加密与回收。两套全新合成流程通过（第二次验证最终 endpoint/目录绑定），原数据/Finance sentinel 保留，能力关闭后不能重用，来源仍只能登记到合成命名空间。**完整个人停写证明和个人管理员授权生产链尚未完成；UI 仍仅只读维护，个人恢复保持 BLOCKED。** 未访问真实 Profile、启停既有服务或执行模型请求；详见[本阶段交接](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。
+
 2026-11-07 Recovery 维护 UI / Desktop 生命周期阶段：开发工作区选择器已提供原生只读维护入口，运行中托盘只给退出指引；完整停写、模型状态和来源授权分别显示，个人备份/恢复按钮保持禁用。一次全新合成流程验证取消确认不变、单次按钮授权、保留目标 mutex、真实 AssistantApp 启动回调发布 ACTIVE，以及其 RuntimeClient 的 Store/原文读回；个人选择文件未变，所属 Runtime/专用 PG 已退出。没有测试 WebView/托盘完整交互，也没有开放个人恢复。**个人恢复仍 BLOCKED**：旧包/跨会话/手动进程及外部写入者的完整停写无法补证，个人短期管理员授权到可信来源完成登记的生产链仍缺失。见[本阶段交接与证据](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。
 
 2026-11-07 Recovery 合成激活阶段：已在全新隔离 PG/Profile 中验证来源登记 → 恢复 → READY → 单次显式授权 → 绑定唯一 owner/JVM 的 Native Gate → 实际 Runtime/Store 就绪 → DPAPI ACTIVE。修复恢复文件创建时未保护子目录 DACL 的问题；两个失败目标保留且不重放，owner 退出后残留授权仍被拒绝。未写用户工作区偏好、未启停既有服务。**个人恢复仍 BLOCKED**：完整停写、个人来源授权与正式确认 UI/生命周期尚未闭环。详情及准确验证边界见[来源生产者／激活交接](engineering/RECOVERY-SOURCE-PRODUCER-HANDOFF.md)。下文各切片记录保留其历史时点。

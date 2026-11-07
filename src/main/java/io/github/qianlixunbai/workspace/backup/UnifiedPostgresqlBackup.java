@@ -156,25 +156,36 @@ public final class UnifiedPostgresqlBackup {
     }
     record Streamed(Manifest manifest,String manifestSha256,long databaseOid) {}
     Streamed streamWorkspace(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,String logicalId) throws Exception {
+        return streamWorkspace(source,knowledgeRoot,writersStopped,zip,logicalId,null);
+    }
+    Streamed streamWorkspace(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,String logicalId,
+            WorkspaceSourceBackup.FrozenSource frozen) throws Exception {
         require(logicalId!=null&&logicalId.equals(UUID.fromString(logicalId).toString()));
-        return stream(source,knowledgeRoot,writersStopped,zip,3,logicalId);
+        return stream(source,knowledgeRoot,writersStopped,zip,3,logicalId,frozen);
     }
     private Streamed stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,int version,String logicalId) throws Exception {
+        return stream(source,knowledgeRoot,writersStopped,zip,version,logicalId,null);
+    }
+    private Streamed stream(Endpoint source,Path knowledgeRoot,boolean writersStopped,ZipOutputStream zip,int version,String logicalId,
+            WorkspaceSourceBackup.FrozenSource frozen) throws Exception {
         boolean workspaceOnly=version==3;
+        if(frozen!=null)frozen.requireSource(source,knowledgeRoot);
         require(writersStopped&&syntheticDatabase(source.database));
         knowledgeRoot=knowledgeRoot.toAbsolutePath().normalize();privatePath(knowledgeRoot,true);
         String dumpVersion=tool("pg_dump",null,List.of("--version"));
         String restoreVersion=tool("pg_restore",null,List.of("--version"));
         List<FileChannel> pins=new ArrayList<>();
         try(var db=source.dataSource().getConnection()) {
+            require(frozen==null||workspaceOnly);
+            String excluded=frozen==null?"":frozen.excludeOwnedBackend();
             session(db);safeRole(db);require(major(db)==17);checkTools(dumpVersion,restoreVersion,17);
             if(!source.database.equals("personal_ai_workspace_test"))require(value(db,"SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()").matches("workspace-b3:[0-9a-f-]{36}"));
-            require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")==0);
+            require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'"+excluded)==0);
             sql(db,"BEGIN ISOLATION LEVEL REPEATABLE READ");sql(db,"SET LOCAL lock_timeout='3s'");
             require(scalar(db,"SELECT pg_try_advisory_lock(170017,2)::int")==1);
             if(workspaceOnly){
                 // pg_stat_activity can hide backend_type for another user's session. Count those too.
-                require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()")==0);
+                require(scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()"+excluded)==0);
                 require(scalar(db,"SELECT has_database_privilege(current_user,current_database(),'CREATE')::int")==0);
                 require(scalar(db,"SELECT has_schema_privilege(current_user,'workspace','CREATE')::int")==0);
                 require(scalar(db,"SELECT has_schema_privilege(current_user,'public','USAGE')::int")==0);
@@ -204,9 +215,11 @@ public final class UnifiedPostgresqlBackup {
                 }
             }finally{Arrays.fill(buffer,(byte)0);}
             verifyKnowledge(db,knowledgeRoot,files);require(before.equals(snapshot(db,workspaceOnly)));
+            if(frozen!=null)frozen.verifyContents();
             try(var check=source.dataSource().getConnection()){
                 session(check);require(before.equals(snapshot(check,workspaceOnly)));safeJobs(check);
-                require(scalar(check,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND pid<>"+scalar(db,"SELECT pg_backend_pid()")+(workspaceOnly?"":" AND backend_type='client backend'"))==0);
+                require(scalar(check,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND pid<>"+scalar(db,"SELECT pg_backend_pid()")
+                    +(workspaceOnly?"":" AND backend_type='client backend'")+(frozen==null?"":frozen.excludeOwnedBackend()))==0);
             }
             var manifest=new Manifest(STREAM_FORMAT,version,"OPENPGP_CONTAINER_REQUIRED","BACKUP_COMPLETE",Instant.now().toString(),
                 workspaceOnly?logicalId:source.database,value(db,"SHOW server_version"),major(db),dumpVersion,restoreVersion,workspaceOnly?List.of("workspace"):List.of("public","workspace"),

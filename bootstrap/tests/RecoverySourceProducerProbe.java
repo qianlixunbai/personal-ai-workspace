@@ -153,7 +153,9 @@ public final class RecoverySourceProducerProbe {
                 "port",port,"database",database,"username",appRole,"password",appPassword));
             createProtectedConfiguration(root.resolve("data/database.dpapi"),configuration);Arrays.fill(configuration,(byte)0);
             char[] password=(UUID.randomUUID().toString()+UUID.randomUUID()).toCharArray(),consumed=password.clone();
-            try(var binding=(TrustedDatabaseConfiguration.RecoverySource)freeze.invoke(null,root)) {
+            Method freezeBound=TrustedDatabaseConfiguration.class.getDeclaredMethod("pinSyntheticRecoverySource",Path.class,MaintenanceExclusion.class);
+            freezeBound.setAccessible(true);
+            try(var binding=(TrustedDatabaseConfiguration.RecoverySource)freezeBound.invoke(null,root,exclusion)) {
                 Path configurationFile=root.resolve("data/database.dpapi");String configurationHash=digest(configurationFile);
                 try(var ignored=java.nio.channels.FileChannel.open(configurationFile,StandardOpenOption.WRITE)){
                     throw new IllegalStateException("Pinned configuration writable");
@@ -170,8 +172,37 @@ public final class RecoverySourceProducerProbe {
                 require(configurationHash.equals(binding.configurationSha256())&&binding.database().equals(database)&&binding.port()==port);
                 stage="BACKUP";
                 held.invoke(exclusion,root);
-                var completed=WorkspaceSourceBackup.backupSynthetic(binding,administrator.username(),administrator.password(),
-                    Path.of(config.path("tools").asString()),encrypted,backupId,logical,true,consumed);
+                char[] deniedSecret=administrator.password().toCharArray();
+                try(var other=source.dataSource().getConnection()) {
+                    try{WorkspaceSourceBackup.freezeSynthetic(binding,administrator.username(),deniedSecret);throw new IllegalStateException("Unregistered SQL session accepted");}
+                    catch(IOException denied){require(Arrays.equals(deniedSecret,new char[deniedSecret.length]));}
+                    require(scalar(other,"SELECT count(*) FROM pg_roles WHERE rolname='workspace_backup_src_"+backupId+"'")==0);
+                }
+                char[] adminSecret=administrator.password().toCharArray();
+                var frozen=WorkspaceSourceBackup.freezeSynthetic(binding,administrator.username(),adminSecret);
+                require(Arrays.equals(adminSecret,new char[adminSecret.length]));
+                WorkspaceSourceBackup.Completed completed;
+                try(frozen) {
+                    stage="SOURCE_FREEZE";
+                    try(var writer=source.dataSource().getConnection()) {
+                        sql(writer,"SET lock_timeout='250ms'");
+                        try{sql(writer,"UPDATE workspace.memory_items SET title=title WHERE false");throw new IllegalStateException("Frozen source writable");}
+                        catch(java.sql.SQLException denied){require("55P03".equals(denied.getSQLState()));}
+                    }
+                    Path pinned=resolveKnowledge(knowledge,knowledgeFilesForProbe(source).getFirst().path());
+                    try(var ignored=java.nio.channels.FileChannel.open(pinned,StandardOpenOption.WRITE)) {throw new IllegalStateException("Frozen source file writable");}
+                    catch(IOException denied){/* Sharing denial before any write. */}
+                    frozen.verifyContents();
+                    stage="BACKUP";
+                    completed=WorkspaceSourceBackup.backupSynthetic(frozen,Path.of(config.path("tools").asString()),encrypted,backupId,logical,consumed);
+                }
+                char[] replay=password.clone();Path replayOutput=encrypted.resolveSibling(backupId+"-replay");
+                try{WorkspaceSourceBackup.backupSynthetic(frozen,Path.of(config.path("tools").asString()),replayOutput,backupId,logical,replay);throw new IllegalStateException("Closed freeze reused");}
+                catch(IOException denied){require(!Files.exists(replayOutput)&&Arrays.equals(replay,new char[replay.length]));}
+                write(isolated.resolve("source-freeze-evidence.json"),JSON.writeValueAsBytes(Map.of(
+                    "status","SYNTHETIC_PARTIAL_FREEZE_VERIFIED","unknownSqlSessionRejectedBeforeRole",true,"sourceDmlBlocked",true,
+                    "knowledgeWriteOpenRejected",true,"administratorInputCleared",true,"singleUseClosedCapabilityRejected",true,
+                    "tablesFrozen",WorkspaceV3Catalog.TABLES.size(),"personalStoppedWriterProof",false,"personalSourceAuthorization",false)));
                 require(Arrays.equals(consumed,new char[consumed.length]));held.invoke(exclusion,root);
                 try(var db=source.dataSource().getConnection()){
                     require(before.equals(snapshot(db,true))&&value(db,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE")
@@ -198,6 +229,10 @@ public final class RecoverySourceProducerProbe {
                 stage="RESULT_SENT";
             } finally {Arrays.fill(password,'\0');Arrays.fill(consumed,'\0');}
         }
+    }
+
+    private static List<FileEntry> knowledgeFilesForProbe(Endpoint source) throws Exception {
+        try(var db=source.dataSource().getConnection()){return knowledgeFiles(db);}
     }
 
     private static void restoreRegistered(String[] args) throws Exception {

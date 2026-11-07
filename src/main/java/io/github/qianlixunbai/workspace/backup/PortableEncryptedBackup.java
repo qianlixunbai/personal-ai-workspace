@@ -78,9 +78,19 @@ public final class PortableEncryptedBackup {
         // Still reaches the synthetic-only source admission. A logical ID grants no authority.
         return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,logicalId);
     }
+    WorkspaceBackup backupFrozenWorkspace(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,
+            char[] passphrase,String logicalId,WorkspaceSourceBackup.FrozenSource frozen) throws IOException {
+        try {require(frozen!=null);return backup(source,knowledgeRoot,encrypted,true,passphrase,logicalId,frozen);}
+        finally {clear(passphrase);}
+    }
     private WorkspaceBackup backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase,String logicalId) throws IOException {
+        return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,logicalId,null);
+    }
+    private WorkspaceBackup backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase,String logicalId,
+            WorkspaceSourceBackup.FrozenSource frozen) throws IOException {
         String stage="DIRECT_BACKUP_ADMISSION";
         try {
+            if(frozen!=null)frozen.requireSource(source,knowledgeRoot);
             password(passphrase);Path root=knowledgeRoot.toAbsolutePath().normalize();encrypted=encrypted.toAbsolutePath().normalize();
             require(writersStopped&&!root.startsWith(encrypted)&&!encrypted.startsWith(root));stagingParent(encrypted);
             require(!Files.exists(encrypted,LinkOption.NOFOLLOW_LINKS));
@@ -91,10 +101,11 @@ public final class PortableEncryptedBackup {
             try(var file=FileChannel.open(pending,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
                 encryptZip(Channels.newOutputStream(file),passphrase,logicalId==null?STREAM_LITERAL:WORKSPACE_LITERAL,zip->{
                     if(logicalId==null)manifest[0]=plain.stream(source,root,writersStopped,zip);
-                    else {streamed[0]=plain.streamWorkspace(source,root,writersStopped,zip,logicalId);manifest[0]=streamed[0].manifest();}
+                    else {streamed[0]=plain.streamWorkspace(source,root,writersStopped,zip,logicalId,frozen);manifest[0]=streamed[0].manifest();}
                 });file.force(true);
             }
             require(!Thread.currentThread().isInterrupted());
+            if(frozen!=null)frozen.verifyContents();
             Files.move(pending,encrypted.resolve(PAYLOAD),StandardCopyOption.ATOMIC_MOVE);
             var result=new Completion(FORMAT,logicalId==null?2:3,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",PAYLOAD,
                 Files.size(encrypted.resolve(PAYLOAD)),digest(encrypted.resolve(PAYLOAD)));
