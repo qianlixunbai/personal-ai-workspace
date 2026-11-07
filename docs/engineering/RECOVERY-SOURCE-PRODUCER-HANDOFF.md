@@ -1,6 +1,31 @@
 # Recovery 来源生产者：受保护配置绑定与合成跨进程备份
 
-## 最新阶段：独立同用户上下文打通真实 Native Gate 与来源只读检查
+## 最新阶段：来源登记跨进程消费，源库不可连接时恢复新合成目标
+
+基于本地 `8429134`，仍在 `codex/recovery-v3-workspace-core`。核对权威设计后发现，旧恢复依赖同一 Java 进程中的 `Completed`，即使原生 DPAPI 来源登记已经发布，生产进程结束后也不能恢复；旧目标准备还必须连接原业务库。这不符合“有完整维护 authority 和独立来源登记即可恢复，不要求原业务库在线”的合同。本轮把这段实际闭环接通，**个人维护仍为 BLOCKED，未发布 READY 或激活**。
+
+新增 `persistence/RegisteredRecoverySource`：正常读取入口先经过原有 `WindowsNativeGate.maintenanceProfileRoot(exclusion)`，仅从 authority 推导的固定 `Recovery/sources/<backupId>/source.dpapi` 读取；不访问登记中的原 Profile、配置或源数据库。它固定祖先目录、登记和密文句柄，核对 canonical 文件身份、无链接、DPAPI CurrentUser/独立 entropy、严格字段/类型/版本、来源种类、角色收尾及 payload 实际字节数/SHA-256，并保留登记密文摘要。原生登记文件允许继承其已核验私有父目录的 ACL，新增的限定检查复用原有 ACL 实现，不重写权限。关闭、缺失、pending/额外文件、绑定不匹配均拒绝；无“由口令或包旁 SHA 重建登记”的路径。
+
+合成消费者只能通过私有 OS 探针缝读取独立的 `synthetic-sources`、`synthetic-source/v1` entropy 和 v2 包装记录，要求原合成 kind/state。其权能不能进入个人来源或 `ReservePlan`。正常受信消费者入口代码已加入，但**本轮未通过真正维护入口验证个人登记读取；没有个人来源生产者，也没有从合成结果晋升的登记接口**。
+
+`PortableEncryptedBackup.decryptRegisteredSynthetic` 在登记和密文持续 pin 的条件下完成原有两遍 AEAD、v3/TOC/catalog/Knowledge 验证，另核对独立登记的原始 manifest 摘要与 logical ID。之后才生成恢复所需的内存权能。`WorkspaceRecovery.restoreRegisteredSyntheticTarget` 才连接登记端口的 `postgres` 管理库，核对 PG17 和 system identifier，创建全新 B3 隔离目标；不连接原业务库，也不复制原配置。新 DB OID/名称不得等于登记中的来源。CREATE 前持久计划额外绑定 `sourceRegistrationSha256`；恢复、Store 读回、索引重建、凭据禁用/清密、仅清理临时 backup 和未知结果不重放沿用原内核。最终仍只得到 `RESTORE_VERIFIED / IDENTITY_REBIND_REQUIRED / WINDOWS_ADMISSION_PENDING`，两个目标登录均禁用。
+
+只扩展既有 `RecoverySourceProducerProbe.cs/.java`，实际执行 **1 次**组合流程：
+
+- 隔离源绑定、备份/源短期角色回收、原生独立核对及 DPAPI 发布后，备份 JVM 和原生 owner 均结束；新消费者 JVM 重新读取真正落盘的原生登记，未手写成功记录或恢复 `Completed`。
+- 将本次自建合成 Profile 移到同一隔离应用目录的 `retained-source-*` 保留原字节，原 Profile 路径不存在。只对本次新合成源数据库设置 `ALLOW_CONNECTIONS false`，实测连接以 SQLSTATE `55000` 拒绝；整个恢复期间不停止 PG 服务、不访问原业务库。验证后恢复该合成库的连接设置并核对原 Workspace snapshot 和 Finance sentinel 不变。
+- 缺来源登记拒绝；复制登记并改变另一份合成密文、重算其包旁 completion SHA，仍因独立 payload 绑定拒绝；实际登记/密文写句柄被拒绝；错误口令不创建 DB/角色/目标计划。
+- 新库恢复非空 Memory、终态 Conversation、Knowledge source 与索引；Finance 不进入目标；两目标角色 NOLOGIN/PASSWORD NULL；登记摘要进入持久计划；同 staging 不重放，临时 backup 已清理，关闭来源权能不可复用。合成记录仍不能预约产品目标。
+
+本次夹具 `C:\PAW-SourceProducer-1821be38815446dc9a1bcccf175edc5d`，PG17 端口 `55817`，生产 JVM PID `20620`、消费 JVM PID `48228`。自建 PG PID `42616` 经 PID/启动时间/data directory/端口/程序路径核对后停止，最终该进程及 postmaster.pid 均不存在。PG 使用 16 MiB shared_buffers/12 max_connections，JVM 两核/384 MiB，顺序执行；未操作 KAG、共享服务或真实用户数据库/Profile。
+
+必要验证仅为本次四个生产 Java 类和既有 Java probe 的定向 javac、原生手工 probe 构建（0 warning / 0 error）、上述一个集成流程及 `git diff --check`。Java 有既有同类 `ExtendedOpenOption` 内部 API 警告；未重建完整应用 JAR、Desktop 产品、前端或运行全套测试。实际加载的 Desktop 复用此前产物，未修改其本轮源码；实际消费/恢复运行的是本轮编译类。新消费路径没有再次实测真实 Native Gate，不挪用上一阶段证据。本轮不宣称已做断电、网络中断、部分 CREATE 未知结果验证，也不宣称 finally 覆盖崩溃。
+
+证据均在 `.verification/recovery-registered-source/`：`javac.log`、`dotnet-build.log`、`native-source-integration.log`、`native-source-evidence.json`、`synthetic-recovery-evidence.json`、`source-binding-evidence.json`、`owned-fixture.json`、`fixture-result.json`、`final-boundary-evidence.json`、`protected-design-hashes.json` 及 runner/csproj。五份未跟踪设计文档 SHA-256 首尾相同。实现前参考 [PostgreSQL CREATE DATABASE 源文档](https://github.com/postgres/postgres/blob/REL_17_STABLE/doc/src/sgml/ref/create_database.sgml) 和 [OpenJDK 21 WindowsChannelFactory](https://github.com/openjdk/jdk21u/blob/master/src/java.base/windows/classes/sun/nio/fs/WindowsChannelFactory.java) 的现有事务/文件共享语义；未修改第三方实现。
+
+**仍缺的产品闭环：** 完整停写覆盖（已登记 Runtime 的自然退出、旧包/跨会话/未登记 writer 与模型执行状态不能仅由“未观察到”推定）、个人来源生产及其实际原生登记消费、prepared Profile/日常 CRUD 凭据绑定、受保护卷上的个人恢复、RECOVERY_READY、显式激活和正常 Desktop 读回。现有缺历史的 `ObservedExitedChildren=null`、`UNREGISTERED_WRITERS_UNPROVEN` 均保持原义；本轮来源读取不能给这些条件补证。后续应在同一 owning 生命周期中解决完整停写/来源生产，再推进目标发布与用户显式激活，不应把本轮合成权能或单独密码当作个人 SQL 准入。本轮仅本地提交；未推送、合并 main 或部署，远端授权仍仅到 `abe6530`。
+
+## 前一阶段：独立同用户上下文打通真实 Native Gate 与来源只读检查
 
 基于 `07328b8`。先核对工作树、权威设计和既有失败证据，五份未跟踪设计文档保持原字节。本次找到并实测了**合成联调的非虚拟化执行环境**：经 Windows WMI `Win32_Process.Create` 启动同一 Windows 用户的隐藏 PowerShell，先创建一个随机、空的私有 `PAW-SyntheticContext-*` 目录，按产品相同的目录句柄访问/共享/无跟随标志核对最终路径。用户 SID 相同、无 reparse、最终路径与 Known Folder 下请求的路径一致。之后在同种上下文运行已有 `RecoveryTrustedInspectionProbe`，仍由原生 owner 直接启动 Java 子进程并完成原有 Gate；WMI 只用于启动外层手工验证执行器，没有成为产品启动器或来源信任根。
 

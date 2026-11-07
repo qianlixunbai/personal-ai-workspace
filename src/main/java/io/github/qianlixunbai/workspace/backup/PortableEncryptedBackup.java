@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.zip.*;
+import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 
 /** Standard RFC 9580 OpenPGP around a B3 v1 collection or direct v2 snapshot stream.
@@ -42,9 +43,9 @@ public final class PortableEncryptedBackup {
     public Completion backup(UnifiedPostgresqlBackup.Endpoint source,Path knowledgeRoot,Path encrypted,boolean writersStopped,char[] passphrase) throws IOException {
         return backup(source,knowledgeRoot,encrypted,writersStopped,passphrase,null).completion;
     }
-    /** In-process synthetic fixture capability, deliberately unavailable through CLI/HTTP/public restore.
-     * A successful authenticated stream creates it; neither a passphrase nor a manifest can mint it.
-     * Durable personal-source registration belongs to later recovery slices.
+    /** Authenticated synthetic capability, unavailable through CLI/HTTP/public restore.
+     * Created by a successful producer or after independent registered provenance AND complete
+     * authentication; neither a passphrase nor a manifest alone can mint it.
      */
     static final class WorkspaceBackup {
         private final Path encrypted;
@@ -56,7 +57,11 @@ public final class PortableEncryptedBackup {
         private final long sourceDatabaseOid;
         private WorkspaceBackup(Path encrypted,Completion completion,UnifiedPostgresqlBackup.Manifest manifest,UnifiedPostgresqlBackup.Endpoint source,
                 String manifestSha256,long sourceDatabaseOid){
-            this.encrypted=encrypted;this.completion=completion;this.manifest=manifest;sourceDatabase=source.database();sourcePort=source.port();
+            this(encrypted,completion,manifest,source.database(),source.port(),manifestSha256,sourceDatabaseOid);
+        }
+        private WorkspaceBackup(Path encrypted,Completion completion,UnifiedPostgresqlBackup.Manifest manifest,String database,int port,
+                String manifestSha256,long sourceDatabaseOid){
+            this.encrypted=encrypted;this.completion=completion;this.manifest=manifest;sourceDatabase=database;sourcePort=port;
             this.manifestSha256=manifestSha256;this.sourceDatabaseOid=sourceDatabaseOid;
         }
         Completion completion(){return completion;}
@@ -174,7 +179,26 @@ public final class PortableEncryptedBackup {
         if(origin==null){clear(passphrase);throw new IOException("Synthetic source capability required");}
         return decrypt(origin.encrypted,staging,passphrase,origin);
     }
+    record AuthenticatedWorkspace(WorkspaceBackup origin,Decrypted clear) {}
+    /** A durable native receipt and full container authentication are both required. This
+     * consumer remains synthetic-only; personal restore has no prepared target interface yet. */
+    AuthenticatedWorkspace decryptRegisteredSynthetic(RegisteredRecoverySource registered,Path staging,char[] passphrase) throws IOException {
+        try {
+            require(registered!=null&&registered.synthetic()&&stagingProtection==StagingProtection.SYNTHETIC_ONLY);
+            registered.requireHeld();
+            var clear=decrypt(registered.encrypted(),staging,passphrase,null,registered);
+            // decrypt has checked the actual pinned completion against these registered
+            // values. No additional I/O after its successful plaintext-cleanup boundary.
+            var completion=new Completion(FORMAT,3,"ENCRYPTED_BACKUP_COMPLETE","RFC9580-AES256-GCM-ARGON2ID",
+                PAYLOAD,registered.payloadBytes(),registered.payloadSha256());
+            return new AuthenticatedWorkspace(new WorkspaceBackup(registered.encrypted(),completion,clear.manifest(),
+                registered.database(),registered.port(),registered.manifestSha256(),registered.databaseOid()),clear);
+        }finally{clear(passphrase);}
+    }
     private Decrypted decrypt(Path encrypted,Path staging,char[] passphrase,WorkspaceBackup origin) throws IOException {
+        return decrypt(encrypted,staging,passphrase,origin,null);
+    }
+    private Decrypted decrypt(Path encrypted,Path staging,char[] passphrase,WorkspaceBackup origin,RegisteredRecoverySource registered) throws IOException {
         String stage="CONTAINER_VALIDATION";boolean created=false;
         try {
             password(passphrase);encrypted=encrypted.toAbsolutePath().normalize();staging=staging.toAbsolutePath().normalize();
@@ -182,12 +206,17 @@ public final class PortableEncryptedBackup {
             MaintenanceStaging.admit(staging,stagingProtection==StagingProtection.SYNTHETIC_ONLY);
             var completion=completion(encrypted);
             if(completion.version==3&&stagingProtection==StagingProtection.SYNTHETIC_ONLY){
-                stage="SQL_SOURCE_TRUST";require(origin!=null);stage="CONTAINER_VALIDATION";
+                stage="SQL_SOURCE_TRUST";require(origin!=null||registered!=null);stage="CONTAINER_VALIDATION";
             }
             Decrypted result;
             try(var receipt=pin(encrypted.resolve(COMPLETE));var payload=pin(encrypted.resolve(PAYLOAD))) {
                 require(completion.equals(completion(encrypted)));profile(payload);payload.position(0);
                 if(origin!=null)require(origin.completion.equals(completion)&&completion.version==3&&origin.encrypted.equals(encrypted));
+                if(registered!=null){
+                    registered.requireHeld();
+                    require(completion.version==3&&completion.bytes==registered.payloadBytes()
+                        &&completion.sha256.equals(registered.payloadSha256())&&registered.encrypted().equals(encrypted));
+                }
                 long budget=Math.min(MAX_BYTES,completion.bytes);
                 require(Files.getFileStore(staging.getParent()).getUsableSpace()>Math.multiplyExact(budget,2)+1048576);
                 directory(staging);created=true;write(staging.resolve("DECRYPTION_INCOMPLETE"),new byte[0]);stage="AUTHENTICATED_DECRYPTION";
@@ -199,6 +228,11 @@ public final class PortableEncryptedBackup {
                 var manifest=plain.validate(backup,true);
                 require(completion.version==manifest.formatVersion());
                 if(origin!=null)require(origin.manifest.equals(manifest));
+                if(registered!=null){
+                    require(manifest.formatVersion()==3&&manifest.databaseLogicalIdentity().equals(registered.logicalIdentity())
+                        &&digest(backup.resolve("manifest.json")).equals(registered.manifestSha256()));
+                    registered.requireHeld();
+                }
                 result=new Decrypted(backup,manifest);
             }
             // All input handles close successfully before the final durable verification receipt.

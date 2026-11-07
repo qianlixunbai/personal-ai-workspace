@@ -29,6 +29,16 @@ public final class WindowsPrivateAcl {
         operate(path, false, false, true);
     }
 
+    /** Native recovery records inherit grants from their pinned private entry directory.
+     * This recognizes only the fixed registered-source filename; no descriptor is repaired. */
+    public static void verifyRecoverySourceRecord(Path path) throws IOException {
+        Path entry=path.getParent();
+        if(!path.getFileName().toString().equals("source.dpapi")||entry==null||entry.getParent()==null
+            ||!entry.getFileName().toString().matches("[0-9a-f]{32}")
+            ||!entry.getParent().getFileName().toString().equals("sources"))throw new IOException("Unknown recovery record");
+        operate(path,false,false,true);
+    }
+
     private static void operate(Path path, boolean directory, boolean create) throws IOException {
         operate(path, directory, create, false);
     }

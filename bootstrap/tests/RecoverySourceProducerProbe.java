@@ -2,6 +2,7 @@ package io.github.qianlixunbai.workspace.backup;
 
 import io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion;
 import io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration;
+import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
 import org.flywaydb.core.Flyway;
 import java.io.*;
 import java.lang.reflect.Method;
@@ -17,7 +18,7 @@ public final class RecoverySourceProducerProbe {
     private static Path diagnosticRoot;
     private static String stage="FIXTURE";
     public static void main(String[] args) throws Exception {
-        try { if(args.length==2)trustedInspectionFixture(args);else run(args); }
+        try { if(args.length==4)restoreRegistered(args);else if(args.length==2)trustedInspectionFixture(args);else run(args); }
         catch(Exception | LinkageError failure){
             Throwable cause=failure instanceof java.lang.reflect.InvocationTargetException wrapper?wrapper.getCause():failure;
             if(diagnosticRoot!=null)write(diagnosticRoot.resolve("probe-failure.json"),JSON.writeValueAsBytes(Map.of(
@@ -173,53 +174,15 @@ public final class RecoverySourceProducerProbe {
                     require(before.equals(snapshot(db,true))&&value(db,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE")
                         &&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname='"+completed.sourceRole()+"'")==0);
                 }
-                var secure=new PortableEncryptedBackup(Path.of(config.path("tools").asString()),PortableEncryptedBackup.StagingProtection.SYNTHETIC_ONLY);
-                stage="AUTHENTICATED_VERIFICATION";
-                Path staging=isolated.resolve("verification");
-                var decrypted=secure.decryptWorkspace(completed.backup(),staging,password.clone());
-                require(digest(decrypted.backup().resolve("manifest.json")).equals(completed.backup().manifestSha256()));
-                MaintenanceStaging.clean(staging);held.invoke(exclusion,root);
-                require(configurationHash.equals(digest(configurationFile)));
-                stage="AUTHENTICATED_FRESH_TARGET_RECOVERY";
-                long databases,roles;
-                try(var db=source.dataSource().getConnection()){
-                    databases=scalar(db,"SELECT count(*) FROM pg_database");roles=scalar(db,"SELECT count(*) FROM pg_roles");
-                }
-                Path rejected=isolated.resolve("wrong-recovery-password");
-                char[] wrong=UUID.randomUUID().toString().toCharArray();
-                try{WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),rejected,wrong,source);
-                    throw new IllegalStateException("Unauthenticated recovery accepted");}
-                catch(IOException denied){require(denied.getMessage().contains("AUTHENTICATION"));}
-                require(Arrays.equals(wrong,new char[wrong.length])&&!Files.exists(rejected.resolve("SYNTHETIC_RESTORE_PLAN.json")));
-                try(var db=source.dataSource().getConnection()){
-                    require(databases==scalar(db,"SELECT count(*) FROM pg_database")&&roles==scalar(db,"SELECT count(*) FROM pg_roles"));
-                }
-                Path restored=isolated.resolve("restored-target");
-                var recovery=WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),restored,password.clone(),source);
-                require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
-                    &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup")));
-                try(var db=source.dataSource().getConnection()){
-                    require(before.equals(snapshot(db,true))&&databases+1==scalar(db,"SELECT count(*) FROM pg_database")
-                        &&roles+2==scalar(db,"SELECT count(*) FROM pg_roles"));
-                    require(scalar(db,"SELECT count(*) FROM pg_authid WHERE oid IN ("+recovery.ownerRoleOid()+","+recovery.appRoleOid()+") AND NOT rolcanlogin AND rolpassword IS NULL")==2);
-                }
-                var restoredAdmin=new Endpoint(recovery.database(),source.username(),source.password(),source.port());
-                try(var db=restoredAdmin.dataSource().getConnection()){
-                    require(scalar(db,"SELECT count(*) FROM workspace.memory_items")==1&&scalar(db,"SELECT count(*) FROM workspace.conversations")==1
-                        &&scalar(db,"SELECT count(*) FROM workspace.knowledge_revisions")==1
-                        &&scalar(db,"SELECT count(*) FROM workspace.knowledge_chunks")>0
-                        &&scalar(db,"SELECT count(*) FROM pg_tables WHERE schemaname='public'")==0);
-                    verifyKnowledge(db,restored.resolve("candidate/knowledge"),completed.backup().manifest().knowledgeFiles());
-                }
-                String planHash=digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"));
-                try{WorkspaceRecovery.restoreNewSyntheticTarget(completed,Path.of(config.path("tools").asString()),restored,password.clone(),source);
-                    throw new IllegalStateException("Existing attempt replayed");}
-                catch(IOException denied){/* Existing staging is terminal, never replayed. */}
-                require(planHash.equals(digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"))));
-                write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(Map.of(
-                    "authenticatedFreshTarget",true,"wrongPasswordCreatedNoDatabaseOrRoles",true,"target",recovery,
-                    "memoryConversationKnowledgeVerified",true,"financeExcluded",true,"sourceSnapshotUnchanged",true,
-                    "existingAttemptRejected",true,"plaintextBackupCleaned",true,"nativeGateExercised",false,"activation",false)));
+                // Only the isolated fixture persists its generated passphrase, under DPAPI.
+                // Product code has no password persistence or metadata -> Completed constructor.
+                byte[] passwordBytes=new String(password).getBytes(StandardCharsets.UTF_8);
+                try{createProtectedConfiguration(isolated.resolve("fixture-passphrase.dpapi"),passwordBytes);}
+                finally{Arrays.fill(passwordBytes,(byte)0);}
+                write(isolated.resolve("registered-fixture.json"),JSON.writeValueAsBytes(Map.of(
+                    "database",database,"snapshot",before,"sourceProfileId",root.getFileName().toString(),
+                    "producerPid",ProcessHandle.current().pid(),"manifest",completed.backup().manifest())));
+                held.invoke(exclusion,root);require(configurationHash.equals(digest(configurationFile)));
                 write(isolated.resolve("source-binding-evidence.json"),JSON.writeValueAsBytes(Map.of(
                     "configurationDpapiRead",true,"configurationPinned",true,"configurationSha256",configurationHash,
                     "applicationRoleOid",binding.databaseIdentity().applicationRoleOid(),"wrongAdministratorDatabaseRejected",true,
@@ -231,6 +194,121 @@ public final class RecoverySourceProducerProbe {
                 completed.writeNativeResult(output);
                 stage="RESULT_SENT";
             } finally {Arrays.fill(password,'\0');Arrays.fill(consumed,'\0');}
+        }
+    }
+
+    private static void restoreRegistered(String[] args) throws Exception {
+        require(args[0].equals("restore-registered"));
+        var output=System.out;System.setOut(System.err);
+        Path fixture=Path.of(args[1]);privatePath(fixture,false);
+        var config=JSON.readTree(Files.readAllBytes(fixture));Path isolated=Path.of(config.path("root").asString());privatePath(isolated,true);
+        require(isolated.getFileName().toString().matches("PAW-SourceProducer-[0-9a-f]{32}"));diagnosticRoot=isolated;
+        Path app=Path.of(args[2]);require(app.getParent().equals(isolated));String backupId=args[3];
+        int port=config.path("port").asInt();require(port!=5432);
+        var pid=Files.readAllLines(isolated.resolve("pgdata/postmaster.pid"));
+        require(pid.get(1).equals(isolated.resolve("pgdata").toString().replace('\\','/'))
+            &&pid.get(3).equals(Integer.toString(port))&&Long.parseLong(pid.getFirst())==config.path("processId").asLong());
+        var expected=JSON.readTree(Files.readAllBytes(isolated.resolve("registered-fixture.json")));
+        require(expected.path("producerPid").asLong()!=ProcessHandle.current().pid());
+        // Native fixture retired its source Profile after the producer exited. Its original
+        // configuration/data path is now absent; restoration must use only the independent record.
+        require(!Files.exists(app.resolve("Profiles").resolve(expected.path("sourceProfileId").asString())));
+        Method open=RegisteredRecoverySource.class.getDeclaredMethod("openSynthetic",Path.class,String.class);open.setAccessible(true);
+        stage="MISSING_REGISTRATION";
+        try{open.invoke(null,app,UUID.randomUUID().toString().replace("-",""));throw new IllegalStateException("Missing source accepted");}
+        catch(java.lang.reflect.InvocationTargetException rejected){require(rejected.getCause() instanceof IOException);}
+        stage="PAYLOAD_RECEIPT_MISMATCH";
+        Path altered=isolated.resolve("paw-source-producer-"+UUID.randomUUID().toString().replace("-",""));
+        directory(altered);directory(altered.resolve("Recovery"));
+        for(String name:List.of("synthetic-sources","synthetic-payloads")){
+            directory(altered.resolve("Recovery").resolve(name));directory(altered.resolve("Recovery").resolve(name).resolve(backupId));
+        }
+        copy(app.resolve("Recovery/synthetic-sources").resolve(backupId).resolve("source.dpapi"),
+            altered.resolve("Recovery/synthetic-sources").resolve(backupId).resolve("source.dpapi"));
+        Path originalPayload=app.resolve("Recovery/synthetic-payloads").resolve(backupId),changedPayload=altered.resolve("Recovery/synthetic-payloads").resolve(backupId);
+        require(Files.size(originalPayload.resolve("backup.pgp"))<1048576);
+        byte[] tampered=Files.readAllBytes(originalPayload.resolve("backup.pgp"));tampered[tampered.length-1]^=1;
+        write(changedPayload.resolve("backup.pgp"),tampered);Arrays.fill(tampered,(byte)0);
+        var completion=JSON.readValue(Files.readAllBytes(originalPayload.resolve("ENCRYPTED_BACKUP_COMPLETE.json")),PortableEncryptedBackup.Completion.class);
+        write(changedPayload.resolve("ENCRYPTED_BACKUP_COMPLETE.json"),JSON.writeValueAsBytes(new PortableEncryptedBackup.Completion(
+            completion.format(),completion.version(),completion.status(),completion.profile(),completion.payload(),completion.bytes(),digest(changedPayload.resolve("backup.pgp")))));
+        try{open.invoke(null,altered,backupId);throw new IllegalStateException("Recomputed companion hash authorized changed payload");}
+        catch(java.lang.reflect.InvocationTargetException rejected){require(rejected.getCause() instanceof IOException);}
+        stage="REGISTERED_SOURCE_READ";
+        try(var registered=(RegisteredRecoverySource)open.invoke(null,app,backupId)){
+            registered.requireHeld();
+            Path receipt=app.resolve("Recovery/synthetic-sources").resolve(backupId).resolve("source.dpapi");
+            for(Path locked:List.of(receipt,registered.encrypted().resolve("backup.pgp"))) {
+                try(var ignored=java.nio.channels.FileChannel.open(locked,StandardOpenOption.WRITE)){
+                    throw new IllegalStateException("Registered input writable");
+                }catch(IOException denied){/* Writer denied by retained real OS handles. */}
+            }
+            var administrator=new Endpoint("postgres",config.path("adminUsername").asString(),config.path("adminPassword").asString(),port);
+            Path tools=Path.of(config.path("tools").asString());
+            byte[] protectedPassword=Files.readAllBytes(isolated.resolve("fixture-passphrase.dpapi"));
+            byte[] clear=com.sun.jna.platform.win32.Crypt32Util.cryptUnprotectData(protectedPassword,null,1,null);
+            char[] password=new String(clear,StandardCharsets.UTF_8).toCharArray();Arrays.fill(clear,(byte)0);Arrays.fill(protectedPassword,(byte)0);
+            String database=expected.path("database").asString();require(database.equals(registered.database()));
+            boolean disabled=false;
+            try(var db=administrator.dataSource().getConnection()){
+                require(value(db,"SHOW data_directory").replace('\\','/').equals(isolated.resolve("pgdata").toString().replace('\\','/'))
+                    &&value(db,"SELECT system_identifier::text FROM pg_control_system()").equals(registered.systemIdentifier())
+                    &&scalar(db,"SELECT count(*) FROM pg_stat_activity WHERE datid="+registered.databaseOid())==0);
+                long databases=scalar(db,"SELECT count(*) FROM pg_database"),roles=scalar(db,"SELECT count(*) FROM pg_roles");
+                var sourceAdmin=new Endpoint(database,administrator.username(),administrator.password(),port);
+                try {
+                    stage="SOURCE_OFFLINE_FIXTURE";
+                    sql(db,"ALTER DATABASE "+database+" ALLOW_CONNECTIONS false");disabled=true;
+                    require(scalar(db,"SELECT count(*) FROM pg_database WHERE oid="+registered.databaseOid()+" AND NOT datallowconn")==1);
+                    try(var ignored=sourceAdmin.dataSource().getConnection()){throw new IllegalStateException("Source still connectable");}
+                    catch(java.sql.SQLException rejected){require("55000".equals(rejected.getSQLState()));}
+                    stage="WRONG_PASSWORD_BEFORE_TARGET";
+                    Path rejected=isolated.resolve("wrong-recovery-password");char[] wrong=UUID.randomUUID().toString().toCharArray();
+                    try{WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,rejected,wrong,administrator);throw new IllegalStateException("Wrong password accepted");}
+                    catch(IOException denied){require(denied.getMessage().contains("AUTHENTICATION"));}
+                    require(Arrays.equals(wrong,new char[wrong.length])&&!Files.exists(rejected.resolve("SYNTHETIC_RESTORE_PLAN.json"))
+                        &&databases==scalar(db,"SELECT count(*) FROM pg_database")&&roles==scalar(db,"SELECT count(*) FROM pg_roles"));
+                    stage="REGISTERED_RECOVERY";
+                    Path restored=isolated.resolve("restored-target");
+                    var recovery=WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator);
+                    require(recovery.restore().equals(new Result("RESTORE_VERIFIED","IDENTITY_REBIND_REQUIRED","WINDOWS_ADMISSION_PENDING"))
+                        &&Files.exists(restored.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"))&&!Files.exists(restored.resolve("backup"))
+                        &&databases+1==scalar(db,"SELECT count(*) FROM pg_database")&&roles+2==scalar(db,"SELECT count(*) FROM pg_roles")
+                        &&scalar(db,"SELECT count(*) FROM pg_authid WHERE oid IN ("+recovery.ownerRoleOid()+","+recovery.appRoleOid()+") AND NOT rolcanlogin AND rolpassword IS NULL")==2);
+                    var restoredAdmin=new Endpoint(recovery.database(),administrator.username(),administrator.password(),port);
+                    try(var target=restoredAdmin.dataSource().getConnection()){
+                        require(scalar(target,"SELECT count(*) FROM workspace.memory_items")==1&&scalar(target,"SELECT count(*) FROM workspace.conversations")==1
+                            &&scalar(target,"SELECT count(*) FROM workspace.knowledge_revisions")==1&&scalar(target,"SELECT count(*) FROM workspace.knowledge_chunks")>0
+                            &&scalar(target,"SELECT count(*) FROM pg_tables WHERE schemaname='public'")==0);
+                        verifyKnowledge(target,restored.resolve("candidate/knowledge"),JSON.treeToValue(expected.path("manifest"),Manifest.class).knowledgeFiles());
+                    }
+                    String planHash=digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"));
+                    require(JSON.readTree(Files.readAllBytes(restored.resolve("SYNTHETIC_RESTORE_PLAN.json"))).path("sourceRegistrationSha256").asString().equals(registered.registrationSha256()));
+                    try{WorkspaceRecovery.restoreRegisteredSyntheticTarget(registered,tools,restored,password.clone(),administrator);throw new IllegalStateException("Attempt replayed");}
+                    catch(IOException denied){/* No replacement plan or existing DB restore. */}
+                    require(planHash.equals(digest(restored.resolve("SYNTHETIC_RESTORE_PLAN.json")))
+                        &&scalar(db,"SELECT count(*) FROM pg_database WHERE oid="+registered.databaseOid()+" AND NOT datallowconn")==1);
+                    sql(db,"ALTER DATABASE "+database+" ALLOW_CONNECTIONS true");disabled=false;
+                    try(var original=sourceAdmin.dataSource().getConnection()){
+                        require(snapshot(original,true).equals(JSON.treeToValue(expected.path("snapshot"),Snapshot.class))
+                            &&value(original,"SELECT value FROM public.finance_sentinel").equals("OUTSIDE_WORKSPACE"));
+                    }
+                    var evidence=new LinkedHashMap<String,Object>();
+                    evidence.put("target",recovery);evidence.put("registrationSha256",registered.registrationSha256());
+                    evidence.put("producerPid",expected.path("producerPid").asLong());evidence.put("consumerPid",ProcessHandle.current().pid());
+                    for(String name:List.of("authenticatedFreshTarget","wrongPasswordCreatedNoDatabaseOrRoles","memoryConversationKnowledgeVerified",
+                        "financeExcluded","sourceSnapshotUnchanged","existingAttemptRejected","plaintextBackupCleaned","durableRegistrationConsumed",
+                        "sourceDatabaseUnavailableDuringRestore","sourceProfileAbsent","missingRegistrationRejected","registrationAndPayloadPinned",
+                        "recomputedCompletionCannotReplaceRegistration"))evidence.put(name,true);
+                    evidence.put("nativeGateExercised",false);evidence.put("activation",false);
+                    write(isolated.resolve("synthetic-recovery-evidence.json"),JSON.writeValueAsBytes(evidence));
+                    registered.close();
+                    try{registered.requireHeld();throw new IllegalStateException("Closed source reused");}catch(IOException denied){}
+                    output.print("REGISTERED_SYNTHETIC_RECOVERY_VERIFIED");
+                }finally{
+                    if(disabled)sql(db,"ALTER DATABASE "+database+" ALLOW_CONNECTIONS true");
+                }
+            }finally{Arrays.fill(password,'\0');}
         }
     }
 

@@ -5,12 +5,14 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.util.*;
+import io.github.qianlixunbai.workspace.persistence.RegisteredRecoverySource;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 
 /** One authenticated v3 backup -> fresh synthetic database -> verified, disabled target.
  * No CLI, native Profile, product source authority, READY or activation. In particular the
- * in-process Completed capability cannot be reconstructed from a passphrase or a JSON file.
+ * in-process Completed capability cannot be reconstructed from a passphrase or a JSON file;
+ * the restart path separately requires a pinned, independently protected source registration.
  */
 final class WorkspaceRecovery {
     private WorkspaceRecovery() {}
@@ -33,7 +35,7 @@ final class WorkspaceRecovery {
             var clear=secure.decryptWorkspace(source.backup(),staging,passphrase);decoded=true;
             require(digest(clear.backup().resolve("manifest.json")).equals(source.backup().manifestSha256()));
             stage="FRESH_TARGET_PREPARATION";
-            var target=new NewTarget(source,administrator,staging);
+            var target=new NewTarget(source.backupId(),source.source(),source.backup(),administrator,staging,null);
             try {
                 target.prepare();
                 stage="RESTORE_AND_VERIFY";
@@ -56,8 +58,46 @@ final class WorkspaceRecovery {
         return verified;
     }
 
+    /** Restore after the producer has exited. Independent DPAPI provenance is pinned before
+     * authentication; the administrator connects to postgres on the recorded instance, never
+     * to the original database. Missing/corrupt registration cannot be repaired from a package. */
+    static Verified restoreRegisteredSyntheticTarget(RegisteredRecoverySource source,Path tools,Path staging,
+            char[] passphrase,Endpoint administrator) throws IOException {
+        String stage="REGISTERED_SOURCE";boolean decoded=false;Verified verified;
+        try {
+            require(source!=null&&source.synthetic());source.requireHeld();
+            require(administrator.database().equals("postgres")&&administrator.port()==source.port()&&source.port()!=5432);
+            stage="AUTHENTICATION";
+            var authenticated=new PortableEncryptedBackup(tools,PortableEncryptedBackup.StagingProtection.SYNTHETIC_ONLY)
+                .decryptRegisteredSynthetic(source,staging,passphrase);decoded=true;
+            source.requireHeld();stage="FRESH_TARGET_PREPARATION";
+            var identity=new WorkspaceSourceBackup.SourceIdentity(source.systemIdentifier(),source.databaseOid(),
+                source.port(),source.database(),null);
+            var target=new NewTarget(source.backupId(),identity,authenticated.origin(),administrator,staging,source.registrationSha256());
+            try {
+                target.prepare();source.requireHeld();stage="RESTORE_AND_VERIFY";
+                var result=new UnifiedPostgresqlBackup(tools).restoreWorkspace(authenticated.clear().backup(),target.owner(),target.app(),
+                    target.receipt,staging.resolve("candidate"),authenticated.origin());
+                target.verifyDatabase(true);source.requireHeld();
+                verified=new Verified(target.operation,target.database,target.databaseOid,target.ownerRole,target.ownerOid,
+                    target.appRole,target.appOid,result,"BOTH_LOGINS_DISABLED_PASSWORDS_REMOVED");
+            }finally{target.close();}
+        }catch(Exception failure){
+            if(failure instanceof IOException io&&io.getMessage()!=null&&io.getMessage().contains("TARGET_CREDENTIAL_CLEANUP_REQUIRED"))throw io;
+            throw new IOException("Synthetic registered recovery stopped: "+stage+"; no activation; retain target and attempt");
+        }finally{
+            if(passphrase!=null)Arrays.fill(passphrase,'\0');
+            if(decoded)MaintenanceStaging.clean(staging.toAbsolutePath().normalize());
+        }
+        source.requireHeld();
+        write(staging.resolve("SYNTHETIC_RECOVERY_VERIFIED.json"),JSON.writeValueAsBytes(verified));
+        return verified;
+    }
+
     private static final class NewTarget implements AutoCloseable {
-        private final WorkspaceSourceBackup.Completed source;
+        private final WorkspaceSourceBackup.SourceIdentity source;
+        private final PortableEncryptedBackup.WorkspaceBackup backup;
+        private final String backupId,registrationSha256;
         private final Endpoint administrator;
         private final Path staging;
         private final String operation=UUID.randomUUID().toString().replace("-","");
@@ -67,29 +107,33 @@ final class WorkspaceRecovery {
         private final String ownerPassword=password(),appPassword=password();
         private Connection db;
         private long ownerOid,appOid,databaseOid;
-        NewTarget(WorkspaceSourceBackup.Completed source,Endpoint administrator,Path staging){
-            this.source=source;this.administrator=administrator;this.staging=staging;
+        NewTarget(String backupId,WorkspaceSourceBackup.SourceIdentity source,PortableEncryptedBackup.WorkspaceBackup backup,
+                Endpoint administrator,Path staging,String registrationSha256){
+            this.backupId=backupId;this.source=source;this.backup=backup;this.administrator=administrator;
+            this.staging=staging;this.registrationSha256=registrationSha256;
         }
         Endpoint owner(){return new Endpoint(database,ownerRole,ownerPassword,administrator.port());}
         Endpoint app(){return new Endpoint(database,appRole,appPassword,administrator.port());}
         void prepare() throws Exception {
             db=administrator.dataSource().getConnection();session(db);
             sql(db,"SET statement_timeout='15s'");sql(db,"SET lock_timeout='3s'");
-            var expected=source.source();
+            var expected=source;
             require(scalar(db,"SELECT current_setting('server_version_num')::int/10000")==17
-                &&value(db,"SELECT current_database()").equals(expected.database())
+                &&value(db,"SELECT current_database()").equals(registrationSha256==null?expected.database():"postgres")
                 &&value(db,"SELECT session_user").equals(administrator.username())
                 &&scalar(db,"SELECT inet_server_port()")==expected.port()
-                &&value(db,"SELECT system_identifier::text FROM pg_control_system()").equals(expected.systemIdentifier())
-                &&scalar(db,"SELECT oid FROM pg_database WHERE datname=current_database()")==expected.databaseOid()
+                &&value(db,"SELECT system_identifier::text FROM pg_control_system()").equals(expected.systemIdentifier()));
+            if(registrationSha256==null)require(scalar(db,"SELECT oid FROM pg_database WHERE datname=current_database()")==expected.databaseOid()
                 &&value(db,"SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()").equals(expected.receipt()));
             require(!database.equals(expected.database())&&scalar(db,"SELECT count(*) FROM pg_database WHERE datname='"+database+"'")==0
                 &&scalar(db,"SELECT count(*) FROM pg_roles WHERE rolname IN ('"+ownerRole+"','"+appRole+"')")==0);
-            write(staging.resolve("SYNTHETIC_RESTORE_PLAN.json"),JSON.writeValueAsBytes(Map.of(
-                "operationId",operation,"backupId",source.backupId(),"source",expected,"targetDatabase",database,
+            var plan=new LinkedHashMap<String,Object>(Map.of(
+                "operationId",operation,"backupId",backupId,"source",expected,"targetDatabase",database,
                 "ownerRole",ownerRole,"appRole",appRole,"ownershipReceipt",receipt,
-                "payloadSha256",source.backup().completion().sha256(),"manifestSha256",source.backup().manifestSha256(),
-                "state","PREPARING_NOT_REPLAYABLE")));
+                "payloadSha256",backup.completion().sha256(),"manifestSha256",backup.manifestSha256(),
+                "state","PREPARING_NOT_REPLAYABLE"));
+            if(registrationSha256!=null)plan.put("sourceRegistrationSha256",registrationSha256);
+            write(staging.resolve("SYNTHETIC_RESTORE_PLAN.json"),JSON.writeValueAsBytes(plan));
             // Roles start disabled. The transaction cannot leave a usable partial credential.
             db.setAutoCommit(false);
             try {
@@ -121,7 +165,7 @@ final class WorkspaceRecovery {
             sql(db,"ALTER ROLE "+appRole+" LOGIN PASSWORD '"+appPassword+"' VALID UNTIL '"+java.time.Instant.now().plusSeconds(1800)+"'");
         }
         void verifyDatabase(boolean attempted) throws Exception {
-            require(databaseOid>0&&scalar(db,"SELECT count(*) FROM pg_database WHERE oid="+databaseOid
+            require(databaseOid>0&&databaseOid!=source.databaseOid()&&scalar(db,"SELECT count(*) FROM pg_database WHERE oid="+databaseOid
                 +" AND datname='"+database+"' AND datdba="+ownerOid)==1);
             String actual=value(db,"SELECT shobj_description("+databaseOid+",'pg_database')");
             if(attempted)require(actual!=null&&actual.startsWith(receipt+":restore-attempted:")

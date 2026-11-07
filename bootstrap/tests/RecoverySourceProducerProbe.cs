@@ -63,20 +63,46 @@ internal static class RecoverySourceProducerProbe
         if (!CryptographicOperations.FixedTimeEquals(original, File.ReadAllBytes(record))) throw new IOException();
         using (new FileStream(Path.Combine(root, "evidence", "runtime-admission.lock"), FileMode.Open, FileAccess.Read, FileShare.Read)) { }
         using (new FileStream(Path.Combine(root, "model-state", ".lock"), FileMode.Open, FileAccess.Write, FileShare.Read)) { }
+        // End the producer's native owner too. Only persisted registration/ciphertext may
+        // authorize the next JVM; neither Completed nor the source configuration survives.
+        owner.Dispose();
+        string retired = Path.Combine(app, "retained-source-" + profileId);
+        if (Path.GetFullPath(root) != root || Path.GetFullPath(retired) != retired
+            || !root.StartsWith(app + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.GetDirectoryName(retired) != app || Path.Exists(retired)) throw new IOException();
+        Directory.Move(root, retired); // This newly owned synthetic tree only; retain all bytes.
+        var restore = new ProcessStartInfo(args[1]) { UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = app };
+        foreach (string value in new[] { "-Xmx384m", "-XX:ActiveProcessorCount=2", "-cp", args[2],
+            "io.github.qianlixunbai.workspace.backup.RecoverySourceProducerProbe", "restore-registered", args[3], app, backupId }) restore.ArgumentList.Add(value);
+        using (var child = Process.Start(restore) ?? throw new IOException())
+        {
+            var errors = child.StandardError.BaseStream.CopyToAsync(Stream.Null);
+            try
+            {
+                string result = await child.StandardOutput.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(90));
+                await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); await errors.WaitAsync(TimeSpan.FromSeconds(5));
+                if (child.ExitCode != 0 || result != "REGISTERED_SYNTHETIC_RECOVERY_VERIFIED") throw new IOException("Registered synthetic recovery failed");
+            }
+            finally { if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); } }
+        }
+        if (!CryptographicOperations.FixedTimeEquals(original, File.ReadAllBytes(record))) throw new IOException();
         using var recovery = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(isolated, "synthetic-recovery-evidence.json")));
         foreach (string field in new[] { "authenticatedFreshTarget", "wrongPasswordCreatedNoDatabaseOrRoles",
-            "memoryConversationKnowledgeVerified", "financeExcluded", "sourceSnapshotUnchanged", "existingAttemptRejected", "plaintextBackupCleaned" })
+            "memoryConversationKnowledgeVerified", "financeExcluded", "sourceSnapshotUnchanged", "existingAttemptRejected", "plaintextBackupCleaned",
+            "durableRegistrationConsumed", "sourceDatabaseUnavailableDuringRestore", "sourceProfileAbsent", "missingRegistrationRejected", "registrationAndPayloadPinned" })
             if (!recovery.RootElement.GetProperty(field).GetBoolean()) throw new IOException();
         File.WriteAllText(Path.Combine(isolated, "native-source-evidence.json"), JsonSerializer.Serialize(new {
             status = "SYNTHETIC_NATIVE_SOURCE_PRODUCER_VERIFIED", backupId, payloadSha256 = payload, manifestSha256 = manifest,
             nativeDpapiReadback = true, sourceRoleReclaimed = true, authenticatedPayload = true,
             protectedConfigurationBound = true, nativeConfigurationIdentityAndDigestVerified = true,
             authenticatedFreshSyntheticTargetRestored = true, targetLoginsDisabled = true,
+            restoredByNewProcessFromDurableRegistration = true, originalSourceProfileRetainedAt = retired,
             personalSourceRegistration = false, productPlanRejected = true, duplicateAttemptRejected = true,
             sourceRecord = record, sourceRecordSha256 = Convert.ToHexStringLower(SHA256.HashData(original)) }));
         Console.WriteLine("PASS: protected Workspace configuration -> app/admin database binding -> owned backup/role cleanup -> native configuration/ciphertext verification -> DPAPI readback.");
         Console.WriteLine("PASS: synthetic receipt cannot authorize a product plan; duplicate attempt rejected; exclusion released after child exit.");
-        Console.WriteLine("PASS: authenticated v3 backup -> new synthetic database/roles -> Memory/Conversation/Knowledge restore and index rebuild -> both target logins disabled.");
+        Console.WriteLine("PASS: producer exited -> DPAPI registration consumed by new JVM -> source database unavailable/Profile absent -> authenticated fresh target -> stores/index verified -> target logins disabled.");
         Console.WriteLine("Personal maintenance remains BLOCKED; real Native Gate, personal target publication and activation were not exercised.");
     }
 }
