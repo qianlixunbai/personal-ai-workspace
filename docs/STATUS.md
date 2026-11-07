@@ -2,6 +2,8 @@
 
 核对日期：2026-10-28（Asia/Shanghai）。**Development-only；尚未 Production GO。**
 
+2026-11-07 记忆透明性补充：对话历史可展开本轮记忆引用，并逐条按需读取。仅 ID／版本匹配且仍使用中的当前正文可显示；版本变化、归档和删除不冒充历史正文。查看不改变下一轮记忆选择或草稿，不增加自动记忆。一个合成 Bridge 场景及前端构建通过；尚未打入受信 Windows 包或验收真实读取链路。个人备份／恢复继续 BLOCKED，详见[交付与回退边界](engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)。
+
 2026-11-07 记忆使用补充：“我的记忆”新增按需只读正文预览和已提交搜索词高亮，保留右侧未保存草稿，一次只读取／显示一条，并拒绝列表版本已变化的结果。一个合成 Bridge 聚焦用例及前端构建通过；仍为用户手动维护记忆，没有自动提取或注入。未打入受信 Windows 包或访问真实个人数据，个人恢复继续 BLOCKED。见[交付与使用范围](engineering/MEMORY-READ-PREVIEW-REPORT.md)。
 
 2026-11-07 日常使用补充：会话历史新增按轮次直接定位及“回到最新”，复用原分页读取，保留未发送草稿与已选记忆，方便定位原文后使用既有记忆草稿流程。一个合成 Bridge 聚焦用例及前端构建通过；未打入受信 Windows 包或执行真实工作区验收。个人备份／恢复继续 BLOCKED，本阶段未修改真实数据库、服务或安全设置。见[交付与验证边界](engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)。

@@ -58,7 +58,7 @@ flowchart TD
 | 领域 | 数据真相与边界 |
 | --- | --- |
 | Memory | 用户主动维护的记录；revision 保护；每次使用显式选取，不自动提取或隐式注入；[只读预览](../engineering/MEMORY-READ-PREVIEW-REPORT.md)复用单条读取并核对列表版本，正文仅留在当前界面内存 |
-| Conversations | durable 有序轮次与终态；上下文由 Runtime 组装，UI 不重放未确认提交；[按轮次定位](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)只复用现有分页读取，不改变存储或模型上下文 |
+| Conversations | durable 有序轮次与终态；上下文由 Runtime 组装，UI 不重放未确认提交；[按轮次定位](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)复用分页读取；[记忆引用查看](../engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)只读核对当前记录的精确版本，不重建历史正文或自动选择下一轮上下文 |
 | Knowledge | 独立文档 metadata、源文件／内容与版本；TXT / Markdown 确定性导入，支持独立备份／恢复 |
 | 检索 | [KnowledgeLexicalIndex](../../src/main/java/io/github/qianlixunbai/workspace/knowledge/KnowledgeLexicalIndex.java) 的派生词法索引；不是向量数据库 |
 | 知识问答 | [KnowledgeAnswerService](../../src/main/java/io/github/qianlixunbai/workspace/capability/knowledge/KnowledgeAnswerService.java) 接收显式问题／检索输入，固定 evidence snapshot，由 Runtime 形成引用；不让模型授信来源 ID |

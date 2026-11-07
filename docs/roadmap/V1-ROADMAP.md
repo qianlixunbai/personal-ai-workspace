@@ -14,6 +14,7 @@
 | M3–M4 | 手动 Memory、显式 context、持久多轮 Conversation、逻辑备份／恢复 | [M3](../milestones/M3-CLOSING-REPORT.md)、[ADR-007](../ADR/ADR-007-logical-workspace-backup-restore.md) |
 | 日常会话定位 | 指定轮次直接跳转、回到最新，保留当前草稿／记忆选择 | [2026-11-07 交付](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)；源码与前端构建完成，真实 Windows 包未验收 |
 | 记忆检索预览 | 单条按需只读正文与字面搜索高亮，保留编辑草稿 | [2026-11-07 交付](../engineering/MEMORY-READ-PREVIEW-REPORT.md)；无自动记忆，真实 Windows 包未验收 |
+| 会话记忆引用 | 按需查看本轮引用，与当前记录核对版本，不将新版正文当作旧版 | [2026-11-07 交付](../engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)；无历史正文重建，真实 Windows 包未验收 |
 | M5 | React / WebView2 Main Workspace、WPF 原生边界与资产构建 | [M5E closing](../milestones/M5E-CLOSING-REPORT.md)；历史阶段通过不等于当前正式发布 |
 | K1–K3 | Knowledge 导入／管理、词法检索、显式问答和引用 | [K1](../milestones/K1-CLOSING-REPORT.md)、[K2](../milestones/K2-CLOSING-REPORT.md)、[K3](../milestones/K3-CLOSING-REPORT.md)；不再标记 NOT STARTED |
 | T0 | 测试体系收敛、既有 WorkspaceSanity 验收入口 | [T0 报告](../engineering/T0-TEST-SUITE-SLIMMING.md)；不因文档更新重跑历史全套 |

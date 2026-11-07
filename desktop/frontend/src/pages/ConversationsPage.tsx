@@ -3,6 +3,7 @@ import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { SelectedMemory } from '../bridge/contracts'
 import { isTitle } from '../bridge/conversations'
 import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
+import { ConversationMemoryPreview } from '../components/ConversationMemoryPreview'
 
 const failureText: Record<FailureCode, string> = {
   EXECUTION_INTERRUPTED: 'Runtime 重启中断了执行。', PROVIDER_UNAVAILABLE: '本机 Ollama 不可用。', MODEL_UNAVAILABLE: '本机模型不可用。',
@@ -23,6 +24,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
   const [memories, setMemories] = useState<SelectedMemory[]>([])
+  const [previewTurn, setPreviewTurn] = useState<string | null>(null)
   const [stale, setStale] = useState(false)
   const [title, setTitle] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -81,6 +83,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   // Serial detail requests prevent overlapping polls/navigation. Only the current
   // page and a pending identity are retained; a latest-page probe is never appended.
   const loadDetail = (id: string, page?: number, observe = false, focus?: number | 'latest'): Promise<void> => {
+    if (!observe) setPreviewTurn(null)
     const token = generation.current
     const work = async () => {
       if (token !== generation.current || selectedRef.current !== id) return
@@ -124,6 +127,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     const token = ++generation.current
     selectedRef.current = id; detailRef.current = null; actionLock.current = false; composing.current = false
     historyFocus.current = null; setTurnNumber('')
+    setPreviewTurn(null)
     setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
     setTitle(null); setDeleting(false); setBusy(false); setError(''); setNotice(''); setPollingError(false); setHistoryLoading(!!id)
     try {
@@ -136,10 +140,12 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
     setAdmission(null); actionLock.current = false; setBusy(false); setNotice('')
+    setPreviewTurn(null)
     historyFocus.current = null; setTurnNumber('')
     const reset = () => {
       generation.current++; listGeneration.current++; selectedRef.current = null; detailRef.current = null
       historyFocus.current = null; setTurnNumber('')
+      setPreviewTurn(null)
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
       setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setStale(false)
@@ -150,6 +156,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     const unsubscribe = bridge.onSession(reset)
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
+  useEffect(() => { if (!enabled || !visible) setPreviewTurn(null) }, [enabled, visible])
   useEffect(() => {
     const target = historyFocus.current
     if (!visible || !target || target.generation !== generation.current || target.conversationId !== detail?.conversation.id) return
@@ -292,7 +299,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
             {admission.admittedSequences.length > 0 ? <details><summary>查看纳入的历史轮次</summary><p>第 {admission.admittedSequences.join('、')} 轮（每轮包含用户消息与助手回复）。</p></details> : <p className="hint">未纳入历史轮次。</p>}
             <p className="hint">这是请求接纳时的范围，不代表执行成功；仅临时保留最近一次接纳信息，离开或重载后不保留。</p>
           </div> : <p className="hint">当时接纳的上下文范围未记录。</p>}
-          {turn.memoryReferences.length > 0 && <p>持久记录的显式 Memory 选择：{turn.memoryReferences.length} 条（不代表接纳成功）。</p>}
+          {turn.memoryReferences.length > 0 && <>
+            <p>持久记录的显式 Memory 选择：{turn.memoryReferences.length} 条（不代表接纳成功）。</p>
+            <button type="button" disabled={!enabled || busy || historyLoading} aria-expanded={previewTurn === turn.turnId}
+              aria-controls={previewTurn === turn.turnId ? `conversation-memory-${turn.turnId}` : undefined}
+              onClick={() => setPreviewTurn(current => current === turn.turnId ? null : turn.turnId)}>{previewTurn === turn.turnId ? '收起记忆引用' : '查看记忆引用'}</button>
+            {previewTurn === turn.turnId && enabled && visible && !historyLoading && <ConversationMemoryPreview
+              key={turn.turnId} bridge={bridge} turnId={turn.turnId} references={turn.memoryReferences} />}
+          </>}
         </article>)}{detail.totalTurns === 0 && <p>发送第一条消息开始会话。</p>}</div>
         <div className="conversation-composer">
         <label htmlFor="conversation-input">会话消息</label><textarea id="conversation-input" ref={editor} value={draft} readOnly={busy || detail.conversation.status !== 'ACTIVE'} autoComplete="off" spellCheck={false}

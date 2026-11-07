@@ -326,6 +326,8 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .memory-preview h3 { margin: 8px 0; font-size: 13px; }
 .memory-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; font: inherit; font-size: 13px; line-height: 1.7; margin: 0; }
 .memory-preview mark { color: var(--text); background: var(--accent-soft); text-decoration: underline; }
+.conversation-memory-references { margin-top: 8px; }
+.conversation-memory-references .memory-preview { margin-top: 8px; }
 .memory-state{font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin:8px 0}.memory-metadata{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .memory-metadata dt{margin-top:8px}.memory-metadata dd{margin:3px 0}.memory-editor .operation-actions{flex-wrap:wrap;margin-top:16px}.memory-editor .hint{margin-top:8px}.memory-editor textarea{min-height:150px}
 .memory-confirmation{max-width:min(460px,85vw);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:24px}

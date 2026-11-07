@@ -4,6 +4,7 @@ import { ConversationsPage } from './ConversationsPage'
 import { WorkspaceClient } from '../bridge/client'
 import type { ConversationStatus, TurnStatus } from '../bridge/conversations'
 import { conversation, history, uuid } from '../test/conversationFixtures'
+import { memoryItem } from '../test/memoryFixtures'
 import { Port } from '../test/fixtures'
 const clients: WorkspaceClient[] = []
 const memory = { memoryId: uuid(900), revision: '9007199254740993', position: 0, title: '<img onerror=x> Synthetic Memory' }
@@ -16,13 +17,16 @@ class Service extends Port {
   error: string | null = null
   holdGet = false
   holdSend = false
+  holdMemory = false
+  memoryError: string | null = null
+  referencedMemory = { ...memoryItem(), id: uuid(5000), revision: '9223372036854775807' }
   admittedSequences = [1]
   choiceChanged = true
   postMessage(message: unknown) {
     super.postMessage(message)
     const index = this.sent.length - 1, request = this.sent[index]!, method = String(request.method)
     const payload = request.payload as Record<string, unknown>
-    if (this.holdGet && method === 'conversations.get' || this.holdSend && method === 'conversations.send') return
+    if (this.holdGet && method === 'conversations.get' || this.holdSend && method === 'conversations.send' || this.holdMemory && method === 'memory.get') return
     queueMicrotask(() => {
       let result: unknown
       const item = { ...conversation, title: this.title, status: this.lifecycle }
@@ -30,6 +34,10 @@ class Service extends Port {
         const page = Number(payload.page)
         result = { items: Array.from({ length: Math.min(10, Math.max(0, this.total - page * 10)) }, (_, i) => ({ ...item, id: uuid(page * 10 + i + 1), status: payload.status, title: `Synthetic conversation ${page * 10 + i + 1}` })), total: this.total, page, limit: 10 }
       } else if (method === 'conversations.get') result = { ...history(this.turns, Number(payload.page), this.state), conversation: { ...item, id: payload.conversationId } }
+      else if (method === 'memory.get') {
+        if (this.memoryError) { this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: this.memoryError, message: `Safe ${this.memoryError}` } }); return }
+        result = this.referencedMemory
+      }
       else if (method === 'conversations.clearMemories') result = { cleared: true }
       else if (method === 'conversations.selectMemories') result = { changed: this.choiceChanged, selectedMemoryRefs: this.choiceChanged ? [memory] : [] }
       else if (method === 'conversations.send') {
@@ -57,6 +65,84 @@ async function setup(config: Partial<Service> = {}) {
   return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+it('inspects historical memory references on demand without replacing versions, selecting context or retaining late previews', async () => {
+  const { port, bridge, view, input } = await setup({ total: 2, turns: 2 })
+  fireEvent.change(input, { target: { value: 'Unsent synthetic draft' } }); await click('选择记忆…')
+  const before = port.sent.length
+  const original = { ...port.referencedMemory, title: '<img onerror=x> Reference title', content: 'Exact reference body\n<script>literal</script>' }
+  port.referencedMemory = original
+  const openTurn = async (sequence: number) => {
+    await act(async () => { fireEvent.click(within(screen.getByRole('article', { name: `第 ${sequence} 轮 · 已完成` })).getByRole('button', { name: '查看记忆引用' })) })
+  }
+  await openTurn(1)
+  expect(port.sent.filter(x => x.method === 'memory.get')).toHaveLength(0)
+  expect(screen.getByRole('region', { name: '本轮记忆引用' }).textContent).toContain('没有保存历史正文')
+  await click('查看记忆 1')
+  const body = screen.getByLabelText('引用记忆正文')
+  expect(body.textContent).toBe(original.content); expect(body.querySelector('script')).toBeNull()
+  expect(screen.getByRole('heading', { name: original.title }).querySelector('img')).toBeNull()
+  expect(screen.getByText('当前保存正文（版本与本轮引用一致）。')).toBeTruthy()
+  expect(port.sent.at(-1)?.payload).toEqual({ memoryId: uuid(5000) })
+  expect(input.value).toBe('Unsent synthetic draft'); expect(screen.getByText(memory.title)).toBeTruthy()
+
+  port.referencedMemory = { ...original, id: uuid(5001), revision: '9223372036854775806', title: 'Different version title', content: 'Different version body' }
+  await click('查看记忆 2')
+  expect(screen.getByRole('alert').textContent).toContain('已变更或归档')
+  expect(screen.queryByLabelText('引用记忆正文')).toBeNull(); expect(screen.queryByText('Different version title')).toBeNull()
+  port.referencedMemory = { ...original, id: uuid(5002), status: 'ARCHIVED' }
+  await click('查看记忆 3'); expect(screen.queryByLabelText('引用记忆正文')).toBeNull()
+  port.memoryError = 'MemoryNotFound'; await click('查看记忆 4')
+  expect(screen.getByRole('alert').textContent).toContain('已删除或不存在')
+  port.memoryError = 'MemoryStorageUnavailable'; await click('查看记忆 1')
+  expect(screen.getByRole('alert').textContent).toBe('Safe MemoryStorageUnavailable')
+  expect(port.sent.filter(x => x.method === 'memory.get')).toHaveLength(5)
+  port.memoryError = null; port.referencedMemory = { ...original, id: uuid(5555) }
+  await click('查看记忆 2'); expect(screen.queryByLabelText('引用记忆正文')).toBeNull()
+
+  port.referencedMemory = original
+  await openTurn(2)
+  expect(screen.getAllByRole('region', { name: '本轮记忆引用' })).toHaveLength(1)
+  expect(screen.queryByRole('region', { name: '对话引用记忆只读预览' })).toBeNull()
+  port.holdMemory = true; await click('查看记忆 1')
+  const closedRequest = port.sent.length - 1
+  await click('收起记忆引用')
+  await act(async () => { port.reply(closedRequest, original) })
+  expect(screen.queryByLabelText('引用记忆正文')).toBeNull()
+  expect(port.sent.slice(before).every(x => x.method === 'memory.get')).toBe(true)
+
+  port.holdMemory = false; await openTurn(1); await click('查看记忆 1')
+  await click('刷新')
+  expect(screen.queryByRole('region', { name: '本轮记忆引用' })).toBeNull()
+  expect(input.value).toBe('Unsent synthetic draft'); expect(screen.getByText(memory.title)).toBeTruthy()
+
+  await openTurn(1); port.holdMemory = true; await click('查看记忆 1')
+  const switchedRequest = port.sent.length - 1
+  await click('Synthetic conversation 2 2026/10/4')
+  await act(async () => { port.reply(switchedRequest, original) })
+  expect(screen.queryByLabelText('引用记忆正文')).toBeNull()
+
+  await openTurn(1); await click('查看记忆 1')
+  const hiddenRequest = port.sent.length - 1
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible={false} />)
+  await act(async () => { port.reply(hiddenRequest, original) })
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible />)
+  await screen.findByLabelText('会话消息')
+  expect(screen.queryByRole('region', { name: '本轮记忆引用' })).toBeNull()
+
+  port.holdMemory = false; await openTurn(1); await click('查看记忆 1')
+  expect(screen.getByLabelText('引用记忆正文')).toBeTruthy()
+  view.rerender(<ConversationsPage bridge={bridge} enabled={false} visible />)
+  expect(screen.queryByRole('region', { name: '本轮记忆引用' })).toBeNull()
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible />)
+  await screen.findByLabelText('会话消息')
+  await openTurn(1); port.holdMemory = true; await click('查看记忆 1')
+  const sessionRequest = port.sent.length - 1
+  await act(async () => { port.session(uuid(909)) })
+  await act(async () => { port.reply(sessionRequest, original) })
+  await screen.findByLabelText('会话消息')
+  expect(screen.queryByRole('region', { name: '本轮记忆引用' })).toBeNull()
+  expect(port.sent.slice(before).every(x => ['memory.get', 'conversations.get', 'conversations.list', 'conversations.clearMemories'].includes(String(x.method)))).toBe(true)
+})
 it('jumps directly to a durable turn, returns to latest, preserves the draft and ignores a late jump after switching conversations', async () => {
   const { port, input } = await setup({ total: 2, turns: 1000 })
   fireEvent.change(input, { target: { value: 'Unsent synthetic draft' } })
