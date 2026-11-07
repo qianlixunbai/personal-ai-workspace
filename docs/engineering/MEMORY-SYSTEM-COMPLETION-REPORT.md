@@ -64,7 +64,19 @@ Windows 上 JDK 的可空 fileKey 改为复用已有卷＋FILE_ID_128 身份检�
 
 ## Git 与下一阶段建议
 
-本轮 Git 回滚基线为 `workspace-before-memory-postgresql-a50a16d`。仅明确选择完成的代码、测试和报告提交；五份原有用户未跟踪文档保留原内容、不加入提交。先推送已经核对的现有功能分支；分支整理只在确认祖先关系、无独立未合并内容后进行快进，并保存原 main 回滚点，不删除用户分支、不强推。具体提交／远程结果以随后 Git 收尾记录为准。
+功能提交 [`794c7609857011481588d16caca11f8d2fe01676`](https://github.com/qianlixunbai/personal-ai-workspace/commit/794c7609857011481588d16caca11f8d2fe01676) 已成功推送到既有 `origin/codex/recovery-v3-workspace-core`。只提交明确选择的 41 个代码、测试和报告文件；五份原有用户未跟踪文档内容不变且未提交。远程仍为 `https://github.com/qianlixunbai/personal-ai-workspace.git`，没有创建新仓库或推送验证数据。
+
+fetch 后核对所有本地／远程分支：`codex/runtime-probe-failure-isolation`、`codex/startup-status-clarity` 及原 `main` 均为验收提交祖先，没有独立待合并提交。`main` 已从 `352f01f901fc939bbb73dcef3ac34f0a2850fb98` 通过 `--ff-only` 前进到 `794c760` 并成功推送；合并后的代码树与实际验收树完全一致，没有冲突或重新拼接。这个快进也纳入该开发分支此前已经提交并推送的 Recovery 防护工作；个人备份／恢复仍按原关卡禁用，不能据此宣称其整体完成。三个开发分支均保留，不删除、不强推。后续仅提交本文的收尾记录，不变更验收代码。
+
+已成功推送的回滚／验收标签：
+
+| 标签 | 指向 | 用途 |
+| --- | --- | --- |
+| `workspace-before-memory-postgresql-a50a16d` | `a50a16d905c1dc2e187e844bf08c2034bb45ce07` | 本轮记忆收尾前基线 |
+| `workspace-main-before-memory-20261107` | `352f01f901fc939bbb73dcef3ac34f0a2850fb98` | main 快进前状态 |
+| `workspace-memory-accepted-20261107` | `794c7609857011481588d16caca11f8d2fe01676` | 完成验证的代码树 |
+
+需检查旧版时可从对应标签新建独立分支／worktree；对已共享主线撤回功能应另做审阅后的 revert，避免重写远程历史。标签只保护代码，不备份数据库；本轮没有修改真实个人数据，不能把 Git 回滚误称为数据恢复。
 
 后续可优先建立较大的合成质量语料与错误分类，再安排经授权的日常小规模试用、PostgreSQL GUI／IME 验收；正式发布前完善可移植受信打包与平台版本审查。自动提取、语义检索或记忆调度应另行评估，不能由当前成功样本直接推导可靠性。
 
