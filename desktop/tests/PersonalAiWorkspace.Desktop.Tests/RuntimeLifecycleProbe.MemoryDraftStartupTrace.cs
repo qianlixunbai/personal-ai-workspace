@@ -1,5 +1,6 @@
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG && RUNTIME_LIFECYCLE_PROBE
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -20,6 +21,7 @@ public static partial class RuntimeLifecycleProbe
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private readonly EventHandler<CoreWebView2InitializationCompletedEventArgs> completed;
         private readonly EventHandler<CoreWebView2ProcessFailedEventArgs> processFailed;
+        private readonly EventHandler<CoreWebView2BrowserProcessExitedEventArgs> browserExited;
         private readonly EventHandler sourceInitialized;
         private readonly int sessionId;
         private readonly string threadDesktop;
@@ -29,9 +31,11 @@ public static partial class RuntimeLifecycleProbe
         private bool? controllerCompleted;
         private int? controllerHresult;
         private CoreWebView2? initializedCore;
+        private CoreWebView2Environment? initializedEnvironment;
         private long? browserProcessId;
         private string? browserVersion;
         private string? processFailureKind;
+        private string? failureReportFolder;
         private bool disposed;
 
         internal MemoryDraftStartupTrace(MainWorkspaceWindow window)
@@ -43,9 +47,23 @@ public static partial class RuntimeLifecycleProbe
             inputDesktop = InputDesktopName();
             processFailed = (_, result) =>
             {
-                processFailureKind = result.ProcessFailedKind.ToString();
-                Write("BROWSER_PROCESS_FAILED");
+                try
+                {
+                    processFailureKind = result.ProcessFailedKind.ToString();
+                    Write("BROWSER_PROCESS_FAILED", new {
+                        reason = result.Reason.ToString(), exitCode = result.ExitCode,
+                        exitCodeHex = $"0x{unchecked((uint)result.ExitCode):X8}",
+                        processDescription = DiagnosticText(result.ProcessDescription),
+                        failureSourceModule = DiagnosticText(Path.GetFileName(result.FailureSourceModulePath))
+                    });
+                }
+                catch (Exception error) when (error is COMException or InvalidOperationException)
+                { Write("PROCESS_FAILURE_DETAILS_UNAVAILABLE", new { hresult = error.HResult }); }
             };
+            browserExited = (_, result) => Write("ENVIRONMENT_BROWSER_EXITED", new {
+                browserProcessId = result.BrowserProcessId,
+                exitKind = result.BrowserProcessExitKind.ToString()
+            });
             completed = (_, result) =>
             {
                 controllerCompleted = result.IsSuccess;
@@ -54,8 +72,19 @@ public static partial class RuntimeLifecycleProbe
                 {
                     initializedCore = core;
                     browserProcessId = core.BrowserProcessId;
-                    browserVersion = core.Environment.BrowserVersionString;
+                    initializedEnvironment = core.Environment;
+                    browserVersion = initializedEnvironment.BrowserVersionString;
+                    initializedEnvironment.BrowserProcessExited += browserExited;
                     core.ProcessFailed += processFailed;
+                    try
+                    {
+                        var relative = Path.GetRelativePath(window.Host.UserDataFolder!, initializedEnvironment.FailureReportFolderPath);
+                        failureReportFolder = Path.IsPathRooted(relative) || relative == ".."
+                            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                            ? "OUTSIDE_OWNED_PROFILE" : relative;
+                    }
+                    catch (Exception error) when (error is COMException or InvalidOperationException)
+                    { failureReportFolder = "UNAVAILABLE"; }
                 }
                 Write("CONTROLLER_CALLBACK");
             };
@@ -69,7 +98,7 @@ public static partial class RuntimeLifecycleProbe
             timer.Start();
         }
 
-        private void Write(string observation)
+        private void Write(string observation, object? eventDetails = null)
         {
             if (disposed || records++ >= 64) return;
             var hwnd = new WindowInteropHelper(window).Handle;
@@ -77,6 +106,7 @@ public static partial class RuntimeLifecycleProbe
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 contract = "MEMORY_DRAFT_STARTUP_V1", observation, elapsedMs = clock.ElapsedMilliseconds,
+                utc = DateTime.UtcNow, sequence = records,
                 appPid = Environment.ProcessId, sessionId,
                 userInteractive = Environment.UserInteractive,
                 apartment = Thread.CurrentThread.GetApartmentState().ToString(),
@@ -88,9 +118,25 @@ public static partial class RuntimeLifecycleProbe
                 browserWidth = window.Browser.ActualWidth, browserHeight = window.Browser.ActualHeight,
                 stage = window.Host.StartupStage, failure = window.Host.StartupFailureCode,
                 controllerCompleted, controllerHresult, browserProcessId, browserVersion,
-                processFailureKind, threadDesktop, inputDesktop
+                processFailureKind, eventDetails, failureReportFolder,
+                sdkVersion = typeof(CoreWebView2Environment).Assembly.GetName().Version?.ToString(),
+                threadDesktop, inputDesktop
             }));
         }
+
+        private static string DiagnosticText(string? value)
+        {
+            // Runtime-assigned description/module basename only: no URLs, arguments or page data.
+            var text = new StringBuilder(128);
+            foreach (char character in value ?? "")
+            {
+                if (!char.IsControl(character)) text.Append(character);
+                if (text.Length == 128) break;
+            }
+            return text.ToString();
+        }
+
+        internal void HostShutdownStarting() => Write("HOST_SHUTDOWN_START");
 
         private static string DesktopName(IntPtr desktop)
         {
@@ -117,6 +163,9 @@ public static partial class RuntimeLifecycleProbe
             window.SourceInitialized -= sourceInitialized;
             // Startup failure may already have disposed the control before fixture teardown.
             try { if (initializedCore is not null) initializedCore.ProcessFailed -= processFailed; }
+            catch (InvalidOperationException) { }
+            catch (COMException) { }
+            try { if (initializedEnvironment is not null) initializedEnvironment.BrowserProcessExited -= browserExited; }
             catch (InvalidOperationException) { }
             catch (COMException) { }
         }

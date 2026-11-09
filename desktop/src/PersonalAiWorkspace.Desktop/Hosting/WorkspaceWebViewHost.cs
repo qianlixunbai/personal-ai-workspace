@@ -57,7 +57,8 @@ internal sealed class WorkspaceWebViewHost
         // Only native fixed enums and numeric values; never exception text, URLs or page content.
         string record = System.Text.Json.JsonSerializer.Serialize(new {
             contract = "WORKSPACE_UI_V1", stage = StartupStage, code, hresult,
-            elapsedMs = elapsed.ElapsedMilliseconds, utc = DateTime.UtcNow });
+            elapsedMs = elapsed.ElapsedMilliseconds, utc = DateTime.UtcNow,
+            sequence = diagnosticRecords, closing, failed });
         Console.WriteLine(record);
         try { diagnostics?.WriteLine(record); } catch (IOException) { }
 #endif
@@ -96,7 +97,9 @@ internal sealed class WorkspaceWebViewHost
             Fail($"工作区启动失败（{code} / {StartupStage}）。请关闭后重新打开；若从打包工具中启动，请在普通 Windows 桌面中双击开发客户端。原生 Assistant 可继续使用。");
             // EnsureCoreWebView2Async has no cancellation API. Dispose its control so a late
             // completion cannot navigate or revive a failed window; observe the task above.
+            Diagnose("CONTROL_DISPOSE_START");
             view.Dispose();
+            Diagnose("CONTROL_DISPOSE_COMPLETED");
         }
 
         async Task InitializeCoreAsync()
@@ -272,28 +275,43 @@ internal sealed class WorkspaceWebViewHost
         failed = true; bridge?.Invalidate();
         IsReady = false;
         // Never include browser exceptions, URLs, WebMessages or page text in diagnostics.
+        Diagnose("FALLBACK_START");
         fallback(message);
+        Diagnose("FALLBACK_COMPLETED");
     }
 
     internal async Task CloseAsync()
     {
         if (closing) return;
+        Diagnose("HOST_CLOSE_START");
         closing = true; lifetime.Cancel(); ready.TrySetCanceled(); bridge?.Dispose();
         try
         {
             if (view.CoreWebView2 is not null)
             {
+                Diagnose("CLOSE_CLEAR_START");
                 await view.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile).WaitAsync(TimeSpan.FromSeconds(3));
                 CleanupPassed = true;
+                Diagnose("CLOSE_CLEAR_COMPLETED");
             }
         }
-        catch (Exception) { CleanupPassed = false; }
-        finally { view.Dispose(); CloseDiagnostics(); }
+        catch (Exception error) { CleanupPassed = false; Diagnose("CLOSE_CLEAR_FAILED", error.HResult); }
+        finally
+        {
+            Diagnose("CONTROL_DISPOSE_START");
+            view.Dispose();
+            Diagnose("CONTROL_DISPOSE_COMPLETED");
+            CloseDiagnostics();
+        }
     }
     internal void DisposeImmediately()
     {
+        Diagnose("HOST_DISPOSE_IMMEDIATELY");
         if (!closing) { closing = true; lifetime.Cancel(); ready.TrySetCanceled(); bridge?.Dispose(); }
-        view.Dispose(); CloseDiagnostics();
+        Diagnose("CONTROL_DISPOSE_START");
+        view.Dispose();
+        Diagnose("CONTROL_DISPOSE_COMPLETED");
+        CloseDiagnostics();
     }
     private void CloseDiagnostics()
     {

@@ -98,7 +98,12 @@ public static partial class RuntimeLifecycleProbe
                 try{memoryCount=(await actions.Client.ListMemoryAsync(new(),ct)).Total;}catch{}
                 Save("-failure.json",new{stage,type=e.GetType().Name,message=e.Message,stack=e.StackTrace,runtime=actions.Owner.Snapshot(),memoryCount,methods});
             }
-            finally{startupTrace?.Dispose();if(window is not null)await window.ShutdownAsync();await actions.Owner.StopAsync();Save("-result.json",new{passed,stage,appPid=Environment.ProcessId,javaPid,modelCalls=0,fixtureHost=true,selectionWriterUsed=false});app.Shutdown(passed?0:10);}
+            finally{
+                startupTrace?.HostShutdownStarting();
+                try{if(window is not null)await window.ShutdownAsync();}
+                finally{startupTrace?.Dispose();}
+                await actions.Owner.StopAsync();Save("-result.json",new{passed,stage,appPid=Environment.ProcessId,javaPid,modelCalls=0,fixtureHost=true,selectionWriterUsed=false});app.Shutdown(passed?0:10);
+            }
         };
         app.Run();Console.WriteLine("MEMORY_DRAFT_DESKTOP_"+(passed?"PASS":"STOP")+" "+mode+" "+stage);return passed?0:10;
     }
