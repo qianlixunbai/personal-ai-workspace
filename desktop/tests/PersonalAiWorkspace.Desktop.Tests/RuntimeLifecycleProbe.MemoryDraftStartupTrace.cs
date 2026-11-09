@@ -19,6 +19,7 @@ public static partial class RuntimeLifecycleProbe
         private readonly DispatcherTimer timer;
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private readonly EventHandler<CoreWebView2InitializationCompletedEventArgs> completed;
+        private readonly EventHandler<CoreWebView2ProcessFailedEventArgs> processFailed;
         private readonly EventHandler sourceInitialized;
         private readonly int sessionId;
         private readonly string threadDesktop;
@@ -27,6 +28,11 @@ public static partial class RuntimeLifecycleProbe
         private int heartbeats;
         private bool? controllerCompleted;
         private int? controllerHresult;
+        private CoreWebView2? initializedCore;
+        private long? browserProcessId;
+        private string? browserVersion;
+        private string? processFailureKind;
+        private bool disposed;
 
         internal MemoryDraftStartupTrace(MainWorkspaceWindow window)
         {
@@ -35,10 +41,22 @@ public static partial class RuntimeLifecycleProbe
             sessionId = process.SessionId;
             threadDesktop = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
             inputDesktop = InputDesktopName();
+            processFailed = (_, result) =>
+            {
+                processFailureKind = result.ProcessFailedKind.ToString();
+                Write("BROWSER_PROCESS_FAILED");
+            };
             completed = (_, result) =>
             {
                 controllerCompleted = result.IsSuccess;
                 controllerHresult = result.InitializationException?.HResult;
+                if (result.IsSuccess && window.Browser.CoreWebView2 is { } core)
+                {
+                    initializedCore = core;
+                    browserProcessId = core.BrowserProcessId;
+                    browserVersion = core.Environment.BrowserVersionString;
+                    core.ProcessFailed += processFailed;
+                }
                 Write("CONTROLLER_CALLBACK");
             };
             sourceInitialized = (_, _) => Write("HWND_CREATED");
@@ -53,7 +71,7 @@ public static partial class RuntimeLifecycleProbe
 
         private void Write(string observation)
         {
-            if (records++ >= 64) return;
+            if (disposed || records++ >= 64) return;
             var hwnd = new WindowInteropHelper(window).Handle;
             uint hwndThread = hwnd == IntPtr.Zero ? 0 : Native.GetWindowThreadProcessId(hwnd, out _);
             Console.WriteLine(JsonSerializer.Serialize(new
@@ -69,7 +87,8 @@ public static partial class RuntimeLifecycleProbe
                 browserLoaded = window.Browser.IsLoaded, browserVisible = window.Browser.IsVisible,
                 browserWidth = window.Browser.ActualWidth, browserHeight = window.Browser.ActualHeight,
                 stage = window.Host.StartupStage, failure = window.Host.StartupFailureCode,
-                controllerCompleted, controllerHresult, threadDesktop, inputDesktop
+                controllerCompleted, controllerHresult, browserProcessId, browserVersion,
+                processFailureKind, threadDesktop, inputDesktop
             }));
         }
 
@@ -93,8 +112,13 @@ public static partial class RuntimeLifecycleProbe
         {
             timer.Stop();
             Write("HOST_TEARDOWN");
+            disposed = true;
             window.Browser.CoreWebView2InitializationCompleted -= completed;
             window.SourceInitialized -= sourceInitialized;
+            // Startup failure may already have disposed the control before fixture teardown.
+            try { if (initializedCore is not null) initializedCore.ProcessFailed -= processFailed; }
+            catch (InvalidOperationException) { }
+            catch (COMException) { }
         }
 
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();

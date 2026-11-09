@@ -12,6 +12,8 @@ Startup then remained in PROFILE_CLEAR_START and reached STARTUP_TIMEOUT at 3005
 
 The host (5080) exited normally with fixture exit code 10; no Runtime was started, port 18765 remained closed, and no forced termination was used. Browser enumeration was not repeated after the prior CIM permission denial, so complete browser-process cleanup remains independently unverified. Evidence: `.verification/memory-controller-diagnostics-20261109/startup-assets-fixed{.log,-summary.json,-failure.json,-result.json}`. No Memory draft/cancel/save/reopen acceptance passed.
 
+Subsequent [profile-clear static analysis](MEMORY-PROFILE-CLEAR-ANALYSIS.md) records the verified production ordering, current owned-profile runtime metadata, and upstream limitations. A bounded follow-up moves the existing browser-failure subscription before clearing and adds runtime/browser-PID/failed-kind observations to the test fixture. The managed incremental build passes; no new desktop run has validated those observations or resolved the clearing wait.
+
 ## Verified baseline and rollback
 
 Read the Memory desktop delivery, Profile path/export ACL, and Knowledge-to-Memory draft reports. Repository/ancestor searches found no applicable AGENTS.md. At diagnostic start, the branch was `codex/knowledge-version-compare`, baseline HEAD was `87364638399872a755e3403c28a06b88da74495d`, and main was `f5266bf4383f52a2293b0fe4bfe1964af958e64a`.

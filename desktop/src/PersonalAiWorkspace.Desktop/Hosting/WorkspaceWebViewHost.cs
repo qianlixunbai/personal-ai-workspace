@@ -159,6 +159,13 @@ internal sealed class WorkspaceWebViewHost
             if (!core.Profile.IsInPrivateModeEnabled) throw new InvalidOperationException("Private profile required.");
             core.Profile.IsPasswordAutosaveEnabled = false;
             core.Profile.IsGeneralAutofillEnabled = false;
+            // Observe browser failures during profile clearing, before navigation/bridge setup.
+            core.ProcessFailed += (_, _) =>
+            {
+                if (closing || failed) return;
+                Diagnose("BROWSER_PROCESS_FAILED");
+                Fail("工作区浏览器进程已停止。原生功能仍可使用，请关闭后重新打开工作区。");
+            };
             Stage("PROFILE_CLEAR_START");
             await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
             if (closing || failed) return;
@@ -226,7 +233,6 @@ internal sealed class WorkspaceWebViewHost
             core.PermissionRequested += (_, e) =>
             { e.State = CoreWebView2PermissionState.Deny; e.SavesInProfile = false; e.Handled = true; BlockedPermissions++; };
             core.ServerCertificateErrorDetected += (_, e) => e.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
-            core.ProcessFailed += (_, _) => Fail("工作区浏览器进程已停止。原生功能仍可使用，请关闭后重新打开工作区。");
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
             core.WebResourceRequested += (_, e) =>
             {
