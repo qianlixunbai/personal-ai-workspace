@@ -61,7 +61,7 @@ flowchart TD
 | Conversations | durable 有序轮次与终态；上下文由 Runtime 组装，UI 不重放未确认提交；[跨会话原文查找](../engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)在原 Store 只读查询终态消息，摘要有界、按 session 授权结果，复用[轮次定位](../engineering/CONVERSATION-TURN-NAVIGATION-REPORT.md)打开原页；[真实桌面／PG Store](../engineering/CONVERSATION-SEARCH-DESKTOP-REPORT.md)补验通过，尚非完整 AssistantApp／PG 桌面组合；[记忆引用查看](../engineering/CONVERSATION-MEMORY-REFERENCE-PREVIEW-REPORT.md)只读核对当前记录的精确版本，不重建历史正文或自动选择下一轮上下文 |
 | Knowledge | 独立文档 metadata、源文件／内容与版本；TXT / Markdown 确定性导入，支持独立备份／恢复 |
 | 检索 | [KnowledgeLexicalIndex](../../src/main/java/io/github/qianlixunbai/workspace/knowledge/KnowledgeLexicalIndex.java) 的派生词法索引；不是向量数据库 |
-| 知识问答 | [KnowledgeAnswerService](../../src/main/java/io/github/qianlixunbai/workspace/capability/knowledge/KnowledgeAnswerService.java) 接收显式问题／检索输入，可[限定当前文档源版本](../engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，在 top-k 前过滤并固定 evidence snapshot；历史 schema 2 保存原范围，引用由 Runtime 形成，不让模型授信来源 ID。[完整桌面与模型关闭后独立重启](../engineering/KNOWLEDGE-DOCUMENT-SCOPE-DESKTOP-REPORT.md)已核对原范围、答案与引用；两个真实样本的质量未全部通过，引用合法不等于答案合格 |
+| 知识问答 | [KnowledgeAnswerService](../../src/main/java/io/github/qianlixunbai/workspace/capability/knowledge/KnowledgeAnswerService.java) 接收显式问题／检索输入，可[限定当前文档源版本](../engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，在 top-k 前过滤并固定 evidence snapshot；历史 schema 2 保存原范围，引用由 Runtime 形成，不让模型授信来源 ID。[v3 提示与固定 Schema](../engineering/KNOWLEDGE-ANSWER-FIDELITY-REPORT.md)明确语言／保真要求，复用 Ollama 结构化输出和独立标签校验，并计入转义／Schema 预算；Desktop／合成快照兼容 v2／v3。真实短样本及停机历史已有记录，未证明普遍质量提升；引用合法和结构正确不等于答案合格 |
 
 默认配置为 SQLite，源码另有显式 Workspace PostgreSQL backend。PostgreSQL 使用独立 Workspace schema / Store 实现；不能把 SQLite 的 FTS5 描述套用于全部 backend。Knowledge 源文件仍有独立文件生命周期，不能把一个数据库 dump 当成完整 Knowledge 备份。
 
