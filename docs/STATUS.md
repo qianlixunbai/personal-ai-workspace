@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 合成加密恢复的隔离桌面闭环通过：恢复来源及五条终态问答后，真实 WPF／WebView／Bridge／HTTP／SQLite 可阅读历史、精确打开旧版本引用并提示已删除来源；第一轮 JVM 完全退出后，第二轮独立 JVM 重开同一数据通过，两轮各 1/1、零跳过。未启动模型、未重放任务、桌面写请求为 0；自有进程和端口退出，最近工作区选择与六份未跟踪文档未变。本轮只扩展测试工具，正式用户入口、原生登记／Profile 激活、完整 AssistantApp 恢复及 PG 仍未完成；不能视作个人数据已备份。仅本地提交，仍为 Development-only。[实测、截图与边界](engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)。以下记录保留各自时点结论。
+
 2026-11-09 合成联合快照已增加认证加密：复用既有 Bouncy Castle OpenPGP 流，来源和终态历史直接写密文，完整认证后再解包／重建／发布新候选，恢复保留原问题、答案和旧版本引用。原生隔离验证 16/16、零跳过；错口令、重算摘要后的篡改、非法 KDF、越界内容及中断均拒绝，旧来源备份和旧容器流合同通过相关回归。没有个人数据操作、用户按钮、PG 或 Profile 激活；恢复库仍为私有明文，完整新 JVM／桌面恢复尚未验收。六份未跟踪文档未改，仅本地提交，仍为 Development-only。[实现与实测边界](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)。以下较早记录保留各自时点结论。
 
 2026-11-09 合成联合快照原型：全新 SQLite 合成资料可将 Knowledge 全部保留源与终态问答在双库停写窗口内导出，私有暂存校验后发布新候选数据目录，重开保留原问题、状态、时间、答案、旧版本精确引用及来源不可用状态。新闭环＋旧 v1 备份兼容最终 10/10，历史存储另轮 4/4；并发写排斥、缺件／损坏拒绝、发布目标占用保护通过。旧备份格式及用户入口未改，原型为明文合成限定，不提供个人／PG／跨 Profile 恢复或激活。六份未跟踪文档未改；仅本地提交，仍为 Development-only。[实现、逐轮结果和限制](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-SNAPSHOT-REPORT.md)。

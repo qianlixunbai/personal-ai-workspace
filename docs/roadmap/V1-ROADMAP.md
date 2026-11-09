@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-09 [合成加密恢复的隔离桌面验证](../engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)：实际历史页、旧版本精确引用和缺失来源提示在两个独立 JVM 中均通过；没有模型调用或任务重放。复用现有测试宿主，数据限定在新 Profile 的 evidence，普通 data 为空。正式来源登记／候选激活、完整 AssistantApp 恢复与用户入口仍待完成；下一步围绕该产品链路收敛，不扩张归档框架。六份未跟踪文档未变，仅本地提交；下方较早记录保留时点范围。
+
 2026-11-09 [来源与问答历史的合成加密恢复](../engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)：已有联合快照复用现有 OpenPGP 流完成直接加密、完整认证及新候选恢复，隔离测试 16/16。个人入口、原生来源登记／候选激活、完整新 JVM／桌面历史阅读及 PG 仍未完成；下一步优先连接既有产品恢复流程，不继续扩张归档框架。仅本地开发，六份未跟踪文档保持原样。
 
 2026-11-09 重启闭环：[完整应用与真实知识回答](../engineering/WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)完成三次独立 AssistantApp／JVM 启动，SQLite 资料、源版本与引用目标稳定；隔离 Qwen3.5 4B 两个英文公开样本回答正确且来源可核对。知识回答历史仍不持久保存，正式分发、PostgreSQL 和一般模型质量未验收，W1 整体未关闭。另修复构建来源清单对中文文件名的处理；保留用户文件和本地 Git 回滚点。

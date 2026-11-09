@@ -18,7 +18,7 @@
 
 ## 如何判断证据
 
-最新备份增量：[合成知识来源与问答历史加密恢复](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)，隔离测试 16/16；个人备份入口、原生候选激活和完整桌面恢复仍未完成。
+最新恢复验收：[合成加密恢复的真实桌面阅读与独立 JVM 重开](engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)，两轮各 1/1，五条历史、旧版本引用及缺失来源提示通过，无模型或任务重放；此前[归档认证测试](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)为 16/16。个人备份入口、原生候选激活和完整 AssistantApp 恢复仍未完成。
 
 当前事实先核对源码，再结合 STATUS 和最近的专属报告。ADR 的 Accepted 是决定状态，报告的 GO 只在其记录范围内有效；历史本机 PASS、用户人工报告、无模型 fixture 与当前 CI／真实 Windows 验收是不同证据。
 

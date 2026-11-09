@@ -2,6 +2,8 @@
 
 2026-11-09。基线 `99f54a7`，分支 `codex/knowledge-history-encrypted`，回滚标签 `workspace-before-knowledge-history-encrypted-20261109`。实现及测试提交 `b91594e`。仅本地提交，未推送、合并或发布；仍为 Development-only。Workspace 与 KAG 分开，未操作 KAG。
 
+后续[隔离桌面恢复验收](KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)已在两个独立 JVM 中通过实际历史页、旧版本精确引用和缺失来源提示，无模型调用或任务重放。该验收未运行完整 AssistantApp，也未实现原生登记／Profile 激活或个人入口；本报告以下保留归档实现时点的验证范围。
+
 ## 本轮交付
 
 已完成 **新建合成 SQLite 来源／终态历史 → 直接写入认证加密归档 → 完整认证 → 来源及历史重建 → 发布新候选目录 → 关闭／重开读取**。保留原问题、检索词、状态、时间、答案、旧 revision 的精确引用及原本不可用的来源。原源关闭并改名后，从复制到另一全新夹具的密文恢复，结果一致。
