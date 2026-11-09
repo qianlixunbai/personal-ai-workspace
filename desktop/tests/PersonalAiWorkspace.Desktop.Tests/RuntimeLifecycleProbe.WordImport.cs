@@ -45,7 +45,7 @@ public static partial class RuntimeLifecycleProbe
                 string id;string[] priorIds;
                 if(!reopen){
                     var before=await client.ListKnowledgeAsync("ACTIVE",0,ct);Assert.Equal(3,before.Total);priorIds=before.Items.Select(d=>d.DocumentId).Order().ToArray();
-                    async Task DriveDialogs(bool cancel){
+                    async Task DriveDialogs(bool cancel,string? rejectedFile=null){
                         uint thread=GetCurrentThreadId();IntPtr owner=new WindowInteropHelper(shell).Handle;
                         await Task.Run(async()=>{
                             async Task<AutomationElement> FindWindow(string title){
@@ -72,8 +72,9 @@ public static partial class RuntimeLifecycleProbe
                                 Assert.True(clock.Elapsed.TotalSeconds<25,"File name edit unavailable");if(filename is null)await Task.Delay(100,ct);
                             }
                             Save("-dialog-stage.json",new{stage="SET_FILENAME",cancel});
-                            filename.SetValue(path);
+                            filename.SetValue(rejectedFile??path);
                             SendMessage((IntPtr)picker.Current.NativeWindowHandle,0x0111,1,0);
+                            if(rejectedFile is not null)return;
                             Save("-dialog-stage.json",new{stage="FIND_PREVIEW",cancel});
                             var preview=await FindWindow("确认导入 Word 正文摘录");
                             var text=preview.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Word 正文摘录预览"));Assert.NotNull(text);
@@ -82,6 +83,14 @@ public static partial class RuntimeLifecycleProbe
                             Save("-dialog-stage.json",new{stage="INVOKE_PREVIEW",cancel});
                             ((InvokePattern)button.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
                         },ct);
+                    }
+                    stage="REJECT_UNSUPPORTED_CONTENT";
+                    foreach(var sample in new[]{("math",KnowledgeDocxTests.MathBody),("symbol",KnowledgeDocxTests.SymbolBody)}){
+                        string rejected=Path.Combine(root,"unsupported-"+sample.Item1+".docx");byte[] bytes=KnowledgeDocxTests.Fixture(sample.Item2);File.WriteAllBytes(rejected,bytes);
+                        var selection=DriveDialogs(false,rejected);var click=Click(".knowledge-toolbar","导入文档");await selection;await click;
+                        await Wait(()=>Is("document.querySelector('.knowledge-page [role=alert]')?.textContent.includes('公式、字体符号')===true"));
+                        Assert.Equal(priorIds,(await client.ListKnowledgeAsync("ACTIVE",0,ct)).Items.Select(d=>d.DocumentId).Order().ToArray());
+                        Assert.Equal(bytes,File.ReadAllBytes(rejected));
                     }
                     stage="PREVIEW_CANCEL";var cancel=DriveDialogs(true);var opening=Click(".knowledge-toolbar","导入文档");await cancel;await opening;
                     await Wait(()=>Is("document.querySelector('.knowledge-page').innerText.includes('已取消导入。')"));
@@ -116,7 +125,7 @@ public static partial class RuntimeLifecycleProbe
                 Assert.Equal(hash,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
                 Assert.Equal(3,(await client.ListKnowledgeAnswersAsync(0,ct)).Total);
                 Assert.DoesNotContain(methods,m=>m is "knowledge.answerSubmit" or "models.mutate" or "web.fetchSubmit");
-                Save("-result.json",new{passed=true,reopen,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.Text))),cancelVerified=!reopen,confirmationVerified=!reopen,ownFixtureRemoved=reopen,methods,modelCalls=0});
+                Save("-result.json",new{passed=true,reopen,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.Text))),unsupportedSamplesRejected=reopen?0:2,cancelVerified=!reopen,confirmationVerified=!reopen,ownFixtureRemoved=reopen,methods,modelCalls=0});
                 passed=true;Console.WriteLine("DOCX_DESKTOP_PASS "+prefix);
             }catch(Exception error){Save("-failure.json",new{stage,type=error.GetType().Name,message=error.Message,frames=new StackTrace(error,true).GetFrames().Select(f=>new{method=f.GetMethod()?.Name,line=f.GetFileLineNumber()})});Console.WriteLine("DOCX_DESKTOP_STOP "+stage);}
             finally{try{await app.ExitAsync();if(java is not null)Assert.True(java.WaitForExit(10000));}catch{passed=false;app.Shutdown(10);}finally{java?.Dispose();}}

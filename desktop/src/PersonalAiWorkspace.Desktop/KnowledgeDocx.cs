@@ -61,6 +61,10 @@ internal static class KnowledgeDocx
                 if(reader.IsStartElement){
                     // Do not silently accept a change, evaluate a field, or select an alternate representation.
                     string name=reader.LocalName;
+                    // These are document content, not formatting. Reading only w:t would silently
+                    // discard equations and glyphs whose Unicode value depends on an installed font.
+                    if(reader.ElementType==typeof(W.SymbolChar)||name is "oMath" or "oMathPara")
+                        throw new DesktopException(DesktopError.KnowledgeDocxUnsupported);
                     if(name is "ins" or "del" or "moveFrom" or "moveTo" or "fldChar" or "fldSimple" or "instrText" or "altChunk" or "AlternateContent" or "sdt" or "vanish" or "webHidden" or "gridSpan" or "vMerge" or "hMerge" || name.EndsWith("Change",StringComparison.Ordinal))
                         throw new DesktopException(DesktopError.KnowledgeDocxUnsupported);
                     if(reader.ElementType==typeof(W.Drawing)||name is "pict" or "object"){

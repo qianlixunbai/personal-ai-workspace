@@ -10,7 +10,7 @@
 
 **保存的是经确认的文字摘录，不是 Word 原文件或 Word 页面副本。** 图片／对象以省略提示表示；页眉页脚、脚注／尾注正文、批注、自动编号、样式和版式不导入。原文件不改写，不在库中保留；知识库的引用行号及偏移只指向已保存摘录。原 Word 文件仍需用户另行保管。
 
-修订、域、内容控件、直接隐藏文字属性、合并单元格、嵌套表格、替代内容及未知正文元素会保守拒绝；可先在 Word 中另存为纯文本并核对。此范围不是任意 DOCX 的完整渲染或可见性判断，也未求值继承样式与自动编号。
+公式、字体映射符号、修订、域、内容控件、直接隐藏文字属性、合并单元格、嵌套表格、替代内容及未知正文元素会保守拒绝；可先在 Word 中另存为纯文本并核对。直接写在正文里的普通 Unicode 字符仍保留。此范围不是任意 DOCX 的完整渲染或可见性判断，也未求值继承样式与自动编号。
 
 ## 成熟组件评估与边界
 
@@ -40,7 +40,22 @@
 | `run-4/completion.json` | 两轮退出码均为 0，0 模型调用，最近工作区选择内容未变，全部自有进程和端口退出。 |
 | `reconnected-isolation-check.json` | 断线重连后的只读核对：六份用户文档哈希不变，既有 PostgreSQL PID 集合不变，默认选择哈希一致，11435／18765 无监听，也无遗留 Java／Ollama／llama-server／Desktop。 |
 
-成功轮次合成 Word 原文件 SHA-256：`0AB1167BB3CFDEBB5258C5F37469910FD8415EE668606A3B470FCCC66DE4D7DB`，导入、重开和清理后均不变；保存摘录 SHA-256：`9763F74F7686B43566A5AEE698B14A7B01922940ED9A26CADF675882C0D03516`。成功前的失败日志全部保留。连接中断发生在成功验收之后、报告和 Git 提交之前；重连没有重跑导入、删除或模型操作。
+成功轮次合成 Word 原文件 SHA-256：`0AB1167BB3CFDEBB5258C5F37469910FD8415EE668606A3B470FCCC66DE4D7DB`，导入、重开和清理后均不变；保存摘录 SHA-256：`9763F74F7686B43566A5AEE698B14A7B01922940ED9A26CADF675882C0D03516`。成功前的失败日志全部保留。连接中断发生在成功验收之后、报告和 Git 提交之前；重连时先只读核对状态，没有重放断线前的导入或删除。下节补充修复使用新的合成文件和独立验收轮次。
+
+## 提交后的内容保真修复
+
+上述能力与报告已先提交为 `6910ba8`。继续审查同一导入能力时，确认只提取 `w:t` 会遗漏 Word 的 `m:oMath` 公式和 `w:sym` 字体映射符号；文档其他正文非空时，旧代码仍会返回成功。两个独立合成输入的修复前检查均失败，原因都是“没有抛出异常”，原始记录见 `content-fidelity-before.log`／`test-results/content-fidelity-before.trx`，没有改写成通过。
+
+复用 SDK 已有类型判断，在提取预览和上传之前拒绝这两类内容，并明确提示先转成可核对的纯文本。依据是微软的 [OfficeMath 类型](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.math.officemath?view=openxml-3.0.1)和 [SymbolChar 字体／字符映射规则](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.symbolchar?view=openxml-3.0.1)。不推断公式含义或字体字形，不增加模型／转换器；原有已保存摘录不被自动重写。修复前回滚标签 `workspace-before-docx-content-fidelity-20261109` 指向 `6910ba8`。
+
+必要补验只有受影响的提取场景和同一条实际桌面流程：
+
+- `content-fidelity-after.log`／`test-results/content-fidelity-after.trx`：6/6，零跳过，含两个新拒绝样本及原四项；正向样本同时核对正文中的 `α = 1` 和 `✓` 原样保留。未重复前端或无关测试矩阵。
+- `probe-content-fidelity-build.log`：最终桌面构建 0 warning／0 error，前端与 Runtime 未变。
+- `run-5/first-result.json`：真实系统文件选择后，两份含公式／字体符号的文件均在知识库页面显示拒绝提示，原三份文档 ID 集合不变，输入文件字节不变；随后普通 DOCX 的预览取消、明确确认、检索与原文读取继续通过。
+- `run-5/reopen-result.json`／`completion.json`：第二次独立应用重开读回一致，仅删除本轮新增的合成资料；原三份文档和三条问答历史保留。两次退出码均为 0，自有进程与端口关闭，默认工作区选择未变，0 模型调用。
+
+最终轮次原文件 SHA-256 为 `FFBA724E2FA9B2F86122E0C2661A6E8751CC6D3B0F38224F2070BCD1F23234FC`，摘录 SHA-256 为 `1D539AA363DEA2F95696AE6FA007A6C44B3F2CCE599B4EE1824183E91433C273`。它是修复后的新合成验收，不替换 `run-4` 的证据，也不代表任意复杂 Word 文档都已获得支持。
 
 ## 可用范围与下一步
 

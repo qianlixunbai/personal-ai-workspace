@@ -27,13 +27,14 @@ public sealed class KnowledgeDocxTests
     }
     [Fact]public void BodyAndTableTextBecomeAnExplicitUtf8ExcerptWithSourceFingerprint()
     {
-        byte[] bytes=Fixture();using var input=new MemoryStream(bytes,false);
+        byte[] bytes=Fixture(Body+"<w:p><w:r><w:t>直接 Unicode 文字：α = 1，✓。</w:t></w:r></w:p>");using var input=new MemoryStream(bytes,false);
         var result=KnowledgeDocx.Read(input,"合成示例.docx",default);
         Assert.Equal("合成示例.docx.txt",result.Filename);
         Assert.Contains(Convert.ToHexString(SHA256.HashData(bytes)),result.Text);
         Assert.Contains("NerionDOCX 合成规则：月影站点仅限演练，禁止生产流量。😀\n",result.Text);
         Assert.Contains("\"参数\"\t\"条件\"\n\"--inspect=on\"\t\"只校验，不写入；保留 \"\"引号\"\"。\"\n",result.Text);
         Assert.Contains("链接显示文字\n",result.Text);Assert.DoesNotContain("https://",result.Text);
+        Assert.Contains("直接 Unicode 文字：α = 1，✓。\n",result.Text);
         Assert.Contains(KnowledgeDocx.Notice,result.Text);Assert.Equal(bytes,input.ToArray());Assert.True(input.CanRead);
     }
     [Fact]public void RevisionsFieldsAndMergedCellsAreRefusedInsteadOfSilentlyChangingMeaning()
@@ -54,5 +55,15 @@ public sealed class KnowledgeDocxTests
         Assert.Throws<OperationCanceledException>(()=>KnowledgeDocx.Read(file,"fixture.docx",cancelled.Token));
         using var image=new MemoryStream(Fixture("<w:p><w:r><w:drawing/></w:r></w:p>"));
         Assert.Equal(DesktopError.KnowledgeDocxInvalid,Assert.Throws<DesktopException>(()=>KnowledgeDocx.Read(image,"fixture.docx",default)).Error);
+    }
+    internal const string MathBody="<w:p><w:r><w:t>公式结果如下：</w:t></w:r><m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:r><m:t>x = 1</m:t></m:r></m:oMath></w:p>";
+    internal const string SymbolBody="<w:p><w:r><w:t>状态符号：</w:t><w:sym w:font=\"Wingdings\" w:char=\"F0FC\"/></w:r></w:p>";
+    [Theory]
+    [InlineData(MathBody)]
+    [InlineData(SymbolBody)]
+    public void EquationAndFontMappedSymbolCannotDisappearFromAnAcceptedExcerpt(string body)
+    {
+        using var file=new MemoryStream(Fixture(body));
+        Assert.Equal(DesktopError.KnowledgeDocxUnsupported,Assert.Throws<DesktopException>(()=>KnowledgeDocx.Read(file,"formula.docx",default)).Error);
     }
 }
