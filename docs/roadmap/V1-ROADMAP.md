@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-09 [统一回答阅读](../engineering/ANSWER-MARKDOWN-READING-REPORT.md)补齐同一资料与对话链路的阅读体验：标题、列表、表格、代码与原文切换，复用 React Markdown／GFM，复制／记忆草稿／引用导出继续取原记录。源码、34 项聚焦检查、隔离真实 WebView 与新开发 ZIP 已交付；后续按实际使用选择下一项，保留完整新包启动、个人恢复、PG 桌面、跨机器及模型质量的独立边界，不默认扩大评测或恢复设施。
+
 2026-11-09 [文档版本对比](../engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)补齐 Word／文本更新后的核对流程，复用 jsdiff 与已有不可变版本读取。完整合成桌面导入两版、对比、回看旧版及重开通过；不扩张 Runtime 或模型服务。当前 main 已获明确授权快进至 `f5266bf`，Word 与对比增量继续沿同一链保存在功能分支，未推送。下列分支拒绝和能力缺口是各自时点的记录，以最新专项报告为准。
 
 2026-11-09 [Word 正文摘录导入](../engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)补齐一项常用资料入口，复用 Open XML SDK 及既有 Knowledge。取消、确认、检索、原文及完整应用重开已做合成隔离验收，未增加模型／服务或修改资料 schema。当前优先完善同一能力的内容保真与兼容范围，不并行铺开 PDF／OCR／目录监控；一般质量、个人恢复和正式分发仍保留各自关卡。

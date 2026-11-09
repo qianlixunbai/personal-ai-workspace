@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 [回答排版阅读](engineering/ANSWER-MARKDOWN-READING-REPORT.md)已进入新的本地开发预览包：助手／摘要、会话及知识回答支持 Markdown 与原文切换，原记录复制／记忆草稿／导出保持。复用 MIT React Markdown／GFM；34/34 聚焦检查、三页面浅深色隔离 WPF WebView 及最终 ZIP 923 文件完整性通过。仅本地提交，未触及个人数据或 KAG。新包未复验完整 AssistantApp／Runtime 启动，不能继承下方旧包的完整流程 PASS；跨机器、个人恢复、PG 桌面和模型质量边界保持。
+
 2026-11-09 [统一 Windows 开发包](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)已包含 Word 导入、版本对比、限定检索、历史问答与笔记导出。修正旧打包 helper 常量、固定包内 .NET 10.0.14 并补齐许可材料；最终 ZIP 7/7 合同通过，两条桌面流程共四次独立应用启动及实际 EXE 无参数启动通过，0 模型调用。仅本地提交，`main` 保持 `f5266bf`；六份用户文档、最近工作区记录与既有服务未变。仍为 Development-only；附最终包、精确哈希、失败记录和未验证范围。
 
 2026-11-09 [文档版本对比](engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)接续 Word 导入：选择两个已发布版本，完整读取后显示逐行增删，并跳回对应版本原文。固定复用 BSD jsdiff 9.0.0；前端必要检查 9/9，实际合成 Word 两版本及独立应用重开通过，0 模型调用。成果沿同一链位于 `codex/knowledge-version-compare`，本地 `main` 已按此前明确授权更新到 `f5266bf`，没有进一步更新或推送；下列拒绝记录保留原时点经过。仍为 Development-only。

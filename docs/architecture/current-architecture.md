@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-09 [回答阅读](../engineering/ANSWER-MARKDOWN-READING-REPORT.md)：共用 React `AnswerContent` 使用 React Markdown 10.1.0／remark-gfm 4.0.1，把已验证的回答字符串显示为受限节点或原文。原始 HTML 保持文本，链接和图片没有导航／加载节点；知识引用沿已有精确版本 Bridge。无 Runtime／schema／授权变更，复制、导出及记忆草稿仍使用原始记录。
+
 2026-11-09 [版本对比](../engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)：React 经既有授权原文 Bridge 有界读取两个不可变版本，确认完整后用 jsdiff 9.0.0 异步逐行比较；文本节点渲染，按精确版本／偏移回看，不改 Runtime、schema、来源或问答历史。
 
 2026-11-09 [DOCX 正文摘录](../engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)：Native 持有用户选择的只读文件，经 Open XML SDK 有界读取并原生预览确认，将 UTF-8 `.docx.txt` 交给既有 TXT 导入。React 不取得原路径或 Word 二进制，Runtime／schema／备份格式不变，原 Word 文件不作为知识库源保存；引用只定位已保存摘录。
