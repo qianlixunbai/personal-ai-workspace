@@ -38,7 +38,7 @@ export class BridgeError extends Error { constructor(public code: string, messag
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
-const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
+const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
 interface Pending { method: Method; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -151,6 +151,8 @@ export class WorkspaceClient {
   }
   getWebFetch(operationId: string) { return this.request('web.fetchGet', { operationId }) as Promise<WebFetchOperation> }
   cancelWebFetch(operationId: string) { return this.request('web.fetchCancel', { operationId }) as Promise<WebFetchOperation> }
+  saveWebKnowledge(operationId: string) { return this.request('web.saveKnowledge', { operationId }) as Promise<KnowledgeImport> }
+  webKnowledgeState(operationId: string) { return this.request('web.knowledgeState', { operationId }) as Promise<KnowledgeImport> }
   cancelOperation(operationId: string) { return this.request('operations.cancel', { operationId }) as Promise<{ requested: true }> }
   copyResult(operationId: string) { return this.request('operations.copyResult', { operationId }) as Promise<{ copied: true }> }
   listConversations(status: ConversationStatus, page: number) { return this.request('conversations.list', { status, page }) as Promise<ConversationList> }
@@ -289,6 +291,7 @@ export class WorkspaceClient {
         : pending.method === 'models.mutate' ? isModelOutcome(data.result)
         : pending.method === 'models.inspect' || pending.method === 'models.inspectRecovery' ? isModelSnapshot(data.result)
         : pending.method === 'web.fetchSubmit' ? isWebFetchSubmission(data.result)
+        : pending.method === 'web.saveKnowledge' || pending.method === 'web.knowledgeState' ? isKnowledgeImport(data.result) && data.result.outcome !== 'CANCELLED'
         : pending.method === 'web.fetchGet' || pending.method === 'web.fetchCancel' ? isWebFetchOperation(data.result) && data.result.operationId === pending.operationId
         : ['knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel'].includes(pending.method) ? isKnowledgeAnswerTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)

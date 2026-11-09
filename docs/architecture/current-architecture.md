@@ -79,6 +79,8 @@ Native 首次绑定采用 CREATE_NEW，服务端每次核对 dataset / ACTIVE �
 
 **W1A Fetch**：原生逐次确认 → Runtime 独立目标验证 → HTTPS / DNS pinning / SSRF 限制 → 有界抽取与临时结果。它不是自动联网 Agent；Search / Web Answer 尚不作为已交付产品能力。见 [ADR-014](../ADR/ADR-014-controlled-web-access.md) 与 [W1A closing](../milestones/W1A-CLOSING-REPORT.md)。
 
+2026-11-09 [显式网页资料保存](../engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)：当前会话已核对成功的 Fetch 结果，可经用户再次明确保存，由 Runtime 按冻结结果生成带来源／时间／截断说明的 TXT，进入原 `KnowledgeIngestion`、不可变源版本和派生索引。WPF 分配一次性导入 request ID；React 仅传已授权的 operation ID，未知只读对账。保存不再联网、不调用模型；后续检索／知识问答／独立备份复用已有合同，无新 schema，不授予普通 Ask 自动联网权限。合成 SQLite／HTTP 场景通过，真实网站、模型、完整桌面和 PostgreSQL 尚未随该增量验收。
+
 **Vision**：已有 React / WPF 选图预览、WIC 规范化与 held-handle 候选链、Native-only API、ActiveModelManager 和 Provider 校验。`OllamaVisionEnvironment.REVIEWED_TOKEN_POLICIES` 仍为空，实际 native payload / 环境／token 合同证据未闭合，因此 **BLOCKED**。模型 metadata、磁盘哈希、preview 或无模型 fixture 均不代表 Vision Ready。见 [最新修复报告](../engineering/V1-VISION-GATE-REMEDIATION-REPORT.md)。
 
 ## 本地安全、Profile 与备份

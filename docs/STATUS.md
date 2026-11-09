@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 网页资料闭环：Knowledge 可输入公共 HTTPS 网址，经既有原生逐次确认获取、预览后明确保存；Runtime 将有界文本、来源网址、时间和截断说明存入既有 Knowledge，复用重开、检索、问答引用与独立备份恢复。原生端绑定一次保存请求，未知只读对账，不重发保存或访问网页。直接复用现有 jsoup 1.23.2／安全 Fetch／Knowledge，无新依赖或 schema。隔离 Java 2/2、.NET 4/4、前端 11/11 及编译构建通过；真实网站、真实模型、完整桌面／WebView 和 PostgreSQL 路径未验收。仅本地提交，W1 整体未关闭，仍为 Development-only；[交付、复用评估、首次失败和限制](engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)。
+
 2026-11-09 来源阅读增量：Knowledge 引用和检索命中可在指定源版本中精确高亮，支持从本节开头阅读、上下文翻页及返回引用／命中位置；旧版本有明确提示，读取失败不丢失返回记录，切换版本／会话或离页会清除定位。复用既有文本渲染和有界预览接口，未增加依赖、后端合同或模型调用。两个现有前端测试文件 9/9 通过（新增 2 项），TypeScript／构建通过；真实模型质量、受信桌面包和实际 WebView 交互未随本功能验收。仅本地提交，仍为 Development-only；[复用评估、证据和回滚说明](engineering/KNOWLEDGE-SOURCE-READER-REPORT.md)。
 
 2026-11-09 后续增量完成：Knowledge 首个长中文命中整体超预算时，可从冻结原文选择覆盖检索词的连续句子及相邻上下文，引用按实际摘录更新偏移与行号；完整片段仍按排名前缀打包，不能容纳的窗口继续拒绝。复用 JDK 分句及现有词法／预算／引用组件，参考 LlamaIndex 和 Lucene，未加依赖。Java 原生隔离场景 7/7、.NET Knowledge 16/16、前端 3/3 及构建通过；未验证真实模型摘录质量、完整桌面包或 PostgreSQL 流程。提示契约升级 v2，须配套 Runtime／Desktop。仅本地 Git，不推送、合并或部署；[交付、复用评估、证据与限制](engineering/KNOWLEDGE-BOUNDED-EXCERPTS-REPORT.md)。

@@ -6,6 +6,7 @@ import { KnowledgeSearch } from '../components/KnowledgeSearch'
 import { KnowledgeAnswer } from '../components/KnowledgeAnswer'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { KnowledgeSourcePreview, type KnowledgeSourceTarget } from '../components/KnowledgeSourcePreview'
+import { KnowledgeWebCapture } from '../components/KnowledgeWebCapture'
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean }) {
@@ -99,6 +100,7 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
       <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入 TXT / Markdown</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
     <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
+    <details className="advanced-section"><summary>从网页添加资料</summary><KnowledgeWebCapture bridge={bridge} enabled={enabled && !busy} visible={visible} saved={refreshList} open={id => run(async () => { await load(id) })} /></details>
     <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} />
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} /></details>
     <div className="knowledge-layout">

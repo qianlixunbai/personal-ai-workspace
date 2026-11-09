@@ -25,6 +25,9 @@ internal sealed class WorkspaceWebFetch(RuntimeClient runtime, IWebFetchConfirma
     {
         internal readonly CancellationTokenSource Lifetime = new();
         internal readonly Dictionary<Guid, WebFetchTarget> Operations = [];
+        internal readonly Dictionary<Guid, string> KnowledgeImports = [];
+        internal readonly HashSet<Guid> Saving = [];
+        internal readonly HashSet<Guid> Completed = [];
     }
     private readonly object sync = new();
     private string? session;
@@ -45,7 +48,7 @@ internal sealed class WorkspaceWebFetch(RuntimeClient runtime, IWebFetchConfirma
         {
             if (session != value || authority is null) return;
             var old = authority; authority = null; session = null;
-            old.Operations.Clear(); old.Lifetime.Cancel(); old.Lifetime.Dispose();
+            old.Operations.Clear(); old.KnowledgeImports.Clear(); old.Saving.Clear(); old.Completed.Clear(); old.Lifetime.Cancel(); old.Lifetime.Dispose();
             pending?.Cancel();
         }
     }
@@ -134,7 +137,28 @@ internal sealed class WorkspaceWebFetch(RuntimeClient runtime, IWebFetchConfirma
         if (!known.Operations.TryGetValue(operation.OperationId, out var target)
             || operation.Result is { } result && (result.RequestedUrl != target.Url || result.Hostname != target.Hostname))
             throw new DesktopException(DesktopError.InvalidResponse);
+        if(operation.State==WebFetchState.SUCCEEDED)known.Completed.Add(operation.OperationId);
         return new(operation.OperationId.ToString("D"), operation.State.ToString(), operation.Result,
             operation.Error is { } error ? new(error.ToString(), ErrorText.For(error)) : null);
+    }
+    internal async Task<KnowledgeImportResult> SaveKnowledgeAsync(string value,string operationId,WorkspaceKnowledge knowledge,bool readOnly,CancellationToken token)
+    {
+        if(!WorkspaceBridge.CanonicalId(operationId))throw new DesktopException(DesktopError.InvalidRequest);
+        Guid id=Guid.ParseExact(operationId,"D");Authority known;bool submit;string request;Task<KnowledgeImportResult> work;
+        lock(sync){
+            known=Require(value);token.ThrowIfCancellationRequested();
+            if(!known.Operations.ContainsKey(id))throw new DesktopException(DesktopError.WebFetchNotFound);
+            if(!known.Completed.Contains(id))throw new DesktopException(DesktopError.WebContentInvalid);
+            if(readOnly&&!known.KnowledgeImports.ContainsKey(id))throw new DesktopException(DesktopError.KnowledgeNotFound);
+            if(!known.Saving.Add(id))throw new DesktopException(DesktopError.QueueFull);
+            submit=!known.KnowledgeImports.TryGetValue(id,out request!);
+            if(submit){request=Guid.NewGuid().ToString("D");known.KnowledgeImports.Add(id,request);}
+            // Consumption and session invalidation share this lock. React supplies only an owned ID.
+            work=knowledge.ImportWebAsync(value,id,request,submit,token);
+        }
+        try{
+            var result=await work;
+            lock(sync){Current(value,known,token);return result;}
+        }finally{lock(sync)known.Saving.Remove(id);}
     }
 }

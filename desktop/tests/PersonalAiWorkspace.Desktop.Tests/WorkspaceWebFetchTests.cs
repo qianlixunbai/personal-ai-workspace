@@ -31,6 +31,7 @@ public sealed class WorkspaceWebFetchTests
         internal readonly Confirmation Dialog = new();
         internal readonly RuntimeClient Runtime;
         internal readonly WorkspaceWebFetch Web;
+        internal readonly WorkspaceKnowledge Knowledge;
         internal readonly WorkspaceBridge Bridge;
         internal readonly List<string> Sent = [];
         internal int Posts, Gets, Deletes;
@@ -38,7 +39,16 @@ public sealed class WorkspaceWebFetchTests
         internal string? PostedUrl;
         internal bool LosePost, LoseGet;
         internal TaskCompletionSource<HttpResponseMessage>? PendingGet;
+        internal int Saves, SaveReads;
+        internal string? SaveRequest;
+        internal readonly string SavedDocument = Guid.NewGuid().ToString("D");
+        internal bool LoseSave, LoseSaveRead;
+        internal TaskCompletionSource? HoldSave;
         WorkspaceWebFetch IWorkspaceNativeActions.WebFetch => Web;
+        WorkspaceKnowledge IWorkspaceNativeActions.Knowledge => Knowledge;
+        private sealed class NoFilePicker : IKnowledgeSourceFiles
+        { public Task<KnowledgeSourceFile?> PickAsync(CancellationToken token) => throw new InvalidOperationException("Web capture must not pick a local file."); }
+        internal object SavedJob() => new { requestId = SaveRequest, documentId = SavedDocument, state = "READY", errorCode = (string?)null, sourceRevision = "1" };
         public Task<ShellStatus> StatusAsync(CancellationToken token) => throw new NotSupportedException();
         public Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken token) => throw new NotSupportedException();
         internal Fixture()
@@ -46,6 +56,20 @@ public sealed class WorkspaceWebFetchTests
             Runtime = new(new Handler(async (request, ct) =>
             {
                 Assert.Equal(new string('t', 43), request.Headers.Authorization!.Parameter);
+                if(request.RequestUri!.AbsolutePath.EndsWith("/knowledge")) {
+                    Assert.Equal(HttpMethod.Post,request.Method);Saves++;
+                    using var body=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                    Assert.Equal(new[]{"requestId"},body.RootElement.EnumerateObject().Select(p=>p.Name));
+                    SaveRequest=body.RootElement.GetProperty("requestId").GetString();
+                    if(HoldSave is not null)await HoldSave.Task;
+                    if(LoseSave)throw new HttpRequestException();
+                    return Response(HttpStatusCode.OK,JsonSerializer.Serialize(SavedJob()));
+                }
+                if(request.RequestUri.AbsolutePath.StartsWith("/api/v1/knowledge/imports/")) {
+                    Assert.Equal(HttpMethod.Get,request.Method);Assert.EndsWith(SaveRequest!,request.RequestUri.AbsolutePath);SaveReads++;
+                    if(LoseSaveRead)throw new HttpRequestException();
+                    return Response(HttpStatusCode.OK,JsonSerializer.Serialize(SavedJob()));
+                }
                 if (request.Method == HttpMethod.Post)
                 {
                     Posts++;
@@ -65,13 +89,51 @@ public sealed class WorkspaceWebFetchTests
                 }
                 Deletes++; return Reply(Id, Envelope(Id, "CANCELLED"));
             }), () => new string('t', 43));
-            Web = new(Runtime, Dialog); Bridge = new(new WorkspaceContentPolicy(), this, Sent.Add); Rotate();
+            Web = new(Runtime, Dialog); Knowledge = new(Runtime,new NoFilePicker()); Bridge = new(new WorkspaceContentPolicy(), this, Sent.Add); Rotate();
         }
         internal void Rotate() { Bridge.BeginDocument(Document); Bridge.Ready(Document); Sent.Clear(); }
         internal string Request(string method, object payload, string? session = null) => JsonSerializer.Serialize(new
         { version = 1, sessionId = session ?? Bridge.SessionId, requestId = Guid.NewGuid().ToString("D"), method, payload });
         internal Task Receive(string request, string source = Document) => Bridge.ReceiveAsync(source, Document, request);
         public void Dispose() { Bridge.Dispose(); Runtime.Dispose(); }
+    }
+    [Fact] public async Task WebCaptureOnlyAcceptsOwnedObservedResultsAndReusesOneImportRequest()
+    {
+        using var f=new Fixture();
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=Guid.NewGuid().ToString("D")}));
+        Assert.Equal(0,f.Saves);Assert.Contains("WebFetchNotFound",Assert.Single(f.Sent));f.Sent.Clear();
+        var submit=f.Receive(f.Request("web.fetchSubmit",new{url=Url}));f.Dialog.Choice.SetResult(true);await submit;f.Sent.Clear();
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(0,f.Saves);Assert.Contains("WebContentInvalid",Assert.Single(f.Sent));f.Sent.Clear();
+        await f.Receive(f.Request("web.fetchGet",new{operationId=f.Id.ToString("D")}));f.Sent.Clear();
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D"),text="forged body"}));
+        Assert.Equal(0,f.Saves);f.Sent.Clear();
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(1,f.Saves);Assert.Contains("ACCEPTED",Assert.Single(f.Sent));
+        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));string request=f.SaveRequest!;f.Sent.Clear();
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D")}));
+        await f.Receive(f.Request("web.knowledgeState",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(1,f.Saves);Assert.Equal(2,f.SaveReads);Assert.Equal(request,f.SaveRequest);
+        f.Rotate();await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(1,f.Saves);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+    }
+    [Fact] public async Task UnknownWebSaveIsReadOnlyReconciledAndLateSaveCannotAuthorizeNewSession()
+    {
+        using var f=new Fixture();
+        var submit=f.Receive(f.Request("web.fetchSubmit",new{url=Url}));f.Dialog.Choice.SetResult(true);await submit;
+        await f.Receive(f.Request("web.fetchGet",new{operationId=f.Id.ToString("D")}));f.Sent.Clear();
+        f.LoseSave=true;f.LoseSaveRead=true;
+        await f.Receive(f.Request("web.saveKnowledge",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(1,f.Saves);Assert.Equal(1,f.SaveReads);Assert.Contains("UNKNOWN",Assert.Single(f.Sent));f.Sent.Clear();
+        f.LoseSaveRead=false;
+        await f.Receive(f.Request("web.knowledgeState",new{operationId=f.Id.ToString("D")}));
+        Assert.Equal(1,f.Saves);Assert.Equal(2,f.SaveReads);Assert.Contains("ACCEPTED",Assert.Single(f.Sent));
+        using var late=new Fixture();
+        var accepted=late.Receive(late.Request("web.fetchSubmit",new{url=Url}));late.Dialog.Choice.SetResult(true);await accepted;
+        await late.Receive(late.Request("web.fetchGet",new{operationId=late.Id.ToString("D")}));late.Sent.Clear();late.HoldSave=new();
+        var saving=late.Receive(late.Request("web.saveKnowledge",new{operationId=late.Id.ToString("D")}));
+        Assert.Equal(1,late.Saves);late.Rotate();late.HoldSave.SetResult();await saving;
+        Assert.Empty(late.Sent);Assert.Equal(0,late.Knowledge.AuthorizationCount(late.Bridge.SessionId));
     }
     [Fact] public async Task TrustedBridgeNativeApprovalExactSubmissionPollingAndReplacementFormOneAuthorityFlow()
     {

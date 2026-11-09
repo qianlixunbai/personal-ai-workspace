@@ -1,5 +1,7 @@
 # ADR-014 — Controlled Web Access
 
+> 2026-11-09 实施扩展：[网页摘录进入 Knowledge](../engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)新增用户明确保存已完成 Fetch 纯文本的路径。Fetch 本身仍只保留临时结果；保存是独立显式操作，由 Runtime 从已成功且未过期的结果生成带来源和截断说明的 TXT，进入既有 Knowledge，不再联网。WPF 绑定当前会话的成功 operation ID 和单次导入 request ID，未知只读对账。后续本地知识问答保持原合同；没有自动跨领域编排、Search 或 Web Answer。下文为原 W1 设计快照，不把本扩展等同于 W1 整体验收。
+
 > 2026-10-28 阅读说明：以下日期、NOT STARTED 与批准范围保留为原架构快照。后续 W1A Fetch 已实现，W1 整体未关闭；当前实施见 [STATUS](../STATUS.md) 和 [W1A 报告](../milestones/W1A-CLOSING-REPORT.md)，不据此将 Search / Web Answer 宣传为可用。
 
 Status: Accepted

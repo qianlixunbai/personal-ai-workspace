@@ -345,6 +345,25 @@ class RuntimeApiTest {
         assertEquals(400, send("POST", endpoint, json.writeValueAsString(Map.of("operationId", id, "url", "https://example.com/changed")), true).statusCode());
         assertEquals("SUCCEEDED", tree(send("DELETE", endpoint + "/" + id, null, true)).path("state").asString());
         assertEquals(0, CHAT_CALLS.get());
+        String captureEndpoint=endpoint+"/"+id+"/knowledge",request=java.util.UUID.randomUUID().toString();
+        assertEquals(403,browser("POST",captureEndpoint,"{malformed-web-private-canary",client.credential(),client.origin()).statusCode());
+        assertEquals(403,browser("POST",captureEndpoint,"x".repeat(40000),client.credential(),client.origin()).statusCode());
+        assertEquals(400,send("POST",captureEndpoint,json.writeValueAsString(Map.of("requestId",request,"text","forged")),true).statusCode());
+        assertEquals(400,send("POST",captureEndpoint,"{\"requestId\":\""+request+"\",\"requestId\":\""+request+"\"}",true).statusCode());
+        var saved=send("POST",captureEndpoint,json.writeValueAsString(Map.of("requestId",request)),true);assertEquals(200,saved.statusCode());
+        String document=tree(saved).path("documentId").asString();
+        try {
+            long ready=System.nanoTime()+10_000_000_000L;
+            while((!knowledgeStore.job(request).state().equals("READY")||!knowledgeIndex.status().state().equals("READY"))&&System.nanoTime()<ready)Thread.sleep(10);
+            assertEquals("READY",knowledgeStore.job(request).state());
+            assertEquals(document,tree(send("POST",captureEndpoint,json.writeValueAsString(Map.of("requestId",request)),true)).path("documentId").asString());
+            String source=knowledgeStore.preview(document,"1",0).text();assertTrue(source.contains(publicUrl));assertTrue(source.contains("Local fixture"));assertTrue(source.contains("正文已截断：否"));
+            BATCH_OUTPUT.set("{\"answer\":\"synthetic captured source answer\",\"citations\":[\"S1\"]}");startMock();
+            var answer=send("POST","/api/v1/knowledge/answer/tasks",json.writeValueAsString(Map.of("question","What does the captured source say?","query","Local fixture")),true);
+            assertEquals(202,answer.statusCode());var done=pollNative(tree(answer).path("taskId").asString());assertEquals("SUCCEEDED",done.path("status").asString());
+            var citation=done.path("result").path("citations").get(0);assertEquals(document,citation.path("documentId").asString());assertEquals("1",citation.path("sourceRevision").asString());
+            assertTrue(knowledgeStore.preview(document,"1",citation.path("startOffset").asInt()).text().contains("Local fixture"));
+        }finally {knowledgeStore.delete(document,knowledgeStore.get(document).metadataVersion());}
     }
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeStore knowledgeStore;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.knowledge.KnowledgeIngestion knowledgeIngestion;

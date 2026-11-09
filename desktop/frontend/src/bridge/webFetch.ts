@@ -1,7 +1,7 @@
 import { exactFields, isId, isObject, isSafeError } from './contracts'
 import type { SafeError } from './contracts'
 
-export const webFetchMethods = ['web.fetchSubmit', 'web.fetchGet', 'web.fetchCancel'] as const
+export const webFetchMethods = ['web.fetchSubmit', 'web.fetchGet', 'web.fetchCancel', 'web.saveKnowledge', 'web.knowledgeState'] as const
 export const webFetchCodes = ['WebDisabled', 'WebTargetInvalid', 'WebTargetNotPublic', 'WebDnsFailed', 'WebTlsFailed', 'WebTimeout', 'WebRedirectDenied', 'WebResponseTooLarge', 'WebContentTypeUnsupported', 'WebContentInvalid', 'WebFetchFailed', 'WebFetchNotFound'] as const
 export interface WebFetchResult {
   requestedUrl: string; finalUrl: string; hostname: string; title: string; acquiredAt: string

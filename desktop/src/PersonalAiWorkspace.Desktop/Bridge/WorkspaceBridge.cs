@@ -227,7 +227,10 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (WebFetchMethods.Contains(method))
             {
                 if (webFetch is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "公共网络访问暂时不可用。");
-                result = method == "web.fetchSubmit"
+                result = method is "web.saveKnowledge" or "web.knowledgeState"
+                    ? await webFetch.SaveKnowledgeAsync(session, payload.GetProperty("operationId").GetString()!,
+                        knowledge ?? throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Knowledge 暂时不可用。"), method == "web.knowledgeState", cancellation)
+                    : method == "web.fetchSubmit"
                     ? await webFetch.SubmitAsync(session, payload.GetProperty("url").GetString()!, cancellation)
                     : await webFetch.OperationAsync(session, payload.GetProperty("operationId").GetString()!, method == "web.fetchCancel", cancellation);
             }
@@ -393,7 +396,7 @@ internal sealed class WorkspaceBridge : IDisposable
               && (action == "RECOVER" ? Text(payload, "recoveryGeneration", 36, out var generation) && CanonicalId(generation)
                   : payload.GetProperty("recoveryGeneration").ValueKind == JsonValueKind.Null);
         if (method == "web.fetchSubmit") return Fields(payload, "url") && Text(payload, "url", 2048, out _);
-        if (method is "web.fetchGet" or "web.fetchCancel")
+        if (method is "web.fetchGet" or "web.fetchCancel" or "web.saveKnowledge" or "web.knowledgeState")
             return Fields(payload, "operationId") && Text(payload, "operationId", 36, out var webId) && CanonicalId(webId);
         if(KnowledgeMethods.Contains(method))return ValidKnowledgePayload(method,payload);
         if (MemoryMethods.Contains(method)) return ValidMemoryPayload(method, payload);
@@ -459,7 +462,7 @@ internal sealed class WorkspaceBridge : IDisposable
         p.GetProperty("instrumentId").GetString()!, p.GetProperty("cursor").GetString()!, p.GetProperty("size").GetInt32());
     private static FinanceAssetQuery AssetQuery(JsonElement p) => new(p.GetProperty("page").GetInt32(), p.GetProperty("size").GetInt32(), p.GetProperty("type").GetString()!, p.GetProperty("sort").GetString()!);
     internal static readonly IReadOnlySet<string> WebFetchMethods = new HashSet<string>(StringComparer.Ordinal)
-    { "web.fetchSubmit", "web.fetchGet", "web.fetchCancel" };
+    { "web.fetchSubmit", "web.fetchGet", "web.fetchCancel", "web.saveKnowledge", "web.knowledgeState" };
     internal static readonly IReadOnlySet<string> VisionMethods=new HashSet<string>(StringComparer.Ordinal)
     {"vision.readiness","vision.pick","vision.validate","vision.submit","vision.get","vision.cancel","vision.clear"};
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)

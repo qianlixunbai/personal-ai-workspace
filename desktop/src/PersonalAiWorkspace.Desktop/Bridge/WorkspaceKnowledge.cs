@@ -129,6 +129,27 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     internal async Task<KnowledgeJob> ImportStateAsync(string session,string request,CancellationToken ct)
     {Authority known;lock(sync)known=Require(session,request:request);var job=await runtime.GetKnowledgeImportAsync(request,ct);lock(sync)Authorize(session,known,job.DocumentId,request);return job;}
+    internal async Task<KnowledgeImportResult> ImportWebAsync(string session,Guid operation,string request,bool submit,CancellationToken ct)
+    {
+        Authority known;Task<KnowledgeJob> work;
+        lock(sync){
+            known=Require(session);ct.ThrowIfCancellationRequested();
+            if(submit){if(known.Imports.Count>=505)known.Imports.Remove(known.Imports.First());known.Imports.Add(request);}
+            else Require(session,request:request);
+            work=submit?runtime.SaveWebKnowledgeAsync(operation,request,ct):runtime.GetKnowledgeImportAsync(request,ct);
+        }
+        try{
+            var job=await work;
+            lock(sync){Current(session,known);Authorize(session,known,job.DocumentId,request);return new("ACCEPTED",request,job);}
+        }catch(DesktopException e)when(!submit||e.Error==DesktopError.OutcomeUnknown){
+            // Once a save may have reached Runtime, only read the same request. Never replay it.
+            if(submit)try{
+                var job=await runtime.GetKnowledgeImportAsync(request,ct);
+                lock(sync){Current(session,known);Authorize(session,known,job.DocumentId,request);return new("ACCEPTED",request,job);}
+            }catch(DesktopException){}
+            lock(sync){Current(session,known);return new("UNKNOWN",request,null);}
+        }
+    }
     internal async Task<KnowledgeJob> CancelAsync(string session,string id,string request,CancellationToken ct)
     {lock(sync)Require(session,id,request);return await runtime.CancelKnowledgeImportAsync(request,id,ct);}
     internal async Task<object> LifecycleAsync(string session,string id,string version,string method,CancellationToken ct)

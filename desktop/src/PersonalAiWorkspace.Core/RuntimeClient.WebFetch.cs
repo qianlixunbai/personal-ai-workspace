@@ -8,6 +8,23 @@ namespace PersonalAiWorkspace.Core;
 
 public sealed partial class RuntimeClient
 {
+    public async Task<KnowledgeJob> SaveWebKnowledgeAsync(Guid operationId, string requestId, CancellationToken token)
+    {
+        WebId(operationId); KId(requestId);
+        try
+        {
+            using var body = await SendAsync(HttpMethod.Post, $"/api/v1/web/fetches/{operationId:D}/knowledge",
+                JsonSerializer.SerializeToUtf8Bytes(new { requestId }), true, HttpStatusCode.OK, token,
+                endpointErrorMap: (status, root) => String(root, "code").StartsWith("KNOWLEDGE_", StringComparison.Ordinal)
+                    ? KnowledgeError(status, root) : WebHttpError(status, root), maximumResponse: 65536);
+            var job = KJob(body.RootElement);
+            if (job.RequestId != requestId) throw Invalid();
+            return job;
+        }
+        catch (DesktopException e) when (e.Error is DesktopError.RuntimeUnavailable or DesktopError.ClientTimeout or DesktopError.InvalidResponse)
+        { throw new DesktopException(DesktopError.OutcomeUnknown); }
+        catch (InvalidOperationException) { throw new DesktopException(DesktopError.OutcomeUnknown); }
+    }
     public async Task<WebFetchOperation> SubmitWebFetchAsync(Guid operationId, string url, CancellationToken token)
     {
         WebId(operationId);
