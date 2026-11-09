@@ -16,7 +16,7 @@ public static partial class RuntimeLifecycleProbe
     private sealed record WebSourceEvidence(string Url, KnowledgeDocument Document, KnowledgeRevision Revision,
         string TextSha256, KnowledgeSearchHit Reference, string ReferenceText);
     private sealed record WebRestartEvidence(int AppPid, int JavaPid, DateTime JavaStartedUtc, WebSourceEvidence[] Sources);
-    private sealed record WebAnswerEvidence(string Question, string Query, KnowledgeAnswerTask Task, string[] CitationTexts);
+    private sealed record WebAnswerEvidence(string Question, string Query, KnowledgeAnswerTask Task, string[] CitationTexts, KnowledgeSourceScope? Scope = null);
     private sealed record WebAnswersEvidence(int AppPid, int JavaPid, WebAnswerEvidence[] Answers);
     private static readonly string[] WebKnowledgeSources = ["https://example.com/", "https://www.rfc-editor.org/rfc/rfc2606.html"];
     private static readonly JsonSerializerOptions WebKnowledgeJson = new() { WriteIndented = true };
@@ -25,7 +25,9 @@ public static partial class RuntimeLifecycleProbe
     // Fixture evidence is an expected-value oracle only; history is discovered through the product API/UI.
     private static void VerifyWebKnowledgeGui(AssistantApp app, Mmf3AcceptanceLaunch launch, string mode)
     {
-        bool capture = mode == "gui-web-knowledge", citationsOnly = mode == "gui-web-knowledge-citations", passed = false;
+        bool scoped = mode.StartsWith("gui-document-scope", StringComparison.Ordinal);
+        bool capture = mode is "gui-web-knowledge" or "gui-document-scope",
+            citationsOnly = mode is "gui-web-knowledge-citations" or "gui-document-scope-history", passed = false;
         string stage = "STARTUP";
         Process? owned = null;
         var evidenceRoot = Path.Combine(launch.Root, "evidence");
@@ -53,6 +55,7 @@ public static partial class RuntimeLifecycleProbe
                 var shell = app.Workspace!; var core = shell.Browser.CoreWebView2;
                 int fetchSubmissions = 0, saves = 0, answerSubmissions = 0, historyReads = 0;
                 var observedAnswerIds = new HashSet<Guid>();
+                var submittedScopes = new List<KnowledgeSourceScope>();
                 core.WebMessageReceived += (_, message) => {
                     using var item = JsonDocument.Parse(message.WebMessageAsJson);
                     if (!item.RootElement.TryGetProperty("method", out var method)) return;
@@ -60,6 +63,10 @@ public static partial class RuntimeLifecycleProbe
                     if (name == "web.fetchSubmit") fetchSubmissions++;
                     if (name == "web.saveKnowledge") saves++;
                     if (name == "knowledge.answerSubmit") answerSubmissions++;
+                    if (scoped && name == "knowledge.answerSubmit") {
+                        var scope = item.RootElement.GetProperty("payload").GetProperty("scope");
+                        submittedScopes.Add(new(scope.GetProperty("documentId").GetString()!, scope.GetProperty("sourceRevision").GetString()!));
+                    }
                     if (name == "knowledge.answerHistoryGet") historyReads++;
                     if (name == "knowledge.answerGet") observedAnswerIds.Add(Guid.Parse(item.RootElement.GetProperty("payload").GetProperty("taskId").GetString()!));
                 };
@@ -68,6 +75,17 @@ public static partial class RuntimeLifecycleProbe
                 string Json(string value) => JsonSerializer.Serialize(value);
                 string Button(string label) => "[...document.querySelectorAll('button')].find(b=>b.getClientRects().length>0&&!b.disabled&&b.textContent===" + Json(label) + ")";
                 async Task Click(string label) { await Wait(() => Is("Boolean(" + Button(label) + ")")); await Script(Button(label) + ".click()"); }
+                async Task ClickIn(string selector, string label)
+                {
+                    string button = "[...document.querySelectorAll(" + Json(selector + " button") + ")].find(b=>!b.disabled&&b.textContent===" + Json(label) + ")";
+                    await Wait(() => Is("Boolean(" + button + ")")); await Script(button + ".click()");
+                }
+                async Task SelectSource(WebSourceEvidence source)
+                {
+                    string button = "[...document.querySelectorAll('.knowledge-list .memory-select')].find(b=>b.firstChild.textContent===" + Json(source.Document.Title) + ")";
+                    await Wait(() => Is("Boolean(" + button + ")")); await Script(button + ".click()");
+                    await Wait(() => Is("document.getElementById('knowledge-detail-title')?.textContent===" + Json(source.Document.Title)));
+                }
                 async Task Input(string id, string value)
                 {
                     await Wait(() => Is("Boolean(document.getElementById(" + Json(id) + "))"));
@@ -149,6 +167,22 @@ public static partial class RuntimeLifecycleProbe
                     await Snapshot(citationsOnly ? "web-knowledge-third-start-source.png" : "web-knowledge-restarted-source.png");
                     Assert.Equal(0, fetchSubmissions); Assert.Equal(0, saves);
                     Console.WriteLine("WEB_KNOWLEDGE_FULL_PROCESS_RESTART_SOURCE_HASH_REVISION_RANGE_PASS");
+                    if (scoped && !citationsOnly)
+                    {
+                        stage = "EXPLICIT_SEARCH_SCOPE_NO_FALLBACK";
+                        await SelectSource(evidence.Sources[0]);
+                        await ClickIn(".knowledge-search", "限定为当前文档");
+                        await Input("knowledge-search-query", "invalid"); await ClickIn(".knowledge-search", "检索");
+                        await Wait(() => Is("document.querySelector('.knowledge-search h3')?.textContent==='检索结果 · 0'"));
+                        await Snapshot("web-knowledge-scoped-no-match.png");
+                        await SelectSource(evidence.Sources[1]); await Click("刷新详情");
+                        Assert.True(await Is("document.querySelector('.knowledge-search [aria-label=资料范围] p').textContent.includes(" + Json(evidence.Sources[0].Document.Title) + ")"));
+                        Assert.True(await Is("document.getElementById('knowledge-search-query').value==='invalid'"));
+                        await ClickIn(".knowledge-search", "使用全部资料"); await ClickIn(".knowledge-search", "检索");
+                        await Wait(() => Is("document.querySelectorAll('.knowledge-search li').length>0"));
+                        Assert.True(await Is("[...document.querySelectorAll('.knowledge-search li h4')].every(h=>h.textContent===" + Json(evidence.Sources[1].Document.Title) + ")"));
+                        Console.WriteLine("DOCUMENT_SCOPE_EXPLICIT_SEARCH_EMPTY_NO_FALLBACK_DRAFT_REFRESH_PASS");
+                    }
                     if (citationsOnly)
                     {
                         stage = "PERSISTED_ANSWER_HISTORY_WITHOUT_MODEL";
@@ -165,11 +199,17 @@ public static partial class RuntimeLifecycleProbe
                         {
                             var restored = await client.GetKnowledgeAnswerHistoryAsync(answer.Task.TaskId, ct);
                             Assert.Equal(answer.Question, restored.Question); Assert.Equal(answer.Query, restored.Query);
+                            Assert.Equal(answer.Scope, restored.Scope);
                             Assert.Equal(JsonSerializer.Serialize(answer.Task), JsonSerializer.Serialize(restored.Task));
                             Assert.Equal(JsonSerializer.Serialize(answer.Task), JsonSerializer.Serialize(await client.GetKnowledgeAnswerAsync(answer.Task.TaskId, ct)));
                             await Click(history.Items.Single(h => h.TaskId == answer.Task.TaskId.ToString()).Question);
                             await Wait(() => Is("document.getElementById('knowledge-answer-question').value===" + Json(answer.Question) + "&&document.querySelector('.knowledge-answer .knowledge-snippet')?.textContent===" + Json(answer.Task.Result!.Answer)));
                             Assert.True(await Is("document.getElementById('knowledge-answer-query').value===" + Json(answer.Query)));
+                            if (scoped) {
+                                Assert.NotNull(restored.Scope);
+                                Assert.True(await Is("document.querySelector('.knowledge-answer [aria-label=资料范围] p').textContent.includes(" + Json(answer.Task.Result!.Citations[0].Title) + ")"));
+                                Assert.True(await Is("document.querySelector('.knowledge-answer [aria-label=资料范围] p').textContent.includes('源版本 1')"));
+                            }
                             for (int i = 0; i < answer.Task.Result!.Citations.Count; i++)
                             {
                                 var c = answer.Task.Result.Citations[i]; string text = await ReadText(c.DocumentId, c.SourceRevision);
@@ -184,6 +224,7 @@ public static partial class RuntimeLifecycleProbe
                         }
                         Assert.Equal(2, historyReads); Assert.Equal(0, answerSubmissions);
                         Console.WriteLine("WEB_KNOWLEDGE_FULL_PROCESS_HISTORY_UI_EXACT_ANSWERS_CITATIONS_MODEL_OFF_PASS");
+                        if (scoped) Console.WriteLine("DOCUMENT_SCOPE_FULL_PROCESS_HISTORY_ORIGINAL_SCOPE_MODEL_OFF_PASS");
                         stage = "DELETE_HISTORY_PRESERVE_SOURCES";
                         string deletedQuestion = history.Items.Single(h => h.TaskId == previous.Answers[1].Task.TaskId.ToString()).Question;
                         await Script("[...document.querySelectorAll('[aria-label=问答历史] li')].find(li=>li.querySelector('button')?.textContent===" + Json(deletedQuestion) + ").querySelectorAll('button')[1].click()");
@@ -216,10 +257,21 @@ public static partial class RuntimeLifecycleProbe
                         string[] questions = ["According to the Example Domain page, what may this domain be used for? Answer briefly in English.",
                             "According to RFC 2606, which top-level domain is intended for names that are certain to be invalid? Answer briefly in English."];
                         string[] queries = ["permission", "invalid"];
+                        if (scoped) questions = ["根据所选 Example Domain 资料，该域名可以用于什么？请用中文简短回答。",
+                            "根据所选 RFC 2606 资料，哪个顶级域名用于明确无效的域名？请用中文简短回答。"];
                         for (int i = 0; i < questions.Length; i++)
                         {
                             stage = "REAL_MODEL_ANSWER_" + i; observedAnswerIds.Clear();
-                            await Input("knowledge-answer-question", questions[i]); await Input("knowledge-answer-query", queries[i]); await Click("基于知识回答");
+                            await Input("knowledge-answer-question", questions[i]); await Input("knowledge-answer-query", queries[i]);
+                            KnowledgeSourceScope? selected = null;
+                            if (scoped) {
+                                await SelectSource(evidence.Sources[i]); await ClickIn(".knowledge-answer", "限定为当前文档");
+                                selected = new(evidence.Sources[i].Document.DocumentId, evidence.Sources[i].Revision.SourceRevision);
+                                await SelectSource(evidence.Sources[1 - i]); await Click("刷新详情");
+                                Assert.True(await Is("document.getElementById('knowledge-answer-question').value===" + Json(questions[i])));
+                                Assert.True(await Is("document.querySelector('.knowledge-answer [aria-label=资料范围] p').textContent.includes(" + Json(evidence.Sources[i].Document.Title) + ")"));
+                            }
+                            await Click("基于知识回答");
                             await Wait(() => Is("document.querySelector('.knowledge-answer [role=status]')?.textContent==='回答完成'||Boolean(document.querySelector('.knowledge-answer [role=alert]'))"), 90);
                             Assert.True(await Is("document.querySelector('.knowledge-answer [role=status]').textContent==='回答完成'"));
                             var taskId = Assert.Single(observedAnswerIds); var task = await client.GetKnowledgeAnswerAsync(taskId, ct);
@@ -230,10 +282,12 @@ public static partial class RuntimeLifecycleProbe
                                 Assert.Equal(evidence.Sources[i].Document.DocumentId, c.DocumentId); Assert.Equal("1", c.SourceRevision);
                                 string full = await ReadText(c.DocumentId, c.SourceRevision); texts.Add(full[c.StartOffset..c.EndOffset]);
                             }
-                            var answer = new WebAnswerEvidence(questions[i], queries[i], task, texts.ToArray()); answers.Add(answer);
+                            var answer = new WebAnswerEvidence(questions[i], queries[i], task, texts.ToArray(), selected); answers.Add(answer);
                             // Keep actual output before semantic assertions, including any failed result.
                             File.WriteAllText(Path.Combine(evidenceRoot, "web-knowledge-answer-" + i + ".json"), JsonSerializer.Serialize(answer, WebKnowledgeJson));
-                            if (i == 0) Assert.Contains("documentation", task.Result.Answer, StringComparison.OrdinalIgnoreCase);
+                            File.WriteAllText(answerPath, JsonSerializer.Serialize(new WebAnswersEvidence(Environment.ProcessId, owned.Id, answers.ToArray()), WebKnowledgeJson));
+                            if (i == 0 && scoped) Assert.True(task.Result.Answer.Contains("文档", StringComparison.Ordinal) || task.Result.Answer.Contains("documentation", StringComparison.OrdinalIgnoreCase));
+                            else if (i == 0) Assert.Contains("documentation", task.Result.Answer, StringComparison.OrdinalIgnoreCase);
                             else Assert.Contains(".invalid", task.Result.Answer, StringComparison.OrdinalIgnoreCase);
                             await Click("打开引用来源"); await Wait(() => Is("document.querySelector('#knowledge-source-range')?.textContent.includes('引用范围')===true"));
                             await Script("document.querySelector('.knowledge-answer .knowledge-snippet').scrollIntoView({block:'start'})");
@@ -241,6 +295,11 @@ public static partial class RuntimeLifecycleProbe
                         }
                         File.WriteAllText(answerPath, JsonSerializer.Serialize(new WebAnswersEvidence(Environment.ProcessId, owned.Id, answers.ToArray()), WebKnowledgeJson));
                         Assert.Equal(2, answerSubmissions); Assert.Equal(0, fetchSubmissions); Assert.Equal(0, saves);
+                        if (scoped) {
+                            Assert.Equal(answers.Select(a => a.Scope), submittedScopes);
+                            foreach (var answer in answers) Assert.Equal(answer.Scope, (await client.GetKnowledgeAnswerHistoryAsync(answer.Task.TaskId, ct)).Scope);
+                            Console.WriteLine("DOCUMENT_SCOPE_REAL_MODEL_REQUEST_HISTORY_AND_CITATIONS_PASS");
+                        }
                         Console.WriteLine("WEB_KNOWLEDGE_REAL_MODEL_TWO_PUBLIC_ANSWERS_AND_EXACT_CITATIONS_PASS");
                     }
                 }
