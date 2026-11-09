@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { App } from '../app/App'
+import { status } from '../test/fixtures'
+import { memoryItem } from '../test/memoryFixtures'
 import { KnowledgePage } from '../pages/KnowledgePage'
-import { WorkspaceClient } from '../bridge/client'
+import { BridgeError, WorkspaceClient } from '../bridge/client'
 import { KnowledgeService } from '../test/knowledgeFixtures'
 import { isKnowledgeAnswerTask } from '../bridge/knowledgeAnswer'
 import type { KnowledgeAnswerTask } from '../bridge/knowledgeAnswer'
@@ -112,7 +115,11 @@ it('clears loaded history and ignores a late historical answer after session rot
   expect(screen.queryByRole('region', { name: '问答历史' })).toBeNull(); expect(screen.queryByText('<script>grounded answer</script> [link](https://invalid)')).toBeNull()
 })
 const clients: WorkspaceClient[] = []
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
+beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
+})
+afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks(); history.replaceState(null, '', '/') })
 const readerClick = async (name: string) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
 it('keeps an explicit answer scope through source refresh and restores the saved scope without resubmitting', async () => {
   const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
@@ -260,4 +267,81 @@ it('lost K3 submission is OutcomeUnknown without replay and task contracts stay 
   expect(isKnowledgeAnswerTask({ ...failed, sourceDigest: 'private' })).toBe(false)
   expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, phase: 'EXECUTION' } })).toBe(false)
   expect(isKnowledgeAnswerTask({ ...failed, result: answer.result })).toBe(false)
+})
+
+it('hands only the validated answer to an unverified assistant draft and blocks unavailable states', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const receive = vi.fn(), view = render(<KnowledgePage bridge={bridge} enabled visible onMemoryDraft={receive} />)
+  expect(screen.queryByRole('button', { name: '整理为记忆草稿' })).toBeNull()
+  await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: 'UNSENT' } })
+  await readerClick('整理为记忆草稿')
+  expect(receive).toHaveBeenCalledWith(port.answer().result!.answer, 'ASSISTANT')
+  expect(port.sent.some(r => r.method === 'assistant.proposeMemory' || r.method === 'memory.create' || r.method === 'memory.update' || r.method === 'knowledge.answerSubmit')).toBe(false)
+  view.rerender(<KnowledgePage bridge={bridge} enabled={false} visible onMemoryDraft={receive} />)
+  await readerClick('整理为记忆草稿'); expect(receive).toHaveBeenCalledTimes(1)
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible onMemoryDraft={receive} />)
+  port.holdHistory = true; await readerClick('保存的问题 <script>fixture</script>')
+  await readerClick('整理为记忆草稿'); expect(receive).toHaveBeenCalledTimes(1)
+  await act(async () => port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'))
+  expect(screen.queryByRole('button', { name: '整理为记忆草稿' })).toBeNull()
+})
+it('routes live knowledge answers through the real memory editor without saving until explicit Save', async () => {
+  const port = new AnswerService(), bridge = new WorkspaceClient(port); clients.push(bridge)
+  history.replaceState(null, '', '#/knowledge')
+  vi.spyOn(bridge, 'bootstrap').mockResolvedValue(status)
+  vi.spyOn(bridge, 'listMemory').mockResolvedValue({ items: [], total: 0, page: 0, limit: 20 })
+  vi.spyOn(bridge, 'memoryEditorState').mockResolvedValue({ acknowledged: true })
+  const create = vi.spyOn(bridge, 'createMemory').mockImplementation(async draft => ({ ...memoryItem(), ...draft }))
+  const update = vi.spyOn(bridge, 'updateMemory')
+  const propose = vi.spyOn(bridge, 'proposeMemory')
+  render(<App bridge={bridge} />); await act(async () => port.session())
+  fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: 'question' } })
+  fireEvent.change(screen.getByLabelText('回答检索关键词'), { target: { value: 'budget' } })
+  await readerClick('基于知识回答'); await readerClick('整理为记忆草稿')
+  expect(location.hash).toBe('#/memory')
+  expect((screen.getByLabelText('记忆内容') as HTMLTextAreaElement).value).toBe(port.answer().result!.answer)
+  expect(screen.getByText(/助手回复（未经核实）/)).toBeTruthy()
+  expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('记忆标题'), { target: { value: 'Reviewed project note' } })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存' })); fireEvent.click(screen.getByRole('button', { name: '保存' })) })
+  expect(create).toHaveBeenCalledTimes(1)
+  expect(create).toHaveBeenCalledWith({ type: 'PROJECT_NOTE', title: 'Reviewed project note', content: port.answer().result!.answer })
+  expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
+})
+
+it('preserves an existing draft on cancelled handoff, confirms replacement once, and preserves oversize text', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge)
+  history.replaceState(null, '', '#/knowledge')
+  vi.spyOn(bridge, 'bootstrap').mockResolvedValue(status)
+  vi.spyOn(bridge, 'listMemory').mockResolvedValue({ items: [], total: 0, page: 0, limit: 20 })
+  vi.spyOn(bridge, 'memoryEditorState').mockResolvedValue({ acknowledged: true })
+  const create = vi.spyOn(bridge, 'createMemory'), propose = vi.spyOn(bridge, 'proposeMemory')
+  const originalAnswer = port.answer.bind(port)
+  vi.spyOn(port, 'answer').mockImplementation(() => { const task = originalAnswer(); return { ...task, result: { ...task.result!, answer: '中'.repeat(2001) } } })
+  render(<App bridge={bridge} />); await act(async () => port.session())
+  // An existing unsaved editor is mounted while Knowledge is visible.
+  const title = screen.getByLabelText('记忆标题') as HTMLInputElement, content = screen.getByLabelText('记忆内容') as HTMLTextAreaElement
+  fireEvent.change(title, { target: { value: 'Keep title' } }); fireEvent.change(content, { target: { value: 'Keep body' } })
+  await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  await readerClick('整理为记忆草稿')
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '取消' })))
+  expect(location.hash).toBe('#/knowledge'); expect(title.value).toBe('Keep title'); expect(content.value).toBe('Keep body')
+  await readerClick('整理为记忆草稿'); await readerClick('整理为记忆草稿')
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '丢弃并继续' })))
+  expect(location.hash).toBe('#/memory'); expect(title.value).toBe(''); expect(content.value).toBe('中'.repeat(2001))
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('alert').textContent).toContain('原文已完整保留')
+  expect(create).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
+  fireEvent.change(title, { target: { value: 'Reviewed title' } }); fireEvent.change(content, { target: { value: 'Reviewed bounded answer' } })
+  create.mockRejectedValueOnce(new BridgeError('OutcomeUnknown', '保存结果未知，请核对。'))
+  await readerClick('保存'); await readerClick('保存')
+  expect(create).toHaveBeenCalledTimes(1)
+  expect(content.value).toBe('Reviewed bounded answer')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  await act(async () => port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'))
+  expect(content.value).toBe(''); expect(screen.queryByRole('dialog')).toBeNull()
+  expect(create).toHaveBeenCalledTimes(1)
 })

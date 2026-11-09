@@ -6,7 +6,7 @@ import type { KnowledgeScope } from '../bridge/knowledgeScope'
 import type { KnowledgeDocument } from '../bridge/knowledge'
 import { AnswerContent } from './AnswerContent'
 
-export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined }) {
+export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined; onMemoryDraft?: ((content: string, role: 'ASSISTANT') => void) | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -66,6 +66,11 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '删除结果暂时无法确认，请刷新历史记录。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
+  const draftMemory = () => {
+    if (!enabled || !visible || busy || task?.status !== 'SUCCEEDED' || !task.result) return
+    // Use the validated answer, never unsent question edits or rendered Markdown.
+    onMemoryDraft?.(task.result.answer, 'ASSISTANT')
+  }
   const exportAnswer = async () => {
     if (!enabled || !visible || busy || task?.status !== 'SUCCEEDED') return
     const epoch = ++generation.current; setBusy(true); setError(''); setExportNotice('')
@@ -104,6 +109,10 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
       <button disabled={!enabled || busy} onClick={() => { void exportAnswer() }}>导出问答笔记…</button>
       <p className="hint">保存原问题、回答和引用原文为明文 Markdown。以已保存的问答为准，不包含编辑框中的后续修改；仅保存到新文件。这不是完整资料备份。</p>
       {exportNotice && <p role="status">{exportNotice}</p>}
+      {onMemoryDraft && task.status === 'SUCCEEDED' && <div>
+        <button disabled={!enabled || !visible || busy} onClick={draftMemory}>整理为记忆草稿</button>
+        <p className="hint">仅将回答原文送入记忆编辑器，不会自动保存或调用模型。回答未经核实，请先核对引用来源；引用链接不会随草稿保存，后续来源变化也不会自动更新记忆。</p>
+      </div>}
       <h3>引用来源</h3>
       <p className="hint">以下范围为实际引用的原文片段，不一定是完整文档。请打开来源核对适用条件；源预览可能显示额外上下文。</p>
       <ol>{task.result.citations.map(c => <li key={`${c.documentId}/${c.sourceRevision}/${c.startOffset}`}><h4>{c.title}</h4>

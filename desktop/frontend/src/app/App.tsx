@@ -35,7 +35,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   }
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
   const registerDraft = useCallback((receive: MemoryDraftReceiver) => { receiveMemoryDraft.current = receive; return () => { receiveMemoryDraft.current = () => false } }, [])
-  const draftFromConversation = (content: string, role: 'USER' | 'ASSISTANT') => {
+  const draftFromSource = (content: string, role: 'USER' | 'ASSISTANT') => {
     const token = generation.current
     if (!receiveMemoryDraft.current({ ...emptyMemory(), content }, () => {
       if (token === generation.current) navigate('memory')
@@ -132,9 +132,9 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
       <div className="page-content" aria-busy={busy}>
         {(['assistant', 'translate'] as const).map(kind => <div key={kind} hidden={page !== kind}>
           <OperationPage kind={kind} bridge={bridge} enabled={!!status && !busy} status={status} visible={page === kind} /></div>)}
-        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} onMemoryDraft={draftFromConversation} /></div>
+        <div hidden={page !== 'conversations'}><ConversationsPage bridge={bridge} enabled={!!status && !busy} visible={page === 'conversations'} onMemoryDraft={draftFromSource} /></div>
         <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} registerDraft={registerDraft} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
-        <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} /></div>
+        <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} onMemoryDraft={draftFromSource} /></div>
         {page === 'finance' && <FinancePage bridge={bridge} enabled={!!status && !busy} openSettings={() => navigate('settings')} />}
         {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} onRuntimeUnconfirmed={invalidateRuntimeObservation} />}
         {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status" className="operation-status">{notice}</p>}

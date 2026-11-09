@@ -142,8 +142,8 @@ export function MemoryCandidatePanel({ bridge, enabled, draft, role, apply }: {
     catch (problem) { if (token === generation.current) setError(safeError(problem)) }
     finally { if (token === generation.current) setChecking(false) }
   }
-  return <section className="memory-candidate" aria-label="从对话生成记忆候选">
-    <h3>从对话提炼记忆</h3>
+  return <section className="memory-candidate" aria-label="从来源生成记忆候选">
+    <h3>从来源提炼记忆</h3>
     <p className="hint">只将下方编辑器中的当前正文发送给已配置的本机模型，生成一条待审阅候选。来源：{role === 'USER' ? '用户消息' : '助手回复（未经核实）'}。不会自动保存或选为上下文。</p>
     {!prompt && <p className="hint">正文为空、含无效字符或超出本次模型输入预算。请先手动精简正文；原文不会自动截断。</p>}
     <div className="operation-actions"><button type="button" disabled={!enabled || !prompt || active || unknown} onClick={() => { void generate() }}>生成记忆候选</button>
