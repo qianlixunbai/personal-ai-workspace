@@ -18,7 +18,7 @@
 
 ## 如何判断证据
 
-最新 Knowledge 增量：[指定文档范围的检索与问答](engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，范围固定到明确源版本，引用／历史保留范围，失效后拒绝自动扩大；SQLite／HTTP、独占 PG、Native 20/20、前端 13/13 及构建通过。历史 schema 升级与代码回滚的区别见报告，完整桌面和真实回答质量未随本轮验收。
+最新 Knowledge 增量：[指定文档范围的检索与问答](engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，范围固定到明确源版本，引用／历史保留范围，失效后拒绝自动扩大。后续[完整桌面与独立进程重启](engineering/KNOWLEDGE-DOCUMENT-SCOPE-DESKTOP-REPORT.md)已验证范围、草稿、原文引用和关闭模型后的历史恢复；两道真实中文问题中一题完整满足，另一题精确写法／语言要求未满足，保留质量失败。历史 schema 升级与代码回滚的区别仍适用；PG 完整桌面和一般模型质量未验收。
 
 最新产品增量：[跨会话原文查找与轮次定位](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，支持消息摘要／高亮、归档筛选及草稿保护；分层验证后，[真实桌面及隔离 PostgreSQL Store 验证](engineering/CONVERSATION-SEARCH-DESKTOP-REPORT.md)也已通过。完整 AssistantApp、PG 桌面组合和最大容量性能仍待验收。
 
