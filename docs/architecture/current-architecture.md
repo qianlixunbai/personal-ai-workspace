@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-09 [DOCX 正文摘录](../engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)：Native 持有用户选择的只读文件，经 Open XML SDK 有界读取并原生预览确认，将 UTF-8 `.docx.txt` 交给既有 TXT 导入。React 不取得原路径或 Word 二进制，Runtime／schema／备份格式不变，原 Word 文件不作为知识库源保存；引用只定位已保存摘录。
+
 2026-11-09 [同版本整合验收](../engineering/WORKSPACE-INTEGRATED-DESKTOP-REPORT.md)：近期功能分支均已包含于同一提交链，成果保存在 `codex/knowledge-answer-export`，默认 `main` 更新待授权。普通 Runtime 与完整 AssistantApp 的 SQLite 检索、历史读取、精确引用、原生导出和独立进程重开通过。本轮仅扩展既有手工探针，产品架构及安全合同不变；专用模型验收构建依赖测试目录，不能替代普通开发构建。
 
 2026-11-09 增量：[问答笔记导出](../engineering/KNOWLEDGE-ANSWER-EXPORT-REPORT.md)由 Native 按当前会话已授权 taskId 读取持久历史，再逐条获取原版本精确引用；React 只接收 SAVED／CANCELLED，不持有输出路径。固定 Markdown 笔记经 WPF 原生选址保存到新文件，复用现有文件权限保护；无新 Runtime API、schema、模型调用或恢复格式。

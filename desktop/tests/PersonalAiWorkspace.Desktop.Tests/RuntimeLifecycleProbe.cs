@@ -56,7 +56,9 @@ public static partial class RuntimeLifecycleProbe
         bool memory = args.Length == 2 && args[1] is "gui-memory" or "gui-memory-reopen";
         bool integratedNote = args.Length == 3 && args[1] is "gui-integrated-note" or "gui-integrated-note-reopen"
             && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        bool webKnowledge = integratedNote || args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations"
+        bool wordImport = args.Length == 3 && args[1] is "gui-docx-import" or "gui-docx-import-reopen"
+            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
+        bool webKnowledge = wordImport || integratedNote || args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations"
             or "gui-document-scope" or "gui-document-scope-reopen" or "gui-document-scope-history"
             or "gui-knowledge-quality-baseline" or "gui-knowledge-quality" or "gui-knowledge-quality-inspect"
             or "gui-knowledge-quality-unseen" or "gui-knowledge-quality-unseen-inspect";
@@ -74,7 +76,8 @@ public static partial class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (integratedNote) VerifyIntegratedNote(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2]);
+                if (wordImport) VerifyWordImport(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2]);
+                else if (integratedNote) VerifyIntegratedNote(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2]);
                 else if (webKnowledge && args[1].StartsWith("gui-knowledge-quality", StringComparison.Ordinal)) VerifyKnowledgeQuality(app, launch, args[1]);
                 else if (webKnowledge) VerifyWebKnowledgeGui(app, launch, args[1]);
                 else if (memory) VerifyMemoryGui(app, launch, args[1] == "gui-memory-reopen");

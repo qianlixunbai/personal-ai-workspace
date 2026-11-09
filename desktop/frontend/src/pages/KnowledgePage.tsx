@@ -62,7 +62,7 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     const epoch = generation.current
     const result = await bridge.importKnowledge(update && document ? document.documentId : null, update && document ? document.metadataVersion : null)
     if (epoch !== generation.current) return
-    if (result.outcome === 'CANCELLED') { setNotice('已取消文件选择。'); return }
+    if (result.outcome === 'CANCELLED') { setNotice('已取消导入。'); return }
     if (result.outcome === 'UNKNOWN') { setUnknownRequest(result.requestId); setNotice('导入结果暂无法确认；请检查导入状态，文件不会自动重发。'); return }
     setUnknownRequest(null); setStatus('ACTIVE'); setPage(0); await load(result.job!.documentId); await refreshList(); setNotice('导入已接受。')
   })
@@ -97,9 +97,10 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
     <div className="card-heading memory-toolbar knowledge-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
-      <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入 TXT / Markdown</button>
+      <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入文档</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
     <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
+    <p className="hint">支持 UTF-8 TXT、Markdown 和 Word（.docx）正文摘录。Word 导入须先预览确认，原文件、图片与版式不会保存到知识库。</p>
     <details className="advanced-section"><summary>从网页添加资料</summary><KnowledgeWebCapture bridge={bridge} enabled={enabled && !busy} visible={visible} saved={refreshList} open={id => run(async () => { await load(id) })} /></details>
     <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} currentDocument={document} />
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} currentDocument={document} /></details>
@@ -108,7 +109,7 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
         <div className="knowledge-list-tools"><label className="sr-only" htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
           <button disabled={!enabled || busy} onClick={() => { void run(refreshList) }}>刷新列表</button></div>
         <ul tabIndex={0} aria-label="文档列表">{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(async () => { await load(d.documentId) }) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
-        {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入 TXT / Markdown」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
+        {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入文档」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
         <div className="pagination"><button disabled={!enabled || busy || page === 0} onClick={() => setPage(page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || !list || (page + 1) * 20 >= list.total} onClick={() => setPage(page + 1)}>下一页文档</button></div>
       </section>
       <section className="card knowledge-detail" aria-labelledby="knowledge-detail-title"><h2 id="knowledge-detail-title">{document?.title ?? '选择一个文档'}</h2>

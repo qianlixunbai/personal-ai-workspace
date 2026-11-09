@@ -21,12 +21,21 @@ internal sealed class KnowledgeSourceFile(Stream stream,string filename):IDispos
 internal interface IKnowledgeSourceFiles { Task<KnowledgeSourceFile?> PickAsync(CancellationToken token); }
 internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledgeSourceFiles
 {
-    public Task<KnowledgeSourceFile?> PickAsync(CancellationToken token)
+    private int selecting;
+    public async Task<KnowledgeSourceFile?> PickAsync(CancellationToken token)
     {
+        if(Interlocked.CompareExchange(ref selecting,1,0)!=0)throw new DesktopException(DesktopError.QueueFull);
+        try{
         token.ThrowIfCancellationRequested();var window=owner()??throw new DesktopException(DesktopError.KnowledgeFileUnavailable);
-        var picker=new OpenFileDialog{Title="导入 Knowledge · 严格 UTF-8 TXT / Markdown",Filter="TXT / Markdown (*.txt;*.md;*.markdown)|*.txt;*.md;*.markdown",Multiselect=false,CheckFileExists=true};
+        var picker=new OpenFileDialog{Title="导入资料 · TXT / Markdown / Word 正文",Filter="支持的资料 (*.txt;*.md;*.markdown;*.docx)|*.txt;*.md;*.markdown;*.docx|Word 正文摘录 (*.docx)|*.docx",Multiselect=false,CheckFileExists=true};
         bool selected=picker.ShowDialog(window)==true;token.ThrowIfCancellationRequested();window.Activate();
-        return Task.FromResult(selected?Open(picker.FileName):null);
+        if(!selected)return null;
+        if(!picker.FileName.EndsWith(".docx",StringComparison.OrdinalIgnoreCase))return Open(picker.FileName);
+        using var file=OpenRegular(picker.FileName,RuntimeClient.MaximumKnowledgeSourceBytes);
+        var excerpt=await Task.Run(()=>KnowledgeDocx.Read(file,Path.GetFileName(picker.FileName),token));
+        token.ThrowIfCancellationRequested();if(!KnowledgeDocxPreview.Confirm(window,excerpt,token))return null;
+        return new KnowledgeSourceFile(new MemoryStream(new UTF8Encoding(false,true).GetBytes(excerpt.Text),false),excerpt.Filename);
+        }finally{Volatile.Write(ref selecting,0);}
     }
     internal static KnowledgeSourceFile Open(string path)
     {

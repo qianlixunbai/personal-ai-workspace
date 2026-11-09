@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 [Word 正文摘录导入](engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)完成：选择 DOCX → 原生预览确认 → TXT 摘录入库 → 检索／精确原文 → 独立应用重开。复用 MIT Open XML SDK 3.5.1，不改 Runtime／schema、不启动 Office 或模型。桌面聚焦 29/29、前端 14/14，完整桌面最终两次启动通过；失败日志保留。断线后已核实自有资源退出及六份用户文档原样。成果位于 `codex/knowledge-docx-import`，基于已授权快进的 `main @ f5266bf`；未推送，Development-only，复杂 DOCX、原始 Word 保管与一般回答质量边界见报告。
+
 2026-11-09 [分支核对与完整桌面流程](engineering/WORKSPACE-INTEGRATED-DESKTOP-REPORT.md)：全部 22 个本地分支已属于同一提交链，统一版本位于 `codex/knowledge-answer-export`。普通 Runtime／完整 AssistantApp 的限定检索、历史问答、精确引用、原生保存与取消、独立应用重启两轮通过，0 模型调用。自动审批拒绝更新默认分支，`main` 仍为 `184aafd`，待明确授权；没有推送，回滚标签保留。此前特殊 Runtime 因已清理的测试模型目录缺失而启动失败，日志保留，最终改用默认构建并移除临时诊断。六份用户文档、最近工作区选择和既有服务保持不变；新问答、所有页面、PG 桌面、个人恢复和正式发布未随本轮验收，仍为 Development-only。下列记录保留各自时点范围。
 
 2026-11-09 [知识问答笔记导出](engineering/KNOWLEDGE-ANSWER-EXPORT-REPORT.md)新增从成功回答／历史记录导出 Markdown：保留原问题、范围、回答和精确旧版本引用原文，草稿不混入，缺失来源拒绝，原生保存仅创建新文件。复用既有版本读取、原生保存和 .NET 文件接口，无新依赖、schema 或模型调用。前端 14/14、Desktop 25/25、Unicode 边界补验 2/2 及构建通过；完整 Windows 保存对话框、实际数据库组合和发布包未验收。六份用户文档原样保留，仅本地开发；不增加回答质量或个人备份能力结论。

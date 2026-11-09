@@ -49,7 +49,7 @@ it('delete defaults to cancel, Escape returns focus and confirmation sends optim
   expect(port.sent.some(r => r.method === 'knowledge.delete')).toBe(false); await click('物理删除…'); await click('确认删除'); expect(port.deleted).toBe(true)
 })
 it('unknown import never automatically resends and explicit state lookup is read-only', async () => {
-  const port = new KnowledgeService(); port.unknown = true; await setup(port); await click('导入 TXT / Markdown')
+  const port = new KnowledgeService(); port.unknown = true; await setup(port); await click('导入文档')
   expect(port.sent.filter(r => r.method === 'knowledge.import')).toHaveLength(1); await click('检查导入状态'); expect(port.sent.filter(r => r.method === 'knowledge.import')).toHaveLength(1)
   expect(port.sent.find(r => r.method === 'knowledge.importState')?.payload).toEqual({ requestId: port.document.requestId })
 })
