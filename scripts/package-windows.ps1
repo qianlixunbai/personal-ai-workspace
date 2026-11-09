@@ -148,13 +148,30 @@ public static class WorkspacePackagingFileId {
     }
     return [WorkspacePackagingFileId]::Read($Stream.SafeFileHandle)
 }
+function Get-SourcePaths([string]$Root) {
+    # Git's human-readable output quotes non-ASCII paths. Read its NUL-delimited
+    # UTF-8 protocol directly, independent of console encoding and quotePath.
+    $start = [Diagnostics.ProcessStartInfo]::new('git')
+    $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false, $true)
+    foreach ($argument in @('-C', $Root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $errorText = $process.StandardError.ReadToEndAsync()
+        $pathsText = $process.StandardOutput.ReadToEnd()
+        $process.WaitForExit()
+        [void]$errorText.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) { throw 'Cannot identify Runtime sources.' }
+        return $pathsText.Split([char]0, [StringSplitOptions]::RemoveEmptyEntries) | Sort-Object -CaseSensitive -Unique
+    } finally { $process.Dispose() }
+}
 if ($WriteRuntimeIdentity) {
     if ($AuditRuntimeJar -or $RuntimePrebuilt -or $FrontendPrebuilt) { throw 'Mixed Runtime build modes.' }
     $classes = [IO.Path]::GetFullPath($WriteRuntimeIdentity)
     $expectedClasses = Join-Path $repo $(if ($ExpectedRuntimeKind -eq 'default') { 'target/classes' } else { 'target/v1-isolated-development/classes' })
     if ($classes -cne [IO.Path]::GetFullPath($expectedClasses)) { throw 'Unexpected Runtime output directory.' }
-    $paths = @(& git -C $repo ls-files --cached --others --exclude-standard | Sort-Object -CaseSensitive -Unique)
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot identify Runtime sources.' }
+    $paths = @(Get-SourcePaths $repo)
     $sources = @($paths | ForEach-Object { [ordered]@{Path=$_;Sha256=(Get-FileHash -LiteralPath (Join-Path $repo $_)).Hash.ToLowerInvariant()} })
     $sourceBytes = [Text.Encoding]::UTF8.GetBytes(($sources | ConvertTo-Json -Depth 4 -Compress) + "`n")
     $lines = @('format=WORKSPACE_RUNTIME_V1', ('kind=' + $ExpectedRuntimeKind), ('sourceSha=' + [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($sourceBytes)).ToLowerInvariant()))
