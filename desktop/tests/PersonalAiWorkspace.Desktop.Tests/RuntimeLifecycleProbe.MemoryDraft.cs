@@ -32,30 +32,34 @@ public static partial class RuntimeLifecycleProbe
     }
     private static int RunMemoryDraftHost(string id,string mode)
     {
-        if(mode is not ("init" or "save" or "reopen"))return 2;
+        if(mode is not ("init" or "startup" or "save" or "reopen"))return 2;
         var launch=Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument,id]);
         using var pin=Mmf3ProfileState.Pin(id);
         string evidence=Path.Combine(launch.Root,"evidence","memory-draft");Directory.CreateDirectory(evidence);
+        Console.WriteLine(JsonSerializer.Serialize(new{contract="MEMORY_DRAFT_OWNED_PROFILE_V1",id,mode,root=launch.Root,profile=launch.Profile,selectionWriterUsed=false}));
         string stage="runtime", answer="Synthetic violet review rule: confirm the offline preview before saving.\nThis answer is unverified test content.";
         bool passed=false; int? javaPid=null; var methods=new List<string>();
         var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
         using var actions=new MemoryDraftActions(launch);
         using var deadline=new CancellationTokenSource(TimeSpan.FromMinutes(3));var ct=deadline.Token;
         MainWorkspaceWindow? window=null;
+        MemoryDraftStartupTrace? startupTrace=null;
         void Save(string suffix,object value)=>File.WriteAllText(Path.Combine(evidence,mode+suffix),JsonSerializer.Serialize(value,new JsonSerializerOptions{WriteIndented=true}));
         async Task Wait(Func<Task<bool>> condition,int seconds=55){var clock=Stopwatch.StartNew();while(!await condition()){Assert.True(clock.Elapsed.TotalSeconds<seconds,stage);await Task.Delay(100,ct);}}
+        async Task WebViewReady(){stage="webview";Assert.NotNull(window);await Wait(()=>Task.FromResult(window.Host.IsReady||window.Host.StartupFailureCode is not null));Assert.Null(window.Host.StartupFailureCode);}
         app.Startup+=async(_,_)=>{
             try{
-                actions.Owner.Start(ct);
-                if(mode!="init"){window=new(actions,confirmation:()=>true,acceptance:launch);app.MainWindow=window;window.Show();}
+                if(mode!="startup")actions.Owner.Start(ct);
+                if(mode!="init"){window=new(actions,confirmation:()=>true,acceptance:launch);startupTrace=new(window);app.MainWindow=window;window.Show();}
+                // Isolate controller/message-pump diagnosis from Runtime/model/data preparation.
+                if(mode=="startup"){await WebViewReady();passed=true;return;}
                 await Wait(()=>Task.FromResult(actions.Owner.Snapshot().CanQueryStorage));javaPid=actions.Owner.OwnedProcessId;
                 Assert.Equal(0,(await actions.Client.ListKnowledgeAsync("ACTIVE",0,ct)).Total);
                 if(mode=="init") {Assert.Equal(0,(await actions.Client.ListMemoryAsync(new(),ct)).Total);Assert.Equal(0,(await actions.Client.ListKnowledgeAnswersAsync(0,ct)).Total);passed=true;return;}
                 var history=Assert.Single((await actions.Client.ListKnowledgeAnswersAsync(0,ct)).Items);
                 var original=await actions.Client.GetKnowledgeAnswerHistoryAsync(Guid.Parse(history.TaskId),ct);Assert.Equal(answer,original.Task.Result!.Answer);
                 string before=JsonSerializer.Serialize(original);
-                stage="webview";Assert.NotNull(window);
-                await Wait(()=>Task.FromResult(window.Host.IsReady));var core=window.Browser.CoreWebView2;
+                await WebViewReady();var core=window!.Browser.CoreWebView2;
                 core.WebMessageReceived+=(_,message)=>{using var json=JsonDocument.Parse(message.WebMessageAsJson);if(json.RootElement.TryGetProperty("method",out var method))methods.Add(method.GetString()!);};
                 Task<string> Script(string js)=>core.ExecuteScriptAsync(js);
                 async Task<bool> Is(string js)=>await Script(js)=="true";
@@ -94,7 +98,7 @@ public static partial class RuntimeLifecycleProbe
                 try{memoryCount=(await actions.Client.ListMemoryAsync(new(),ct)).Total;}catch{}
                 Save("-failure.json",new{stage,type=e.GetType().Name,message=e.Message,stack=e.StackTrace,runtime=actions.Owner.Snapshot(),memoryCount,methods});
             }
-            finally{if(window is not null)await window.ShutdownAsync();await actions.Owner.StopAsync();Save("-result.json",new{passed,stage,appPid=Environment.ProcessId,javaPid,modelCalls=0,fixtureHost=true,selectionWriterUsed=false});app.Shutdown(passed?0:10);}
+            finally{startupTrace?.Dispose();if(window is not null)await window.ShutdownAsync();await actions.Owner.StopAsync();Save("-result.json",new{passed,stage,appPid=Environment.ProcessId,javaPid,modelCalls=0,fixtureHost=true,selectionWriterUsed=false});app.Shutdown(passed?0:10);}
         };
         app.Run();Console.WriteLine("MEMORY_DRAFT_DESKTOP_"+(passed?"PASS":"STOP")+" "+mode+" "+stage);return passed?0:10;
     }

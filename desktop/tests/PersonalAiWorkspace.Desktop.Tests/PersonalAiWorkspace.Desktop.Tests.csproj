@@ -7,6 +7,14 @@
     <StartupObject Condition="'$(RuntimeLifecycleProbe)' == 'true'">PersonalAiWorkspace.Desktop.Tests.RuntimeLifecycleProbe</StartupObject>
     <DefineConstants Condition="'$(RuntimeLifecycleProbe)' == 'true'">$(DefineConstants);RUNTIME_LIFECYCLE_PROBE</DefineConstants>
   </PropertyGroup>
+  <!-- A probe build without dependencies does not execute Desktop's dynamic content
+       target. Carry the existing secured production assets into this test host. -->
+  <ItemGroup Condition="'$(RuntimeLifecycleProbe)' == 'true'">
+    <Content Include="../../frontend/dist/**/*" Link="MainWorkspace/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="ValidateRuntimeLifecycleProbeAssets" BeforeTargets="PrepareForBuild" Condition="'$(RuntimeLifecycleProbe)' == 'true'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../frontend/dist/workspace-assets.json')" Text="Runtime lifecycle probe requires previously built production frontend assets." />
+  </Target>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
