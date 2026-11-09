@@ -6,6 +6,7 @@ import org.springframework.context.annotation.*;
 
 /** API/security fixture runs the real operation owner with no networking. */
 @TestConfiguration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "web.desktop.fixture", havingValue = "false", matchIfMissing = true)
 public class WebApiFixture {
     @Bean(destroyMethod = "close") Owner webApiFixtureOwner() { return new Owner(); }
     @Bean(destroyMethod = "") @Primary WebFetchService webApiFixtureService(Owner owner) { return owner.service; }

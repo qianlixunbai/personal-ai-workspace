@@ -165,6 +165,33 @@ class RuntimeApiTest {
     }
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
+    @org.springframework.beans.factory.annotation.Autowired org.springframework.context.ApplicationContext application;
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "web.desktop.fixture", matches = "true")
+    void desktopWebKnowledgeWorkflowWithRealFetch() throws Exception {
+        // Explicit opt-in only: the fake Web bean is absent, so normal DNS/TLS/SSRF controls execute.
+        assertFalse(Boolean.getBoolean("memory.desktop.fixture"));
+        var owners = application.getBeansOfType(io.github.qianlixunbai.workspace.web.WebFetchService.class);
+        assertEquals(java.util.Set.of("webFetchService"), owners.keySet());
+        startMock(); // Only private health metadata; this workflow must never generate model output.
+        Path evidence = io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence");
+        Path ready = evidence.resolve("desktop-ready.json"), done = evidence.resolve("desktop-done");
+        assertFalse(Files.exists(ready)); assertFalse(Files.exists(done)); token();
+        Path writing = evidence.resolve("desktop-ready-writing.json");
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(writing);
+        Files.writeString(writing, json.writeValueAsString(Map.of("port", port, "tokenFile", TOKEN.toString(),
+                "syntheticProvider", true, "realWeb", true)));
+        Files.move(writing, ready, StandardCopyOption.ATOMIC_MOVE);
+        long deadline = System.nanoTime() + Duration.ofSeconds(220).toNanos();
+        while (!Files.exists(done) && System.nanoTime() < deadline) Thread.sleep(100);
+        assertTrue(Files.exists(done), "Desktop fixture timed out");
+        assertEquals("PASS", Files.readString(done));
+        assertEquals(0, CHAT_CALLS.get()); assertEquals(0, PROBE_CALLS.get());
+        assertEquals(2, knowledgeStore.list("ACTIVE", 0).total());
+        assertEquals("READY", knowledgeIndex.status().state());
+        assertFalse(knowledgeIndex.search("documentation", 10).hits().isEmpty());
+        System.out.println("DESKTOP_REAL_WEB_HTTP_SQLITE_VERIFIED_MODEL_CALLS_ZERO");
+    }
     @Test
     @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "memory.desktop.fixture", matches = "true")
     void desktopMemoryWorkflowWithSyntheticProvider() throws Exception {

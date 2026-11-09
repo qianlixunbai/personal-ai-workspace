@@ -9,10 +9,12 @@ public final class MemoryDesktopIntegrationProbe {
     public static void main(String[] args) throws Exception {
         WindowsNativeGate.admit();
         WindowsNativeGate.profileRoot();
-        if (!Boolean.getBoolean("memory.desktop.fixture")) throw new IllegalStateException();
+        boolean web = Boolean.getBoolean("web.desktop.fixture");
+        if (!web && !Boolean.getBoolean("memory.desktop.fixture")) throw new IllegalStateException();
         System.out.println("MEMORY_DESKTOP_NATIVE_ADMITTED");
         var request = LauncherDiscoveryRequestBuilder.request()
-                .selectors(selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest", "desktopMemoryWorkflowWithSyntheticProvider"))
+                .selectors(selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest",
+                        web ? "desktopWebKnowledgeWorkflowWithRealFetch" : "desktopMemoryWorkflowWithSyntheticProvider"))
                 .configurationParameter("junit.jupiter.execution.parallel.enabled", "false").build();
         var summary = new SummaryGeneratingListener();
         try (var session = LauncherFactory.openSession()) { session.getLauncher().execute(request, summary); }

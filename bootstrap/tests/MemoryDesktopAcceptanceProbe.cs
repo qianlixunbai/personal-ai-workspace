@@ -11,19 +11,23 @@ using PersonalAiWorkspace.Desktop.Bridge;
 
 // Explicit manual fixture, run from the ordinary desktop host. Real bundled React,
 // WebView2, native bridge, RuntimeClient, HTTP and SQLite; synthetic provider only.
+// Optional fifth argument "web-knowledge" exercises two fixed public URLs, with no model generation.
 // No production source, identity check, default endpoint or user configuration changes.
 internal static class MemoryDesktopAcceptanceProbe
 {
     private const string Source = "For project Amber, I prefer short bullet points.";
     private static string stage = "INPUT";
     private static string output = "";
+    private static bool web;
+    private static readonly string[] PublicSources = ["https://example.com/", "https://www.rfc-editor.org/rfc/rfc2606.html"];
     private static void Check(bool value) { if (!value) throw new InvalidOperationException(stage); }
     private static string Json(string value) => JsonSerializer.Serialize(value);
 
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 4) return 2;
+        if (args.Length != 4 && (args.Length != 5 || args[4] != "web-knowledge")) return 2;
+        web = args.Length == 5;
         Process? child = null;
         try
         {
@@ -44,7 +48,7 @@ internal static class MemoryDesktopAcceptanceProbe
                 "-Djna.boot.library.path=" + Path.Combine(root, "jna-5.17.0-win32-x86-64"), "-Djna.boot.library.name=jnidispatch",
                 "-Djna.nosys=true", "-Djna.noclasspath=true", "-Djna.nounpack=true",
                 "-Djava.io.tmpdir=" + Path.Combine(root, "evidence"), "-Djna.tmpdir=" + Path.Combine(root, "evidence"),
-                "-Dmemory.desktop.fixture=true", "-cp", classpath, "MemoryDesktopIntegrationProbe" }) start.ArgumentList.Add(option);
+                web ? "-Dweb.desktop.fixture=true" : "-Dmemory.desktop.fixture=true", "-cp", classpath, "MemoryDesktopIntegrationProbe" }) start.ArgumentList.Add(option);
             using var job = RuntimeProcessJob.Create();
             child = Process.Start(start) ?? throw new IOException(); job.Assign(child);
             File.WriteAllText(Path.Combine(output, "owned-child.json"), JsonSerializer.Serialize(new { pid = child.Id, startedUtc = child.StartTime.ToUniversalTime(), java, synthetic = true }));
@@ -60,9 +64,11 @@ internal static class MemoryDesktopAcceptanceProbe
             int port = fixture.RootElement.GetProperty("port").GetInt32();
             string tokenFile = Path.GetFullPath(fixture.RootElement.GetProperty("tokenFile").GetString()!);
             Check(fixture.RootElement.GetProperty("syntheticProvider").GetBoolean() && port is > 1024 and <= 65535);
+            if (web) Check(fixture.RootElement.GetProperty("realWeb").GetBoolean());
             Check(tokenFile.StartsWith(Path.Combine(root, "evidence", "api-memory-"), StringComparison.OrdinalIgnoreCase)
                 && tokenFile.EndsWith(Path.Combine("credentials", "client-token"), StringComparison.Ordinal));
-            using var client = new RuntimeClient(new FixtureTransport(port), () => File.ReadAllText(tokenFile).Trim());
+            var transport = new FixtureTransport(port);
+            using var client = new RuntimeClient(transport, () => File.ReadAllText(tokenFile).Trim());
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             using var actions = new NativeActions(client);
             MainWorkspaceWindow? shell = null;
@@ -73,6 +79,26 @@ internal static class MemoryDesktopAcceptanceProbe
                 using var watchdog = timeout.Token.Register(() => app.Dispatcher.BeginInvoke(() => { shell?.DisposeImmediately(); app.Shutdown(10); }));
                 try
                 {
+                    if (web)
+                    {
+                        shell = NewWindow(actions, launch); shell.Show();
+                        await VerifyWebWorkflow(shell, client, transport, timeout.Token);
+                        stage = "WEB_REOPEN";
+                        await shell.ShutdownAsync(); Check(shell.Host.CleanupPassed);
+                        shell = NewWindow(actions, launch); shell.Show(); await Ready(shell, timeout.Token);
+                        await Script(shell, "location.hash='#/knowledge'");
+                        await Wait(() => ScriptIs(shell, "document.querySelectorAll('.knowledge-list .memory-select').length===2"), timeout.Token);
+                        await Script(shell, "document.querySelector('.knowledge-list .memory-select').click()");
+                        await Click(shell, "预览源文本", timeout.Token);
+                        await Wait(() => ScriptIs(shell, "document.querySelector('[aria-label=纯文本预览] pre')?.textContent.includes('请求网址：https://')===true"), timeout.Token);
+                        await Input(shell, "knowledge-search-query", "documentation", timeout.Token); await Click(shell, "检索", timeout.Token);
+                        await Wait(() => ScriptIs(shell, "document.querySelectorAll('.knowledge-search li').length>0"), timeout.Token);
+                        Check(transport.FetchPosts == 2 && transport.SavePosts == 2);
+                        await Capture(shell, "reopened-knowledge.png");
+                        Pass("WEB_REOPEN_SEARCH_PERSISTED_SOURCES_WITHOUT_REFETCH");
+                    }
+                    else
+                    {
                     stage = "SEED";
                     Check((await client.ListMemoryAsync(new(), timeout.Token)).Total == 0);
                     var seed = await client.CreateMemoryAsync(new(MemoryType.PREFERENCE, "Original Amber preference", Source), timeout.Token);
@@ -99,6 +125,7 @@ internal static class MemoryDesktopAcceptanceProbe
                     Check((await client.RecallMemoryAsync("Amber", null, timeout.Token)).Total == 0);
                     Pass("UI_ARCHIVE_RESTORE_DELETE_REAL_RECALL");
                     await Capture(shell, "final-memory.png");
+                    }
                     await shell.ShutdownAsync(); Check(shell.Host.CleanupPassed);
                     result = 0;
                 }
@@ -116,6 +143,8 @@ internal static class MemoryDesktopAcceptanceProbe
                 finally
                 {
                     shell?.DisposeImmediately();
+                    if (web) File.WriteAllText(Path.Combine(output, "web-operation-counts.json"), JsonSerializer.Serialize(new {
+                        fetchPosts = transport.FetchPosts, savePosts = transport.SavePosts, searchPosts = transport.SearchPosts, sources = PublicSources }));
                     using var done = new FileStream(Path.Combine(root, "evidence", "desktop-done"), FileMode.CreateNew);
                     using var writer = new StreamWriter(done); writer.Write(result == 0 ? "PASS" : "FAIL");
                     app.Shutdown(result);
@@ -126,11 +155,12 @@ internal static class MemoryDesktopAcceptanceProbe
             Check(child.WaitForExit(12000)); Task.WhenAll(log, errors).GetAwaiter().GetResult();
             Check(result == 0 && child.ExitCode == 0);
             string trace = Path.Combine(root, "evidence", "desktop-provider-requests.json");
-            File.Copy(trace, Path.Combine(output, "synthetic-provider-requests.json"));
+            if (!web) File.Copy(trace, Path.Combine(output, "synthetic-provider-requests.json"));
             File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(new {
                 passed = true, syntheticProvider = true, realModel = false, nativeAdmitted = true, javaExited = child.HasExited,
-                childPid = child.Id, hotkeysInstalled = false, existingServicesTouched = false }));
-            Pass("MEMORY_DESKTOP_ACCEPTANCE"); return 0;
+                childPid = child.Id, hotkeysInstalled = false, existingServicesTouched = false, realWeb = web,
+                fetchPosts = transport.FetchPosts, savePosts = transport.SavePosts, searchPosts = transport.SearchPosts }));
+            Pass(web ? "WEB_KNOWLEDGE_DESKTOP_ACCEPTANCE" : "MEMORY_DESKTOP_ACCEPTANCE"); return 0;
         }
         catch (Exception error) { Console.WriteLine("DESKTOP_STOP " + stage + " " + error.GetType().Name); return 10; }
         finally
@@ -146,9 +176,77 @@ internal static class MemoryDesktopAcceptanceProbe
 
     private static MainWorkspaceWindow NewWindow(NativeActions actions, Mmf3AcceptanceLaunch launch)
     {
-        var shell = new MainWorkspaceWindow(actions, acceptance: launch) { Title = "Memory acceptance · synthetic data / provider",
+        var shell = new MainWorkspaceWindow(actions, acceptance: launch) { Title = web ? "Web Knowledge acceptance · isolated public sources / no model" : "Memory acceptance · synthetic data / provider",
             ShowActivated = false, Width = 1280, Height = 860 };
         actions.Window = shell; return shell;
+    }
+    private static async Task VerifyWebWorkflow(MainWorkspaceWindow shell, RuntimeClient client, FixtureTransport transport, CancellationToken ct)
+    {
+        await Ready(shell, ct); await Script(shell, "location.hash='#/knowledge'");
+        await Wait(() => ScriptIs(shell, "document.querySelector('.knowledge-web-capture')!==null"), ct);
+        await Script(shell, "document.querySelector('.knowledge-web-capture').closest('details').querySelector('summary').click()");
+        Check((await client.ListKnowledgeAsync("ACTIVE", 0, ct)).Total == 0);
+        stage = "WEB_NATIVE_CANCEL";
+        await Input(shell, "knowledge-web-url", PublicSources[0], ct);
+        await ConfirmWeb(shell, PublicSources[0], false, ct);
+        await Wait(() => ScriptIs(shell, "document.body.innerText.includes('已取消网页获取')"), ct);
+        Check(transport.FetchPosts == 0 && transport.SavePosts == 0);
+        Pass("REAL_NATIVE_CANCEL_DEFAULT_NO_FETCH_NO_SAVE");
+        for (int i = 0; i < PublicSources.Length; i++)
+        {
+            stage = "WEB_PUBLIC_FETCH_" + i;
+            await Input(shell, "knowledge-web-url", PublicSources[i], ct);
+            await ConfirmWeb(shell, PublicSources[i], true, ct);
+            await Wait(() => ScriptIs(shell, "document.querySelector('.knowledge-web-capture pre')!==null||Boolean(document.querySelector('.knowledge-web-capture [role=alert]'))"), ct, 35);
+            Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture pre')!==null"));
+            Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture pre').textContent.includes(" + Json(i == 0 ? "documentation" : "Reserved Top Level DNS Names") + ")"));
+            if (i == 0) Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture h3').textContent==='Example Domain'"));
+            Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture').textContent.includes(" + Json(PublicSources[i]) + ")"));
+            Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture pre').children.length===0"));
+            Check((await client.ListKnowledgeAsync("ACTIVE", 0, ct)).Total == i);
+            Check(transport.FetchPosts == i + 1 && transport.SavePosts == i);
+            if (i == 1) Check(await ScriptIs(shell, "document.querySelector('.knowledge-web-capture').textContent.includes('正文已截断')"));
+            await Script(shell, "document.querySelector('.knowledge-web-capture h3').scrollIntoView({block:'start'})");
+            await Capture(shell, "public-preview-" + i + ".png");
+            stage = "WEB_EXPLICIT_SAVE_" + i;
+            await Click(shell, "保存网页摘录…", ct);
+            await Wait(() => ScriptIs(shell, "Boolean(document.querySelector('dialog[open]'))"), ct);
+            Check(await ScriptIs(shell, "document.activeElement?.textContent==='取消'"));
+            if (i == 0)
+            {
+                await Click(shell, "取消", ct); Check(transport.SavePosts == 0);
+                await Click(shell, "保存网页摘录…", ct);
+            }
+            await Click(shell, "确认保存摘录", ct);
+            await Wait(() => ScriptIs(shell, "Boolean(" + Button("打开已保存资料") + ")"), ct);
+            Check(transport.FetchPosts == i + 1 && transport.SavePosts == i + 1);
+            Check((await client.ListKnowledgeAsync("ACTIVE", 0, ct)).Total == i + 1);
+            await Click(shell, "打开已保存资料", ct); await Click(shell, "预览源文本", ct);
+            await Wait(() => ScriptIs(shell, "document.querySelector('[aria-label=纯文本预览] pre')?.textContent.includes(" + Json(PublicSources[i]) + ")===true"), ct);
+            Check(await ScriptIs(shell, "document.querySelector('[aria-label=纯文本预览] pre').textContent.includes('正文已截断：" + (i == 1 ? "是，内容不完整" : "否") + "')"));
+            await Wait(async () => (await client.KnowledgeSearchStatusAsync(ct)).State == "READY", ct);
+            await Input(shell, "knowledge-search-query", i == 0 ? "documentation" : "reserved", ct); await Click(shell, "检索", ct);
+            await Wait(() => ScriptIs(shell, "document.querySelectorAll('.knowledge-search li').length>0"), ct);
+            await Click(shell, "打开此位置", ct);
+            await Wait(() => ScriptIs(shell, "document.querySelector('[aria-label=纯文本预览] mark')!==null"), ct);
+            await Script(shell, "document.querySelector('[aria-label=纯文本预览]').scrollIntoView({block:'center'})");
+            await Capture(shell, "saved-search-source-" + i + ".png");
+            Pass("PUBLIC_SOURCE_" + i + "_FETCH_PREVIEW_SAVE_SEARCH_EXACT_SOURCE");
+        }
+    }
+    private static async Task ConfirmWeb(MainWorkspaceWindow shell, string url, bool allow, CancellationToken ct)
+    {
+        await Wait(() => ScriptIs(shell, "Boolean(" + Button("获取并预览网页") + ")"), ct);
+        var clicking = Script(shell, Button("获取并预览网页") + ".click()");
+        await Wait(() => Task.FromResult(Application.Current.Windows.OfType<WebFetchConfirmationWindow>().Any(w => w.Owner == shell && w.IsVisible)), ct);
+        var dialog = Application.Current.Windows.OfType<WebFetchConfirmationWindow>().Single(w => w.Owner == shell && w.IsVisible);
+        var panel = (StackPanel)dialog.Content;
+        Check(panel.Children.OfType<TextBox>().Select(t => t.Text).SequenceEqual([new Uri(url).Host, url]));
+        var buttons = panel.Children.OfType<StackPanel>().Single().Children.OfType<Button>().ToArray();
+        Check(buttons[0].IsDefault && buttons[0].IsCancel && !buttons[1].IsDefault);
+        Check(buttons[0].Content.ToString() == "Cancel / 取消" && buttons[1].Content.ToString() == "Allow once / 允许本次访问");
+        buttons[allow ? 1 : 0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        await clicking.WaitAsync(ct);
     }
     private static async Task VerifyWorkflow(MainWorkspaceWindow shell, NativeActions actions, RuntimeClient client, MemoryItem seed, CancellationToken ct)
     {
@@ -231,8 +329,8 @@ internal static class MemoryDesktopAcceptanceProbe
     }
     private static async Task Ready(MainWorkspaceWindow shell, CancellationToken ct)
     { stage = "WEBVIEW_READY"; await Wait(() => Task.FromResult(shell.Host.IsReady || shell.Host.StartupFailureCode is not null), ct); Check(shell.Host.IsReady); }
-    private static async Task Wait(Func<Task<bool>> condition, CancellationToken ct)
-    { var clock = Stopwatch.StartNew(); while (!await condition()) { Check(clock.Elapsed < TimeSpan.FromSeconds(25)); await Task.Delay(100, ct); } }
+    private static async Task Wait(Func<Task<bool>> condition, CancellationToken ct, int seconds = 25)
+    { var clock = Stopwatch.StartNew(); while (!await condition()) { Check(clock.Elapsed < TimeSpan.FromSeconds(seconds)); await Task.Delay(100, ct); } }
     private static Task<string> Script(MainWorkspaceWindow shell, string code) => shell.Browser.CoreWebView2.ExecuteScriptAsync(code);
     private static async Task<bool> ScriptIs(MainWorkspaceWindow shell, string code) => await Script(shell, code) == "true";
     private static string Button(string label, bool enabled = true) => "[...document.querySelectorAll('button')].find(b=>b.getClientRects().length>0&&b.textContent===" + Json(label) + (enabled ? "&&!b.disabled" : "") + ")";
@@ -249,11 +347,34 @@ internal static class MemoryDesktopAcceptanceProbe
 
     private sealed class FixtureTransport(int port) : DelegatingHandler(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false })
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        internal int FetchPosts, SavePosts, SearchPosts;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Check(request.RequestUri!.Scheme == "http" && request.RequestUri.Host == "127.0.0.1" && request.RequestUri.Port == 8765);
+            if (web && request.Method == HttpMethod.Post)
+            {
+                if (request.RequestUri.AbsolutePath == "/api/v1/web/fetches")
+                {
+                    using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                    string url = body.RootElement.GetProperty("url").GetString()!;
+                    Check(FetchPosts < PublicSources.Length && url == PublicSources[FetchPosts]);
+                    FetchPosts++;
+                }
+                else if (request.RequestUri.AbsolutePath == "/api/v1/knowledge/search")
+                {
+                    // Local read-only search uses POST to keep query text out of URLs.
+                    using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                    Check(SearchPosts < 3 && body.RootElement.GetProperty("query").GetString() is "documentation" or "reserved");
+                    SearchPosts++;
+                }
+                else
+                {
+                    Check(request.RequestUri.AbsolutePath.StartsWith("/api/v1/web/fetches/") && request.RequestUri.AbsolutePath.EndsWith("/knowledge") && SavePosts < 2);
+                    SavePosts++;
+                }
+            }
             request.RequestUri = new UriBuilder(request.RequestUri) { Port = port }.Uri;
-            return base.SendAsync(request, ct);
+            return await base.SendAsync(request, ct);
         }
     }
     private sealed class NativeActions : IWorkspaceNativeActions, IDisposable
@@ -264,10 +385,13 @@ internal static class MemoryDesktopAcceptanceProbe
         public WorkspaceOperations Operations { get; }
         public WorkspaceConversations Conversations { get; }
         public WorkspaceMemory Memory { get; }
+        public WorkspaceKnowledge Knowledge { get; }
+        public WorkspaceWebFetch WebFetch { get; }
         internal NativeActions(RuntimeClient client)
         {
             this.client = client; Operations = new(client, Select, _ => throw new InvalidOperationException("No clipboard in fixture"));
             Conversations = new(client, Select); Memory = new(client);
+            Knowledge = new(client, new NoSourcePicker()); WebFetch = new(client, new NativeWebFetchConfirmation(() => Window));
         }
         private Task<IReadOnlyList<MemorySelection>?> Select(CancellationToken ct)
         {
@@ -284,4 +408,6 @@ internal static class MemoryDesktopAcceptanceProbe
         public Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken ct) => throw new InvalidOperationException("Unrelated native action unavailable in fixture");
         public void Dispose() { Picker?.Close(); Operations.Dispose(); }
     }
+    private sealed class NoSourcePicker : IKnowledgeSourceFiles
+    { public Task<KnowledgeSourceFile?> PickAsync(CancellationToken token) => throw new InvalidOperationException("No personal file access in fixture"); }
 }

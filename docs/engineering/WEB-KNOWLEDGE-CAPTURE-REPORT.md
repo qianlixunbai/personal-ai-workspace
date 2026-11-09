@@ -1,5 +1,7 @@
 # 网页摘录进入 Knowledge：显式保存与本地复用
 
+> 同日后续：[真实网页与桌面验证](WEB-KNOWLEDGE-LIVE-ACCEPTANCE.md)已通过两个公开样本的实际 WPF／WebView／原生确认／生产 Fetch／SQLite 获取、保存、检索与窗口重开。下文“真实网站／实际 WPF／WebView 尚未验证”保留本功能首次提交时点；真实模型、完整应用启动、正式包与 PostgreSQL 的未验收边界继续保留。
+
 2026-11-09。基线 `fda9562fcd83f346a100d8b079695c8c13d84333`，分支 `codex/web-knowledge-capture`。本轮按“完整核心闭环”推进资料获取与使用，仅本地提交；仍为 Development-only。
 
 ## 交付的用户流程
