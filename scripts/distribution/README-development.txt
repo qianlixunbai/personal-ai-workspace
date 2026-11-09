@@ -3,6 +3,14 @@ Personal AI Workspace - Windows 原生安全开发包
 DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
 此 ZIP 使用经本机审查的构建和工具链，不是安装器或正式发布。
 
+本包包含：持续对话、显式记忆、资料检索与知识问答历史，以及以下完整资料流程：
+知识库“导入文档” -> 选择 TXT / Markdown / DOCX -> Word 正文预览并明确确认 ->
+检索与回看原文 -> “导入新源版本” -> “对比源版本” -> 打开增删对应的旧版／新版原文。
+已有成功知识问答可从历史打开，再“导出问答笔记…”保存为新的 Markdown 文件。
+Word 保存经确认的文字摘录，不保存原文件、图片或版式；公式等不支持内容会拒绝。
+原 Word 文件应另行保管。对比超限时请分别预览；旧问答引用不会自动换成新版。
+上述导入、阅读、对比和已有历史导出不需要模型运行。生成新回答仍需单独通过本机模型准入。
+
 完整解压到当前 Windows 用户自己的应用目录，双击 PersonalAiWorkspace.Desktop.exe。
 首次无参数启动显示选择器；此后默认打开上次成功通过原生认证与存储检查的 Profile。
 选择“否”打开已有开发工作区；文件夹选择器默认打开当前 Windows 上下文的 Profiles 目录，选择原 Profile 文件夹。
@@ -22,6 +30,8 @@ Windows 打包宿主可能将 AppData 写入重定向到宿主包的实际数据
 Java 21/JAR/JNA、.NET Desktop 和 React 资产随包提供。
 NativeBootstrap 仍要求本机 Microsoft.NETCore.App 10.0.x x64；界面要求 Microsoft Edge WebView2 Evergreen。
 此包不下载或安装先决组件，不提供更新、卸载、发布者签名或正式来源授信。
+仅替换应用文件不能恢复用户数据。个人 Profile 恢复尚未开放，现有问答笔记也不是完整备份。
+先在合成资料中确认所需流程；不要把旧包的模型 Ready 或验收结论当成本次状态。
 
 用一次合成流程验收：创建 Profile -> 设置页“重新检查存储”显示 SQLite/原生认证 ->
 关闭并退出客户端 -> 确认该次 Java 子进程退出 -> 无参数重启，确认自动打开原 Profile，核对状态保留。

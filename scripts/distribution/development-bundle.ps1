@@ -4,8 +4,10 @@ Set-StrictMode -Version Latest
 function Assert-DevelopmentBootstrap([string]$Directory) {
     $helper = Join-Path $Directory 'PersonalAiWorkspace.NativeBootstrap'
     foreach ($pin in @(
-        @('.exe', '0e7fc8765413aff6568b788023e705897721c1cb3365b7996b75a3188edfcbe4'),
-        @('.dll', 'e434a3653f23774dc5b1a98b253ed413504d4e91db137aab14f41a5464deb50d'),
+        # Match the already-reviewed WindowsNativeGate BOOTSTRAP constants (2d417c6).
+        # These are source-controlled pins, never computed from the candidate binary.
+        @('.exe', '816d253e5f707b1813eabc25a29a8ee5ba3da366fcf27e679cc7964a6c2abcf2'),
+        @('.dll', '4a8536eca1f7c85e893003c3079a7bd3a7e4dffd6f9bcfbf37cd3b8bad6134fb'),
         @('.deps.json', '27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885'),
         @('.runtimeconfig.json', '3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6'))) {
         $path = $helper + $pin[0]
