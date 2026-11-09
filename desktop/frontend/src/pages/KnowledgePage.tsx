@@ -7,6 +7,7 @@ import { KnowledgeAnswer } from '../components/KnowledgeAnswer'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { KnowledgeSourcePreview, type KnowledgeSourceTarget } from '../components/KnowledgeSourcePreview'
 import { KnowledgeWebCapture } from '../components/KnowledgeWebCapture'
+import { KnowledgeVersionComparison } from '../components/KnowledgeVersionComparison'
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean }) {
@@ -86,6 +87,13 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
     else { await (action === 'archive' ? bridge.archiveKnowledge(id, document.metadataVersion) : bridge.restoreKnowledge(id, document.metadataVersion)); if (epoch !== generation.current) return; await load(id); setNotice(action === 'archive' ? '文档已归档。' : '文档已恢复。') }
     await refreshList()
   })
+  const openComparedSource = (sourceRevision: string, offset: number) => run(async () => {
+    if (!enabled || !visible || !document) return
+    const epoch = generation.current, pick = selection.current
+    const result = await bridge.previewKnowledge(document.documentId, sourceRevision, offset)
+    if (epoch !== generation.current || pick !== selection.current) return
+    setRevision(sourceRevision); setSourceTarget(null); offsets.current = []; setPreview(result)
+  })
   const openHit = (hit: Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'>, kind: KnowledgeSourceTarget['kind'] = 'search') => run(async () => {
     if (!enabled || !visible) return
     const epoch = generation.current, pick = selection.current + 1; const loaded = await load(hit.documentId)
@@ -121,6 +129,7 @@ export function KnowledgePage({ bridge, enabled, visible }: { bridge: WorkspaceC
           <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
             <button disabled={!enabled || busy || !revision} onClick={() => { void showPreview(0, 'reset') }}>预览源文本</button></div>
           {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible} hasPrevious={offsets.current.length > 0} navigate={showPreview} />}
+          <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId) }) }}>刷新详情</button>
             <button disabled={!enabled || busy || processing || stale || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
             <button disabled={!enabled || busy || processing || stale} onClick={() => { void mutation(document.status === 'ACTIVE' ? 'archive' : 'restore') }}>{document.status === 'ACTIVE' ? '归档' : '恢复'}</button>

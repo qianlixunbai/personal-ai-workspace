@@ -15,7 +15,7 @@ public static partial class RuntimeLifecycleProbe
 {
     [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,EntryPoint="GetWindowTextW")]
     private static extern int WordDialogTitle(IntPtr window,StringBuilder text,int size);
-    private static void VerifyWordImport(AssistantApp app,Mmf3AcceptanceLaunch launch,bool reopen,string run)
+    private static void VerifyWordImport(AssistantApp app,Mmf3AcceptanceLaunch launch,bool reopen,string run,bool compareVersions=false)
     {
         string root=Path.Combine(launch.Root,"evidence","docx-import-"+run),stage="STARTUP",prefix=reopen?"reopen":"first";
         if(!reopen){Assert.False(Directory.Exists(root));Directory.CreateDirectory(root);}else Assert.True(Directory.Exists(root));
@@ -38,14 +38,20 @@ public static partial class RuntimeLifecycleProbe
                 async Task Click(string selector,string label){string expression="[...document.querySelectorAll("+Json(selector+" button")+")].find(b=>b.getClientRects().length>0&&!b.disabled&&b.textContent==="+Json(label)+")";await Wait(()=>Is("Boolean("+expression+")"));await Script(expression+".click()");}
                 async Task Input(string id,string value)=>_ = await Script("(()=>{const e=document.getElementById("+Json(id)+");Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,"+Json(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
                 string name="synthetic-word-"+run+".docx",path=Path.Combine(root,name);
-                if(!reopen)File.WriteAllBytes(path,KnowledgeDocxTests.Fixture());
+                string body=KnowledgeDocxTests.Body+(compareVersions?"<w:p><w:r><w:t>"+string.Concat(Enumerable.Repeat("长资料对比演练😀，",650))+"</w:t></w:r></w:p>":"");
+                if(!reopen)File.WriteAllBytes(path,KnowledgeDocxTests.Fixture(body));
                 byte[] original=File.ReadAllBytes(path);using var input=new MemoryStream(original,false);
                 var expected=KnowledgeDocx.Read(input,name,ct);string hash=Convert.ToHexString(SHA256.HashData(original));
+                string updatedPath=Path.Combine(root,"updated-"+name);KnowledgeDocx.Excerpt? updated=null;
+                if(compareVersions){
+                    if(!reopen)File.WriteAllBytes(updatedPath,KnowledgeDocxTests.Fixture(body.Replace("--inspect=on","--inspect=review",StringComparison.Ordinal)));
+                    using var updatedStream=File.OpenRead(updatedPath);updated=KnowledgeDocx.Read(updatedStream,Path.GetFileName(updatedPath),ct);
+                }
                 await Script("location.hash='#/knowledge'");await Wait(()=>Is("Boolean(document.querySelector('.knowledge-list'))"));
                 string id;string[] priorIds;
                 if(!reopen){
                     var before=await client.ListKnowledgeAsync("ACTIVE",0,ct);Assert.Equal(3,before.Total);priorIds=before.Items.Select(d=>d.DocumentId).Order().ToArray();
-                    async Task DriveDialogs(bool cancel,string? rejectedFile=null){
+                    async Task DriveDialogs(bool cancel,string? rejectedFile=null,bool update=false){
                         uint thread=GetCurrentThreadId();IntPtr owner=new WindowInteropHelper(shell).Handle;
                         await Task.Run(async()=>{
                             async Task<AutomationElement> FindWindow(string title){
@@ -72,20 +78,20 @@ public static partial class RuntimeLifecycleProbe
                                 Assert.True(clock.Elapsed.TotalSeconds<25,"File name edit unavailable");if(filename is null)await Task.Delay(100,ct);
                             }
                             Save("-dialog-stage.json",new{stage="SET_FILENAME",cancel});
-                            filename.SetValue(rejectedFile??path);
+                            filename.SetValue(rejectedFile??(update?updatedPath:path));
                             SendMessage((IntPtr)picker.Current.NativeWindowHandle,0x0111,1,0);
                             if(rejectedFile is not null)return;
                             Save("-dialog-stage.json",new{stage="FIND_PREVIEW",cancel});
                             var preview=await FindWindow("确认导入 Word 正文摘录");
                             var text=preview.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Word 正文摘录预览"));Assert.NotNull(text);
-                            Assert.Equal(expected.Text,((ValuePattern)text.GetCurrentPattern(ValuePattern.Pattern)).Current.Value.Replace("\r\n","\n",StringComparison.Ordinal));
+                            Assert.Equal(update?updated!.Text:expected.Text,((ValuePattern)text.GetCurrentPattern(ValuePattern.Pattern)).Current.Value.Replace("\r\n","\n",StringComparison.Ordinal));
                             var button=preview.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button),cancel?new PropertyCondition(AutomationElement.NameProperty,"取消"):new PropertyCondition(AutomationElement.AutomationIdProperty,"ConfirmWordExcerpt")));Assert.NotNull(button);
                             Save("-dialog-stage.json",new{stage="INVOKE_PREVIEW",cancel});
                             ((InvokePattern)button.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
                         },ct);
                     }
                     stage="REJECT_UNSUPPORTED_CONTENT";
-                    foreach(var sample in new[]{("math",KnowledgeDocxTests.MathBody),("symbol",KnowledgeDocxTests.SymbolBody)}){
+                    foreach(var sample in compareVersions?Array.Empty<(string,string)>():new[]{("math",KnowledgeDocxTests.MathBody),("symbol",KnowledgeDocxTests.SymbolBody)}){
                         string rejected=Path.Combine(root,"unsupported-"+sample.Item1+".docx");byte[] bytes=KnowledgeDocxTests.Fixture(sample.Item2);File.WriteAllBytes(rejected,bytes);
                         var selection=DriveDialogs(false,rejected);var click=Click(".knowledge-toolbar","导入文档");await selection;await click;
                         await Wait(()=>Is("document.querySelector('.knowledge-page [role=alert]')?.textContent.includes('公式、字体符号')===true"));
@@ -99,6 +105,14 @@ public static partial class RuntimeLifecycleProbe
                     await Wait(async()=> (await client.ListKnowledgeAsync("ACTIVE",0,ct)).Total==4);
                     id=Assert.Single((await client.ListKnowledgeAsync("ACTIVE",0,ct)).Items,d=>d.Title==expected.Filename).DocumentId;
                     Save("-owned-document.json",new{id,priorIds,hash});
+                    if(compareVersions){
+                        stage="IMPORT_NEW_VERSION";
+                        await Wait(async()=> (await client.GetKnowledgeAsync(id,ct)).Document.ProcessingState=="READY");
+                        await Wait(()=>Is("document.getElementById('knowledge-detail-title')?.textContent==="+Json(expected.Filename)));
+                        await Click(".knowledge-detail","刷新详情");
+                        var update=DriveDialogs(false,update:true);opening=Click(".knowledge-detail","导入新源版本");await update;await opening;
+                        await Wait(async()=> (await client.GetKnowledgeAsync(id,ct)).Document.CurrentReadyRevision=="2");
+                    }
                 }else{
                     using var previous=JsonDocument.Parse(File.ReadAllText(Path.Combine(root,"first-owned-document.json")));
                     id=previous.RootElement.GetProperty("id").GetString()!;priorIds=previous.RootElement.GetProperty("priorIds").EnumerateArray().Select(x=>x.GetString()!).ToArray();
@@ -106,8 +120,10 @@ public static partial class RuntimeLifecycleProbe
                 }
                 stage="READY_SEARCH_PREVIEW";
                 await Wait(async()=> (await client.GetKnowledgeAsync(id,ct)).Document.ProcessingState=="READY");
-                var detail=await client.GetKnowledgeAsync(id,ct);Assert.Equal(expected.Filename,detail.Document.Title);Assert.Equal("TXT",Assert.Single(detail.Revisions).SourceType);
-                var source=await client.PreviewKnowledgeAsync(id,"1",0,ct);Assert.Equal(expected.Text,source.Text);
+                var detail=await client.GetKnowledgeAsync(id,ct);Assert.Equal(expected.Filename,detail.Document.Title);Assert.Equal(compareVersions?2:1,detail.Revisions.Length);Assert.All(detail.Revisions,r=>Assert.Equal("TXT",r.SourceType));
+                async Task<string> ReadVersion(string revision){string text="";int offset=0;do{var chunk=await client.PreviewKnowledgeAsync(id,revision,offset,ct);text+=chunk.Text;if(chunk.NextOffset is null)return text;offset=chunk.NextOffset.Value;}while(text.Length<100000);throw new InvalidOperationException("Fixture bound");}
+                string sourceText=await ReadVersion("1");Assert.Equal(expected.Text,sourceText);
+                if(compareVersions)Assert.Equal(updated!.Text,await ReadVersion("2"));
                 await Wait(()=>Is("[...document.querySelectorAll('.knowledge-list .memory-select')].some(b=>b.firstChild.textContent==="+Json(expected.Filename)+")"));
                 await Script("[...document.querySelectorAll('.knowledge-list .memory-select')].find(b=>b.firstChild.textContent==="+Json(expected.Filename)+").click()");
                 await Wait(()=>Is("document.getElementById('knowledge-detail-title')?.textContent==="+Json(expected.Filename)));
@@ -116,6 +132,18 @@ public static partial class RuntimeLifecycleProbe
                 await Wait(()=>Is("document.querySelector('[aria-label=纯文本预览] mark')?.textContent.includes('NerionDOCX')===true"));
                 await Script("document.querySelector('[aria-label=纯文本预览]').scrollIntoView({block:'center'})");
                 using(var image=new FileStream(Path.Combine(root,prefix+"-source.png"),FileMode.CreateNew))await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,image);
+                if(compareVersions){
+                    stage="COMPARE_VERSIONS";
+                    await Script("document.querySelector('.knowledge-comparison').open=true");await Click(".knowledge-comparison","开始对比");
+                    await Wait(()=>Is("Boolean(document.querySelector('[aria-label=版本对比结果]'))"));
+                    Assert.True(await Is("[...document.querySelectorAll('.knowledge-comparison-change pre')].some(e=>e.textContent.includes('--inspect=on'))&&[...document.querySelectorAll('.knowledge-comparison-change pre')].some(e=>e.textContent.includes('--inspect=review'))"));
+                    await Script("document.querySelector('[aria-label=版本对比结果]').scrollIntoView({block:'start'})");
+                    using(var image=new FileStream(Path.Combine(root,prefix+"-comparison.png"),FileMode.CreateNew))await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,image);
+                    await Script("[...document.querySelectorAll('.knowledge-comparison-change')].find(e=>e.querySelector('pre').textContent.includes('--inspect=on')).querySelector('button').click()");
+                    await Wait(()=>Is("document.querySelector('[aria-label=纯文本预览] .knowledge-location')?.textContent.includes('源版本 1')===true&&document.querySelector('[aria-label=纯文本预览] pre')?.textContent.includes('--inspect=on')===true"));
+                    Assert.True(await Is("Boolean(document.querySelector('[aria-label=版本对比结果]'))"));
+                    Save("-comparison.json",new{passed=true,reopen,oldRevision="1",newRevision="2",oldTextUnits=sourceText.Length,newTextUnits=updated!.Text.Length,oldTextSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceText))),newTextSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(updated.Text))),oldSourceNavigation=true});
+                }
                 if(reopen){
                     stage="REMOVE_OWNED_FIXTURE";Assert.DoesNotContain(id,priorIds);
                     await Click(".knowledge-detail","物理删除…");await Click("dialog","确认删除");
@@ -125,7 +153,7 @@ public static partial class RuntimeLifecycleProbe
                 Assert.Equal(hash,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
                 Assert.Equal(3,(await client.ListKnowledgeAnswersAsync(0,ct)).Total);
                 Assert.DoesNotContain(methods,m=>m is "knowledge.answerSubmit" or "models.mutate" or "web.fetchSubmit");
-                Save("-result.json",new{passed=true,reopen,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.Text))),unsupportedSamplesRejected=reopen?0:2,cancelVerified=!reopen,confirmationVerified=!reopen,ownFixtureRemoved=reopen,methods,modelCalls=0});
+                Save("-result.json",new{passed=true,reopen,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceText))),unsupportedSamplesRejected=reopen||compareVersions?0:2,cancelVerified=!reopen,confirmationVerified=!reopen,compareVersions,ownFixtureRemoved=reopen,methods,modelCalls=0});
                 passed=true;Console.WriteLine("DOCX_DESKTOP_PASS "+prefix);
             }catch(Exception error){Save("-failure.json",new{stage,type=error.GetType().Name,message=error.Message,frames=new StackTrace(error,true).GetFrames().Select(f=>new{method=f.GetMethod()?.Name,line=f.GetFileLineNumber()})});Console.WriteLine("DOCX_DESKTOP_STOP "+stage);}
             finally{try{await app.ExitAsync();if(java is not null)Assert.True(java.WaitForExit(10000));}catch{passed=false;app.Shutdown(10);}finally{java?.Dispose();}}

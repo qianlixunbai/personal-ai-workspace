@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-09：[文档版本对比与 Word 更新闭环](engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)提供逐行增删和对应版本原文入口；含 jsdiff 许可／安全／维护评估、必要前端检查及完整桌面重开证据，读取超限不会显示部分结果。
+
 2026-11-09：[Word 正文导入与实际桌面验收](engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)新增 DOCX 预览确认后导入文字摘录，支持既有检索、原文和重开；附开源许可评估、格式限制、失败记录和断线后的收尾核对。原 Word 文件与图片版式不进入知识库备份。
 
 2026-11-09：[统一版本与完整桌面验证](engineering/WORKSPACE-INTEGRATED-DESKTOP-REPORT.md)核实近期功能已在同一提交链，普通 Runtime 下的实际保存对话框、引用笔记和完整应用重启均通过。成果在现有功能分支；默认 `main` 更新被自动审批拒绝，尚未执行，附分支关系、失败记录及当前可用范围。
