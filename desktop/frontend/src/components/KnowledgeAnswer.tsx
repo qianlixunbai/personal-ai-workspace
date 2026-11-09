@@ -4,6 +4,7 @@ import type { KnowledgeAnswerCitation, KnowledgeAnswerTask, KnowledgeAnswerHisto
 import { KnowledgeScopePicker } from './KnowledgeScopePicker'
 import type { KnowledgeScope } from '../bridge/knowledgeScope'
 import type { KnowledgeDocument } from '../bridge/knowledge'
+import { AnswerContent } from './AnswerContent'
 
 export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
@@ -99,7 +100,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
     <p role="status" aria-live="polite">{busy ? '正在处理…' : task?.status === 'QUEUED' ? '回答任务已排队' : task?.status === 'RUNNING' ? '正在生成回答' : task?.status === 'SUCCEEDED' ? '回答完成' : task?.status === 'CANCELLED' ? '回答已取消' : task?.status === 'TIMED_OUT' ? '回答超时' : task?.status === 'FAILED' ? '回答失败' : ''}</p>
     {active && <button disabled={!enabled || busy} onClick={() => { void cancel() }}>取消知识回答</button>}
     {(error || task?.error) && <p role="alert" className="error">{error || task?.error?.message}</p>}
-    {task?.result && <><p className="knowledge-snippet" style={{ whiteSpace: 'pre-wrap' }}>{task.result.answer}</p>
+    {task?.result && <><AnswerContent key={task.taskId} text={task.result.answer} />
       <button disabled={!enabled || busy} onClick={() => { void exportAnswer() }}>导出问答笔记…</button>
       <p className="hint">保存原问题、回答和引用原文为明文 Markdown。以已保存的问答为准，不包含编辑框中的后续修改；仅保存到新文件。这不是完整资料备份。</p>
       {exportNotice && <p role="status">{exportNotice}</p>}

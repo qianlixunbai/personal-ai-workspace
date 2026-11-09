@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { OperationView, SelectedMemory, ShellStatus } from '../bridge/contracts'
 import { VisionPanel } from '../components/VisionPanel'
+import { AnswerContent } from '../components/AnswerContent'
 
 type Phase = 'Idle' | 'Validating' | 'Submitting' | 'Queued' | 'Running' | 'Cancelling' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut' | 'OutcomeUnknown'
 const terminal = (operation: OperationView) => !['QUEUED', 'RUNNING'].includes(operation.status)
@@ -171,7 +172,8 @@ export function OperationPage({ kind, bridge, enabled, visible = true }: {
     </section>
     {operation?.status === 'SUCCEEDED' && <section className="card result-card" aria-labelledby={`${kind}-result-title`}>
       <div className="card-heading"><h2 id={`${kind}-result-title`}>结果</h2><button className="secondary" onClick={() => { void copy() }} disabled={copying}>复制结果</button></div>
-      <pre className="operation-result" dir="auto">{operation.result}</pre><p role="status">{notice}</p></section>}
+      {kind === 'translate' ? <pre className="operation-result" dir="auto">{operation.result}</pre>
+        : <AnswerContent key={operation.operationId} text={operation.result ?? ''} />}<p role="status">{notice}</p></section>}
     {kind === 'assistant' && <details className="advanced-section"><summary>图片问答 · 验收暂停</summary><VisionPanel bridge={bridge} enabled={enabled && visible} /></details>}
   </>
 }

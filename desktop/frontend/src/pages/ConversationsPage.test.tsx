@@ -14,6 +14,7 @@ class Service extends Port {
   state: TurnStatus = 'SUCCEEDED'
   lifecycle: ConversationStatus = 'ACTIVE'
   title = conversation.title
+  answerText: string | null = null
   error: string | null = null
   holdGet = false
   holdSend = false
@@ -42,7 +43,11 @@ class Service extends Port {
       } else if (method === 'conversations.list') {
         const page = Number(payload.page)
         result = { items: Array.from({ length: Math.min(10, Math.max(0, this.total - page * 10)) }, (_, i) => ({ ...item, id: uuid(page * 10 + i + 1), status: payload.status, title: `Synthetic conversation ${page * 10 + i + 1}` })), total: this.total, page, limit: 10 }
-      } else if (method === 'conversations.get') result = { ...history(this.turns, Number(payload.page), this.state), conversation: { ...item, id: payload.conversationId } }
+      } else if (method === 'conversations.get') {
+        const detail = history(this.turns, Number(payload.page), this.state)
+        if (this.answerText) for (const turn of detail.turns) if (turn.assistantMessage) turn.assistantMessage.content = this.answerText
+        result = { ...detail, conversation: { ...item, id: payload.conversationId } }
+      }
       else if (method === 'memory.get') {
         if (this.memoryError) { this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: this.memoryError, message: `Safe ${this.memoryError}` } }); return }
         result = this.referencedMemory
@@ -74,6 +79,24 @@ async function setup(config: Partial<Service> = {}) {
   return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+it('reads a stored formatted answer without changing its memory draft or an unsent question', async () => {
+  const markdown = '# 会话结论\n\n**仅供当前项目**\n\n- 保留原文'
+  const port = Object.assign(new Service(), { answerText: markdown }), bridge = new WorkspaceClient(port)
+  clients.push(bridge); port.session()
+  const onMemoryDraft = vi.fn()
+  render(<ConversationsPage bridge={bridge} enabled visible onMemoryDraft={onMemoryDraft} />)
+  const input = await screen.findByLabelText('会话消息') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: '未发送问题' } })
+  expect(await screen.findByRole('heading', { name: '会话结论' })).toBeTruthy()
+  const before = port.sent.length
+  await click('查看原文')
+  expect(screen.getByLabelText('回答原文').textContent).toBe(markdown)
+  fireEvent.click(screen.getAllByRole('button', { name: '保存为记忆草稿' })[1]!)
+  expect(onMemoryDraft).toHaveBeenCalledWith(markdown, 'ASSISTANT')
+  await click('返回排版')
+  expect(input.value).toBe('未发送问题')
+  expect(port.sent).toHaveLength(before)
+})
 it('searches literal messages and opens the exact older turn while protecting unsent drafts', async () => {
   const { port, input } = await setup({ turns: 23, total: 2 })
   fireEvent.click(screen.getByText('查找历史消息'))

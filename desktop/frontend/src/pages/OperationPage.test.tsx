@@ -23,6 +23,24 @@ async function choose(port: Port) {
   expect(port.sent.at(-1)?.method).toBe('assistant.selectMemories')
   await reply(port, { changed: true, selectedMemoryRefs: [memory] })
 }
+it('formats an assistant answer while copying the original operation and leaves translation literal', async () => {
+  const { port, input } = page()
+  const markdown = '# 合成回答\n\n**完整原文**\n\n```txt\n  保留缩进\n```'
+  fireEvent.change(input, { target: { value: '合成问题' } }); fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+  await reply(port, { ...result, result: markdown })
+  expect(screen.getByRole('heading', { name: '合成回答' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '查看原文' }))
+  expect(screen.getByLabelText('回答原文').textContent).toBe(markdown)
+  fireEvent.click(screen.getByRole('button', { name: '复制结果' }))
+  expect(port.sent.at(-1)).toMatchObject({ method: 'operations.copyResult', payload: { operationId: id } })
+  await reply(port, { copied: true })
+  cleanup()
+  const translation = page('translate')
+  fireEvent.change(translation.input, { target: { value: '合成翻译原文' } }); fireEvent.click(screen.getByRole('button', { name: '开始翻译' }))
+  await reply(translation.port, { ...result, result: markdown })
+  expect(document.querySelector('.operation-result')?.textContent).toBe(markdown)
+  expect(screen.queryByRole('button', { name: '查看原文' })).toBeNull()
+})
 it('displays explicit title as text, keeps decimal revision exact, clears selection immediately after admission and next Ask has zero memories', async () => {
   const { port, input } = page(); await choose(port)
   expect(screen.getByText(memory.title).querySelector('img')).toBeNull()

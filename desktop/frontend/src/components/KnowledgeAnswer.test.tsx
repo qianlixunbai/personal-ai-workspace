@@ -64,9 +64,14 @@ class HistoryService extends AnswerService {
 }
 it('exports the admitted saved answer by ID, handles native cancel and unknown outcome, and drops late session results', async () => {
   const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const saved = port.answer()
+  const markdown = '# 保存的回答\n\n| 项目 | 范围 |\n| --- | --- |\n| 合成资料 | 版本一 |'
+  vi.spyOn(port, 'answer').mockReturnValue({ ...saved, result: { ...saved.result!, answer: markdown } })
   render(<KnowledgePage bridge={bridge} enabled visible />)
   expect(screen.queryByRole('button', { name: '导出问答笔记…' })).toBeNull()
   await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  expect(screen.getByRole('table').textContent).toContain('版本一')
+  await readerClick('查看原文'); expect(screen.getByLabelText('回答原文').textContent).toBe(markdown)
   fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: '未提交的新草稿' } })
   await readerClick('导出问答笔记…')
   expect(port.sent.find(r => r.method === 'knowledge.answerExport')?.payload).toEqual({ taskId: port.answer().taskId })

@@ -5,6 +5,7 @@ import { isTitle } from '../bridge/conversations'
 import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
 import { ConversationMemoryPreview } from '../components/ConversationMemoryPreview'
 import { ConversationSearch } from '../components/ConversationSearch'
+import { AnswerContent } from '../components/AnswerContent'
 import type { ConversationSearchHit } from '../bridge/conversations'
 
 const failureText: Record<FailureCode, string> = {
@@ -318,7 +319,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
           tabIndex={-1} data-turn-sequence={turn.sequence} aria-labelledby={`conversation-turn-${turn.turnId}`}>
           <h3 id={`conversation-turn-${turn.turnId}`}>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
           {onMemoryDraft && turn.status !== 'PENDING' && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.userMessage.messageId)}>保存为记忆草稿</button>}
-          {turn.assistantMessage && <><h4>助手</h4><pre dir="auto">{turn.assistantMessage.content}</pre>
+          {turn.assistantMessage && <><h4>助手</h4><AnswerContent key={turn.assistantMessage.messageId} text={turn.assistantMessage.content} />
             {onMemoryDraft && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.assistantMessage!.messageId)}>保存为记忆草稿</button>}</>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
