@@ -54,7 +54,8 @@ public static partial class RuntimeLifecycleProbe
         bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
             && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
         bool memory = args.Length == 2 && args[1] is "gui-memory" or "gui-memory-reopen";
-        if (!postgresql && !memory && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-x1" or "gui-x1-native" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation" or "gui-finance-next2" or "gui-finance-next3" or "gui-finance-next4" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob" or "gui-finance-next8" or "gui-finance-next8-bob" or "gui-finance-next8-ui" or "gui-finance-next9" or "gui-finance-next9-bob" or "gui-finance-next10" or "gui-finance-next10-bob"))) return 2;
+        bool webKnowledge = args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations";
+        if (!postgresql && !memory && !webKnowledge && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-x1" or "gui-x1-native" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation" or "gui-finance-next2" or "gui-finance-next3" or "gui-finance-next4" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob" or "gui-finance-next8" or "gui-finance-next8-bob" or "gui-finance-next8-ui" or "gui-finance-next9" or "gui-finance-next9-bob" or "gui-finance-next10" or "gui-finance-next10-bob"))) return 2;
         string phase = "PROFILE_PARSE";
         try
         {
@@ -68,7 +69,8 @@ public static partial class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (memory) VerifyMemoryGui(app, launch, args[1] == "gui-memory-reopen");
+                if (webKnowledge) VerifyWebKnowledgeGui(app, launch, args[1]);
+                else if (memory) VerifyMemoryGui(app, launch, args[1] == "gui-memory-reopen");
                 else if (args.Length == 2 && args[1] is "gui-x1" or "gui-x1-native") VerifyX1Gui(app, args[1] == "gui-x1-native");
                 else if (args.Length == 2 && args[1] is "gui-finance-next2" or "gui-finance-next4") VerifyFinanceNextGui(app, launch);
                 else if (args.Length == 2 && args[1].StartsWith("gui-finance", StringComparison.Ordinal)) VerifyFinanceGui(app, launch, args[1]);

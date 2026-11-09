@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 完整重启及真实知识回答验收：完整 AssistantApp／WebView／DevelopmentRuntimeOwner／SQLite 连续三次启动通过，重启后两份公开网页资料的元数据、源版本、全文哈希和检索／引用目标保持一致。隔离 Ollama 0.40.1／Qwen3.5 4B 的两个英文问题与精确引用通过；实际另有一次模型准入调用。旧知识问答任务重启后为 TaskNotFound，历史回答没有持久恢复。修复构建脚本误读 Git 中文文件名的问题，原有六份未跟踪文件保持不变；所有自有进程、端口及临时模型副本已清理。正式安装包、PostgreSQL、中文长资料及一般模型质量仍未验收；[实际证据与限制](engineering/WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)。仅本地提交，仍为 Development-only。下列较早记录保留各自时点的验证范围。
+
 2026-11-09 网页知识真实桌面验证：实际 WPF／WebView／原生确认／生产公共 Fetch／HTTP／SQLite 对 Example Domain 与 RFC 2606 HTML 的获取、明确保存、检索、原文高亮及窗口重开通过。成功轮次仅 2 次获取、2 次保存、3 次本地搜索，模型生成与 probe 调用为 0；自有进程和端口已退出。扩展既有 opt-in 验收工具，修正三个工具断言／白名单问题，产品实现未变；默认无公网核心回归 2/2 通过。不是完整 AssistantApp／正式桌面包、JVM 重启、真实模型质量或 PostgreSQL 验收；[实际证据、失败记录和边界](engineering/WEB-KNOWLEDGE-LIVE-ACCEPTANCE.md)。仍为 Development-only，仅本地提交。
 
 2026-11-09 网页资料闭环：Knowledge 可输入公共 HTTPS 网址，经既有原生逐次确认获取、预览后明确保存；Runtime 将有界文本、来源网址、时间和截断说明存入既有 Knowledge，复用重开、检索、问答引用与独立备份恢复。原生端绑定一次保存请求，未知只读对账，不重发保存或访问网页。直接复用现有 jsoup 1.23.2／安全 Fetch／Knowledge，无新依赖或 schema。隔离 Java 2/2、.NET 4/4、前端 11/11 及编译构建通过；真实网站、真实模型、完整桌面／WebView 和 PostgreSQL 路径未验收。仅本地提交，W1 整体未关闭，仍为 Development-only；[交付、复用评估、首次失败和限制](engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)。

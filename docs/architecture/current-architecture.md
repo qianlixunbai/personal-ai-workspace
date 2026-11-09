@@ -77,6 +77,8 @@ Native 首次绑定采用 CREATE_NEW，服务端每次核对 dataset / ACTIVE �
 
 ## Web 与 Vision
 
+2026-11-09 [完整应用重启与真实问答验收](../engineering/WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)确认：网页文档及不可变源版本在实际 AssistantApp／JVM 重启后持久保留，词法检索可重建，旧引用的版本／范围仍指向相同文本。Knowledge 回答 task 为内存状态，重启后旧 ID 返回 TaskNotFound；测试保存的引用证据不构成产品问答历史。两个公开英文样本经隔离 Qwen3.5 4B 实际回答及来源核对通过，未扩大 schema、授权边界或正式发布范围。以下较早记录保留当时的验证层级。
+
 **W1A Fetch**：原生逐次确认 → Runtime 独立目标验证 → HTTPS / DNS pinning / SSRF 限制 → 有界抽取与临时结果。它不是自动联网 Agent；Search / Web Answer 尚不作为已交付产品能力。见 [ADR-014](../ADR/ADR-014-controlled-web-access.md) 与 [W1A closing](../milestones/W1A-CLOSING-REPORT.md)。
 
 2026-11-09 [显式网页资料保存](../engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)：当前会话已核对成功的 Fetch 结果，可经用户再次明确保存，由 Runtime 按冻结结果生成带来源／时间／截断说明的 TXT，进入原 `KnowledgeIngestion`、不可变源版本和派生索引。WPF 分配一次性导入 request ID；React 仅传已授权的 operation ID，未知只读对账。保存不再联网、不调用模型；后续检索／知识问答／独立备份复用已有合同，无新 schema，不授予普通 Ask 自动联网权限。合成 SQLite／HTTP 场景通过，真实网站、模型、完整桌面和 PostgreSQL 尚未随该增量验收。

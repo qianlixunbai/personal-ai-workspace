@@ -1,5 +1,7 @@
 # 网页知识采集：真实网页与桌面验证
 
+后续验收见[完整应用重启与真实问答报告](WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)：已经另行运行三次完整 AssistantApp／JVM 启动与两个真实模型问答。本报告仍只描述当时的 adapter、窗口重开和零模型调用，不将后续结论追记为本轮成果。
+
 2026-11-09。功能基线 `e635675`，验证分支 `codex/web-knowledge-live-check`。**实际 WPF／WebView2／原生确认／生产公共网络 Fetch／HTTP／SQLite 的获取、保存、检索、来源阅读和窗口重开流程通过。** 本轮只扩展既有显式验收工具及更新文档，没有修改产品行为、依赖、服务或安全设置；仍为 Development-only。
 
 ## 实际运行范围

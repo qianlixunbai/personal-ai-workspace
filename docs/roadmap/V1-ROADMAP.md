@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-09 重启闭环：[完整应用与真实知识回答](../engineering/WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)完成三次独立 AssistantApp／JVM 启动，SQLite 资料、源版本与引用目标稳定；隔离 Qwen3.5 4B 两个英文公开样本回答正确且来源可核对。知识回答历史仍不持久保存，正式分发、PostgreSQL 和一般模型质量未验收，W1 整体未关闭。另修复构建来源清单对中文文件名的处理；保留用户文件和本地 Git 回滚点。
+
 2026-11-09 验证推进：[网页资料真实桌面闭环](../engineering/WEB-KNOWLEDGE-LIVE-ACCEPTANCE.md)已通过两个公开样本的实际 WPF／WebView／原生确认／生产 Fetch／SQLite 获取、保存、检索与窗口重开，模型调用为 0。完整 AssistantApp 启动、JVM 重启、正式桌面包、真实模型质量及 PostgreSQL 仍未随该项验收；W1 整体未关闭。默认无公网核心回归 2/2 通过，用户文件和既有服务未动。
 
 2026-11-09 核心闭环增量：[网页摘录进入 Knowledge](../engineering/WEB-KNOWLEDGE-CAPTURE-REPORT.md)完成源码与必要合成检查。公共网址原生确认 → 有界预览 → 明确保存 → 本地重开／检索／知识回答引用／独立备份恢复；复用现有 jsoup、安全 Fetch 和 Knowledge，未知结果只读对账。不是 Search／Web Answer 或自动联网；真实网站、模型、完整桌面包／WebView、PostgreSQL 待后续验收，既有临时结果期限与会话容量保留。仅本地提交，仍为 Development-only。
