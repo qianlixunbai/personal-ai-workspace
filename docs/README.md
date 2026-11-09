@@ -18,7 +18,7 @@
 
 ## 如何判断证据
 
-最新产品增量：[跨会话原文查找与轮次定位](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，支持消息摘要／高亮、归档筛选及草稿保护；原生 3/3、桌面 Bridge 31/31、前端 16/16。完整真实桌面、PG 和最大容量性能仍待验收。
+最新产品增量：[跨会话原文查找与轮次定位](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，支持消息摘要／高亮、归档筛选及草稿保护；分层验证后，[真实桌面及隔离 PostgreSQL Store 验证](engineering/CONVERSATION-SEARCH-DESKTOP-REPORT.md)也已通过。完整 AssistantApp、PG 桌面组合和最大容量性能仍待验收。
 
 最新恢复验收：[合成加密恢复的真实桌面阅读与独立 JVM 重开](engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)，两轮各 1/1，五条历史、旧版本引用及缺失来源提示通过，无模型或任务重放；此前[归档认证测试](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)为 16/16。个人备份入口、原生候选激活和完整 AssistantApp 恢复仍未完成。
 

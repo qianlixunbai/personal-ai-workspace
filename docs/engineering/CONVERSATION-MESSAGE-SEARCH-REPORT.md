@@ -66,3 +66,5 @@
 本轮没有完整 AssistantApp／WPF／WebView2 的实际 UI 点击、人工 IME、PostgreSQL 实例或最大容量性能验收；前端证据是 JSDOM＋真实 Bridge 客户端，桌面证据是原生 C# Bridge／Core 配合合成 HTTP，Java 证据才是真实 HTTP／SQLite。不能把分层通过改写为整包真实桌面 PASS。当前只提供精确原文查找，扫描性能随数据量增加，后续需要实际使用证据再决定是否增加全文索引。
 
 个人恢复、正式分发及全产品 Production GO 不因本功能解除。后续优先围绕实际使用反馈或同包产品验收收口，不自动开启更多恢复框架。回退使用本轮提交或基线标签，不覆盖用户文件、运行数据或此前恢复成果。
+
+2026-11-09 后续验证：[隔离真实桌面与 PostgreSQL 报告](CONVERSATION-SEARCH-DESKTOP-REPORT.md)补齐实际 WPF／WebView／Bridge／HTTP／SQLite 的定位、归档筛选、草稿保护及窗口重开，并通过专用 PostgreSQL Store 查询综合场景；两项各 1/1，无模型调用或个人资料操作。上文保留原实现阶段的证据边界，完整 AssistantApp、PG 桌面组合及最大容量仍未验收。
