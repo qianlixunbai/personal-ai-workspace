@@ -18,6 +18,8 @@
 
 ## 如何判断证据
 
+最新 Knowledge 增量：[指定文档范围的检索与问答](engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，范围固定到明确源版本，引用／历史保留范围，失效后拒绝自动扩大；SQLite／HTTP、独占 PG、Native 20/20、前端 13/13 及构建通过。历史 schema 升级与代码回滚的区别见报告，完整桌面和真实回答质量未随本轮验收。
+
 最新产品增量：[跨会话原文查找与轮次定位](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，支持消息摘要／高亮、归档筛选及草稿保护；分层验证后，[真实桌面及隔离 PostgreSQL Store 验证](engineering/CONVERSATION-SEARCH-DESKTOP-REPORT.md)也已通过。完整 AssistantApp、PG 桌面组合和最大容量性能仍待验收。
 
 最新恢复验收：[合成加密恢复的真实桌面阅读与独立 JVM 重开](engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)，两轮各 1/1，五条历史、旧版本引用及缺失来源提示通过，无模型或任务重放；此前[归档认证测试](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)为 16/16。个人备份入口、原生候选激活和完整 AssistantApp 恢复仍未完成。
