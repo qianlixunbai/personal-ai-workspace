@@ -23,6 +23,7 @@ public sealed class KnowledgeTests
         internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
         internal bool HistoryDeleted,HistoryMalformed;internal string AnswerPromptVersion="knowledge-answer-v2";
         internal JsonElement? LastScope;
+        internal string? ExportSource;internal bool ExportWrongRevision,ExportMissing;internal List<int> ExportOffsets=[];
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -76,6 +77,15 @@ public sealed class KnowledgeTests
             if(request.Method==HttpMethod.Delete){Deleted=true;return Reply(new{deleted=true});}
             if(path.EndsWith("/archive")||path.EndsWith("/restore")){using var p=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
                 Assert.Equal(Version,p.RootElement.GetProperty("expectedMetadataVersion").GetString());Version=(long.Parse(Version)+1).ToString();Status=path.EndsWith("/archive")?"ARCHIVED":"ACTIVE";return Reply(Doc());}
+            if(path.EndsWith("/preview")&&ExportSource is { } source){
+                Assert.Contains("revision=1",request.RequestUri.Query);
+                int offset=int.Parse(request.RequestUri.Query.Split("offset=")[1]);ExportOffsets.Add(offset);
+                if(ExportMissing)return RuntimeClientTests.Response(HttpStatusCode.NotFound,"{\"code\":\"KNOWLEDGE_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
+                int end=offset==0?2048:source.Length;
+                if(end<source.Length&&char.IsLowSurrogate(source[end]))end--;
+                return Reply(new{documentId=Id,sourceRevision=ExportWrongRevision?"2":"1",offset,text=source[offset..end],nextOffset=end<source.Length?(int?)end:null,
+                    locators=new[]{new{type="MARKDOWN_SECTION_LINES",startLine=1,endLine=100000,startOffset=0,endOffset=source.Length,section="line-1",heading="Heading"}},parserVersion="text-1",normalizationVersion="lf-1"});
+            }
             if(path.EndsWith("/preview"))return Reply(new{documentId=Id,sourceRevision="1",offset=0,text="<script>x</script>",nextOffset=(int?)null,
                 locators=new[]{new{type="TXT_LINES",startLine=1,endLine=1,startOffset=0,endOffset=18,section=(string?)null,heading=(string?)null}},parserVersion="text-1",normalizationVersion="lf-1"});
             return Malformed?Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job(),path=@"C:\private"}):Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job()});
@@ -239,13 +249,66 @@ public sealed class KnowledgeTests
     {public WorkspaceKnowledge Knowledge=>knowledge;public Task<ShellStatus> StatusAsync(CancellationToken ct)=>Task.FromResult(new ShellStatus(1,"1.0.0",ShellRuntimeState.Available,ShellCredentialState.Ready,"Available",[]));public Task OpenAsync(NativeWorkspaceEntry entry,CancellationToken ct)=>Task.CompletedTask;}
     private sealed class Fixture:IDisposable
     {
+        internal readonly ExportFiles Exports=new();
         internal readonly Handler Handler=new();internal readonly Files Files=new();internal readonly RuntimeClient Runtime;internal readonly WorkspaceKnowledge Knowledge;internal readonly WorkspaceBridge Bridge;internal readonly List<string> Sent=[];
-        internal Fixture(){Runtime=new(Handler,()=>new string('t',43));Knowledge=new(Runtime,Files);Bridge=new(new WorkspaceContentPolicy(),new Actions(Knowledge),Sent.Add);Rotate();}
+        internal Fixture(){Runtime=new(Handler,()=>new string('t',43));Knowledge=new(Runtime,Files,Exports);Bridge=new(new WorkspaceContentPolicy(),new Actions(Knowledge),Sent.Add);Rotate();}
         internal void Rotate(){Bridge.BeginDocument(Document);Bridge.Ready(Document);Sent.Clear();}
         internal string Request(string method,object payload)=>JsonSerializer.Serialize(new{version=1,sessionId=Bridge.SessionId,requestId=Guid.NewGuid().ToString("D"),method,payload});
         internal async Task<JsonElement> Send(string method,object payload){Sent.Clear();await Bridge.ReceiveAsync(Document,Document,Request(method,payload));return JsonDocument.Parse(Assert.Single(Sent)).RootElement.Clone();}
         internal Task<JsonElement> List()=>Send("knowledge.list",new{status="ACTIVE",page=0});
         public void Dispose(){Bridge.Dispose();Runtime.Dispose();}
+    }
+    private sealed class ExportFiles:IKnowledgeAnswerExport
+    {
+        internal string? Text;internal int Calls;internal bool Cancel;
+        public Task<bool> SaveAsync(Guid id,string text,CancellationToken token){token.ThrowIfCancellationRequested();Calls++;Text=text;return Task.FromResult(!Cancel);}
+    }
+    [Fact]public async Task AnswerExportUsesStoredHistoryAndExactOldRevisionWithNoModelSubmission()
+    {
+        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
+        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerExport",new{taskId=id,path=@"C:\injected.md"}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
+        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
+        await f.Send("knowledge.answerHistory",new{page=0});
+        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
+        await f.Send("knowledge.answerHistoryGet",new{taskId=id});
+        string excerpt="```\n![image](https://invalid/track)\n<script>text</script>";
+        excerpt+=new string('中',2047-excerpt.Length)+"😀";excerpt+=new string('文',4094-excerpt.Length)+"😀";f.Handler.ExportSource=excerpt+"EXCLUDED CONTEXT";
+        var response=await f.Send("knowledge.answerExport",new{taskId=id});
+        Assert.Equal("SAVED",response.GetProperty("result").GetProperty("outcome").GetString());
+        Assert.Equal(new[]{0,2047},f.Handler.ExportOffsets);Assert.Equal(1,f.Exports.Calls);Assert.Equal(0,f.Handler.Uploads);
+        Assert.Contains("## 问题\n\n```text\nquestion\n```",f.Exports.Text);Assert.Contains("````text\n"+excerpt+"\n````",f.Exports.Text);
+        Assert.Contains("<script>private answer</script>",f.Exports.Text);Assert.Contains("源版本：1",f.Exports.Text);Assert.DoesNotContain("EXCLUDED CONTEXT",f.Exports.Text);
+        Assert.DoesNotContain("sourceDigest",f.Sent.Single());Assert.DoesNotContain("private answer",f.Sent.Single());
+        f.Exports.Cancel=true;Assert.Equal("CANCELLED",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("result").GetProperty("outcome").GetString());
+        f.Handler.ExportMissing=true;Assert.False((await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("ok").GetBoolean());Assert.Equal(2,f.Exports.Calls);
+        f.Handler.ExportMissing=false;f.Handler.ExportWrongRevision=true;
+        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(2,f.Exports.Calls);
+        f.Handler.ExportWrongRevision=false;f.Handler.ExportSource=new string('中',4095)+"😀";
+        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(2,f.Exports.Calls);
+    }
+    [Fact]public async Task AnswerExportStopsForUnfinishedHistoryAndSessionReplacement()
+    {
+        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
+        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=id});f.Handler.AnswerState="RUNNING";
+        Assert.Equal("KnowledgeExportFailed",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Exports.Calls);
+        f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerReadHold=new();
+        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerExport",new{taskId=id}));
+        Assert.Equal("QueueFull",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
+        f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Exports.Calls);
+    }
+    [Fact]public async Task AnswerNoteNativeWriterPreservesUtf8AndNeverOverwritesExistingFiles()
+    {
+        string directory=Path.Combine(Path.GetTempPath(),"workspace-answer-note-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
+        string path=Path.Combine(directory,"note.md"),cancelled=Path.Combine(directory,"cancelled.md");
+        try{
+            const string note="# 合成笔记\n\n```text\n预算😀 --dry-run\n```\n";
+            await NativeKnowledgeAnswerExport.SaveNewAsync(path,note,default);Assert.Equal(new UTF8Encoding(false).GetBytes(note),await File.ReadAllBytesAsync(path));
+            Assert.Equal(DesktopError.KnowledgeFileUnavailable,(await Assert.ThrowsAsync<DesktopException>(()=>NativeKnowledgeAnswerExport.SaveNewAsync(path,"replacement",default))).Error);
+            Assert.Equal(note,await File.ReadAllTextAsync(path));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>NativeKnowledgeAnswerExport.SaveNewAsync(cancelled,note,new CancellationToken(true)));
+            Assert.False(File.Exists(cancelled));Assert.Equal(new[]{path},Directory.GetFiles(directory));
+        }
+        finally{File.Delete(path);Directory.Delete(directory);}
     }
     [Fact]public async Task SessionAuthorityRequiresListOrImportClearsOnRotationAndDeleteRevokes()
     {

@@ -14,7 +14,7 @@ internal sealed record KnowledgeAnswerView(string TaskId,string Status,Knowledge
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
 internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryView[redacted]"; }
-internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
+internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files,IKnowledgeAnswerExport? answerExport=null)
 {
     private const int MaximumAnswerTasks=64;
     private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;internal KnowledgeSourceScope? Scope;}
@@ -29,6 +29,7 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     private readonly Dictionary<string,Authority> sessions=new(StringComparer.Ordinal);
     private readonly object sync=new();
+    private bool exportingAnswer;
     internal void BeginSession(string session){lock(sync)sessions[session]=new();}
     internal void EndSession(string session){lock(sync)sessions.Remove(session);}
     internal int AuthorizationCount(string session){lock(sync)return Require(session).Documents.Count;}
@@ -121,6 +122,44 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
         lock(sync){known=Require(session);if(!known.HistoryPage.Contains(id))throw new DesktopException(DesktopError.TaskNotFound);work=runtime.DeleteKnowledgeAnswerHistoryAsync(id,ct);}
         await work;
         lock(sync){Current(session,known);known.HistoryPage.Remove(id);known.HistoryGeneration++;if(known.AnswerTasks.TryGetValue(id,out var access))ForgetAnswer(known,id,access);return new{deleted=true};}
+    }
+    internal async Task<object> AnswerExportAsync(string session,string taskId,CancellationToken ct)
+    {
+        Guid id=Guid.ParseExact(taskId,"D");Authority known;AnswerAuthority access;
+        lock(sync){
+            known=Require(session);
+            if(!known.AnswerTasks.TryGetValue(id,out access!))throw new DesktopException(DesktopError.TaskNotFound);
+            if(answerExport is null)throw new DesktopException(DesktopError.KnowledgeExportFailed);
+            if(exportingAnswer)throw new DesktopException(DesktopError.QueueFull);
+            exportingAnswer=true;
+        }
+        try{
+            // Read the persisted question and result, never editable renderer fields.
+            var entry=await runtime.GetKnowledgeAnswerHistoryAsync(id,ct);
+            lock(sync){CurrentAnswer(session,known,id,access);if(entry.Scope!=access.Scope)throw new DesktopException(DesktopError.InvalidResponse);}
+            if(entry.Task.Status!=TaskState.SUCCEEDED||entry.Task.Result is null)throw new DesktopException(DesktopError.KnowledgeExportFailed);
+            var excerpts=new List<string>();
+            foreach(var citation in entry.Task.Result.Citations){
+                var text=new System.Text.StringBuilder();int offset=citation.StartOffset;
+                // Each admitted excerpt is <= 4096 UTF-16 units. Read only this revision;
+                // a structure boundary can split it into more than one preview page.
+                for(int reads=0;offset<citation.EndOffset&&reads<16;reads++){
+                    ct.ThrowIfCancellationRequested();lock(sync)CurrentAnswer(session,known,id,access);
+                    var page=await runtime.PreviewKnowledgeAsync(citation.DocumentId,citation.SourceRevision,offset,ct);
+                    int take=Math.Min(page.Text.Length,citation.EndOffset-offset);
+                    if(take==0||take<page.Text.Length&&char.IsHighSurrogate(page.Text[take-1]))throw new DesktopException(DesktopError.InvalidResponse);
+                    text.Append(page.Text.AsSpan(0,take));offset+=take;
+                    if(offset<citation.EndOffset&&page.NextOffset!=offset)throw new DesktopException(DesktopError.KnowledgeExportFailed);
+                }
+                if(offset!=citation.EndOffset)throw new DesktopException(DesktopError.KnowledgeExportFailed);
+                excerpts.Add(text.ToString());
+            }
+            ct.ThrowIfCancellationRequested();lock(sync)CurrentAnswer(session,known,id,access);
+            string note=KnowledgeAnswerMarkdown.Format(entry,excerpts,DateTimeOffset.UtcNow);
+            bool saved=await answerExport.SaveAsync(id,note,ct);
+            return new{outcome=saved?"SAVED":"CANCELLED"};
+        }
+        finally{lock(sync)exportingAnswer=false;}
     }
     private Authority Require(string session,string? document=null,string? request=null)
     {

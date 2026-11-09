@@ -50,9 +50,11 @@ class ReaderService extends AnswerService {
 }
 class HistoryService extends AnswerService {
   deleted = false; holdHistory = false
+  exportOutcome: 'SAVED' | 'CANCELLED' = 'SAVED'; holdExport = false
   scope: { documentId: string; sourceRevision: string } | null = null
   override postMessage(value: unknown) {
     const request = value as { method: string }
+    if (request.method === 'knowledge.answerExport') { this.sent.push(value as typeof this.sent[number]); if (!this.holdExport) this.reply(this.sent.length - 1, { outcome: this.exportOutcome }); return }
     if (!request.method.startsWith('knowledge.answerHistory')) { super.postMessage(value); return }
     this.sent.push(value as typeof this.sent[number]); const index = this.sent.length - 1
     if (request.method === 'knowledge.answerHistory') this.reply(index, { items: this.deleted ? [] : [{ taskId: this.answer().taskId, question: '保存的问题 <script>fixture</script>', status: 'SUCCEEDED', createdAt: '2026-11-09T00:00:00Z' }], total: this.deleted ? 0 : 1, page: 0, limit: 20 })
@@ -60,6 +62,31 @@ class HistoryService extends AnswerService {
     else if (request.method === 'knowledge.answerHistoryDelete') { this.deleted = true; this.reply(index, { deleted: true }) }
   }
 }
+it('exports the admitted saved answer by ID, handles native cancel and unknown outcome, and drops late session results', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />)
+  expect(screen.queryByRole('button', { name: '导出问答笔记…' })).toBeNull()
+  await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: '未提交的新草稿' } })
+  await readerClick('导出问答笔记…')
+  expect(port.sent.find(r => r.method === 'knowledge.answerExport')?.payload).toEqual({ taskId: port.answer().taskId })
+  expect(screen.getByText('已保存问答笔记，包含引用原文。')).toBeTruthy()
+  expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('未提交的新草稿')
+  port.exportOutcome = 'CANCELLED'; await readerClick('导出问答笔记…'); expect(screen.getByText('已取消导出。')).toBeTruthy()
+  port.holdExport = true; vi.useFakeTimers(); await readerClick('导出问答笔记…')
+  expect((screen.getByRole('button', { name: '导出问答笔记…' }) as HTMLButtonElement).disabled).toBe(true)
+  await act(async () => vi.advanceTimersByTimeAsync(300001))
+  expect(screen.getByRole('alert').textContent).toContain('先检查保存位置和原生窗口')
+  expect(port.sent.filter(r => r.method === 'knowledge.answerExport')).toHaveLength(3)
+  await readerClick('导出问答笔记…'); const pending = port.sent.length - 1
+  await act(async () => { port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'); port.reply(pending, { outcome: 'SAVED' }) })
+  expect(screen.queryByText('已保存问答笔记，包含引用原文。')).toBeNull()
+  expect(screen.queryByRole('button', { name: '导出问答笔记…' })).toBeNull()
+  expect(port.sent.some(r => r.method === 'knowledge.answerSubmit')).toBe(false)
+  const malformed = bridge.exportKnowledgeAnswer(port.answer().taskId).catch(e => e)
+  await act(async () => port.reply(port.sent.length - 1, { outcome: 'SAVED', path: 'private' }))
+  expect((await malformed).code).toBe('OutcomeUnknown')
+})
 it('reopens saved answer and exact citation without model submission, then deletes only after confirmation', async () => {
   const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
   render(<KnowledgePage bridge={bridge} enabled visible />)

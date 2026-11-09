@@ -94,7 +94,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         workspaceOperations = new WorkspaceOperations(runtime, SelectWorkspaceMemoryAsync, text => Clipboard.SetText(text));
         workspaceConversations = new WorkspaceConversations(runtime, SelectWorkspaceMemoryAsync);
         workspaceMemory = new WorkspaceMemory(runtime);
-        workspaceKnowledge = new WorkspaceKnowledge(runtime,new NativeKnowledgeSourceFiles(()=>workspace));
+        workspaceKnowledge = new WorkspaceKnowledge(runtime,new NativeKnowledgeSourceFiles(()=>workspace),new NativeKnowledgeAnswerExport(()=>workspace));
         workspaceWebFetch = new WorkspaceWebFetch(runtime, new NativeWebFetchConfirmation(() => workspace));
         workspaceModels = new WorkspaceModels(runtime, new NativeModelConfirmation(() => workspace));
         workspaceVision = new WorkspaceVision(runtime,new NativeVisionImages(()=>workspace,()=>workspaceVision?.PreviewClosed()),

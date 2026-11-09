@@ -9,10 +9,12 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [exportNotice, setExportNotice] = useState('')
   const [history, setHistory] = useState<KnowledgeAnswerHistoryPage | null>(null), [deleteId, setDeleteId] = useState<string | null>(null)
   const generation = useRef(0), composing = useRef(false)
   const active = task?.status === 'QUEUED' || task?.status === 'RUNNING'
-  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null); setScope(null); setScopeTitle('') }
+  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null); setScope(null); setScopeTitle(''); setExportNotice('') }
+  useEffect(() => { setExportNotice('') }, [task?.taskId])
   const checked = (result: KnowledgeAnswerTask) => {
     if (scope && result.result?.citations.some(c => c.documentId !== scope.documentId || c.sourceRevision !== scope.sourceRevision)) throw new Error('返回的引用超出了所选资料范围。')
     return result
@@ -63,6 +65,13 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '删除结果暂时无法确认，请刷新历史记录。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
+  const exportAnswer = async () => {
+    if (!enabled || !visible || busy || task?.status !== 'SUCCEEDED') return
+    const epoch = ++generation.current; setBusy(true); setError(''); setExportNotice('')
+    try { const result = await bridge.exportKnowledgeAnswer(task.taskId); if (epoch === generation.current) setExportNotice(result.outcome === 'SAVED' ? '已保存问答笔记，包含引用原文。' : '已取消导出。') }
+    catch (e) { if (epoch === generation.current) setError(e instanceof Error && 'code' in e && e.code === 'OutcomeUnknown' ? '导出结果暂时无法确认，请先检查保存位置和原生窗口；不会自动重试。' : `${e instanceof Error ? e.message : '导出未完成。'} 请核对引用来源，并选择新的 .md 文件；已有文件不会被覆盖。`) }
+    finally { if (epoch === generation.current) setBusy(false) }
+  }
   return <section className="card knowledge-answer" aria-labelledby="knowledge-answer-title">
     <h2 id="knowledge-answer-title">基于文档回答</h2>
     <KnowledgeScopePicker scope={scope} title={scopeTitle} current={currentDocument} disabled={!enabled || busy || active} change={(next, title) => { generation.current++; setScope(next); setScopeTitle(title); setTask(null); setError('') }} />
@@ -90,7 +99,11 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
     <p role="status" aria-live="polite">{busy ? '正在处理…' : task?.status === 'QUEUED' ? '回答任务已排队' : task?.status === 'RUNNING' ? '正在生成回答' : task?.status === 'SUCCEEDED' ? '回答完成' : task?.status === 'CANCELLED' ? '回答已取消' : task?.status === 'TIMED_OUT' ? '回答超时' : task?.status === 'FAILED' ? '回答失败' : ''}</p>
     {active && <button disabled={!enabled || busy} onClick={() => { void cancel() }}>取消知识回答</button>}
     {(error || task?.error) && <p role="alert" className="error">{error || task?.error?.message}</p>}
-    {task?.result && <><p className="knowledge-snippet" style={{ whiteSpace: 'pre-wrap' }}>{task.result.answer}</p><h3>引用来源</h3>
+    {task?.result && <><p className="knowledge-snippet" style={{ whiteSpace: 'pre-wrap' }}>{task.result.answer}</p>
+      <button disabled={!enabled || busy} onClick={() => { void exportAnswer() }}>导出问答笔记…</button>
+      <p className="hint">保存原问题、回答和引用原文为明文 Markdown。以已保存的问答为准，不包含编辑框中的后续修改；仅保存到新文件。这不是完整资料备份。</p>
+      {exportNotice && <p role="status">{exportNotice}</p>}
+      <h3>引用来源</h3>
       <p className="hint">以下范围为实际引用的原文片段，不一定是完整文档。请打开来源核对适用条件；源预览可能显示额外上下文。</p>
       <ol>{task.result.citations.map(c => <li key={`${c.documentId}/${c.sourceRevision}/${c.startOffset}`}><h4>{c.title}</h4>
         <p className="knowledge-location">{c.sourceType} · 源版本 {c.sourceRevision} · 行 {c.startLine}–{c.endLine} · 文本偏移 {c.startOffset}–{c.endOffset}{c.heading ? ` · ${c.heading}` : ''}</p>

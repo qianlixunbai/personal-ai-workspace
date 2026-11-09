@@ -19,6 +19,7 @@ export interface OperationView { operationId: string; status: TaskStatus; result
 export interface AssistantSubmit { mode: 'Ask' | 'Summarize'; text: string; selectedMemoryRefs: MemoryRef[] }
 export const safeCodes = [
   ...knowledgeCodes,
+  'KnowledgeExportFailed', 'KnowledgeFileUnavailable',
   ...webFetchCodes,
   ...modelCodes,
   'FinanceImportNotFound', 'FinanceImportReceiptInvalid', 'FinanceNotBound', 'FinanceBindingInvalid', 'FinanceUnavailable', 'FinanceAccountNotFound', 'FinanceTransactionNotFound', 'FinanceAssetNotFound', 'FinancePositionNotFound',
