@@ -281,6 +281,10 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       {detail && <>
         <div className="conversation-actions"><span>{detail.conversation.status === 'ACTIVE' ? '使用中' : '已归档'}</span>
           <button disabled={busy} onClick={() => setTitle(detail.conversation.title)}>重命名</button>
+          <button disabled={!enabled || busy || historyLoading || !!pending} onClick={() => { void run(async (id, token) => {
+            const result = await bridge.exportConversation(id)
+            if (token === generation.current) setNotice(result.outcome === 'SAVED' ? '已导出完整会话笔记。' : '已取消导出。')
+          }) }}>导出完整会话…</button>
           <button disabled={busy} onClick={() => { void run(async (id, token) => {
             const value = detail.conversation.status === 'ACTIVE' ? await bridge.archiveConversation(id) : await bridge.unarchiveConversation(id)
             if (token !== generation.current) return
@@ -289,6 +293,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
           }) }}>{detail.conversation.status === 'ACTIVE' ? '归档' : '恢复'}</button>
           <button ref={deleteButton} className="destructive" disabled={busy || !!pending} onClick={() => setDeleting(true)}>删除</button>
         </div>
+        <p className="hint">导出所有已保存轮次为明文 Markdown（上限 4 MiB），不含未发送草稿。历史回复可能包含个人信息；这不是可恢复备份。</p>
         {title !== null && <form className="conversation-rename" onSubmit={event => { event.preventDefault(); if (!isTitle(title)) return; void run(async (id, token) => {
           await bridge.renameConversation(id, title); if (token !== generation.current) return
           setTitle(null); await loadDetail(id, detail.page); await loadList()

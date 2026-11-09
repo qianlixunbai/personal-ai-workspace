@@ -15,6 +15,7 @@ class Service extends Port {
   lifecycle: ConversationStatus = 'ACTIVE'
   title = conversation.title
   answerText: string | null = null
+  exportOutcome: 'SAVED' | 'CANCELLED' = 'SAVED'
   error: string | null = null
   holdGet = false
   holdSend = false
@@ -52,6 +53,7 @@ class Service extends Port {
         if (this.memoryError) { this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: this.memoryError, message: `Safe ${this.memoryError}` } }); return }
         result = this.referencedMemory
       }
+      else if (method === 'conversations.export') result = { outcome: this.exportOutcome }
       else if (method === 'conversations.clearMemories') result = { cleared: true }
       else if (method === 'conversations.selectMemories') result = { changed: this.choiceChanged, selectedMemoryRefs: this.choiceChanged ? [memory] : [] }
       else if (method === 'conversations.send') {
@@ -79,6 +81,26 @@ async function setup(config: Partial<Service> = {}) {
   return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+it('exports the whole conversation by authorized ID and preserves the current page and unsent draft on save or cancel', async () => {
+  const { port, input } = await setup({ turns: 23 })
+  fireEvent.change(input, { target: { value: '未发送的私人草稿' } })
+  await click('更早')
+  expect(screen.getByText('第 2 页 / 3 · 23 轮')).toBeTruthy()
+  await click('导出完整会话…')
+  expect(screen.getByText('已导出完整会话笔记。')).toBeTruthy()
+  const request = port.sent.filter(x => x.method === 'conversations.export').at(-1)!
+  expect(request.payload).toEqual({ conversationId: conversation.id })
+  expect(input.value).toBe('未发送的私人草稿')
+  expect(screen.getByText('第 2 页 / 3 · 23 轮')).toBeTruthy()
+  port.exportOutcome = 'CANCELLED'
+  await click('导出完整会话…')
+  expect(screen.getByText('已取消导出。')).toBeTruthy()
+  expect(input.value).toBe('未发送的私人草稿')
+})
+it('does not export while a stored turn is still pending', async () => {
+  await setup({ state: 'PENDING' })
+  expect((screen.getByRole('button', { name: '导出完整会话…' }) as HTMLButtonElement).disabled).toBe(true)
+})
 it('reads a stored formatted answer without changing its memory draft or an unsent question', async () => {
   const markdown = '# 会话结论\n\n**仅供当前项目**\n\n- 保留原文'
   const port = Object.assign(new Service(), { answerText: markdown }), bridge = new WorkspaceClient(port)

@@ -285,6 +285,7 @@ internal sealed class WorkspaceBridge : IDisposable
                     "conversations.list" => await conversations.ListAsync(session, Enum.Parse<ConversationStatus>(payload.GetProperty("status").GetString()!), payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.search" => await conversations.SearchAsync(session, payload.GetProperty("query").GetString()!, payload.GetProperty("scope").GetString()!, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.get" => await conversations.GetAsync(session, id, payload.GetProperty("page").GetInt32(), cancellation),
+                    "conversations.export" => await conversations.ExportAsync(session, id, cancellation),
                     "conversations.create" => await conversations.CreateAsync(session, cancellation),
                     "conversations.selectMemories" => await conversations.SelectAsync(session, id, cancellation),
                     "conversations.clearMemories" => conversations.ClearMemories(session, id),
@@ -368,7 +369,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
     { "conversations.search", "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
-      "conversations.send", "conversations.cancelPending" };
+      "conversations.send", "conversations.cancelPending", "conversations.export" };
     internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
     { "memory.list", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
     private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()

@@ -11,11 +11,12 @@ namespace PersonalAiWorkspace.Desktop.Bridge;
 // Only session authorization lives here. Runtime owns history and execution, including
 // after a document/window disappears. There is no operation registry or transcript cache.
 internal sealed class WorkspaceConversations(RuntimeClient runtime,
-    Func<CancellationToken, Task<IReadOnlyList<MemorySelection>?>> select)
+    Func<CancellationToken, Task<IReadOnlyList<MemorySelection>?>> select, IConversationExport? export = null)
 {
     private sealed record Binding(Guid TaskId, int Page);
     private sealed class Session
     {
+        internal readonly CancellationTokenSource Ended = new();
         internal readonly HashSet<Guid> Known = [];
         internal readonly Dictionary<(Guid Conversation, Guid Turn), Binding> Pending = [];
         internal Guid? SelectionOwner;
@@ -26,8 +27,13 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
     }
     private readonly Dictionary<string, Session> sessions = new(StringComparer.Ordinal);
     private readonly object sync = new();
-    internal void BeginSession(string session) { lock (sync) sessions[session] = new(); }
-    internal void EndSession(string session) { lock (sync) sessions.Remove(session); }
+    private bool exporting;
+    internal void BeginSession(string session) { EndSession(session); lock (sync) sessions[session] = new(); }
+    internal void EndSession(string session)
+    {
+        Session? state; lock (sync) { sessions.Remove(session, out state); }
+        if (state is not null) { state.Ended.Cancel(); state.Ended.Dispose(); }
+    }
     private static DesktopException Denied() => new(DesktopError.ConversationNotFound);
     private Session Require(string session, Guid? id = null)
     {
@@ -104,6 +110,33 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
             }
         }
         return Project(detail);
+    }
+    internal async Task<object> ExportAsync(string session, Guid id, CancellationToken ct)
+    {
+        Session state; CancellationTokenSource lifetime;
+        lock (sync)
+        {
+            state = Require(session, id);
+            if (export is null) throw new DesktopException(DesktopError.ConversationExportFailed);
+            if (exporting) throw new DesktopException(DesktopError.QueueFull);
+            lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, state.Ended.Token); exporting = true;
+        }
+        try
+        {
+            async Task<ConversationDetail> Read(int page, CancellationToken token)
+            {
+                lock (sync) { Require(session, id); if (!Current(session, state)) throw Denied(); }
+                var part = await runtime.GetConversationAsync(id, page, 10, token);
+                lock (sync) { Require(session, id); if (!Current(session, state)) throw Denied(); }
+                return part;
+            }
+            string note = await ConversationMarkdown.ReadAsync(id, Read, lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
+            lock (sync) { Require(session, id); if (!Current(session, state)) throw Denied(); }
+            bool saved = await export.SaveAsync(id, note, lifetime.Token);
+            return new { outcome = saved ? "SAVED" : "CANCELLED" };
+        }
+        finally { lifetime.Dispose(); lock (sync) exporting = false; }
     }
     internal async Task<object> CreateAsync(string session, CancellationToken ct)
     {
