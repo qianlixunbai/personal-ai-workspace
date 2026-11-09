@@ -86,7 +86,7 @@ public sealed partial class RuntimeClient
     {
         MemoryFields(r,"taskId","capability","status","profile","promptVersion","createdAt","finishedAt","result","error");
         string taskId=String(r,"taskId");KId(taskId);Guid id=Guid.ParseExact(taskId,"D");if(expected is not null&&expected!=id)throw Invalid();
-        if(String(r,"capability")!="knowledge-answer"||String(r,"promptVersion")!="knowledge-answer-v2")throw Invalid();
+        if(String(r,"capability")!="knowledge-answer"||String(r,"promptVersion") is not ("knowledge-answer-v2" or "knowledge-answer-v3"))throw Invalid();
         var profile=Property(r,"profile");MemoryFields(profile,"id","version","locality");
         if(String(profile,"id")!="chat.balanced"||String(profile,"locality")!="LOCAL"||string.IsNullOrWhiteSpace(String(profile,"version")))throw Invalid();
         string state=String(r,"status");if(!Enum.TryParse<TaskState>(state,false,out var status)||!Enum.IsDefined(status)||status.ToString()!=state)throw Invalid();

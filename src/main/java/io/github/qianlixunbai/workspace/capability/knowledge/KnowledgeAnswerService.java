@@ -8,6 +8,7 @@ import io.github.qianlixunbai.workspace.knowledge.KnowledgeEvidenceExcerpt;
 import io.github.qianlixunbai.workspace.knowledge.LexicalAnalyzer;
 import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import io.github.qianlixunbai.workspace.task.TaskView;
+import io.github.qianlixunbai.workspace.provider.ResponseFormat;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
@@ -41,12 +42,12 @@ public final class KnowledgeAnswerService {
             for(var next:snapshot.items()) {
                 List<Evidence> proposed=new ArrayList<>(prefix);proposed.add(next);
                 String serialized=serialize(request.question(),proposed,false);
-                if(!tasks.fitsInput(reservation,serialized)) {
+                if(!tasks.fitsInput(reservation,serialized,ResponseFormat.KNOWLEDGE_ANSWER)) {
                     // Keep normal full-chunk ranked prefixes unchanged. Only an oversized
                     // first hit may use a sentence window, with exact source coordinates.
                     if(prefix.isEmpty()) {
                         Evidence excerpt=KnowledgeEvidenceExcerpt.select(next,LexicalAnalyzer.query(request.query()).tokens(),
-                                candidate->tasks.fitsInput(reservation,serialize(request.question(),List.of(candidate),true)));
+                                candidate->tasks.fitsInput(reservation,serialize(request.question(),List.of(candidate),true),ResponseFormat.KNOWLEDGE_ANSWER));
                         if(excerpt!=null){prefix.add(excerpt);input=serialize(request.question(),prefix,true);}
                     }
                     break;
@@ -58,7 +59,7 @@ public final class KnowledgeAnswerService {
             UUID id=UUID.randomUUID();
             return tasks.submitPersistent(reservation,"knowledge-answer",KnowledgeAnswerPrompt.SYSTEM,
                     input,output->KnowledgeAnswerParser.parse(output,admitted),id,history::finish,
-                    ()->history.begin(id,request.question(),request.query(),reservation.profile().publicInfo(),reservation.promptVersion(),request.scope()));
+                    ()->history.begin(id,request.question(),request.query(),reservation.profile().publicInfo(),reservation.promptVersion(),request.scope()),ResponseFormat.KNOWLEDGE_ANSWER);
         } finally { reservation.closeUnlessTransferred(); }
     }
 }

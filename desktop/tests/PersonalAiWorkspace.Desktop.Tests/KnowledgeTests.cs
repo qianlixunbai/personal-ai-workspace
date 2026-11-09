@@ -21,12 +21,12 @@ public sealed class KnowledgeTests
         internal bool SearchMalformed,SearchWorstCase;
         internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
         internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
-        internal bool HistoryDeleted,HistoryMalformed;
+        internal bool HistoryDeleted,HistoryMalformed;internal string AnswerPromptVersion="knowledge-answer-v2";
         internal JsonElement? LastScope;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
-        internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion="knowledge-answer-v2",
+        internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion=AnswerPromptVersion,
             createdAt="2026-10-06T00:00:00Z",finishedAt=AnswerState is "QUEUED" or "RUNNING"?null:"2026-10-06T00:00:01Z",
             result=AnswerState=="SUCCEEDED"?new{answer=AnswerWorstCase?new string('中',2048):"<script>private answer</script>",citations=Enumerable.Range(0,AnswerWorstCase?10:1).Select(AnswerCitation).ToArray()}:null,
             error=AnswerState is "SUCCEEDED" or "QUEUED" or "RUNNING"?null:new{code=AnswerState=="CANCELLED"?"TASK_CANCELLED":AnswerState=="TIMED_OUT"?"TASK_TIMEOUT":"PROVIDER_RESPONSE_INVALID",message="safe",phase="RESPONSE"}};
@@ -81,6 +81,17 @@ public sealed class KnowledgeTests
             return Malformed?Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job(),path=@"C:\private"}):Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job()});
         }
         static HttpResponseMessage Reply(object value)=>RuntimeClientTests.Response(HttpStatusCode.OK,JsonSerializer.Serialize(value));
+    }
+    [Theory][InlineData("knowledge-answer-v2")][InlineData("knowledge-answer-v3")]
+    public async Task KnownAnswerPromptVersionsKeepSubmissionAndHistoryCompatible(string version)
+    {
+        using var f=new Fixture();f.Handler.AnswerPromptVersion=version;
+        var submitted=await f.Runtime.SubmitKnowledgeAnswerAsync("question","budget",default);
+        var restored=await f.Runtime.GetKnowledgeAnswerHistoryAsync(submitted.TaskId,default);
+        Assert.Equal(submitted.TaskId,restored.Task.TaskId);Assert.Equal(submitted.Result!.Answer,restored.Task.Result!.Answer);
+        f.Handler.AnswerInvalid=JsonSerializer.Serialize(f.Handler.AnswerTask()).Replace(version,"knowledge-answer-v4");
+        var rejected=await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.GetKnowledgeAnswerAsync(submitted.TaskId,default));
+        Assert.Equal(DesktopError.InvalidResponse,rejected.Error);
     }
     [Fact]public async Task AnswerStrictProjectionBoundsAndUnknownPostNeverReplays()
     {

@@ -64,7 +64,21 @@ public class TextTaskSubmission {
     }
     public TaskView submitPersistent(ActiveModelManager.Reservation reservation, String capability, String system, String input,
                                     Function<String, ?> mapping, java.util.UUID id, TaskManager.Completion completion, Runnable admission) {
-        return submitReserved(reservation,capability,system,input,input.length(),mapping,ResponseFormat.TEXT,id,completion,admission);
+        return submitPersistent(reservation,capability,system,input,mapping,id,completion,admission,ResponseFormat.TEXT);
+    }
+    public TaskView submitPersistent(ActiveModelManager.Reservation reservation, String capability, String system, String input,
+                                    Function<String, ?> mapping, java.util.UUID id, TaskManager.Completion completion, Runnable admission,
+                                    ResponseFormat format) {
+        return submitReserved(reservation,capability,system,input,input.length(),mapping,format,id,completion,admission);
+    }
+    /** Include JSON escaping, the fixed schema and conservative system/envelope headroom.
+     * The provider still checks the actual wire payload before sending inference. */
+    public boolean fitsInput(ActiveModelManager.Reservation reservation, String input, ResponseFormat format) {
+        if (!fitsInput(reservation,input)) return false;
+        if (format == ResponseFormat.TEXT) return true;
+        var json=JsonMapper.builder().build();
+        return json.writeValueAsBytes(input).length + json.writeValueAsBytes(format.schema()).length + 1024
+                <= reservation.profile().contextBudget() - reservation.profile().outputBudget();
     }
     private TaskView submitReserved(ActiveModelManager.Reservation reservation, String capability, String system, String input,
                                    int textCharacters, Function<String, ?> mapping, ResponseFormat format, java.util.UUID id,

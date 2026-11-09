@@ -32,7 +32,7 @@ class KnowledgeAnswerTest {
         final CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
         public String id(){return "ollama";}
         public ModelProfile.Locality locality(){return ModelProfile.Locality.LOCAL;}
-        public Set<Capability> capabilities(){return Set.of(Capability.TEXT_GENERATION);}
+        public Set<Capability> capabilities(){return Set.of(Capability.TEXT_GENERATION,Capability.STRUCTURED_OUTPUT);}
         public ProviderReadiness readiness(ModelProfile p){return null;}
         public String execute(ProviderExecution e,Cancellation c){execution=e;entered.countDown();try{assertTrue(release.await(5,TimeUnit.SECONDS));}catch(InterruptedException x){throw new IllegalStateException();}return "{\"answer\":\"fixture answer\",\"citations\":[\"S1\"]}";}
     }
@@ -46,13 +46,17 @@ class KnowledgeAnswerTest {
             var realIndex=new KnowledgeLexicalIndex(store)) {
             String text="# "+"题".repeat(120)+"\nprivate fixture budget 😀\n";
             var job=KnowledgeLexicalIndexTest.ingest(store,ingestion,null,"fixture.md",text);KnowledgeLexicalIndexTest.ready(realIndex);
-            var index=spy(realIndex);doAnswer(call->{assertTrue(Thread.holdsLock(store));return realIndex.search("budget",10);}).when(index).search("budget",10);
+            // Delegate to the live asynchronous index; a spy copies mutable worker state.
+            // Capture now uses the scope-aware overload even when the scope is absent.
+            var index=mock(KnowledgeLexicalIndex.class,org.mockito.AdditionalAnswers.delegatesTo(realIndex));
+            doAnswer(call->{assertTrue(Thread.holdsLock(store));return realIndex.search("budget",10,null);}).when(index).search("budget",10,null);
             var owner=new KnowledgeEvidenceAdmission(store,index);var snapshot=owner.capture("budget");var e=snapshot.items().getFirst();
             assertEquals(text,e.text());assertEquals(0,e.citation().startOffset());assertEquals(text.length(),e.citation().endOffset());
             assertEquals("题".repeat(120),e.citation().heading());assertEquals("MARKDOWN_SECTION_LINES",e.citation().locator().type());
             assertThrows(UnsupportedOperationException.class,()->snapshot.items().clear());assertFalse(e.toString().contains("private"));
             var provider=new LocalProvider();var accepted=new KnowledgeAnswerService(owner,submission(provider,manager),history).submit(new KnowledgeAnswerRequest("private question","budget"));
             assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
+            assertEquals(ResponseFormat.KNOWLEDGE_ANSWER,provider.execution.responseFormat());
             // These synchronized mutations complete while inference is still held, proving lock release.
             KnowledgeLexicalIndexTest.ingest(store,ingestion,job.documentId(),"fixture.md","replacement budget");
             store.lifecycle(job.documentId(),store.get(job.documentId()).metadataVersion(),"ARCHIVED");
@@ -124,6 +128,29 @@ class KnowledgeAnswerTest {
             KnowledgeLexicalIndexTest.code(ErrorCode.PROVIDER_RESPONSE_INVALID,()->KnowledgeAnswerParser.parse(invalid,snapshot));
         KnowledgeLexicalIndexTest.code(ErrorCode.PROVIDER_RESPONSE_INVALID,()->KnowledgeAnswerParser.parse(JSON.writeValueAsString(Map.of("answer","x".repeat(2049),"citations",List.of("S1"))),snapshot));
         assertTrue(KnowledgeAnswerPrompt.SYSTEM.getBytes(StandardCharsets.UTF_8).length<=512);
+        String literal="合成标识 .cobalt、--verify-only 和 0.075 ms 保持原样。";
+        assertEquals(literal,KnowledgeAnswerParser.parse(JSON.writeValueAsString(Map.of("answer",literal,"citations",List.of("S1"))),snapshot).answer());
+        var schema=ResponseFormat.KNOWLEDGE_ANSWER.schema();
+        ((tools.jackson.databind.node.ObjectNode)schema).remove("properties");
+        assertTrue(ResponseFormat.KNOWLEDGE_ANSWER.schema().has("properties"));
+        assertNull(ResponseFormat.TEXT.schema());
+    }
+    @Test void structuredContractCannotSilentlyDowngradeAndPackingCountsEscapingAndSchema()throws Exception {
+        var owner=mock(KnowledgeEvidenceAdmission.class);when(owner.capture("budget")).thenReturn(new Snapshot(List.of(item(1,"budget synthetic source"))));
+        var provider=new LocalProvider(){@Override public Set<Capability> capabilities(){return Set.of(Capability.TEXT_GENERATION);}};
+        var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));try {
+            var tasks=submission(provider,manager);
+            KnowledgeLexicalIndexTest.code(ErrorCode.POLICY_DENIED,()->new KnowledgeAnswerService(owner,tasks,history).submit(new KnowledgeAnswerRequest("question","budget")));
+            assertNull(provider.execution);
+            var reservation=tasks.reserve("knowledge-answer","chat.balanced",KnowledgeAnswerPrompt.VERSION);
+            try {
+                assertTrue(tasks.fitsInput(reservation,"short",ResponseFormat.KNOWLEDGE_ANSWER));
+                // Control characters expand on the wire even though their UTF-8 representation is small.
+                String escaped="x"+"\u0001".repeat(2000);
+                assertTrue(tasks.fitsInput(reservation,escaped));
+                assertFalse(tasks.fitsInput(reservation,escaped,ResponseFormat.KNOWLEDGE_ANSWER));
+            } finally {reservation.closeUnlessTransferred();}
+        } finally {manager.close();}
     }
     @Test void oversizedChineseEvidenceUsesExactBudgetedExcerptAndOriginalRevisionPreview()throws Exception {
         var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));
@@ -140,7 +167,7 @@ class KnowledgeAnswerTest {
             assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
             KnowledgeLexicalIndexTest.ingest(store,ingestion,job.documentId(),"fixture.md","新版本的预算已变更。");
             provider.release.countDown();var done=terminal(manager,accepted);assertEquals(TaskStatus.SUCCEEDED,done.status());
-            assertEquals("knowledge-answer-v2",done.promptVersion());assertTrue(tasks.fitsInput("chat.balanced",provider.execution.input()));
+            assertEquals(KnowledgeAnswerPrompt.VERSION,done.promptVersion());assertTrue(tasks.fitsInput("chat.balanced",provider.execution.input()));
             var visible=JSON.readTree(provider.execution.input()).path("evidence");assertEquals(1,visible.size());
             assertTrue(visible.get(0).path("excerpt").asBoolean());String text=visible.get(0).path("text").asString();
             assertTrue(text.contains("只适用于琥珀项目。预算上限为十二万元。其他项目不可沿用这个预算。"));

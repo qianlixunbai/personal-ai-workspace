@@ -498,6 +498,7 @@ class RuntimeApiTest {
             var accepted=send("POST",endpoint,json.writeValueAsString(Map.of("question",canary+"?","query",canary,"scope",scope)),true);
             assertEquals(202,accepted.statusCode());String id=tree(accepted).path("taskId").asString();assertEquals("/api/v1/tasks/"+id,accepted.headers().firstValue("Location").orElseThrow());
             var done=pollNative(id);assertEquals("SUCCEEDED",done.path("status").asString());assertEquals("knowledge-answer",done.path("capability").asString());
+            assertEquals(io.github.qianlixunbai.workspace.provider.ResponseFormat.KNOWLEDGE_ANSWER.schema(),LAST_CHAT.get().path("format"));
             assertEquals(job.documentId(),done.path("result").path("citations").get(0).path("documentId").asString());
             int beforeHistory=CHAT_CALLS.get();
             var page=send("GET",endpoint+"?page=0",null,true);assertEquals(200,page.statusCode());assertEquals("no-store",page.headers().firstValue("Cache-Control").orElseThrow());
@@ -509,9 +510,12 @@ class RuntimeApiTest {
             assertEquals(404,browser("GET","/api/v1/tasks/"+id,null,browserClient.credential(),browserClient.origin()).statusCode());
             assertFalse(LAST_CHAT.get().toString().contains(job.documentId()));
             BATCH_OUTPUT.set("{\"answer\":\"bad\",\"citations\":[\"S99\"]}");
+            int beforeInvalid=CHAT_CALLS.get();
             var failed=pollNative(tree(send("POST",endpoint,json.writeValueAsString(Map.of("question","q","query",canary)),true)).path("taskId").asString());
             assertEquals("FAILED",failed.path("status").asString());assertTrue(failed.path("result").isNull());assertEquals("PROVIDER_RESPONSE_INVALID",failed.path("error").path("code").asString());
+            assertEquals(beforeInvalid+1,CHAT_CALLS.get());
             BATCH_OUTPUT.set("ordinary answer");assertEquals("SUCCEEDED",submitAndPoll("/api/v1/ask/tasks","{\"question\":\"ordinary\"}").path("status").asString());
+            assertFalse(LAST_CHAT.get().has("format"));
             assertFalse(LAST_CHAT.get().toString().contains(canary));
         } finally { knowledgeStore.delete(job.documentId(),knowledgeStore.get(job.documentId()).metadataVersion()); }
     }

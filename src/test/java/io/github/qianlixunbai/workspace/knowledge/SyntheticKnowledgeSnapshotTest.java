@@ -37,10 +37,13 @@ class SyntheticKnowledgeSnapshotTest {
         }
     }
     private UUID answer(SyntheticKnowledgeSnapshot f,KnowledgeDocument doc)throws Exception{
+        return answer(f,doc,"knowledge-answer-v2");
+    }
+    private UUID answer(SyntheticKnowledgeSnapshot f,KnowledgeDocument doc,String promptVersion)throws Exception{
         String revision=doc.currentReadyRevision();var preview=f.source().preview(doc.documentId(),revision,0);var locator=preview.locators().getFirst();
         var citation=new TaskResult.KnowledgeCitation(doc.documentId(),doc.title(),revision,"TXT",locator.startOffset(),locator.endOffset(),locator.startLine(),locator.endLine(),null,
                 new TaskResult.KnowledgeLocator(locator.type(),locator.startLine(),locator.endLine(),locator.startOffset(),locator.endOffset(),locator.section()));
-        UUID id=UUID.randomUUID();f.history().begin(id,"合成问题 <script>fixture</script>","合成",TestSettings.ask().publicInfo(),"knowledge-answer-v2",new KnowledgeScope(doc.documentId(),revision));
+        UUID id=UUID.randomUUID();f.history().begin(id,"合成问题 <script>fixture</script>","合成",TestSettings.ask().publicInfo(),promptVersion,new KnowledgeScope(doc.documentId(),revision));
         f.history().finish(id,TaskStatus.SUCCEEDED,new TaskResult.KnowledgeAnswer("合成答案 😀",List.of(citation)),null);return id;
     }
     private UUID begin(SyntheticKnowledgeSnapshot f){UUID id=UUID.randomUUID();f.history().begin(id,"合成问题 <script>fixture</script>","合成",TestSettings.ask().publicInfo(),"knowledge-answer-v2");return id;}
@@ -66,7 +69,7 @@ class SyntheticKnowledgeSnapshotTest {
     }
     @Test void jointSnapshotRestoresAllTerminalStatesOldRevisionsAndUnavailableReferencesWithoutOriginalSource()throws Exception{
         try(var original=fixture();var receiver=fixture()){
-            var first=ingest(original,null,null,"first.txt","合成第一版 😀\nold source\n");UUID success=answer(original,first);
+            var first=ingest(original,null,null,"first.txt","合成第一版 😀\nold source\n");UUID success=answer(original,first,"knowledge-answer-v3");
             var second=ingest(original,first.documentId(),first.metadataVersion(),"second.txt","合成第二版\nnew source\n");
             var archived=original.source().lifecycle(second.documentId(),second.metadataVersion(),"ARCHIVED");
             var removed=ingest(original,null,null,"removed.txt","合成已删除资料\n");UUID missing=answer(original,removed);original.source().delete(removed.documentId(),removed.metadataVersion());

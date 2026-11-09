@@ -70,7 +70,7 @@ final class KnowledgeHistorySnapshotRecord {
         try {
             require(entry!=null);text(entry.question(),3000);text(entry.query(),256);
             var t=entry.task();require(t!=null&&t.taskId()!=null&&"knowledge-answer".equals(t.capability())
-                    &&"knowledge-answer-v2".equals(t.promptVersion())&&t.createdAt()!=null&&t.finishedAt()!=null
+                    &&("knowledge-answer-v2".equals(t.promptVersion())||"knowledge-answer-v3".equals(t.promptVersion()))&&t.createdAt()!=null&&t.finishedAt()!=null
                     &&!t.createdAt().isBefore(Instant.EPOCH)&&!t.finishedAt().isBefore(t.createdAt()));
             var p=t.profile();require(p!=null&&"chat.balanced".equals(p.id())&&p.locality()==ModelProfile.Locality.LOCAL);text(p.version(),256);
             if(t.status()==TaskStatus.SUCCEEDED) {
