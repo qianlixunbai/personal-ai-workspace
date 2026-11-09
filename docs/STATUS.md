@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 问答历史完整重启验收：全新合成 Profile 的三次 AssistantApp／WebView／JVM 启动通过，第三次启动前已关闭本轮模型及子进程。产品历史页恢复两条原问题、检索词、答案和精确源引用，0 次重新问答；界面删除一条历史后两份源文档仍保留。隔离 Qwen3.5 4B 本轮实际 3 次调用（准入＋两题），不代表通用质量；自有进程、端口和模型副本已清理，原有六份未跟踪文档未改。[实测与证据](engineering/KNOWLEDGE-ANSWER-HISTORY-RESTART-REPORT.md)及[备份边界评估](engineering/KNOWLEDGE-ANSWER-HISTORY-BACKUP-ASSESSMENT.md)。历史备份尚未实现，现有格式仍不包含历史；个人恢复未开放。仅本地提交，仍为 Development-only。下列结论保留各自时点。
+
 2026-11-09 问答历史增量：新知识问答会先保存当前 Profile 的本地执行记录，完成结果与精确引用提交后才发布成功；新增历史分页、重新打开引用和显式删除。重开时未完成记录标为中断，不自动重新调用模型；保持原生与会话授权。原生隔离测试 17/17，最后边界修正后历史所属 4/4；桌面 25/25，随后历史专项 3/3；前端 7/7。现有备份不含该本地记录，旧版已丢失的任务无法补回；本轮未做完整 AssistantApp 进程重启或真实模型质量验收。仅本地开发，仍为 Development-only；[实现取舍、实测和下一步](engineering/KNOWLEDGE-ANSWER-HISTORY-REPORT.md)。下列报告保留各自时点结论。
 
 2026-11-09 完整重启及真实知识回答验收：完整 AssistantApp／WebView／DevelopmentRuntimeOwner／SQLite 连续三次启动通过，重启后两份公开网页资料的元数据、源版本、全文哈希和检索／引用目标保持一致。隔离 Ollama 0.40.1／Qwen3.5 4B 的两个英文问题与精确引用通过；实际另有一次模型准入调用。旧知识问答任务重启后为 TaskNotFound，历史回答没有持久恢复。修复构建脚本误读 Git 中文文件名的问题，原有六份未跟踪文件保持不变；所有自有进程、端口及临时模型副本已清理。正式安装包、PostgreSQL、中文长资料及一般模型质量仍未验收；[实际证据与限制](engineering/WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)。仅本地提交，仍为 Development-only。下列较早记录保留各自时点的验证范围。

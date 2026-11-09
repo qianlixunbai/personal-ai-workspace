@@ -1,5 +1,7 @@
 # 知识问答历史：本机持久恢复与显式查看
 
+后续进展：同日的[完整进程重启验收](KNOWLEDGE-ANSWER-HISTORY-RESTART-REPORT.md)已补齐真实 AssistantApp／JVM 重开和模型关闭后的历史阅读；[备份评估](KNOWLEDGE-ANSWER-HISTORY-BACKUP-ASSESSMENT.md)已完成，备份功能仍未扩展。本文保留实现阶段原始验证范围。
+
 2026-11-09。基线 `b460ccbda7bd2e851683b115edecac73e4b205c7`，从 `codex/web-knowledge-restart` 建立 `codex/knowledge-answer-history`。仍为 Development-only，本轮不推送、不合并、不发布。
 
 上一轮[完整重启报告](WEB-KNOWLEDGE-RESTART-AND-MODEL-REPORT.md)证明源文档和旧引用目标能恢复，但问答任务仅保存在 `TaskManager` 内存中。本轮为**升级之后新创建的知识问答**增加本机持久记录及用户可见历史入口。旧版已丢失的问答没有可恢复的记录，不从上轮测试 JSON 导入或伪造产品历史。
