@@ -16,7 +16,7 @@ import static io.github.qianlixunbai.workspace.knowledge.KnowledgeHistorySnapsho
 final class SyntheticKnowledgeSnapshot implements AutoCloseable {
     static final String FORMAT="personal-ai-workspace.synthetic-knowledge-history-snapshot";
     static final long HISTORY_BYTES=4L+KnowledgeAnswerHistory.LIMIT*(4L+MAX_RECORD_BYTES);
-    private static final Set<String> FILES=Set.of("knowledge.backup","answers.bin","manifest.json");
+    static final Set<String> FILES=Set.of("knowledge.backup","answers.bin","manifest.json");
     record Manifest(String format,int version,String protection,int answers,long sourceBytes,String sourceSha256,
                     long historyBytes,String historySha256) {}
     private final Path root,token;
@@ -43,6 +43,8 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
     KnowledgeStore source(){return source;}
     KnowledgeAnswerHistory history(){return history;}
     Path candidate(){return root.resolve("candidate-"+UUID.randomUUID());}
+    Path encryptedSnapshot(char[] password){return new SyntheticEncryptedKnowledgeSnapshot(this).snapshot(password);}
+    Manifest restoreEncrypted(Path encrypted,Path target,char[] password){return new SyntheticEncryptedKnowledgeSnapshot(this).restore(encrypted,target,password);}
     Path snapshot(){return snapshot(()->{});}
     /** Probe hook is inside both locks, for deterministic writer exclusion verification in this isolated fixture. */
     Path snapshot(Runnable afterFreeze){
@@ -50,22 +52,41 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
         Path complete=pending.resolveSibling(pending.getFileName().toString().replace(".pending",""));
         try{
             PrivateKnowledgeDirectory.directory(pending);
-            source.frozenSnapshot(()->history.frozenSnapshot(()->{
-                afterFreeze.run();int count=(int)history.list(0).total();
-                write(pending.resolve("knowledge.backup"),KnowledgeLimits.BACKUP_BYTES,out->new KnowledgeBackup(source,token).writeSnapshot(out));
-                write(pending.resolve("answers.bin"),HISTORY_BYTES,out->{
-                    var data=new DataOutputStream(out);data.writeInt(count);int[] written={0};
-                    history.visitSnapshot(entry->{byte[] bytes=encode(capture(entry,source));data.writeInt(bytes.length);data.write(bytes);written[0]++;});
-                    require(written[0]==count);data.flush();
-                });
-                var manifest=new Manifest(FORMAT,1,"UNENCRYPTED_SYNTHETIC_ONLY",count,
-                        Files.size(pending.resolve("knowledge.backup")),digest(pending.resolve("knowledge.backup"),KnowledgeLimits.BACKUP_BYTES),
-                        Files.size(pending.resolve("answers.bin")),digest(pending.resolve("answers.bin"),HISTORY_BYTES));
-                write(pending.resolve("manifest.json"),4096,out->out.write(JSON.writeValueAsBytes(manifest)));return null;
-            }));
+            writeEntries((name,maximum,writer)->write(pending.resolve(name),maximum,writer),afterFreeze);
             Files.move(pending,complete);return complete;
         }catch(WorkspaceException e){throw e;}catch(Exception e){throw new WorkspaceException(ErrorCode.KNOWLEDGE_EXPORT_FAILED,"SYNTHETIC_SNAPSHOT");}
         // Failed private staging is deliberately retained as fixture evidence; it is never a completed snapshot.
+    }
+    /** Same logical writer and frozen source/history boundary for clear and encrypted outputs. */
+    void writeEntries(EntrySink sink,Runnable afterFreeze){
+        source.frozenSnapshot(()->history.frozenSnapshot(()->{
+            afterFreeze.run();int count=(int)history.list(0).total();
+            var sourceFile=entry(sink,"knowledge.backup",KnowledgeLimits.BACKUP_BYTES,out->new KnowledgeBackup(source,token).writeSnapshot(out));
+            var historyFile=entry(sink,"answers.bin",HISTORY_BYTES,out->{
+                var data=new DataOutputStream(out);data.writeInt(count);int[] written={0};
+                history.visitSnapshot(row->{byte[] bytes=encode(capture(row,source));data.writeInt(bytes.length);data.write(bytes);written[0]++;});
+                require(written[0]==count);data.flush();
+            });
+            var manifest=new Manifest(FORMAT,1,"UNENCRYPTED_SYNTHETIC_ONLY",count,
+                    sourceFile.bytes(),sourceFile.sha256(),historyFile.bytes(),historyFile.sha256());
+            sink.write("manifest.json",4096,out->out.write(JSON.writeValueAsBytes(manifest)));return null;
+        }));
+    }
+    @FunctionalInterface interface EntrySink {void write(String name,long maximum,Writer writer)throws Exception;}
+    private record EntryDigest(long bytes,String sha256){}
+    private static EntryDigest entry(EntrySink sink,String name,long maximum,Writer writer)throws Exception{
+        var hash=hash();long[] count={0};
+        sink.write(name,maximum,out->{
+            var digest=new FilterOutputStream(out){
+                @Override public void write(int value)throws IOException{require(++count[0]<=maximum);hash.update((byte)value);out.write(value);}
+                @Override public void write(byte[] bytes,int offset,int length)throws IOException{
+                    count[0]+=length;require(count[0]<=maximum);hash.update(bytes,offset,length);out.write(bytes,offset,length);
+                }
+                @Override public void close()throws IOException{flush();}
+            };
+            writer.write(digest);digest.flush();
+        });
+        return new EntryDigest(count[0],HexFormat.of().formatHex(hash.digest()));
     }
     Manifest restore(Path snapshot,Path target){return restore(snapshot,target,()->{});}
     Manifest restore(Path snapshot,Path target,Runnable beforePublish){
@@ -113,7 +134,7 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
         catch(Exception e){throw invalid();}
         // Failed candidate directories are never activated or merged; leave them inside the owned fixture for inspection.
     }
-    private void child(Path path,String prefix) throws IOException {
+    void child(Path path,String prefix) throws IOException {
         require(path!=null&&path.isAbsolute()&&path.normalize().equals(path)&&root.equals(path.getParent()));
         String name=path.getFileName().toString();require(name.startsWith(prefix));
         String id=name.substring(prefix.length());require(UUID.fromString(id).toString().equals(id));PrivateKnowledgeDirectory.noLinks(path);
@@ -123,13 +144,13 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
         require(digest(file,maximum).equals(sha));
     }
     private static MessageDigest hash(){try{return MessageDigest.getInstance("SHA-256");}catch(Exception e){throw invalid();}}
-    private static String digest(Path file,long maximum) throws IOException {
+    static String digest(Path file,long maximum) throws IOException {
         var hash=hash();long count=0;try(var input=Files.newInputStream(file)){byte[] buffer=new byte[65536];int n;
             while((n=input.read(buffer))!=-1){count+=n;require(count<=maximum);hash.update(buffer,0,n);}}
         return HexFormat.of().formatHex(hash.digest());
     }
-    private interface Writer {void write(OutputStream output)throws Exception;}
-    private static void write(Path file,long maximum,Writer writer)throws Exception {
+    interface Writer {void write(OutputStream output)throws Exception;}
+    static void write(Path file,long maximum,Writer writer)throws Exception {
         PrivateKnowledgeDirectory.file(file);
         try(var channel=FileChannel.open(file,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)){
             var output=new FilterOutputStream(Channels.newOutputStream(channel)){
