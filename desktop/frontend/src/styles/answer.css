@@ -1,18 +1,18 @@
-.answer-content { min-width: 0; max-width: 100%; }
+.answer-content { min-width: 0; max-width: 100%; font-size: 14px; font-weight: 400; }
 .answer-reading-tools { display: flex; justify-content: flex-end; margin: 0 0 8px; }
 .answer-reading-tools button { font-size: 12px; padding: 6px 10px; }
 .answer-content .answer-markdown { line-height: 1.75; overflow-wrap: anywhere; unicode-bidi: plaintext; }
 .answer-markdown > :first-child { margin-top: 0; }
 .answer-markdown > :last-child { margin-bottom: 0; }
-.answer-markdown p { margin: 0 0 12px; white-space: pre-wrap; }
+.answer-content .answer-markdown p { margin: 0 0 12px; white-space: pre-wrap; font-size: inherit; }
 .answer-content .answer-markdown h3 { font-size: 18px; }
 .answer-content .answer-markdown h4 { font-size: 16px; }
 .answer-content .answer-markdown h5, .answer-content .answer-markdown h6 { font-size: 14px; }
-.answer-content .answer-markdown :is(h3, h4, h5, h6) { line-height: 1.5; margin: 20px 0 10px; }
+.answer-content .answer-markdown :is(h3, h4, h5, h6) { color: var(--text); line-height: 1.5; margin: 20px 0 10px; }
 .answer-content .answer-markdown > :first-child { margin-top: 0; }
 .answer-markdown :is(ul, ol) { padding-inline-start: 24px; margin: 8px 0 14px; }
-.answer-markdown li { margin: 4px 0; }
-.answer-markdown li > p { margin-bottom: 6px; }
+.answer-content .answer-markdown li { margin: 4px 0; padding: 0; border: 0; }
+.answer-content .answer-markdown li > p { margin-bottom: 6px; }
 .answer-markdown blockquote { margin: 12px 0; padding: 4px 14px; border-inline-start: 3px solid var(--accent); color: var(--muted); }
 .answer-markdown blockquote > :last-child { margin-bottom: 0; }
 .answer-content .answer-markdown code { font-family: Consolas, 'Cascadia Code', monospace; font-size: .95em; background: var(--surface-raised); border-radius: 4px; padding: 2px 4px; }
