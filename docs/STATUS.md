@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 [PDF 文字层导入](engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)已进入新统一预览包：受限子进程提取、原生预览确认、限定检索／原文定位及独立应用重开一次通过，取消与不支持文件不入库。PdfPig 0.1.16／Apache-2.0 及完整附录声明随包；PDF／Word 10/10、前端 5/5、实际新旧预览 EXE 启动和新包 933 文件核对通过。0 模型调用，六份用户文档、最近工作区和原服务保持；本地提交，未推送。无 OCR；复杂 PDF 语义完整性、模型质量、个人恢复、PG 桌面、跨机器与正式发布仍未验收。下方“阅读新包未启动”的记录已由本轮补验，只保留原时点范围。
+
 2026-11-09 [回答排版阅读](engineering/ANSWER-MARKDOWN-READING-REPORT.md)已进入新的本地开发预览包：助手／摘要、会话及知识回答支持 Markdown 与原文切换，原记录复制／记忆草稿／导出保持。复用 MIT React Markdown／GFM；34/34 聚焦检查、三页面浅深色隔离 WPF WebView 及最终 ZIP 923 文件完整性通过。仅本地提交，未触及个人数据或 KAG。新包未复验完整 AssistantApp／Runtime 启动，不能继承下方旧包的完整流程 PASS；跨机器、个人恢复、PG 桌面和模型质量边界保持。
 
 2026-11-09 [统一 Windows 开发包](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)已包含 Word 导入、版本对比、限定检索、历史问答与笔记导出。修正旧打包 helper 常量、固定包内 .NET 10.0.14 并补齐许可材料；最终 ZIP 7/7 合同通过，两条桌面流程共四次独立应用启动及实际 EXE 无参数启动通过，0 模型调用。仅本地提交，`main` 保持 `f5266bf`；六份用户文档、最近工作区记录与既有服务未变。仍为 Development-only；附最终包、精确哈希、失败记录和未验证范围。

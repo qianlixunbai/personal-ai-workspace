@@ -1,5 +1,7 @@
 # 回答排版阅读与原文保真
 
+后续补验：[PDF 资料导入轮](KNOWLEDGE-PDF-IMPORT-REPORT.md)已验证本报告 final 阅读包的真实无参数 EXE、包内 JVM 和实际 UI 启动；并提供继续整合 PDF 的新预览包。下方保留本轮原验证范围，不把后续启动扩展为一般模型质量或个人数据验收。
+
 日期：2026-11-09。已完成助手／摘要、持久会话和知识问答的 Markdown 阅读增量，并生成新的本地 Windows 开发预览包。**Development-only / unsigned**；本轮验证覆盖前端行为、隔离 WPF WebView 阅读及包完整性，不增加完整 AssistantApp／真实模型／个人恢复的验收结论。
 
 ## 交付与使用

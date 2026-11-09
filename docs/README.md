@@ -1,6 +1,8 @@
 # Documentation
 
-2026-11-09：[回答排版阅读与原文保真](engineering/ANSWER-MARKDOWN-READING-REPORT.md)提供新开发预览 ZIP、成熟组件／许可评估、34 项聚焦验证和实际 WPF WebView 截图。该包的完整产品启动／JVM 链路尚未复验，下面旧包的完整验收保留原范围。
+2026-11-09：[PDF 导入与完整应用验证](engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)提供最新统一开发 ZIP、实际 EXE 启动、PDF 预览确认／检索／重开证据、许可来源和边界。无 OCR，0 模型调用；上一阅读包的完整启动也已补验，下列文档保留各自原时点范围。
+
+2026-11-09：[回答排版阅读与原文保真](engineering/ANSWER-MARKDOWN-READING-REPORT.md)提供阅读开发预览 ZIP、成熟组件／许可评估、34 项聚焦验证和实际 WPF WebView 截图。其实际产品启动／JVM 链路由后续 PDF 轮补验，下面旧包的其他完整验收保留原范围。
 
 2026-11-09：[当前完整开发包与验收](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)提供近期资料功能的统一 Windows 入口；包含最终本地 ZIP、.NET 补丁及许可整合、真实包内桌面流程、回滚点和可用边界。`main` 当前为已获授权的 `f5266bf`，下列较早记录保留原时点经过。
 

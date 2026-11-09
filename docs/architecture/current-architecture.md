@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-09 [PDF 文字层摘录](../engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)：Native 持有受校验的只读文件，经 stdin 交给同包 EXE 的独立 PdfPig worker；Windows Job 限制内存／进程数并负责退出回收，HelperProcess 限时 12 秒。完成有界提取和原生预览确认后，UTF-8 `.pdf.txt` 进入既有 Knowledge。React／Runtime 不取得原 PDF；引用继续定位 TXT 摘录，页标记仅为文件页序号。无 OCR、原 PDF 保存、Runtime API 或 schema 变更；Job 不等同于权限／网络沙箱。
+
 2026-11-09 [回答阅读](../engineering/ANSWER-MARKDOWN-READING-REPORT.md)：共用 React `AnswerContent` 使用 React Markdown 10.1.0／remark-gfm 4.0.1，把已验证的回答字符串显示为受限节点或原文。原始 HTML 保持文本，链接和图片没有导航／加载节点；知识引用沿已有精确版本 Bridge。无 Runtime／schema／授权变更，复制、导出及记忆草稿仍使用原始记录。
 
 2026-11-09 [版本对比](../engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)：React 经既有授权原文 Bridge 有界读取两个不可变版本，确认完整后用 jsdiff 9.0.0 异步逐行比较；文本节点渲染，按精确版本／偏移回看，不改 Runtime、schema、来源或问答历史。

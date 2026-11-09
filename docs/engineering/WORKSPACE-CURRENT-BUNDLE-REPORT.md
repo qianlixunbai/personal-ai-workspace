@@ -1,6 +1,8 @@
 # 当前功能链的 Windows 开发包整合验收
 
-后续增量：[回答排版阅读报告](ANSWER-MARKDOWN-READING-REPORT.md)提供更新的[阅读开发预览 ZIP](../../artifacts/Workspace-answer-reading-development-final-20261109.zip)，基于 `60f7a0f`。新包已完成前端、隔离真实 WebView 和全部包文件核对；本报告下方的完整 AssistantApp／Runtime 与实际 EXE 验收仅属于原整合包，不能自动沿用到新包。
+最新入口：[PDF 导入与完整应用验证](KNOWLEDGE-PDF-IMPORT-REPORT.md)提供包含本报告全部功能及回答排版、PDF 摘录的新统一 ZIP，绑定 `fc6bac7`；新包实际 EXE 启动和完整 PDF 导入／重开已通过。以下整合包的细节与其他场景仍保留原验证范围。
+
+后续增量：[回答排版阅读报告](ANSWER-MARKDOWN-READING-REPORT.md)提供[阅读开发预览 ZIP](../../artifacts/Workspace-answer-reading-development-final-20261109.zip)，基于 `60f7a0f`。前端、隔离真实 WebView 和包文件已核对；其实际 EXE／包内 JVM／UI 启动由后续 PDF 轮补验。本报告下方其他完整场景仍仅属于原整合包，不能自动沿用到新包。
 
 日期：2026-11-09。结论：近期 Word 导入、源版本对比、限定检索、历史问答和笔记导出已进入同一个本地 Windows x64 开发包，并完成关键桌面流程验证。仍为 **Development-only / unsigned**，不是安装器或 Production GO；没有推送。
 
