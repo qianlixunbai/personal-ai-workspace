@@ -46,7 +46,7 @@ Ollama 继续固定 0.40.1，沿用既有 [MIT 许可](https://raw.githubusercon
 
 ## 冻结新题与真实模型结果
 
-在第一次新题推理前冻结 5 份合成资料、题目、检索词及检查项。`preregistered-cases.json` 与 `frozen-quality-source.cs.txt` 的 SHA-256 为 `8BC79372BA467F3F1EA3F47A3CB683D6A9AB4452565E89CC678FDE8520BB4320`。之后只增补历史检查／不重放恢复逻辑，五题内容与期望均未改，期望不发送给模型。
+在第一次新题推理前冻结 5 份合成资料、题目、检索词及检查项。`preregistered-cases.json` 记录的题集源码 `frozen-quality-source.cs.txt` 的 SHA-256 为 `8BC79372BA467F3F1EA3F47A3CB683D6A9AB4452565E89CC678FDE8520BB4320`，不是两个文件具有相同哈希。之后只增补历史检查／不重放恢复逻辑，五题内容与期望均未改，期望不发送给模型。
 
 通过真实 AssistantApp／WPF／WebView2 启动及原生 RuntimeClient／HTTP／SQLite 调用；本轮未通过 DOM 点击问答按钮，不冒充新增 UI 交互验收。全新合成 Profile `e443d8805ee94840bd2a35d2aa73d504`，导入和模型准入走产品路径。旧 Runtime JAR 来自上轮固定构建，SHA-256 `461615E2250AF9C94C8763CEC288813543BF70912BD2E69399533A6B9C4816D0`。两版本复用相同资料、范围和题目，各题最多提交一次；不重跑旧 RFC 题。
 
@@ -60,7 +60,7 @@ Ollama 继续固定 0.40.1，沿用既有 [MIT 许可](https://raw.githubusercon
 
 成功的九条模型答案均引用本题选定文档源版本 1，精确偏移回到原文。按预设字面检查和本轮逐条语义复核，旧版 5/5、新版成功的 4/4 满足；新版全部计划题按 4/5 记录，另题为技术中断。自动语言检查仅识别有无汉字，因此另核对了完整句、问答相关性、条件否定与缺失事实；这不是独立人工评分或统计评测。
 
-首次当前版本提交暴露 Desktop 只接受 v2：Runtime 已接收，客户端解析 v3 后显示 OutcomeUnknown，应用退出。`model-ab-1/completion.json` 的 `passed=false` 和原失败日志不改写。模型关闭的 `history-inspect` 读取持久记录，确认中断，无答案；随后兼容修正后仅提交剩余 4 题。`model-resume-1/quality-current-result.json` 为 submitted=4、recovered=1、succeeded=4、retries=0，workflowPassed 表示收集／存储流程完成，不表示五题全过。
+首次当前版本提交暴露 Desktop 只接受 v2：Runtime 已接收，客户端解析 v3 后产生 OutcomeUnknown；本轮手工验收探针捕获异常后在 finally 调用 `app.ExitAsync()`，随后历史确认为中断。这不是“产品遇到 OutcomeUnknown 会自动退出”的证据。`model-ab-1/completion.json` 的 `passed=false` 和原失败日志不改写。模型关闭的 `history-inspect` 读取持久记录，确认中断，无答案；随后兼容修正后仅提交剩余 4 题。`model-resume-1/quality-current-result.json` 为 submitted=4、recovered=1、succeeded=4、retries=0，workflowPassed 表示收集／存储流程完成，不表示五题全过。
 
 Ollama 原日志合计 **12 次 `/api/chat`**：`model-ab-1` 7 次（旧版准入＋5 回答＋初次新版准入），`model-resume-1` 5 次（再次准入＋4 回答）。未知首题无已完成的推理响应，仍按已提交后中断处理，而不是假定没发过而重试。
 

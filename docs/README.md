@@ -18,7 +18,7 @@
 
 ## 如何判断证据
 
-最新 Knowledge 增量：[保真提示与固定结构化输出](engineering/KNOWLEDGE-ANSWER-FIDELITY-REPORT.md)补齐语言／字面／条件要求和 v2／v3 兼容；独立新题旧版 5/5、新版 4 题满足且 1 题技术中断，未重发，尚无质量提升证据。[指定文档范围](engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)与[完整桌面／独立进程历史](engineering/KNOWLEDGE-DOCUMENT-SCOPE-DESKTOP-REPORT.md)已有证据继续有效，原 RFC 单题质量失败保留。代码回滚不等于数据回滚；PG 完整桌面和一般模型质量未验收。
+最新 Knowledge 增量：[保真提示与固定结构化输出](engineering/KNOWLEDGE-ANSWER-FIDELITY-REPORT.md)补齐语言／字面／条件要求和 v2／v3 兼容；[后续根因复核与三道未见题](engineering/KNOWLEDGE-ANSWER-FOLLOWUP-REPORT.md)确认正常受理、三题满足及停机历史一致，没有新旧优劣结论。原 A/B 中断和 RFC 单题质量失败保留。[指定文档范围](engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)与[完整桌面／独立进程历史](engineering/KNOWLEDGE-DOCUMENT-SCOPE-DESKTOP-REPORT.md)已有证据继续有效。代码回滚不等于数据回滚；PG 完整桌面和一般模型质量未验收。
 
 最新产品增量：[跨会话原文查找与轮次定位](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，支持消息摘要／高亮、归档筛选及草稿保护；分层验证后，[真实桌面及隔离 PostgreSQL Store 验证](engineering/CONVERSATION-SEARCH-DESKTOP-REPORT.md)也已通过。完整 AssistantApp、PG 桌面组合和最大容量性能仍待验收。
 
