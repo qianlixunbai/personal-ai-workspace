@@ -1,13 +1,9 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeSearchHit, KnowledgeSearchResult, KnowledgeSearchStatus } from '../bridge/knowledgeSearch'
+import { HighlightedText } from './HighlightedText'
 
 const labels = { READY: '可用', BUILDING: '正在重建', STALE: '等待重建', FAILED: '重建失败' }
-function Highlight({ hit }: { hit: KnowledgeSearchHit }) {
-  let offset = 0
-  const pieces = hit.highlightRanges.map((r, i) => { const plain = hit.snippet.slice(offset, r.start); offset = r.end; return <Fragment key={i}>{plain}<mark>{hit.snippet.slice(r.start, r.end)}</mark></Fragment> })
-  return <>{pieces}{hit.snippet.slice(offset)}</>
-}
 export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void> }) {
   const [query, setQuery] = useState(''), [status, setStatus] = useState<KnowledgeSearchStatus | null>(null), [result, setResult] = useState<KnowledgeSearchResult | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -46,7 +42,7 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }:
     {result && <><h3 ref={results} tabIndex={-1}>检索结果 · {result.hits.length}</h3>{result.hits.length === 0 && <p>没有满足全部关键词的当前来源。</p>}
       <ol tabIndex={0} aria-label="检索结果列表">{result.hits.map(hit => <li key={`${hit.documentId}/${hit.sourceRevision}/${hit.startOffset}`}>
         <h4>{hit.title}</h4><p className="knowledge-location">{hit.sourceType} · 源版本 {hit.sourceRevision} · 行 {hit.startLine}–{hit.endLine} · 文本偏移 {hit.startOffset}–{hit.endOffset}{hit.heading ? ` · ${hit.heading}` : ''}</p>
-        <p className="knowledge-snippet"><Highlight hit={hit} /></p><button disabled={!enabled || busy} onClick={() => { void open(hit) }}>打开此位置</button>
+        <p className="knowledge-snippet"><HighlightedText text={hit.snippet} ranges={hit.highlightRanges} /></p><button disabled={!enabled || busy} onClick={() => { void open(hit) }}>打开此位置</button>
       </li>)}</ol></>}
   </section>
 }

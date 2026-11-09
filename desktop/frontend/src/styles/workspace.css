@@ -296,6 +296,8 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .knowledge-detail h2, .knowledge-detail p { overflow-wrap: anywhere; unicode-bidi: plaintext; }
 .knowledge-detail > [role=status] { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
 .knowledge-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; font: inherit; line-height: 1.7; max-height: 48vh; overflow-y: auto; margin: 8px 0; padding: 12px; background: var(--surface-raised); border-radius: var(--radius-control); }
+.knowledge-detail mark { color: var(--text); background: var(--accent-soft); text-decoration: underline; }
+.knowledge-detail .pagination { flex-wrap: wrap; }
 .knowledge-location { font-size: 12px; color: var(--muted); }
 .knowledge-detail .knowledge-location { margin: 10px 0 0; }
 .knowledge-page > .advanced-section { margin: 4px 0 8px; }

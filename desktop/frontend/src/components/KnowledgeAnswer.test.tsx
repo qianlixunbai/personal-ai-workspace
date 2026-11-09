@@ -5,6 +5,7 @@ import { WorkspaceClient } from '../bridge/client'
 import { KnowledgeService } from '../test/knowledgeFixtures'
 import { isKnowledgeAnswerTask } from '../bridge/knowledgeAnswer'
 import type { KnowledgeAnswerTask } from '../bridge/knowledgeAnswer'
+import type { KnowledgePreview } from '../bridge/knowledge'
 
 class AnswerService extends KnowledgeService {
   hold = false
@@ -19,8 +20,89 @@ class AnswerService extends KnowledgeService {
     super.postMessage(value)
   }
 }
+class ReaderService extends AnswerService {
+  prefix = '# Heading\n' + '前文。'.repeat(1361)
+  evidence = '仅限😀本项目，预算为五百元。\n<script>不适用于旧项目。</script>'
+  source = this.prefix + this.evidence + '后文。'.repeat(1500)
+  holdPreview = false; failPreview = false; wrongVersion = false
+  override answer(): KnowledgeAnswerTask {
+    const task = super.answer(), citation = task.result!.citations[0]!
+    return { ...task, result: { ...task.result!, citations: [{ ...citation, startOffset: this.prefix.length, endOffset: this.prefix.length + this.evidence.length, startLine: 2, endLine: 3, locator: { ...citation.locator, endLine: 3, endOffset: this.source.length } }] } }
+  }
+  page(offset: number, revision = '1'): KnowledgePreview {
+    const source = revision === '1' ? this.source : '# Heading\n新版正文。'
+    let end = Math.min(source.length, offset + 4096)
+    if (end < source.length && /[\uDC00-\uDFFF]/u.test(source[end]!)) end--
+    return { ...this.preview(), sourceRevision: revision, offset, text: source.slice(offset, end), nextOffset: end < source.length ? end : null, locators: [{ type: 'MARKDOWN_SECTION_LINES', startLine: 1, endLine: 3, startOffset: 0, endOffset: source.length, section: 'line-1', heading: 'Heading' }] }
+  }
+  override postMessage(value: unknown) {
+    const request = value as { method: string; payload: { offset: number; sourceRevision: string } }
+    if (request.method !== 'knowledge.preview') { super.postMessage(value); return }
+    this.sent.push(value as typeof this.sent[number])
+    if (this.holdPreview) return
+    if (this.failPreview) {
+      this.failPreview = false; const pending = this.sent.at(-1)!
+      this.emit({ version: 1, sessionId: pending.sessionId, requestId: pending.requestId, ok: false, error: { code: 'KnowledgeStorageUnavailable', message: '读取暂时不可用。' } }); return
+    }
+    const page = this.page(request.payload.offset, request.payload.sourceRevision)
+    this.reply(this.sent.length - 1, this.wrongVersion ? { ...page, sourceRevision: '2' } : page)
+  }
+}
 const clients: WorkspaceClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
+const readerClick = async (name: string) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
+const readerAnswer = async () => {
+  fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: '适用条件是什么？' } })
+  fireEvent.change(screen.getByLabelText('回答检索关键词'), { target: { value: '预算' } })
+  await readerClick('基于知识回答'); await readerClick('打开引用来源')
+}
+it('source reader marks only exact old-version evidence and supports Unicode-safe context navigation without losing failed back reads', async () => {
+  const storage = vi.spyOn(Storage.prototype, 'setItem'), port = new ReaderService(); port.document.currentReadyRevision = '2'
+  const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ })
+  await readerAnswer()
+  const sourceText = () => screen.getByRole('region', { name: '纯文本预览' }).querySelector('pre')!
+  expect(sourceText().textContent).toBe(port.page(port.prefix.length).text)
+  expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  expect(document.querySelector('script,a,img,iframe')).toBeNull()
+  expect(document.activeElement).toBe(sourceText())
+  expect(screen.getByText(/当前可用版本为 2，此处仍显示所选旧版本/)).toBeTruthy()
+  await readerClick('下一页文本')
+  const context = sourceText().textContent
+  expect(sourceText().querySelector('mark')).toBeNull(); expect(screen.getByText(/本页为上下文，未包含引用范围/)).toBeTruthy()
+  port.failPreview = true; await readerClick('上一页文本')
+  expect(sourceText().textContent).toBe(context); expect(screen.getByRole('alert').textContent).toBe('读取暂时不可用。')
+  await readerClick('上一页文本')
+  expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  await readerClick('从本节开头阅读')
+  expect(sourceText().textContent).toBe(port.source.slice(0, 4095)); expect(sourceText().querySelector('mark')?.textContent).toBe('仅限')
+  await readerClick('下一页文本')
+  expect(port.sent.filter(request => request.method === 'knowledge.preview').at(-1)?.payload).toEqual({ documentId: port.document.documentId, sourceRevision: '1', offset: 4095 })
+  expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence.slice(2))
+  expect(sourceText().textContent).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u)
+  await readerClick('返回引用位置'); expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '2' } })
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  await readerClick('预览源文本'); expect(sourceText().textContent).toBe('# Heading\n新版正文。')
+  expect(sourceText().querySelector('mark')).toBeNull(); expect(screen.queryByRole('button', { name: '返回引用位置' })).toBeNull()
+  expect(storage).not.toHaveBeenCalled()
+})
+it('source reader rejects wrong-version replies and ignores late reads after leaving the page or replacing the session', async () => {
+  const port = new ReaderService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session(); port.holdPreview = true
+  const view = render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ })
+  await readerAnswer(); const pending = port.sent.length - 1
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible={false} />)
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible />)
+  await act(async () => port.reply(pending, port.page(port.prefix.length)))
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  port.holdPreview = false; port.wrongVersion = true
+  await readerAnswer()
+  expect(screen.getByRole('alert')).toBeTruthy(); expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  port.holdPreview = true; await readerClick('打开引用来源'); const oldSession = port.sent.length - 1
+  await act(async () => { port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc'); port.reply(oldSession, port.page(port.prefix.length)) })
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '返回引用位置' })).toBeNull()
+})
 it('explicit K3 flow guards both IME controls, renders plain answer, opens admitted source and clears on session/page leave', async () => {
   const storage = vi.spyOn(Storage.prototype, 'setItem'), port = new AnswerService(); port.document.currentReadyRevision = '2'
   const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()

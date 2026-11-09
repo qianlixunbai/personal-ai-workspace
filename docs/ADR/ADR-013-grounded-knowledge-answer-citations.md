@@ -272,6 +272,21 @@ never model-rendered links, HTML or Markdown. Leaving the page may allow an acce
 Runtime task to continue, but a late result cannot repopulate cleared UI. Do not
 introduce a complex route-level replay system.
 
+The source reader highlights the intersection of the admitted citation's exact
+UTF-16 range with the currently displayed immutable preview page. It labels
+citation text separately from surrounding context and shows the preview's actual
+source revision, including when the document has a newer ready revision. Search
+hits use the same reader but are explicitly labelled as search-hit ranges.
+Users may read from the current structural section's start, page through context,
+and return to the original citation/hit position. All navigation reuses the
+existing bounded preview API and its document/revision/offset response checks;
+there is no prefetch, whole-document download or model call. Commit the bounded
+back stack only after a successful read. Explicit version/document changes,
+session replacement and page departure clear the active source range; late reads
+cannot restore it. Source text remains React text nodes, never interpreted HTML
+or Markdown. Source range highlighting is a reading aid, not a claim that the
+model's answer is faithful or the displayed context was admitted to inference.
+
 ## Untrusted evidence and prompt-injection boundary
 
 Imported Knowledge is untrusted data. Structurally separate Runtime system prompt
