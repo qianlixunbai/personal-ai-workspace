@@ -20,6 +20,7 @@ public sealed class KnowledgeTests
         internal int Calls,Uploads,Lookups;internal bool Lost,Deleted,Malformed;internal byte[]? Uploaded;internal TaskCompletionSource? Hold;
         internal bool SearchMalformed,SearchWorstCase;
         internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
+        internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -39,10 +40,15 @@ public sealed class KnowledgeTests
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
             if(path=="/api/v1/knowledge/answer/tasks"||path=="/api/v1/tasks/"+AnswerTaskId){
+                if(!path.EndsWith("/answer/tasks")){
+                    if(AnswerReadLost)throw new HttpRequestException();
+                    if(AnswerReadError is { } status)return RuntimeClientTests.Response(status,"{\"code\":\"TASK_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
+                }
                 if(path.EndsWith("/answer/tasks")){
                     using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal(2,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());if(AnswerLost)throw new HttpRequestException();
                 }
                 string json=JsonSerializer.Serialize(AnswerTask());if(AnswerInvalid is not null)json=AnswerInvalid;
+                if(!path.EndsWith("/answer/tasks")&&AnswerReadHold is { } hold)await hold.Task;
                 var response=RuntimeClientTests.Response(path.EndsWith("/answer/tasks")?HttpStatusCode.Accepted:HttpStatusCode.OK,json);
                 if(path.EndsWith("/answer/tasks"))response.Headers.Location=new Uri("/api/v1/tasks/"+AnswerTaskId,UriKind.Relative);return response;
             }
@@ -93,6 +99,68 @@ public sealed class KnowledgeTests
             f.Handler.AnswerState="SUCCEEDED";f.Handler.Hold=new();var payload=method=="knowledge.answerSubmit"?(object)new{question="question",query="budget"}:new{taskId=id};
             var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request(method,payload));f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
         }
+    }
+    [Fact]public async Task AnswerHistoryReclaimsCompletedTasksAndKeepsActiveTaskAuthority()
+    {
+        using var f=new Fixture();string active=f.Handler.AnswerTaskId;f.Handler.AnswerState="RUNNING";
+        await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});
+        string first="";
+        for(int i=0;i<70;i++){
+            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");if(i==0)first=f.Handler.AnswerTaskId;
+            f.Handler.AnswerState="QUEUED";
+            var submitted=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.True(submitted.GetProperty("ok").GetBoolean());
+            f.Handler.AnswerState=new[]{"SUCCEEDED","FAILED","CANCELLED","TIMED_OUT"}[i%4];
+            var done=await f.Send(i%4==2?"knowledge.answerCancel":"knowledge.answerGet",new{taskId=f.Handler.AnswerTaskId});Assert.True(done.GetProperty("ok").GetBoolean());
+            Assert.InRange(f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId),1,64);
+        }
+        Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
+        int calls=f.Handler.Calls;
+        foreach(string method in new[]{"knowledge.answerGet","knowledge.answerCancel"}){
+            var expired=await f.Send(method,new{taskId=first});Assert.Equal("TaskNotFound",expired.GetProperty("error").GetProperty("code").GetString());
+        }
+        Assert.Equal(calls,f.Handler.Calls);
+        f.Handler.AnswerTaskId=active;f.Handler.AnswerState="RUNNING";
+        var running=await f.Send("knowledge.answerGet",new{taskId=active});Assert.Equal("RUNNING",running.GetProperty("result").GetProperty("status").GetString());
+    }
+    [Fact]public async Task AnswerCapacityRequiresConfirmedTerminalOrMissingAndCountsPendingSubmissions()
+    {
+        using var f=new Fixture();string session=f.Bridge.SessionId;
+        f.Handler.AnswerState="RUNNING";
+        for(int i=0;i<63;i++){
+            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
+        }
+        f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");f.Handler.Hold=new();
+        var pending=f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);int calls=f.Handler.Calls;
+        Assert.Equal(DesktopError.QueueFull,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerSubmitAsync(session,"question","budget",default))).Error);
+        Assert.Equal(calls,f.Handler.Calls);f.Handler.Hold.SetResult();await pending;f.Handler.Hold=null;
+        string id=f.Handler.AnswerTaskId;
+        f.Handler.AnswerReadLost=true;
+        Assert.Equal(DesktopError.RuntimeUnavailable,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
+        f.Handler.AnswerReadLost=false;f.Handler.AnswerReadError=HttpStatusCode.InternalServerError;
+        Assert.Equal(DesktopError.InvalidResponse,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
+        Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));calls=f.Handler.Calls;
+        Assert.Equal(DesktopError.QueueFull,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerSubmitAsync(session,"question","budget",default))).Error);Assert.Equal(calls,f.Handler.Calls);
+        f.Handler.AnswerReadError=HttpStatusCode.NotFound;
+        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
+        Assert.Equal(63,f.Knowledge.AnswerAuthorizationCount(session));calls=f.Handler.Calls;
+        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,true,default))).Error);Assert.Equal(calls,f.Handler.Calls);
+        f.Handler.AnswerReadError=null;f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");
+        await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));
+    }
+    [Fact]public async Task AnswerEvictionRejectsLateResultBeforeAuthorizingItsCitations()
+    {
+        using var f=new Fixture();string session=f.Bridge.SessionId,first="";f.Handler.AnswerState="FAILED";
+        for(int i=0;i<64;i++){
+            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");if(i==0)first=f.Handler.AnswerTaskId;
+            await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
+        }
+        f.Handler.AnswerTaskId=first;f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerReadHold=new();
+        var late=f.Knowledge.AnswerTaskAsync(session,first,false,default);
+        f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");f.Handler.AnswerState="QUEUED";
+        await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
+        f.Handler.AnswerReadHold.SetResult();
+        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>late)).Error);
+        Assert.Equal(0,f.Knowledge.AuthorizationCount(session));Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));
     }
     private sealed class Files:IKnowledgeSourceFiles
     {internal MemoryStream? Selected;public Task<KnowledgeSourceFile?> PickAsync(CancellationToken ct){Selected=new(Encoding.UTF8.GetBytes("native text"));return Task.FromResult<KnowledgeSourceFile?>(new(Selected,"fixture.txt"));}}

@@ -212,6 +212,20 @@ authorize a replacement session. No automatic replay or generic HTTP/task/native
 proxy; no token/path/source bytes exposed to JS. Existing bridge byte bounds
 (32 KiB request / 64 KiB ordinary response) remain unless proven impossible.
 
+2026-11-09 lifecycle clarification: the native session retains at most 64 answer
+grants, with in-flight submissions reserving capacity. Before a new submission
+would exceed that bound, revoke the oldest **observed terminal** grant, ordered
+by first validated terminal observation. Do not evict unconfirmed, QUEUED or
+RUNNING grants merely because time has elapsed. A validated authenticated
+TASK_NOT_FOUND response also revokes that exact grant; transport, timeout,
+malformed response and a cancellation request alone do not. Revocation is only
+local access bookkeeping, not Runtime cancellation or deletion of a result/source.
+Recheck both session identity and the exact grant instance after every get/cancel
+response, before projecting results or authorizing citation documents. A late
+response cannot revive an evicted/replaced grant. Runtime's independent queue and
+result retention limits still apply; unobserved tasks may still exhaust this
+conservative bound. No timer, automatic polling or POST retry is added.
+
 Browser is denied K3 before body processing through existing security boundaries;
 route/capability/Origin/CORS authority remains Translate-only, including task access.
 Admit `knowledge-answer` for native identity only; existing capability contracts remain unchanged.

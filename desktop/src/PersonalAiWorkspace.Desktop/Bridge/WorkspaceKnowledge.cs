@@ -14,7 +14,15 @@ internal sealed record KnowledgeAnswerView(string TaskId,string Status,Knowledge
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
 internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
 {
-    private sealed class Authority {internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);internal readonly HashSet<Guid> AnswerTasks=[];internal int AnswerSubmissions;}
+    private const int MaximumAnswerTasks=64;
+    private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;}
+    private sealed class Authority {
+        internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);
+        internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);
+        internal readonly Dictionary<Guid,AnswerAuthority> AnswerTasks=[];
+        internal readonly LinkedList<Guid> CompletedAnswers=new();
+        internal int AnswerSubmissions;
+    }
     private readonly Dictionary<string,Authority> sessions=new(StringComparer.Ordinal);
     private readonly object sync=new();
     internal void BeginSession(string session){lock(sync)sessions[session]=new();}
@@ -23,24 +31,60 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     internal int AnswerAuthorizationCount(string session){lock(sync)return Require(session).AnswerTasks.Count;}
     private void Current(string session,Authority known)
     {if(!sessions.TryGetValue(session,out var current)||!ReferenceEquals(current,known))throw new OperationCanceledException();}
-    private KnowledgeAnswerView AnswerView(string session,Authority known,KnowledgeAnswerTask task)
+    private void CurrentAnswer(string session,Authority known,Guid id,AnswerAuthority access)
     {
         Current(session,known);
+        if(!known.AnswerTasks.TryGetValue(id,out var current)||!ReferenceEquals(current,access))
+            throw new DesktopException(DesktopError.TaskNotFound);
+    }
+    private static void ForgetAnswer(Authority known,Guid id,AnswerAuthority access)
+    {
+        if(!known.AnswerTasks.TryGetValue(id,out var current)||!ReferenceEquals(current,access))return;
+        known.AnswerTasks.Remove(id);
+        if(access.Completed is { } completed)known.CompletedAnswers.Remove(completed);
+    }
+    private KnowledgeAnswerView AnswerView(string session,Authority known,AnswerAuthority access,KnowledgeAnswerTask task)
+    {
+        CurrentAnswer(session,known,task.TaskId,access);
+        // Only a validated Runtime terminal response makes this grant reclaimable.
+        // Keep its first completion order; late in-flight observations cannot make it active again.
+        if(task.Status is not (TaskState.QUEUED or TaskState.RUNNING)&&access.Completed is null)
+            access.Completed=known.CompletedAnswers.AddLast(task.TaskId);
         if(task.Result is not null)foreach(var citation in task.Result.Citations)Authorize(session,known,citation.DocumentId);
         return new(task.TaskId.ToString("D"),task.Status.ToString(),task.Result,task.Error is { } error?new(error.ToString(),ErrorText.For(error)):null);
     }
     internal async Task<KnowledgeAnswerView> AnswerSubmitAsync(string session,string question,string query,CancellationToken ct)
     {
-        Authority known;lock(sync){known=Require(session);if(known.AnswerTasks.Count+known.AnswerSubmissions>=64)throw new DesktopException(DesktopError.QueueFull);known.AnswerSubmissions++;}
-        try{var task=await runtime.SubmitKnowledgeAnswerAsync(question,query,ct);lock(sync){Current(session,known);known.AnswerTasks.Add(task.TaskId);return AnswerView(session,known,task);}}
+        Authority known;
+        lock(sync){
+            known=Require(session);
+            while(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks&&known.CompletedAnswers.First is { } oldest)
+                ForgetAnswer(known,oldest.Value,known.AnswerTasks[oldest.Value]);
+            if(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks)throw new DesktopException(DesktopError.QueueFull);
+            known.AnswerSubmissions++;
+        }
+        try{
+            var task=await runtime.SubmitKnowledgeAnswerAsync(question,query,ct);
+            lock(sync){
+                Current(session,known);var access=new AnswerAuthority();
+                if(!known.AnswerTasks.TryAdd(task.TaskId,access))throw new DesktopException(DesktopError.OutcomeUnknown);
+                return AnswerView(session,known,access,task);
+            }
+        }
         finally{lock(sync)known.AnswerSubmissions--;}
     }
     internal async Task<KnowledgeAnswerView> AnswerTaskAsync(string session,string taskId,bool cancel,CancellationToken ct)
     {
-        if(!WorkspaceBridge.CanonicalId(taskId))throw new DesktopException(DesktopError.InvalidRequest);Guid id=Guid.ParseExact(taskId,"D");Authority known;
-        lock(sync){known=Require(session);if(!known.AnswerTasks.Contains(id))throw new DesktopException(DesktopError.TaskNotFound);}
-        var task=await (cancel?runtime.CancelKnowledgeAnswerAsync(id,ct):runtime.GetKnowledgeAnswerAsync(id,ct));
-        lock(sync)return AnswerView(session,known,task);
+        if(!WorkspaceBridge.CanonicalId(taskId))throw new DesktopException(DesktopError.InvalidRequest);Guid id=Guid.ParseExact(taskId,"D");Authority known;AnswerAuthority access;
+        lock(sync){known=Require(session);if(!known.AnswerTasks.TryGetValue(id,out access!))throw new DesktopException(DesktopError.TaskNotFound);}
+        try{
+            var task=await (cancel?runtime.CancelKnowledgeAnswerAsync(id,ct):runtime.GetKnowledgeAnswerAsync(id,ct));
+            lock(sync)return AnswerView(session,known,access,task);
+        }catch(DesktopException error)when(error.Error==DesktopError.TaskNotFound){
+            // Missing/expired in the authenticated Runtime, never inferred from a timer,
+            // cancellation request, transport failure or malformed response.
+            lock(sync){Current(session,known);ForgetAnswer(known,id,access);}throw;
+        }
     }
     private Authority Require(string session,string? document=null,string? request=null)
     {
