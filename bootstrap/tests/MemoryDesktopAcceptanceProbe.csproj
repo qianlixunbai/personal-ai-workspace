@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="MemoryDesktopAcceptanceProbe.cs" />
+    <Compile Include="MemoryDesktopAcceptanceProbe.KnowledgeRecovery.cs" />
     <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
   </ItemGroup>
 </Project>

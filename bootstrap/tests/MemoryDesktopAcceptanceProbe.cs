@@ -13,7 +13,7 @@ using PersonalAiWorkspace.Desktop.Bridge;
 // WebView2, native bridge, RuntimeClient, HTTP and SQLite; synthetic provider only.
 // Optional fifth argument "web-knowledge" exercises two fixed public URLs, with no model generation.
 // No production source, identity check, default endpoint or user configuration changes.
-internal static class MemoryDesktopAcceptanceProbe
+internal static partial class MemoryDesktopAcceptanceProbe
 {
     private const string Source = "For project Amber, I prefer short bullet points.";
     private static string stage = "INPUT";
@@ -26,6 +26,7 @@ internal static class MemoryDesktopAcceptanceProbe
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Length == 5 && args[4] == "knowledge-recovery") return RunKnowledgeRecovery(args);
         if (args.Length != 4 && (args.Length != 5 || args[4] != "web-knowledge")) return 2;
         web = args.Length == 5;
         Process? child = null;

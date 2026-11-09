@@ -38,9 +38,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class RuntimeApiTest {
     private static final Path ISOLATED_ROOT = temporaryMemoryDirectory();
     private static final Path TOKEN = ISOLATED_ROOT.resolve("credentials/client-token");
-    private static final Path MEMORY = ISOLATED_ROOT.resolve("data");
+    private static final Path MEMORY = System.getProperty("knowledge.recovery.desktop.fixture") == null ? ISOLATED_ROOT.resolve("data")
+            : io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.data();
     private static Path temporaryMemoryDirectory() {
         try {
+            if (System.getProperty("knowledge.recovery.desktop.fixture") != null)
+                return io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.root();
             if (io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.isWindows()) {
                 // A normal Surefire JVM has no native authority. The opt-in Windows probe
                 // supplies a NEW admitted Profile; never repair a generic temporary directory.
@@ -166,6 +169,29 @@ class RuntimeApiTest {
     @LocalServerPort int port;
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
     @org.springframework.beans.factory.annotation.Autowired org.springframework.context.ApplicationContext application;
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="knowledge.recovery.desktop.fixture",matches="prepare|reopen")
+    void desktopReadsEncryptedRestoredKnowledgeWithoutModelOrTaskReplay() throws Exception {
+        String phase=System.getProperty("knowledge.recovery.desktop.fixture");
+        var history=application.getBean(io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory.class);
+        var tasks=application.getBean(io.github.qianlixunbai.workspace.task.TaskManager.class);
+        io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.verify(knowledgeStore,history,tasks);
+        assertFalse(activeModels.status().ready());
+        // Do not start the synthetic provider either. Its dedicated port is never contacted by this read-only workflow.
+        Path evidence=io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence");
+        Path ready=evidence.resolve("desktop-ready-"+phase+".json"),done=evidence.resolve("desktop-done-"+phase);
+        assertFalse(Files.exists(ready));assertFalse(Files.exists(done));token();
+        Path writing=evidence.resolve("desktop-ready-"+phase+".pending");
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(writing);
+        Files.writeString(writing,json.writeValueAsString(Map.of("port",port,"tokenFile",TOKEN.toString(),"syntheticRecovery",true,"phase",phase,"pid",ProcessHandle.current().pid())));
+        Files.move(writing,ready,StandardCopyOption.ATOMIC_MOVE);
+        long deadline=System.nanoTime()+Duration.ofSeconds(180).toNanos();
+        while(!Files.exists(done)&&System.nanoTime()<deadline)Thread.sleep(100);
+        assertTrue(Files.exists(done));assertEquals("PASS",Files.readString(done));
+        assertEquals(0,CHAT_CALLS.get());assertEquals(0,PROBE_CALLS.get());assertFalse(activeModels.status().ready());
+        io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.verify(knowledgeStore,history,tasks);
+        System.out.println("DESKTOP_ENCRYPTED_HISTORY_OLD_SOURCE_MISSING_SOURCE_NO_TASK_REPLAY_PASS_"+phase);
+    }
     @Test
     @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "web.desktop.fixture", matches = "true")
     void desktopWebKnowledgeWorkflowWithRealFetch() throws Exception {
