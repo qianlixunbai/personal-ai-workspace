@@ -4,6 +4,7 @@ import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.conversation.ConversationStore;
 import io.github.qianlixunbai.workspace.conversation.ConversationLimits;
 import io.github.qianlixunbai.workspace.conversation.Conversation;
+import io.github.qianlixunbai.workspace.conversation.ConversationSearch;
 import io.github.qianlixunbai.workspace.memory.*;
 import io.github.qianlixunbai.workspace.security.WindowsNativeGate;
 import org.flywaydb.core.Flyway;
@@ -130,11 +131,48 @@ class MemoryPostgresqlLifecycleTest {
             assertEquals(1, conversations.detail(conversation, 0, ConversationLimits.DEFAULT_LIMIT).turns().getFirst().memories().getFirst().revision());
             boundedRanking(owner, reopened);
         }
+        verifyConversationSearch(app);
         try (var db = owner.getConnection()) { assertEquals("UNCHANGED_SYNTHETIC", text(db, "SELECT value FROM public.fixture_sentinel")); }
         write(root.resolve("memory-postgresql-evidence.json"), JsonMapper.builder().build().writeValueAsBytes(Map.of(
                 "status", "POSTGRESQL_MEMORY_LIFECYCLE_VERIFIED", "sqliteRankingParity", true,
                 "leastPrivilegeStore", true, "currentRevisionAndReopen", true, "conversationReferencesRetained", true,
-                "readOnlyRepeatableSnapshot", true, "boundedRanking", true, "realModelCalled", false)));
+                "readOnlyRepeatableSnapshot", true, "boundedRanking", true, "postgresqlConversationSearch", true, "realModelCalled", false)));
+    }
+    private void verifyConversationSearch(PGSimpleDataSource app) {
+        String query="Pg字面😀%_Alpha"; UUID active,archived;
+        ConversationSearch.Page original;
+        try(var store=new ConversationStore(app)){
+            active=store.create("Synthetic PostgreSQL search").id(); archived=store.create("Synthetic archived search").id();
+            for(int i=1;i<=13;i++){
+                var t=store.createTurnWithUserMessage(active,"😀".repeat(70)+query+"<script>literal</script>"+"尾".repeat(70));
+                store.completeTurnWithAssistantMessage(active,t.id(),"Synthetic saved answer "+i);
+            }
+            var old=store.createTurnWithUserMessage(archived,query);
+            store.markTurnTerminated(archived,old.id(),Conversation.TurnStatus.CANCELLED);store.archive(archived);
+            store.createTurnWithUserMessage(active,"PENDING "+query);
+            var before=List.of(store.detail(active,0,10),store.detail(active,1,10));
+            var first=store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ACTIVE,0));
+            var second=store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ACTIVE,1));
+            assertEquals(10,first.items().size());assertTrue(first.hasMore());assertEquals(3,second.items().size());assertFalse(second.hasMore());
+            var ids=new HashSet<UUID>();
+            for(var page:List.of(first,second))for(var hit:page.items()){
+                assertEquals(active,hit.conversation().id());assertTrue(ids.add(hit.messageId()));assertTrue(hit.sequence()<=13);
+                assertEquals(query,hit.snippet().substring(hit.matchStart(),hit.matchEnd()));
+                assertTrue(hit.before());assertTrue(hit.after());assertTrue(hit.snippet().contains("<script>literal</script>"));
+            }
+            var oldHits=store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ARCHIVED,0)).items();
+            assertEquals(1,oldHits.size());assertEquals(archived,oldHits.getFirst().conversation().id());
+            assertTrue(store.search(new ConversationSearch.Request("%' OR 1=1 --",ConversationSearch.Scope.ALL,0)).items().isEmpty());
+            assertTrue(store.search(new ConversationSearch.Request("alpha",ConversationSearch.Scope.ALL,0)).items().isEmpty());
+            assertEquals(10,store.search(new ConversationSearch.Request("%_",ConversationSearch.Scope.ALL,0)).items().size());
+            assertEquals(before,List.of(store.detail(active,0,10),store.detail(active,1,10)));
+            original=store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ALL,0));
+        }
+        try(var store=new ConversationStore(app)){
+            assertEquals(original,store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ALL,0)));
+            store.delete(archived);assertTrue(store.search(new ConversationSearch.Request(query,ConversationSearch.Scope.ARCHIVED,0)).items().isEmpty());
+        }
+        System.out.println("POSTGRESQL_CONVERSATION_LITERAL_SEARCH_PAGING_SCOPE_REOPEN_PASS");
     }
     private MemoryItem[] seed(MemoryStore store) {
         var title = store.create(Type.PROJECT_NOTE, "Java 项目", "  编程习惯\r\n<script>literal</script>  ");

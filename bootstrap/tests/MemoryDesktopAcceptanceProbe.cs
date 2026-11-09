@@ -19,6 +19,7 @@ internal static partial class MemoryDesktopAcceptanceProbe
     private static string stage = "INPUT";
     private static string output = "";
     private static bool web;
+    private static bool conversationSearch;
     private static readonly string[] PublicSources = ["https://example.com/", "https://www.rfc-editor.org/rfc/rfc2606.html"];
     private static void Check(bool value) { if (!value) throw new InvalidOperationException(stage); }
     private static string Json(string value) => JsonSerializer.Serialize(value);
@@ -27,8 +28,9 @@ internal static partial class MemoryDesktopAcceptanceProbe
     private static int Main(string[] args)
     {
         if (args.Length == 5 && args[4] == "knowledge-recovery") return RunKnowledgeRecovery(args);
-        if (args.Length != 4 && (args.Length != 5 || args[4] != "web-knowledge")) return 2;
-        web = args.Length == 5;
+        if (args.Length != 4 && (args.Length != 5 || args[4] is not ("web-knowledge" or "conversation-search"))) return 2;
+        web = args.Length == 5 && args[4] == "web-knowledge";
+        conversationSearch = args.Length == 5 && args[4] == "conversation-search";
         Process? child = null;
         try
         {
@@ -37,6 +39,9 @@ internal static partial class MemoryDesktopAcceptanceProbe
             Check(Directory.Exists(output) && !File.Exists(Path.Combine(output, "owned-profile.json")));
             string id = Guid.NewGuid().ToString("N"), root = Mmf3ProfileState.Root(id);
             Check(!Path.Exists(root));
+            string preference = Path.Combine(Directory.GetParent(Directory.GetParent(root)!.FullName)!.FullName, "last-workspace");
+            string? PreferenceHash() => File.Exists(preference) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(preference))) : null;
+            string? beforePreference = conversationSearch ? PreferenceHash() : null;
             File.WriteAllText(Path.Combine(output, "owned-profile.json"), JsonSerializer.Serialize(new { id, root, synthetic = true }));
             stage = "PROFILE";
             Mmf3ProfileState.Prepare(id); Mmf3ProfileNative.Provision(id, jna);
@@ -49,7 +54,7 @@ internal static partial class MemoryDesktopAcceptanceProbe
                 "-Djna.boot.library.path=" + Path.Combine(root, "jna-5.17.0-win32-x86-64"), "-Djna.boot.library.name=jnidispatch",
                 "-Djna.nosys=true", "-Djna.noclasspath=true", "-Djna.nounpack=true",
                 "-Djava.io.tmpdir=" + Path.Combine(root, "evidence"), "-Djna.tmpdir=" + Path.Combine(root, "evidence"),
-                web ? "-Dweb.desktop.fixture=true" : "-Dmemory.desktop.fixture=true", "-cp", classpath, "MemoryDesktopIntegrationProbe" }) start.ArgumentList.Add(option);
+                conversationSearch ? "-Dconversation.search.desktop.fixture=true" : web ? "-Dweb.desktop.fixture=true" : "-Dmemory.desktop.fixture=true", "-cp", classpath, "MemoryDesktopIntegrationProbe" }) start.ArgumentList.Add(option);
             using var job = RuntimeProcessJob.Create();
             child = Process.Start(start) ?? throw new IOException(); job.Assign(child);
             File.WriteAllText(Path.Combine(output, "owned-child.json"), JsonSerializer.Serialize(new { pid = child.Id, startedUtc = child.StartTime.ToUniversalTime(), java, synthetic = true }));
@@ -64,7 +69,8 @@ internal static partial class MemoryDesktopAcceptanceProbe
             using var fixture = JsonDocument.Parse(File.ReadAllText(ready));
             int port = fixture.RootElement.GetProperty("port").GetInt32();
             string tokenFile = Path.GetFullPath(fixture.RootElement.GetProperty("tokenFile").GetString()!);
-            Check(fixture.RootElement.GetProperty("syntheticProvider").GetBoolean() && port is > 1024 and <= 65535);
+            Check(fixture.RootElement.GetProperty(conversationSearch ? "syntheticConversationSearch" : "syntheticProvider").GetBoolean() && port is > 1024 and <= 65535);
+            if (conversationSearch) Check(fixture.RootElement.GetProperty("pid").GetInt32() == child.Id);
             if (web) Check(fixture.RootElement.GetProperty("realWeb").GetBoolean());
             Check(tokenFile.StartsWith(Path.Combine(root, "evidence", "api-memory-"), StringComparison.OrdinalIgnoreCase)
                 && tokenFile.EndsWith(Path.Combine("credentials", "client-token"), StringComparison.Ordinal));
@@ -80,7 +86,16 @@ internal static partial class MemoryDesktopAcceptanceProbe
                 using var watchdog = timeout.Token.Register(() => app.Dispatcher.BeginInvoke(() => { shell?.DisposeImmediately(); app.Shutdown(10); }));
                 try
                 {
-                    if (web)
+                    if (conversationSearch)
+                    {
+                        shell = NewWindow(actions, launch); shell.Show();
+                        await VerifyConversationSearch(shell, client, fixture.RootElement, timeout.Token);
+                        await shell.ShutdownAsync(); Check(shell.Host.CleanupPassed);
+                        shell = NewWindow(actions, launch); shell.Show();
+                        await VerifyConversationSearchReopen(shell, client, fixture.RootElement, timeout.Token);
+                        Check(transport.ConversationSearchPosts == 6 && transport.MutationAttempts == 0);
+                    }
+                    else if (web)
                     {
                         shell = NewWindow(actions, launch); shell.Show();
                         await VerifyWebWorkflow(shell, client, transport, timeout.Token);
@@ -156,12 +171,17 @@ internal static partial class MemoryDesktopAcceptanceProbe
             Check(child.WaitForExit(12000)); Task.WhenAll(log, errors).GetAwaiter().GetResult();
             Check(result == 0 && child.ExitCode == 0);
             string trace = Path.Combine(root, "evidence", "desktop-provider-requests.json");
-            if (!web) File.Copy(trace, Path.Combine(output, "synthetic-provider-requests.json"));
+            if (!web && !conversationSearch) File.Copy(trace, Path.Combine(output, "synthetic-provider-requests.json"));
+            Check(!System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == port));
+            if (conversationSearch) { Check(PreferenceHash() == beforePreference); Check(!Directory.EnumerateFileSystemEntries(Path.Combine(root, "data")).Any()); }
             File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(new {
-                passed = true, syntheticProvider = true, realModel = false, nativeAdmitted = true, javaExited = child.HasExited,
+                passed = true, syntheticProvider = !conversationSearch, realModel = false, nativeAdmitted = true, javaExited = child.HasExited,
                 childPid = child.Id, hotkeysInstalled = false, existingServicesTouched = false, realWeb = web,
+                conversationSearch, actualAssistantApp = false, actualWebView = true, actualHttp = true, actualSqlite = true,
+                conversationSearchPosts = transport.ConversationSearchPosts, mutationAttempts = transport.MutationAttempts, port,
+                personalSelectionUnchanged = conversationSearch ? (bool?)true : null,
                 fetchPosts = transport.FetchPosts, savePosts = transport.SavePosts, searchPosts = transport.SearchPosts }));
-            Pass(web ? "WEB_KNOWLEDGE_DESKTOP_ACCEPTANCE" : "MEMORY_DESKTOP_ACCEPTANCE"); return 0;
+            Pass(conversationSearch ? "CONVERSATION_SEARCH_DESKTOP_ACCEPTANCE" : web ? "WEB_KNOWLEDGE_DESKTOP_ACCEPTANCE" : "MEMORY_DESKTOP_ACCEPTANCE"); return 0;
         }
         catch (Exception error) { Console.WriteLine("DESKTOP_STOP " + stage + " " + error.GetType().Name); return 10; }
         finally
@@ -177,7 +197,7 @@ internal static partial class MemoryDesktopAcceptanceProbe
 
     private static MainWorkspaceWindow NewWindow(NativeActions actions, Mmf3AcceptanceLaunch launch)
     {
-        var shell = new MainWorkspaceWindow(actions, acceptance: launch) { Title = web ? "Web Knowledge acceptance · isolated public sources / no model" : "Memory acceptance · synthetic data / provider",
+        var shell = new MainWorkspaceWindow(actions, acceptance: launch) { Title = conversationSearch ? "Conversation search · synthetic data / no model" : web ? "Web Knowledge acceptance · isolated public sources / no model" : "Memory acceptance · synthetic data / provider",
             ShowActivated = false, Width = 1280, Height = 860 };
         actions.Window = shell; return shell;
     }
@@ -348,10 +368,15 @@ internal static partial class MemoryDesktopAcceptanceProbe
 
     private sealed class FixtureTransport(int port) : DelegatingHandler(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false })
     {
-        internal int FetchPosts, SavePosts, SearchPosts;
+        internal int FetchPosts, SavePosts, SearchPosts, ConversationSearchPosts, MutationAttempts;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Check(request.RequestUri!.Scheme == "http" && request.RequestUri.Host == "127.0.0.1" && request.RequestUri.Port == 8765);
+            if (conversationSearch && request.Method != HttpMethod.Get)
+            {
+                if (request.Method == HttpMethod.Post && request.RequestUri.AbsolutePath == "/api/v1/conversations/search") ConversationSearchPosts++;
+                else { MutationAttempts++; throw new InvalidOperationException("Read-only conversation fixture"); }
+            }
             if (web && request.Method == HttpMethod.Post)
             {
                 if (request.RequestUri.AbsolutePath == "/api/v1/web/fetches")

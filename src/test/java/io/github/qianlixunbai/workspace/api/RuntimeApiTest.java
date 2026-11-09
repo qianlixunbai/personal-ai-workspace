@@ -167,6 +167,37 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="conversation.search.desktop.fixture",matches="true")
+    void desktopConversationSearchReadsSyntheticHistoryWithoutModelOrWrites() throws Exception {
+        // Explicit opt-in, freshly provisioned native test Profile. No provider is started.
+        assertEquals(0,conversations.list(io.github.qianlixunbai.workspace.conversation.Conversation.Status.ACTIVE,0,10).total());
+        var active=conversations.create("合成活动会话"); var archived=conversations.create("合成归档会话");
+        String query="检索目标😀%_";
+        for(int i=1;i<=23;i++){
+            var turn=conversations.createTurnWithUserMessage(active.id(),(i<=13?query:"合成普通记录")+" 活动消息 第 "+i+" 轮\n<script>只作文本</script>");
+            conversations.completeTurnWithAssistantMessage(active.id(),turn.id(),"合成保存的回答 "+i+"，未调用模型。");
+        }
+        var old=conversations.createTurnWithUserMessage(archived.id(),query+" 归档历史，仅此一条。");
+        conversations.markTurnTerminated(archived.id(),old.id(),io.github.qianlixunbai.workspace.conversation.Conversation.TurnStatus.CANCELLED);
+        conversations.archive(archived.id());
+        var before=List.of(conversations.detail(active.id(),0,10),conversations.detail(active.id(),1,10),conversations.detail(active.id(),2,10),conversations.detail(archived.id(),0,10));
+        Path evidence=io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence");
+        Path ready=evidence.resolve("desktop-ready.json"),done=evidence.resolve("desktop-done"),writing=evidence.resolve("desktop-ready-writing.json");
+        assertFalse(Files.exists(ready));assertFalse(Files.exists(done));token();
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(writing);
+        Files.writeString(writing,json.writeValueAsString(Map.of("port",port,"tokenFile",TOKEN.toString(),"syntheticConversationSearch",true,
+                "activeId",active.id(),"archivedId",archived.id(),"query",query,"pid",ProcessHandle.current().pid())));
+        Files.move(writing,ready,StandardCopyOption.ATOMIC_MOVE);
+        long deadline=System.nanoTime()+Duration.ofSeconds(220).toNanos();
+        while(!Files.exists(done)&&System.nanoTime()<deadline)Thread.sleep(100);
+        assertTrue(Files.exists(done));assertEquals("PASS",Files.readString(done));
+        assertEquals(before,List.of(conversations.detail(active.id(),0,10),conversations.detail(active.id(),1,10),conversations.detail(active.id(),2,10),conversations.detail(archived.id(),0,10)));
+        assertEquals(1,conversations.list(io.github.qianlixunbai.workspace.conversation.Conversation.Status.ACTIVE,0,10).total());
+        assertEquals(1,conversations.list(io.github.qianlixunbai.workspace.conversation.Conversation.Status.ARCHIVED,0,10).total());
+        assertFalse(activeModels.status().ready());assertEquals(0,CHAT_CALLS.get());assertEquals(0,PROBE_CALLS.get());
+        System.out.println("DESKTOP_CONVERSATION_SEARCH_UNCHANGED_HISTORY_NO_MODEL_PASS");
+    }
     @Test void nativeConversationSearchReadsTerminalTextWithoutModelAndRejectsBrowser() throws Exception {
         var c=conversations.create("Synthetic private search title");
         String query="合成-search-private-😀%_"; privateValues.add(query); privateValues.add(c.title());

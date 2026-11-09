@@ -11,6 +11,7 @@
   <ItemGroup>
     <Compile Include="MemoryDesktopAcceptanceProbe.cs" />
     <Compile Include="MemoryDesktopAcceptanceProbe.KnowledgeRecovery.cs" />
+    <Compile Include="MemoryDesktopAcceptanceProbe.ConversationSearch.cs" />
     <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
   </ItemGroup>
 </Project>
