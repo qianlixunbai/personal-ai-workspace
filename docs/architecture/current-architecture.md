@@ -96,6 +96,7 @@ Native 首次绑定采用 CREATE_NEW，服务端每次核对 dataset / ACTIVE �
 | Memory logical backup | Memory source records；独立格式，新／空目标重建派生数据 |
 | Workspace logical backup | Memory + terminal Conversations；不自动包含 Knowledge、Finance 或凭据 |
 | Knowledge backup | 独立文档／源文件合同；不能用 Workspace logical backup 代替 |
+| Synthetic Knowledge + history snapshot | 新建合成 SQLite 来源与终态历史的一致逻辑快照；可通过既有 OpenPGP 流直接加密，完整认证／校验后发布新数据目录。独立合成格式，不扩展用户备份入口或旧 PG v1/v2/v3，不含 Profile 注册／激活。见[实测及限制](../engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)。 |
 | PostgreSQL unified offline backup v1/v2 | 既有合成整库格式（public + workspace），OpenPGP 加密流与独立维护链；不静默转为 v3 |
 | Workspace-only v3 内核 | 仅内部合成装配；workspace 的 17 表结构、12 表数据、全部不可变 Knowledge 源文件；5 表排除 data，恢复后重建索引。不是个人 Profile 恢复入口 |
 

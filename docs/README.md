@@ -18,6 +18,8 @@
 
 ## 如何判断证据
 
+最新备份增量：[合成知识来源与问答历史加密恢复](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)，隔离测试 16/16；个人备份入口、原生候选激活和完整桌面恢复仍未完成。
+
 当前事实先核对源码，再结合 STATUS 和最近的专属报告。ADR 的 Accepted 是决定状态，报告的 GO 只在其记录范围内有效；历史本机 PASS、用户人工报告、无模型 fixture 与当前 CI／真实 Windows 验收是不同证据。
 
 **X1 Windows Acceptance PARTIAL、Vision BLOCKED、尚无已核验的 GitHub CI PASS** 仍保留。2026-10-30 [展示与 Runtime 核对](engineering/GITHUB-SHOWCASE-RUNTIME-READINESS.md) 区分已解除的历史 uncertainty、重启后的 NotValidated 与当前未运行的 Runtime；旧报告保留原始语境。源码整合与文档更新不关闭验收关卡。

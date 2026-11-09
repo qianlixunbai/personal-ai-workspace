@@ -1,5 +1,7 @@
 # 合成资料中的 Knowledge 来源与问答历史联合快照
 
+后续已完成[复用现有 OpenPGP 的合成加密归档与恢复](SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)，仍无个人入口、PG 或 Profile 激活。本文保留明文原型阶段的实现和验证范围。
+
 2026-11-09。基线 `1b772536a63371eaa571075a5d778dff3d0e04fa`，分支 `codex/knowledge-history-snapshot`，回滚标签 `workspace-before-knowledge-history-snapshot-20261109`。实现阶段提交 `3a742a1`。仅本地提交，未推送／合并／发布，仍为 Development-only。
 
 ## 已完成的最小闭环

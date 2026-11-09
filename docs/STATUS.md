@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 合成联合快照已增加认证加密：复用既有 Bouncy Castle OpenPGP 流，来源和终态历史直接写密文，完整认证后再解包／重建／发布新候选，恢复保留原问题、答案和旧版本引用。原生隔离验证 16/16、零跳过；错口令、重算摘要后的篡改、非法 KDF、越界内容及中断均拒绝，旧来源备份和旧容器流合同通过相关回归。没有个人数据操作、用户按钮、PG 或 Profile 激活；恢复库仍为私有明文，完整新 JVM／桌面恢复尚未验收。六份未跟踪文档未改，仅本地提交，仍为 Development-only。[实现与实测边界](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)。以下较早记录保留各自时点结论。
+
 2026-11-09 合成联合快照原型：全新 SQLite 合成资料可将 Knowledge 全部保留源与终态问答在双库停写窗口内导出，私有暂存校验后发布新候选数据目录，重开保留原问题、状态、时间、答案、旧版本精确引用及来源不可用状态。新闭环＋旧 v1 备份兼容最终 10/10，历史存储另轮 4/4；并发写排斥、缺件／损坏拒绝、发布目标占用保护通过。旧备份格式及用户入口未改，原型为明文合成限定，不提供个人／PG／跨 Profile 恢复或激活。六份未跟踪文档未改；仅本地提交，仍为 Development-only。[实现、逐轮结果和限制](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-SNAPSHOT-REPORT.md)。
 
 2026-11-09 问答历史完整重启验收：全新合成 Profile 的三次 AssistantApp／WebView／JVM 启动通过，第三次启动前已关闭本轮模型及子进程。产品历史页恢复两条原问题、检索词、答案和精确源引用，0 次重新问答；界面删除一条历史后两份源文档仍保留。隔离 Qwen3.5 4B 本轮实际 3 次调用（准入＋两题），不代表通用质量；自有进程、端口和模型副本已清理，原有六份未跟踪文档未改。[实测与证据](engineering/KNOWLEDGE-ANSWER-HISTORY-RESTART-REPORT.md)及[备份边界评估](engineering/KNOWLEDGE-ANSWER-HISTORY-BACKUP-ASSESSMENT.md)。历史备份尚未实现，现有格式仍不包含历史；个人恢复未开放。仅本地提交，仍为 Development-only。下列结论保留各自时点。
