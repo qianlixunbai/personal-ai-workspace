@@ -131,6 +131,32 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
             execute("DELETE FROM answers WHERE id=?", id.toString()); return null;
         });
     }
+    /** Fixed joint lock order: KnowledgeStore then history. Never reconcile or edit source records here. */
+    synchronized <T> T frozenSnapshot(KnowledgeStore.Operation<T> work) {
+        return transaction(() -> {
+            if(count("SELECT count(*) FROM answers WHERE status='QUEUED'")!=0)throw failure(ErrorCode.KNOWLEDGE_BACKUP_CONFLICT);
+            return work.run();
+        });
+    }
+    interface EntryVisitor { void accept(Entry entry) throws Exception; }
+    void visitSnapshot(EntryVisitor visitor) throws Exception {
+        if(!Thread.holdsLock(this))throw failure(ErrorCode.KNOWLEDGE_BACKUP_CONFLICT);
+        try(var s=prepare("SELECT id FROM answers ORDER BY id");var r=s.executeQuery()) {
+            while(r.next())visitor.accept(get(UUID.fromString(r.getString(1))));
+        }
+    }
+    /** Only the isolated joint restore uses this; no source constructor is opened by snapshot inspection. */
+    synchronized void restoreTerminal(Entry entry) {
+        KnowledgeHistorySnapshotRecord.validate(entry);
+        transaction(() -> {
+            if(count("SELECT count(*) FROM answers")>=LIMIT)throw failure(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
+            var t=entry.task();var error=t.error();
+            execute("INSERT INTO answers VALUES(?,?,?,?,?,?,?,?,?,?,?)",t.taskId().toString(),entry.question(),entry.query(),
+                    JSON.writeValueAsString(t.profile()),t.promptVersion(),t.createdAt().toString(),t.finishedAt().toString(),t.status().name(),
+                    t.result()==null?null:JSON.writeValueAsString(t.result()),error==null?null:error.code().name(),error==null?null:error.phase());
+            return null;
+        });
+    }
     private interface Operation<T> { T run() throws Exception; }
     private <T> T read(Operation<T> work) {
         try { return work.run(); } catch (WorkspaceException e) { throw e; } catch (Exception e) { throw failure(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE); }

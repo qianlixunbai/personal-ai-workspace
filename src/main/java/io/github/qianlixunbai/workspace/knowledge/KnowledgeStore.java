@@ -356,6 +356,11 @@ public final class KnowledgeStore implements AutoCloseable {
     private void integrity()throws SQLException{if(postgresql()){KnowledgePostgresql.verify(db);return;}for(String pragma:List.of("PRAGMA quick_check","PRAGMA foreign_key_check")){try(var s=db.createStatement();var r=s.executeQuery(pragma)){
         if(pragma.endsWith("quick_check")){if(!r.next()||!r.getString(1).equals("ok")||r.next())throw new SQLException();}else if(r.next())throw new SQLException();}}}
     synchronized <T>T snapshot(Operation<T> work){return sql(()->{if(postgresql())KnowledgePostgresql.begin(db,false);else exec("BEGIN");try{T result=work.run();exec("COMMIT");return result;}catch(Exception e){exec("ROLLBACK");throw e;}});}
+    /** SQLite-only joint maintenance: excludes other SQL writers as well as Store operations. */
+    synchronized <T>T frozenSnapshot(Operation<T> work){
+        if(postgresql())throw error(ErrorCode.KNOWLEDGE_BACKUP_UNSUPPORTED);
+        return transaction(work);
+    }
     synchronized void reconstructDocument(KnowledgeDocument d){transaction(()->{id(d.documentId());KnowledgeParser.filename(d.title());version(d.metadataVersion());
         if(!Set.of("ACTIVE","ARCHIVED").contains(d.status()))throw error(ErrorCode.KNOWLEDGE_BACKUP_INVALID);
         Instant.parse(d.createdAt());Instant.parse(d.updatedAt());

@@ -85,7 +85,7 @@ class KnowledgeBackupTest {
     }
     @Test void invalidRestoreNeverPublishesAndTargetContentsRemainUntouched()throws Exception {
         byte[] fixture=fixture();byte[] corrupted=fixture.clone();corrupted[corrupted.length-1]^=1;
-        try(var store=store("maintenance")){var backup=new KnowledgeBackup(store,auth());Path empty=temporary.resolve("empty");Files.createDirectory(empty);
+        try(var store=store("maintenance")){var backup=new KnowledgeBackup(store,auth());Path empty=temporary.resolve("empty");PrivateKnowledgeDirectory.directory(empty);
             code(ErrorCode.KNOWLEDGE_BACKUP_INVALID,()->backup.restore(new ByteArrayInputStream(corrupted),empty.toString()));try(var entries=Files.list(empty)){assertEquals(0,entries.count());}
             Files.writeString(empty.resolve("user-file"),"preserve");code(ErrorCode.KNOWLEDGE_RESTORE_TARGET_NOT_EMPTY,()->backup.restore(new ByteArrayInputStream(fixture),empty.toString()));assertEquals("preserve",Files.readString(empty.resolve("user-file")));
         }

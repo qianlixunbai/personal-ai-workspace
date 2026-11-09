@@ -26,7 +26,12 @@ public final class KnowledgeBackup {
     static void require(boolean condition){if(!condition)throw error(ErrorCode.KNOWLEDGE_BACKUP_INVALID);}
     private static MessageDigest digest(){try{return MessageDigest.getInstance("SHA-256");}catch(Exception e){throw new IllegalStateException();}}
     public Metadata export(OutputStream output) {
-        try{return active.snapshot(()->{
+        try{return active.snapshot(()->writeSnapshot(output));}
+        catch(WorkspaceException e){throw e;}catch(Exception e){throw error(ErrorCode.KNOWLEDGE_EXPORT_FAILED);}
+    }
+    /** Existing v1 bytes; caller must retain the Store monitor and an active snapshot transaction. */
+    Metadata writeSnapshot(OutputStream output) throws Exception {
+            if(!Thread.holdsLock(active))throw error(ErrorCode.KNOWLEDGE_BACKUP_CONFLICT);
             if(active.scalar("SELECT count(*) FROM jobs WHERE state IN ('PENDING','PARSING')")>0||active.scalar("SELECT count(*) FROM deletes")>0)
                 throw error(ErrorCode.KNOWLEDGE_BACKUP_CONFLICT);
             int docs=(int)active.scalar("SELECT count(*) FROM documents"),revs=(int)active.scalar("SELECT count(*) FROM revisions");long created=System.currentTimeMillis();
@@ -45,7 +50,6 @@ public final class KnowledgeBackup {
                 }
             }}out.writeByte('E');out.flush();String checksum=HexFormat.of().formatHex(hash.digest());hashed.on(false);out.write(HexFormat.of().parseHex(checksum));out.flush();
             return new Metadata(1,SCHEMA(),Instant.ofEpochMilli(created).toString(),docs,revs,sourceBytes,artifactBytes,checksum);
-        });}catch(WorkspaceException e){throw e;}catch(Exception e){throw error(ErrorCode.KNOWLEDGE_EXPORT_FAILED);}
     }
     private static int SCHEMA(){return KnowledgeStore.SCHEMA_VERSION;}
     private static void json(DataOutputStream out,Object value)throws IOException {byte[] bytes=JSON.writeValueAsBytes(value);require(bytes.length<=4096);out.writeInt(bytes.length);out.write(bytes);}
