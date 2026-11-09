@@ -27,7 +27,7 @@ Windows 打包宿主可能将 AppData 写入重定向到宿主包的实际数据
 不授予 CodexSandboxUsers 私人数据读取权限。ACL/DPAPI 不能隔离同用户身份下的恶意进程。
 准入失败时保留现场并停止；不要提权、修改旧 ACL 或反复运行历史恢复工具。
 
-Java 21/JAR/JNA、.NET Desktop 和 React 资产随包提供。
+Java 21/JAR/JNA、.NET 10.0.14 Desktop 和 React 资产随包提供。
 NativeBootstrap 仍要求本机 Microsoft.NETCore.App 10.0.x x64；界面要求 Microsoft Edge WebView2 Evergreen。
 此包不下载或安装先决组件，不提供更新、卸载、发布者签名或正式来源授信。
 仅替换应用文件不能恢复用户数据。个人 Profile 恢复尚未开放，现有问答笔记也不是完整备份。

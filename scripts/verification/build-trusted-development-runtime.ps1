@@ -85,6 +85,7 @@ if ($stage) {
     # Keep the reviewed Development-only helper bytes and its external .NET 10 prerequisite.
     & dotnet publish (Join-Path $repo 'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj') -c Debug -r win-x64 --self-contained true `
         '-p:Mmf3ProfileAcceptanceBuild=true' '-p:Mmf3AcceptanceBuild=false' '-p:FrontendSkipBuild=true' "-p:TrustedDevelopmentManifest=$manifest" `
+        '-p:RuntimeFrameworkVersion=10.0.14' `
         '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage -v minimal
     if ($LASTEXITCODE -ne 0) { throw 'Development Desktop publish failed.' }
     Copy-Item -LiteralPath (Join-Path $repo 'scripts/distribution/README-development.txt') -Destination (Join-Path $stage 'README.txt')

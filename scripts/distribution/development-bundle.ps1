@@ -55,6 +55,12 @@ function Assert-DevelopmentBundle([string]$Root) {
     }
     $config = Get-Content -LiteralPath (Join-Path $Root 'PersonalAiWorkspace.Desktop.runtimeconfig.json') -Raw | ConvertFrom-Json
     if ($config.runtimeOptions.PSObject.Properties['frameworks'] -or -not $config.runtimeOptions.PSObject.Properties['includedFrameworks']) { throw 'Self-contained Desktop required.' }
+    # CVE-2026-111497 is fixed in .NET 10.0.14. Do not silently repackage the SDK's older default.
+    foreach ($name in @('Microsoft.NETCore.App', 'Microsoft.WindowsDesktop.App')) {
+        $framework = @($config.runtimeOptions.includedFrameworks | Where-Object name -CEQ $name)
+        if ($framework.Count -ne 1 -or $framework[0].version -cnotmatch '^10\.0\.[0-9]+$' -or
+            [version]$framework[0].version -lt [version]'10.0.14') { throw 'Bundle requires .NET 10.0.14 or a later .NET 10 servicing runtime.' }
+    }
     # Native Gate pins the reviewed Development-only framework-dependent helper.
     # Its explicit .NET prerequisite is retained; sidecar manifests cannot repin it.
     Assert-DevelopmentBootstrap (Join-Path $Root 'NativeBootstrap')
