@@ -1,0 +1,13 @@
+PdfPig 0.1.16 (unmodified NuGet binaries), Apache-2.0
+https://www.nuget.org/packages/PdfPig/0.1.16
+https://github.com/UglyToad/PdfPig
+NuGet repository commit: a7bb35662bbbf405efddad50aedc9bcdcf515afc
+
+PdfPig-LICENSE.txt and PdfPig-NOTICES.txt are exact copies of LICENSE and
+NOTICES.txt at that commit. Preserve both files with redistributed binaries.
+https://raw.githubusercontent.com/UglyToad/PdfPig/a7bb35662bbbf405efddad50aedc9bcdcf515afc/LICENSE
+https://raw.githubusercontent.com/UglyToad/PdfPig/a7bb35662bbbf405efddad50aedc9bcdcf515afc/NOTICES.txt
+
+The net9.0 assets selected by this .NET 10 Windows app have no additional
+NuGet dependencies. The package includes the UglyToad.PdfPig assemblies.
+Workspace uses its own bounded-process adapter; PdfPig source is not modified.

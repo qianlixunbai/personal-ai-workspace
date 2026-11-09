@@ -27,14 +27,18 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
         if(Interlocked.CompareExchange(ref selecting,1,0)!=0)throw new DesktopException(DesktopError.QueueFull);
         try{
         token.ThrowIfCancellationRequested();var window=owner()??throw new DesktopException(DesktopError.KnowledgeFileUnavailable);
-        var picker=new OpenFileDialog{Title="导入资料 · TXT / Markdown / Word 正文",Filter="支持的资料 (*.txt;*.md;*.markdown;*.docx)|*.txt;*.md;*.markdown;*.docx|Word 正文摘录 (*.docx)|*.docx",Multiselect=false,CheckFileExists=true};
+        var picker=new OpenFileDialog{Title="导入资料 · TXT / Markdown / Word / PDF 正文",Filter="支持的资料 (*.txt;*.md;*.markdown;*.docx;*.pdf)|*.txt;*.md;*.markdown;*.docx;*.pdf|Word 正文摘录 (*.docx)|*.docx|PDF 文字层 (*.pdf)|*.pdf",Multiselect=false,CheckFileExists=true};
         bool selected=picker.ShowDialog(window)==true;token.ThrowIfCancellationRequested();window.Activate();
         if(!selected)return null;
-        if(!picker.FileName.EndsWith(".docx",StringComparison.OrdinalIgnoreCase))return Open(picker.FileName);
+        bool pdf=picker.FileName.EndsWith(".pdf",StringComparison.OrdinalIgnoreCase);
+        if(!pdf&&!picker.FileName.EndsWith(".docx",StringComparison.OrdinalIgnoreCase))return Open(picker.FileName);
         using var file=OpenRegular(picker.FileName,RuntimeClient.MaximumKnowledgeSourceBytes);
-        var excerpt=await Task.Run(()=>KnowledgeDocx.Read(file,Path.GetFileName(picker.FileName),token));
-        token.ThrowIfCancellationRequested();if(!KnowledgeDocxPreview.Confirm(window,excerpt,token))return null;
-        return new KnowledgeSourceFile(new MemoryStream(new UTF8Encoding(false,true).GetBytes(excerpt.Text),false),excerpt.Filename);
+        string text,filename;
+        if(pdf){var excerpt=await KnowledgePdf.ReadAsync(file,Path.GetFileName(picker.FileName),token);text=excerpt.Text;filename=excerpt.Filename;}
+        else{var excerpt=await Task.Run(()=>KnowledgeDocx.Read(file,Path.GetFileName(picker.FileName),token));text=excerpt.Text;filename=excerpt.Filename;}
+        token.ThrowIfCancellationRequested();
+        if(!KnowledgeExcerptPreview.Confirm(window,pdf?"PDF":"Word",pdf?KnowledgePdf.Notice:KnowledgeDocx.Notice,text,token))return null;
+        return new KnowledgeSourceFile(new MemoryStream(new UTF8Encoding(false,true).GetBytes(text),false),filename);
         }finally{Volatile.Write(ref selecting,0);}
     }
     internal static KnowledgeSourceFile Open(string path)

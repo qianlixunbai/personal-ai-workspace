@@ -10,11 +10,19 @@ namespace PersonalAiWorkspace.Desktop;
 internal sealed class RuntimeProcessJob : SafeHandleZeroOrMinusOneIsInvalid
 {
     private RuntimeProcessJob() : base(true) { }
-    internal static RuntimeProcessJob Create()
+    internal static RuntimeProcessJob Create() => Create(false);
+    internal static RuntimeProcessJob CreateDocumentParser() => Create(true);
+    private static RuntimeProcessJob Create(bool documentParser)
     {
         var job = CreateJobObjectW(IntPtr.Zero, null);
         if (job.IsInvalid) { job.Dispose(); throw new Win32Exception(); }
         var limits = new ExtendedLimits(); limits.Basic.LimitFlags = 0x2000; // KILL_ON_JOB_CLOSE
+        if (documentParser)
+        {
+            limits.Basic.LimitFlags |= 0x100 | 0x8; // PROCESS_MEMORY | ACTIVE_PROCESS
+            limits.ProcessMemoryLimit = new UIntPtr(512u * 1024 * 1024);
+            limits.Basic.ActiveProcessLimit = 1;
+        }
         if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf<ExtendedLimits>()))
         { job.Dispose(); throw new Win32Exception(); }
         return job;

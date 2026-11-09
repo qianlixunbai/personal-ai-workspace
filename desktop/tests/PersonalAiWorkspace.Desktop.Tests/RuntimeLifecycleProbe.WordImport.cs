@@ -15,9 +15,10 @@ public static partial class RuntimeLifecycleProbe
 {
     [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,EntryPoint="GetWindowTextW")]
     private static extern int WordDialogTitle(IntPtr window,StringBuilder text,int size);
-    private static void VerifyWordImport(AssistantApp app,Mmf3AcceptanceLaunch launch,bool reopen,string run,bool compareVersions=false)
+    private static void VerifyWordImport(AssistantApp app,Mmf3AcceptanceLaunch launch,bool reopen,string run,bool compareVersions=false,bool pdf=false)
     {
-        string root=Path.Combine(launch.Root,"evidence","docx-import-"+run),stage="STARTUP",prefix=reopen?"reopen":"first";
+        string root=Path.Combine(launch.Root,"evidence",(pdf?"pdf-import-":"docx-import-")+run),stage="STARTUP",prefix=reopen?"reopen":"first";
+        string format=pdf?"PDF":"Word",keyword=pdf?"NerionPDF":"NerionDOCX";
         if(!reopen){Assert.False(Directory.Exists(root));Directory.CreateDirectory(root);}else Assert.True(Directory.Exists(root));
         void Save(string name,object value)=>File.WriteAllText(Path.Combine(root,prefix+name),JsonSerializer.Serialize(value,WebKnowledgeJson));
         bool passed=false;Process? java=null;
@@ -37,11 +38,14 @@ public static partial class RuntimeLifecycleProbe
                 string Json(string value)=>JsonSerializer.Serialize(value);
                 async Task Click(string selector,string label){string expression="[...document.querySelectorAll("+Json(selector+" button")+")].find(b=>b.getClientRects().length>0&&!b.disabled&&b.textContent==="+Json(label)+")";await Wait(()=>Is("Boolean("+expression+")"));await Script(expression+".click()");}
                 async Task Input(string id,string value)=>_ = await Script("(()=>{const e=document.getElementById("+Json(id)+");Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,"+Json(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
-                string name="synthetic-word-"+run+".docx",path=Path.Combine(root,name);
+                string name=(pdf?"synthetic-pdf-":"synthetic-word-")+run+(pdf?".pdf":".docx"),path=Path.Combine(root,name);
                 string body=KnowledgeDocxTests.Body+(compareVersions?"<w:p><w:r><w:t>"+string.Concat(Enumerable.Repeat("长资料对比演练😀，",650))+"</w:t></w:r></w:p>":"");
-                if(!reopen)File.WriteAllBytes(path,KnowledgeDocxTests.Fixture(body));
+                if(!reopen)File.WriteAllBytes(path,pdf?KnowledgePdfTests.Fixture():KnowledgeDocxTests.Fixture(body));
                 byte[] original=File.ReadAllBytes(path);using var input=new MemoryStream(original,false);
-                var expected=KnowledgeDocx.Read(input,name,ct);string hash=Convert.ToHexString(SHA256.HashData(original));
+                KnowledgeDocx.Excerpt expected;
+                if(pdf){var extracted=await KnowledgePdf.ReadAsync(input,name,ct);expected=new(extracted.Filename,extracted.Text);Assert.Contains("中文测试",expected.Text);Assert.Contains("--- PDF 第 2 页 ---",expected.Text);}
+                else expected=KnowledgeDocx.Read(input,name,ct);
+                string hash=Convert.ToHexString(SHA256.HashData(original));
                 string updatedPath=Path.Combine(root,"updated-"+name);KnowledgeDocx.Excerpt? updated=null;
                 if(compareVersions){
                     if(!reopen)File.WriteAllBytes(updatedPath,KnowledgeDocxTests.Fixture(body.Replace("--inspect=on","--inspect=review",StringComparison.Ordinal)));
@@ -82,19 +86,19 @@ public static partial class RuntimeLifecycleProbe
                             SendMessage((IntPtr)picker.Current.NativeWindowHandle,0x0111,1,0);
                             if(rejectedFile is not null)return;
                             Save("-dialog-stage.json",new{stage="FIND_PREVIEW",cancel});
-                            var preview=await FindWindow("确认导入 Word 正文摘录");
-                            var text=preview.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Word 正文摘录预览"));Assert.NotNull(text);
+                            var preview=await FindWindow("确认导入 "+format+" 正文摘录");
+                            var text=preview.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,format+" 正文摘录预览"));Assert.NotNull(text);
                             Assert.Equal(update?updated!.Text:expected.Text,((ValuePattern)text.GetCurrentPattern(ValuePattern.Pattern)).Current.Value.Replace("\r\n","\n",StringComparison.Ordinal));
-                            var button=preview.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button),cancel?new PropertyCondition(AutomationElement.NameProperty,"取消"):new PropertyCondition(AutomationElement.AutomationIdProperty,"ConfirmWordExcerpt")));Assert.NotNull(button);
+                            var button=preview.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button),cancel?new PropertyCondition(AutomationElement.NameProperty,"取消"):new PropertyCondition(AutomationElement.AutomationIdProperty,pdf?"ConfirmPdfExcerpt":"ConfirmWordExcerpt")));Assert.NotNull(button);
                             Save("-dialog-stage.json",new{stage="INVOKE_PREVIEW",cancel});
                             ((InvokePattern)button.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
                         },ct);
                     }
                     stage="REJECT_UNSUPPORTED_CONTENT";
-                    foreach(var sample in compareVersions?Array.Empty<(string,string)>():new[]{("math",KnowledgeDocxTests.MathBody),("symbol",KnowledgeDocxTests.SymbolBody)}){
-                        string rejected=Path.Combine(root,"unsupported-"+sample.Item1+".docx");byte[] bytes=KnowledgeDocxTests.Fixture(sample.Item2);File.WriteAllBytes(rejected,bytes);
+                    foreach(var sample in compareVersions?Array.Empty<(string,string)>():pdf?new[]{("blank",""),("form","")}:new[]{("math",KnowledgeDocxTests.MathBody),("symbol",KnowledgeDocxTests.SymbolBody)}){
+                        string rejected=Path.Combine(root,"unsupported-"+sample.Item1+(pdf?".pdf":".docx"));byte[] bytes=pdf?KnowledgePdfTests.Fixture(blankLastPage:sample.Item1=="blank",form:sample.Item1=="form"):KnowledgeDocxTests.Fixture(sample.Item2);File.WriteAllBytes(rejected,bytes);
                         var selection=DriveDialogs(false,rejected);var click=Click(".knowledge-toolbar","导入文档");await selection;await click;
-                        await Wait(()=>Is("document.querySelector('.knowledge-page [role=alert]')?.textContent.includes('公式、字体符号')===true"));
+                        await Wait(()=>Is("document.querySelector('.knowledge-page [role=alert]')?.textContent.includes("+Json(pdf?"无可提取文字的页面":"公式、字体符号")+")===true"));
                         Assert.Equal(priorIds,(await client.ListKnowledgeAsync("ACTIVE",0,ct)).Items.Select(d=>d.DocumentId).Order().ToArray());
                         Assert.Equal(bytes,File.ReadAllBytes(rejected));
                     }
@@ -127,9 +131,9 @@ public static partial class RuntimeLifecycleProbe
                 await Wait(()=>Is("[...document.querySelectorAll('.knowledge-list .memory-select')].some(b=>b.firstChild.textContent==="+Json(expected.Filename)+")"));
                 await Script("[...document.querySelectorAll('.knowledge-list .memory-select')].find(b=>b.firstChild.textContent==="+Json(expected.Filename)+").click()");
                 await Wait(()=>Is("document.getElementById('knowledge-detail-title')?.textContent==="+Json(expected.Filename)));
-                await Click(".knowledge-detail","刷新详情");await Click(".knowledge-search","限定为当前文档");await Input("knowledge-search-query","NerionDOCX");await Click(".knowledge-search","检索");
+                await Click(".knowledge-detail","刷新详情");await Click(".knowledge-search","限定为当前文档");await Input("knowledge-search-query",keyword);await Click(".knowledge-search","检索");
                 await Wait(()=>Is("document.querySelectorAll('.knowledge-search li').length===1"));await Click(".knowledge-search","打开此位置");
-                await Wait(()=>Is("document.querySelector('[aria-label=纯文本预览] mark')?.textContent.includes('NerionDOCX')===true"));
+                await Wait(()=>Is("document.querySelector('[aria-label=纯文本预览] mark')?.textContent.includes("+Json(keyword)+")===true"));
                 await Script("document.querySelector('[aria-label=纯文本预览]').scrollIntoView({block:'center'})");
                 using(var image=new FileStream(Path.Combine(root,prefix+"-source.png"),FileMode.CreateNew))await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,image);
                 if(compareVersions){
@@ -153,8 +157,8 @@ public static partial class RuntimeLifecycleProbe
                 Assert.Equal(hash,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
                 Assert.Equal(3,(await client.ListKnowledgeAnswersAsync(0,ct)).Total);
                 Assert.DoesNotContain(methods,m=>m is "knowledge.answerSubmit" or "models.mutate" or "web.fetchSubmit");
-                Save("-result.json",new{passed=true,reopen,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceText))),unsupportedSamplesRejected=reopen||compareVersions?0:2,cancelVerified=!reopen,confirmationVerified=!reopen,compareVersions,ownFixtureRemoved=reopen,methods,modelCalls=0});
-                passed=true;Console.WriteLine("DOCX_DESKTOP_PASS "+prefix);
+                Save("-result.json",new{passed=true,reopen,format,id,hash,sourceSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceText))),unsupportedSamplesRejected=reopen||compareVersions?0:2,cancelVerified=!reopen,confirmationVerified=!reopen,compareVersions,ownFixtureRemoved=reopen,methods,modelCalls=0});
+                passed=true;Console.WriteLine(format+"_DESKTOP_PASS "+prefix);
             }catch(Exception error){Save("-failure.json",new{stage,type=error.GetType().Name,message=error.Message,frames=new StackTrace(error,true).GetFrames().Select(f=>new{method=f.GetMethod()?.Name,line=f.GetFileLineNumber()})});Console.WriteLine("DOCX_DESKTOP_STOP "+stage);}
             finally{try{await app.ExitAsync();if(java is not null)Assert.True(java.WaitForExit(10000));}catch{passed=false;app.Shutdown(10);}finally{java?.Dispose();}}
         };

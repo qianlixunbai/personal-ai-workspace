@@ -9,6 +9,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0].StartsWith("--pdf-text", StringComparison.Ordinal))
+            return args.Length == 1 && args[0] == KnowledgePdf.WorkerArgument ? KnowledgePdf.RunWorker() : 2;
         if (args.Length == 2 && args[0] == "--selection-worker" && long.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long window))
             return SelectionWorker.Run(new IntPtr(window));
         if (args.Length > 0 && args[0] is "--clipboard-snapshot" or "--clipboard-read" or "--clipboard-restore")
