@@ -22,7 +22,7 @@ public static partial class RuntimeLifecycleProbe
     private static readonly JsonSerializerOptions WebKnowledgeJson = new() { WriteIndented = true };
 
     // Explicit manual modes only. The actual AssistantApp owns Runtime, WebView, bridge and credentials.
-    // Evidence is fixture-owned state, not a product answer-history or automatic-restoration feature.
+    // Fixture evidence is an expected-value oracle only; history is discovered through the product API/UI.
     private static void VerifyWebKnowledgeGui(AssistantApp app, Mmf3AcceptanceLaunch launch, string mode)
     {
         bool capture = mode == "gui-web-knowledge", citationsOnly = mode == "gui-web-knowledge-citations", passed = false;
@@ -51,7 +51,7 @@ public static partial class RuntimeLifecycleProbe
                     appPid = Environment.ProcessId, javaPid = owned.Id, javaStartedUtc = owned.StartTime.ToUniversalTime(), mode }, WebKnowledgeJson));
                 using var client = RuntimeClient.CreateMmf3Acceptance(app.DevelopmentRuntime.ReadCredential);
                 var shell = app.Workspace!; var core = shell.Browser.CoreWebView2;
-                int fetchSubmissions = 0, saves = 0, answerSubmissions = 0;
+                int fetchSubmissions = 0, saves = 0, answerSubmissions = 0, historyReads = 0;
                 var observedAnswerIds = new HashSet<Guid>();
                 core.WebMessageReceived += (_, message) => {
                     using var item = JsonDocument.Parse(message.WebMessageAsJson);
@@ -60,6 +60,7 @@ public static partial class RuntimeLifecycleProbe
                     if (name == "web.fetchSubmit") fetchSubmissions++;
                     if (name == "web.saveKnowledge") saves++;
                     if (name == "knowledge.answerSubmit") answerSubmissions++;
+                    if (name == "knowledge.answerHistoryGet") historyReads++;
                     if (name == "knowledge.answerGet") observedAnswerIds.Add(Guid.Parse(item.RootElement.GetProperty("payload").GetProperty("taskId").GetString()!));
                 };
                 Task<string> Script(string js) => core.ExecuteScriptAsync(js);
@@ -150,13 +151,25 @@ public static partial class RuntimeLifecycleProbe
                     Console.WriteLine("WEB_KNOWLEDGE_FULL_PROCESS_RESTART_SOURCE_HASH_REVISION_RANGE_PASS");
                     if (citationsOnly)
                     {
-                        stage = "PERSISTED_CITATION_TARGETS";
+                        stage = "PERSISTED_ANSWER_HISTORY_WITHOUT_MODEL";
                         var previous = JsonSerializer.Deserialize<WebAnswersEvidence>(File.ReadAllText(answerPath))!;
                         Assert.NotEqual(previous.AppPid, Environment.ProcessId); Assert.NotEqual(previous.JavaPid, owned.Id);
+                        Assert.False((await client.GetModelStatusAsync(ct)).Ready);
+                        var history = await client.ListKnowledgeAnswersAsync(0, ct);
+                        Assert.Equal(previous.Answers.Length, history.Total);
+                        Assert.Equal(previous.Answers.Select(a => a.Task.TaskId.ToString()).Order(), history.Items.Select(a => a.TaskId).Order());
+                        await Script("document.querySelector('.knowledge-answer').closest('details').querySelector('summary').click()");
+                        await Click("查看问答历史");
+                        await Wait(() => Is("document.querySelectorAll('[aria-label=问答历史] li').length===2"));
                         foreach (var answer in previous.Answers)
                         {
-                            var gone = await Assert.ThrowsAsync<DesktopException>(() => client.GetKnowledgeAnswerAsync(answer.Task.TaskId, ct));
-                            Assert.Equal(DesktopError.TaskNotFound, gone.Error); // Task history is intentionally transient.
+                            var restored = await client.GetKnowledgeAnswerHistoryAsync(answer.Task.TaskId, ct);
+                            Assert.Equal(answer.Question, restored.Question); Assert.Equal(answer.Query, restored.Query);
+                            Assert.Equal(JsonSerializer.Serialize(answer.Task), JsonSerializer.Serialize(restored.Task));
+                            Assert.Equal(JsonSerializer.Serialize(answer.Task), JsonSerializer.Serialize(await client.GetKnowledgeAnswerAsync(answer.Task.TaskId, ct)));
+                            await Click(history.Items.Single(h => h.TaskId == answer.Task.TaskId.ToString()).Question);
+                            await Wait(() => Is("document.getElementById('knowledge-answer-question').value===" + Json(answer.Question) + "&&document.querySelector('.knowledge-answer .knowledge-snippet')?.textContent===" + Json(answer.Task.Result!.Answer)));
+                            Assert.True(await Is("document.getElementById('knowledge-answer-query').value===" + Json(answer.Query)));
                             for (int i = 0; i < answer.Task.Result!.Citations.Count; i++)
                             {
                                 var c = answer.Task.Result.Citations[i]; string text = await ReadText(c.DocumentId, c.SourceRevision);
@@ -164,9 +177,23 @@ public static partial class RuntimeLifecycleProbe
                                 var preview = await client.PreviewKnowledgeAsync(c.DocumentId, c.SourceRevision, c.StartOffset, ct);
                                 Assert.StartsWith(answer.CitationTexts[i], preview.Text, StringComparison.Ordinal);
                             }
+                            await Click("打开引用来源");
+                            await Wait(() => Is("document.querySelector('#knowledge-source-range')?.textContent.includes('引用范围')===true"));
+                            await Script("document.querySelector('.knowledge-answer .knowledge-snippet').scrollIntoView({block:'start'})");
+                            await Snapshot("web-knowledge-history-" + answer.Query + ".png");
                         }
-                        Assert.Equal(0, answerSubmissions);
-                        Console.WriteLine("WEB_KNOWLEDGE_OLD_TASKS_ABSENT_EXACT_CITATION_TARGETS_STABLE_PASS");
+                        Assert.Equal(2, historyReads); Assert.Equal(0, answerSubmissions);
+                        Console.WriteLine("WEB_KNOWLEDGE_FULL_PROCESS_HISTORY_UI_EXACT_ANSWERS_CITATIONS_MODEL_OFF_PASS");
+                        stage = "DELETE_HISTORY_PRESERVE_SOURCES";
+                        string deletedQuestion = history.Items.Single(h => h.TaskId == previous.Answers[1].Task.TaskId.ToString()).Question;
+                        await Script("[...document.querySelectorAll('[aria-label=问答历史] li')].find(li=>li.querySelector('button')?.textContent===" + Json(deletedQuestion) + ").querySelectorAll('button')[1].click()");
+                        await Click("确认删除问答");
+                        await Wait(() => Is("document.querySelectorAll('[aria-label=问答历史] li').length===1&&document.getElementById('knowledge-answer-question').value===''"));
+                        Assert.Equal(1, (await client.ListKnowledgeAnswersAsync(0, ct)).Total);
+                        Assert.Equal(2, (await client.ListKnowledgeAsync("ACTIVE", 0, ct)).Total);
+                        var gone = await Assert.ThrowsAsync<DesktopException>(() => client.GetKnowledgeAnswerHistoryAsync(previous.Answers[1].Task.TaskId, ct));
+                        Assert.Equal(DesktopError.TaskNotFound, gone.Error);
+                        Console.WriteLine("WEB_KNOWLEDGE_HISTORY_DELETE_UI_SOURCE_RETENTION_PASS");
                     }
                     else
                     {
@@ -218,7 +245,7 @@ public static partial class RuntimeLifecycleProbe
                     }
                 }
                 File.WriteAllText(Path.Combine(evidenceRoot, "web-knowledge-result-" + mode + ".json"), JsonSerializer.Serialize(new {
-                    passed = true, mode, fetchSubmissions, saves, answerSubmissions, appPid = Environment.ProcessId, javaPid = owned.Id }, WebKnowledgeJson));
+                    passed = true, mode, fetchSubmissions, saves, answerSubmissions, historyReads, appPid = Environment.ProcessId, javaPid = owned.Id }, WebKnowledgeJson));
                 passed = true;
             }
             catch (Exception error)
