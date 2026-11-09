@@ -4,6 +4,8 @@ import io.github.qianlixunbai.workspace.capability.TextTaskSubmission;
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.knowledge.KnowledgeEvidenceAdmission;
 import io.github.qianlixunbai.workspace.knowledge.KnowledgeEvidenceAdmission.*;
+import io.github.qianlixunbai.workspace.knowledge.KnowledgeEvidenceExcerpt;
+import io.github.qianlixunbai.workspace.knowledge.LexicalAnalyzer;
 import io.github.qianlixunbai.workspace.security.ClientIdentity;
 import io.github.qianlixunbai.workspace.task.TaskView;
 import org.springframework.stereotype.Service;
@@ -16,11 +18,15 @@ public final class KnowledgeAnswerService {
     private final KnowledgeEvidenceAdmission evidence;
     private final TextTaskSubmission tasks;
     public KnowledgeAnswerService(KnowledgeEvidenceAdmission evidence, TextTaskSubmission tasks) { this.evidence=evidence;this.tasks=tasks; }
-    private record ModelEvidence(String label,String title,String heading,String text) {
+    private record ModelEvidence(String label,String title,String heading,String text,boolean excerpt) {
         @Override public String toString(){return "ModelEvidence[redacted]";}
     }
     private record ModelInput(String question,List<ModelEvidence> evidence) {
         @Override public String toString(){return "KnowledgeModelInput[redacted]";}
+    }
+    private static String serialize(String question,List<Evidence> items,boolean excerpt) {
+        return JSON.writeValueAsString(new ModelInput(question,items.stream()
+                .map(e->new ModelEvidence(e.label(),e.citation().title(),e.citation().heading(),e.text(),excerpt)).toList()));
     }
     public TaskView submit(KnowledgeAnswerRequest request) {
         if(!ClientIdentity.current().equals(ClientIdentity.NATIVE))throw new WorkspaceException(ErrorCode.POLICY_DENIED,"CAPABILITY");
@@ -32,9 +38,17 @@ public final class KnowledgeAnswerService {
             List<Evidence> prefix=new ArrayList<>();String input=null;
             for(var next:snapshot.items()) {
                 List<Evidence> proposed=new ArrayList<>(prefix);proposed.add(next);
-                String serialized=JSON.writeValueAsString(new ModelInput(request.question(),proposed.stream()
-                        .map(e->new ModelEvidence(e.label(),e.citation().title(),e.citation().heading(),e.text())).toList()));
-                if(!tasks.fitsInput(reservation,serialized))break;
+                String serialized=serialize(request.question(),proposed,false);
+                if(!tasks.fitsInput(reservation,serialized)) {
+                    // Keep normal full-chunk ranked prefixes unchanged. Only an oversized
+                    // first hit may use a sentence window, with exact source coordinates.
+                    if(prefix.isEmpty()) {
+                        Evidence excerpt=KnowledgeEvidenceExcerpt.select(next,LexicalAnalyzer.query(request.query()).tokens(),
+                                candidate->tasks.fitsInput(reservation,serialize(request.question(),List.of(candidate),true)));
+                        if(excerpt!=null){prefix.add(excerpt);input=serialize(request.question(),prefix,true);}
+                    }
+                    break;
+                }
                 prefix=proposed;input=serialized;
             }
             if(input==null)throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"KNOWLEDGE_EVIDENCE_BUDGET");

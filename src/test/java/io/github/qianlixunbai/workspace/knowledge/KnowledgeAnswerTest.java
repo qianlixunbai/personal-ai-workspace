@@ -56,7 +56,7 @@ class KnowledgeAnswerTest {
             store.delete(job.documentId(),store.get(job.documentId()).metadataVersion());
             provider.release.countDown();var done=terminal(manager,accepted);assertEquals(TaskStatus.SUCCEEDED,done.status());
             var input=JSON.readTree(provider.execution.input());assertEquals(text,input.path("evidence").get(0).path("text").asString());
-            assertEquals(4,input.path("evidence").get(0).size());assertFalse(provider.execution.input().contains(job.documentId()));
+            assertEquals(5,input.path("evidence").get(0).size());assertFalse(input.path("evidence").get(0).path("excerpt").asBoolean());assertFalse(provider.execution.input().contains(job.documentId()));
             var result=(TaskResult.KnowledgeAnswer)done.result();assertEquals("1",result.citations().getFirst().sourceRevision());assertEquals(e.citation(),result.citations().getFirst());
             assertFalse(result.toString().contains("fixture answer"));assertFalse(new KnowledgeAnswerRequest("private question","budget").toString().contains("private"));
             KnowledgeLexicalIndexTest.ready(realIndex);KnowledgeLexicalIndexTest.code(ErrorCode.INVALID_REQUEST,()->owner.capture("budget"));
@@ -92,5 +92,46 @@ class KnowledgeAnswerTest {
             KnowledgeLexicalIndexTest.code(ErrorCode.PROVIDER_RESPONSE_INVALID,()->KnowledgeAnswerParser.parse(invalid,snapshot));
         KnowledgeLexicalIndexTest.code(ErrorCode.PROVIDER_RESPONSE_INVALID,()->KnowledgeAnswerParser.parse(JSON.writeValueAsString(Map.of("answer","x".repeat(2049),"citations",List.of("S1"))),snapshot));
         assertTrue(KnowledgeAnswerPrompt.SYSTEM.getBytes(StandardCharsets.UTF_8).length<=512);
+    }
+    @Test void oversizedChineseEvidenceUsesExactBudgetedExcerptAndOriginalRevisionPreview()throws Exception {
+        var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));
+        try(var store=new KnowledgeStore(temporary.resolve("data"),temporary.resolve("auth/token"));var ingestion=new KnowledgeIngestion(store);
+            var index=new KnowledgeLexicalIndex(store)) {
+            String source="# 合成资料\n背景😀说明。"+"背景说明。".repeat(194)+"\n"
+                    +"只适用于琥珀项目。预算上限为十二万元。其他项目不可沿用这个预算。\n"+"后续说明。".repeat(195)+"\n";
+            var job=KnowledgeLexicalIndexTest.ingest(store,ingestion,null,"fixture.md",source);KnowledgeLexicalIndexTest.ready(index);
+            var owner=new KnowledgeEvidenceAdmission(store,index);var original=owner.capture("十二").items().getFirst();
+            assertEquals(source,original.text()); // One valid K2 chunk; no change to ingestion or ranking.
+            var provider=new LocalProvider();var tasks=submission(provider,manager);
+            assertFalse(tasks.fitsInput("chat.balanced",source)); // Even before JSON overhead, the full Chinese chunk cannot fit.
+            var accepted=new KnowledgeAnswerService(owner,tasks).submit(new KnowledgeAnswerRequest("琥珀项目的预算是多少？","十二"));
+            assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
+            KnowledgeLexicalIndexTest.ingest(store,ingestion,job.documentId(),"fixture.md","新版本的预算已变更。");
+            provider.release.countDown();var done=terminal(manager,accepted);assertEquals(TaskStatus.SUCCEEDED,done.status());
+            assertEquals("knowledge-answer-v2",done.promptVersion());assertTrue(tasks.fitsInput("chat.balanced",provider.execution.input()));
+            var visible=JSON.readTree(provider.execution.input()).path("evidence");assertEquals(1,visible.size());
+            assertTrue(visible.get(0).path("excerpt").asBoolean());String text=visible.get(0).path("text").asString();
+            assertTrue(text.contains("只适用于琥珀项目。预算上限为十二万元。其他项目不可沿用这个预算。"));
+            var citation=((TaskResult.KnowledgeAnswer)done.result()).citations().getFirst();
+            assertTrue(citation.startOffset()>0);assertTrue(citation.endOffset()<source.length());
+            assertEquals(source.substring(citation.startOffset(),citation.endOffset()),text);
+            assertEquals(1+source.substring(0,citation.startOffset()).chars().filter(c->c=='\n').count(),citation.startLine());
+            assertEquals(citation.startLine()+text.chars().filter(c->c=='\n').count()-(text.endsWith("\n")?1:0),citation.endLine());
+            assertEquals("1",citation.sourceRevision());assertEquals(original.citation().locator(),citation.locator());
+            assertTrue(store.preview(job.documentId(),citation.sourceRevision(),citation.startOffset()).text().startsWith(text));
+            assertFalse(provider.execution.input().contains(job.documentId()));
+        } finally {manager.close();}
+    }
+    @Test void sentenceWindowsPreserveUnicodeAndRefuseMissingTermsOrNecessaryContext() {
+        String source="外围说明。".repeat(15)+"\nBefore 😀 condition. ＢＵＤＧＥＴ cafe\u0301 is scoped. No global rule.\n"+"外围说明。".repeat(15);
+        var excerpt=KnowledgeEvidenceExcerpt.select(item(1,source),LexicalAnalyzer.query("budget café").tokens(),e->e.text().length()<=120);
+        assertNotNull(excerpt);assertTrue(excerpt.text().contains("Before 😀 condition. ＢＵＤＧＥＴ cafe\u0301 is scoped. No global rule."));
+        assertEquals(source.substring(excerpt.citation().startOffset(),excerpt.citation().endOffset()),excerpt.text());
+        assertTrue(excerpt.text().codePoints().noneMatch(cp->cp>=0xD800&&cp<=0xDFFF));
+        assertEquals("internal",excerpt.representationDigest());assertEquals("S1",excerpt.label());
+        assertNull(KnowledgeEvidenceExcerpt.select(item(1,"中".repeat(2048)),LexicalAnalyzer.query("中").tokens(),e->e.text().length()<1000));
+        assertNull(KnowledgeEvidenceExcerpt.select(item(1,"Conditions apply. budget applies. Exclusions apply."),LexicalAnalyzer.query("budget").tokens(),e->e.text().length()<20));
+        assertNull(KnowledgeEvidenceExcerpt.select(item(1,"alpha. "+"middle. ".repeat(100)+"omega."),LexicalAnalyzer.query("alpha omega").tokens(),e->e.text().length()<100));
+        assertNull(KnowledgeEvidenceExcerpt.select(item(1,source),LexicalAnalyzer.query("missing").tokens(),e->true));
     }
 }

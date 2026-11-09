@@ -24,7 +24,7 @@ public sealed class KnowledgeTests
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
-        internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion="knowledge-answer-v1",
+        internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion="knowledge-answer-v2",
             createdAt="2026-10-06T00:00:00Z",finishedAt=AnswerState is "QUEUED" or "RUNNING"?null:"2026-10-06T00:00:01Z",
             result=AnswerState=="SUCCEEDED"?new{answer=AnswerWorstCase?new string('中',2048):"<script>private answer</script>",citations=Enumerable.Range(0,AnswerWorstCase?10:1).Select(AnswerCitation).ToArray()}:null,
             error=AnswerState is "SUCCEEDED" or "QUEUED" or "RUNNING"?null:new{code=AnswerState=="CANCELLED"?"TASK_CANCELLED":AnswerState=="TIMED_OUT"?"TASK_TIMEOUT":"PROVIDER_RESPONSE_INVALID",message="safe",phase="RESPONSE"}};
@@ -79,7 +79,7 @@ public sealed class KnowledgeTests
         Assert.Equal(10,response.GetProperty("result").GetProperty("result").GetProperty("citations").GetArrayLength());Assert.True(Encoding.UTF8.GetByteCount(f.Sent.Single())<65536);
         foreach(string hidden in new[]{"sourceDigest","representationDigest","fingerprint","rowid","score","path","label","text"})Assert.DoesNotContain("\""+hidden+"\"",f.Sent.Single());
         f.Handler.AnswerWorstCase=false;string valid=JsonSerializer.Serialize(f.Handler.AnswerTask());
-        foreach(string invalid in new[]{valid.Replace("\"answer\":","\"extra\":1,\"answer\":"),valid.Replace("\"citations\":[","\"citations\":[],\"other\":["),valid.Replace("knowledge-answer-v1","ask-v1"),valid.Replace("chat.balanced","translate.fast"),valid.Replace("MARKDOWN_SECTION_LINES","TXT_LINES"),valid.Replace("\"endOffset\":4096","\"endOffset\":0"),valid+" {}"}) {
+        foreach(string invalid in new[]{valid.Replace("\"answer\":","\"extra\":1,\"answer\":"),valid.Replace("\"citations\":[","\"citations\":[],\"other\":["),valid.Replace("knowledge-answer-v2","ask-v1"),valid.Replace("knowledge-answer-v2","knowledge-answer-v1"),valid.Replace("chat.balanced","translate.fast"),valid.Replace("MARKDOWN_SECTION_LINES","TXT_LINES"),valid.Replace("\"endOffset\":4096","\"endOffset\":0"),valid+" {}"}) {
             f.Handler.AnswerInvalid=invalid;var ex=await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default));Assert.Equal(DesktopError.InvalidResponse,ex.Error);
         }
         f.Handler.AnswerInvalid=null;foreach(string state in new[]{"QUEUED","RUNNING","FAILED","CANCELLED","TIMED_OUT"}){f.Handler.AnswerState=state;Assert.Equal(state,(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default)).Status.ToString());}

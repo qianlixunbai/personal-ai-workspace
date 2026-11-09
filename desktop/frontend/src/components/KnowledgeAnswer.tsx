@@ -35,7 +35,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: Wo
   }
   return <section className="card knowledge-answer" aria-labelledby="knowledge-answer-title">
     <h2 id="knowledge-answer-title">基于文档回答</h2>
-    <p className="hint">输入问题和关键词，从匹配的可用文档中寻找答案，并附上引用来源。关键词不会自动改写。</p>
+    <p className="hint">输入问题和关键词，从匹配的可用文档中寻找答案，并附上引用来源。首个长片段可能改用相关句子及相邻上下文；预算不足时会拒绝回答。关键词不会自动改写。</p>
     <form onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={e => { if (e.key === 'Enter' && (e.nativeEvent.isComposing || composing.current)) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor="knowledge-answer-question">想了解什么</label>
       <textarea id="knowledge-answer-question" value={question} maxLength={3000} disabled={!enabled || busy || active} autoComplete="off" spellCheck={false} onChange={e => setQuestion(e.target.value)} />
@@ -47,7 +47,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: Wo
     {active && <button disabled={!enabled || busy} onClick={() => { void cancel() }}>取消知识回答</button>}
     {(error || task?.error) && <p role="alert" className="error">{error || task?.error?.message}</p>}
     {task?.result && <><p className="knowledge-snippet" style={{ whiteSpace: 'pre-wrap' }}>{task.result.answer}</p><h3>引用来源</h3>
-      <p className="hint">以下范围为回答引用的证据；源预览可能显示额外结构上下文。</p>
+      <p className="hint">以下范围为实际引用的原文片段，不一定是完整文档。请打开来源核对适用条件；源预览可能显示额外上下文。</p>
       <ol>{task.result.citations.map(c => <li key={`${c.documentId}/${c.sourceRevision}/${c.startOffset}`}><h4>{c.title}</h4>
         <p className="knowledge-location">{c.sourceType} · 源版本 {c.sourceRevision} · 行 {c.startLine}–{c.endLine} · 文本偏移 {c.startOffset}–{c.endOffset}{c.heading ? ` · ${c.heading}` : ''}</p>
         <button disabled={!enabled || busy} onClick={() => { void open(c) }}>打开引用来源</button>

@@ -2,6 +2,11 @@
 
 Status: Accepted
 
+2026-11-09 extension: bounded sentence excerpts are implemented for an oversized
+first hit, using `knowledge-answer-v2`. The packing decision below supersedes the
+original full-first-chunk-only policy; historical K3 approval and model results do
+not establish independent review, real-model quality or publication of this extension.
+
 Implementation status: **K3 — CLOSED — GO**.
 Implementation candidate: `c938e21539cc001576a243f8cfb2ba6163223d56`.
 Architecture Guard: **IMPLEMENTATION / SOURCE CLOSING REVIEW — APPROVED — GO**;
@@ -67,7 +72,7 @@ KnowledgeStore snapshot/monitor
   → reconstruct and verify exact evidence from normalized Knowledge state
   → freeze immutable EvidenceSnapshot
 release Knowledge boundary
-  → pack complete evidence and submit model task
+  → pack complete evidence or the bounded first-hit excerpt and submit model task
 ```
 
 Preserve the existing nested lock order **KnowledgeStore → lexical index publication**;
@@ -115,7 +120,7 @@ After acceptance, update/archive/delete cannot change the frozen model input:
 Never substitute current/latest revision for the admitted revision. Do not recreate
 hidden durable evidence or retain a second durable source solely for K3.
 
-## Deterministic full-chunk budget packing
+## Deterministic ranked-prefix packing and bounded first-hit excerpts
 
 Use unchanged K2 deterministic ranking and request at most its existing candidate
 maximum (10 at the baseline); the K3 client cannot choose an arbitrary limit.
@@ -125,17 +130,46 @@ and serialization overhead, and check the active profile's actual input limits.
 Both character and UTF-8 byte limits apply; system/output reserves also apply.
 `TextTaskSubmission` remains the final budget authority.
 
-If S1 and S2 fit but S3 does not, use S1 + S2 and stop. Do not skip S3 to try S4,
-truncate, summarize, rewrite or silently drop content inside an admitted item.
-If the first candidate cannot fit, return a controlled evidence/context-budget
-failure and create no model task. K3 v1 has no excerpt policy: complete chunks
-preserve verifiable text/range identity without introducing new selection semantics.
+If S1 and S2 fit but S3 does not, use S1 + S2 and stop. Do not skip S3 to try S4.
+Once any full chunk is admitted, do not fill spare capacity with a partial next chunk.
+
+Only when S1 cannot fit may K3 derive **one contiguous sentence window** from that
+already verified, frozen authoritative chunk. This is an explicit v2 policy change:
+
+- Reuse `BreakIterator.getSentenceInstance(Locale.ROOT)` within the captured chunk;
+  it does not inspect outside that chunk or alter K2 chunk boundaries/index data.
+- Reuse K2 query tokenization. Remove tokens already present in the model-visible
+  title/heading, then select the shortest contiguous sentence range containing all
+  remaining query tokens (UTF-16 width, earliest start for ties). If metadata covers
+  every query token, start at the first sentence; if coverage is impossible, refuse.
+- Retain at least one adjacent sentence on each available side. Enlarge symmetrically
+  to the greatest padding that fits the **serialized** question/evidence/metadata JSON
+  under the existing character and UTF-8 budgets. Do not split a sentence to fit,
+  skip an intervening sentence, join disjoint spans, or generate a summary.
+- A chunk edge may already fall inside a source sentence under K2's bounded policy.
+  Neither sentence boundaries nor one neighboring sentence prove semantic completeness.
+  An unbroken oversized sentence or an over-budget required window remains rejected.
+- The evidence text is exactly a substring of the captured text. Compute citation
+  start/end offsets and inclusive line numbers from that exact substring; keep the
+  original document/revision, containing structural locator, heading and internal digest.
+  The model sees `excerpt:true` for the window (`false` for complete chunks), never
+  authoritative IDs, paths or digests. Citations map to the actual supplied range.
+- Admit only this S1 excerpt and stop. Do not substitute a later hit or an unverified
+  search snippet. If no permitted window fits, create no model task and return the
+  existing controlled evidence-budget failure. No budget or output limit is raised.
+
+The system prompt explains that omitted conditions cannot be inferred; the UI says
+long evidence may be excerpted and source context should be checked. This is not a
+semantic guarantee: lexical term coverage and valid offsets do not prove a correct,
+complete or context-faithful answer. Original source preview remains available for
+the exact retained revision, subject to existing deletion/availability rules.
 
 ## Existing local execution and narrow task result
 
 Reuse `TextTaskSubmission.submitMapped → TaskManager → ProviderPolicy → LOCAL_ONLY
 Provider → Ollama`. Initial profile is existing `chat.balanced`; capability is
-`knowledge-answer`, prompt version is `knowledge-answer-v1`. Do not add another
+`knowledge-answer`, prompt version is `knowledge-answer-v2`. Native parsing requires
+the same version; mixed old/new Runtime and Desktop builds fail closed. Do not add another
 task framework or a new model profile merely for symmetry.
 
 The existing sealed `TaskResult` includes one narrow immutable subtype,
@@ -186,7 +220,7 @@ must be reported without substituting another revision.
 | Zero lexical hits | Controlled no-evidence result/error; no model call/task |
 | Index NOT_READY / STALE / BUILDING / FAILED | No stale fallback; no model call/task |
 | Derived index/evidence disagreement | Fail closed; no model call/task |
-| First evidence cannot fit | Controlled evidence/context-budget failure; no model call/task |
+| First evidence and permitted context window cannot fit | Controlled evidence/context-budget failure; no model call/task |
 | Provider/model unavailable | Existing controlled local failure; no cloud fallback |
 | Queue full | No accepted task |
 | Timeout | TIMED_OUT; a late answer cannot win |

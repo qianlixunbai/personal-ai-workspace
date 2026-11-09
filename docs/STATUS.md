@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 后续增量完成：Knowledge 首个长中文命中整体超预算时，可从冻结原文选择覆盖检索词的连续句子及相邻上下文，引用按实际摘录更新偏移与行号；完整片段仍按排名前缀打包，不能容纳的窗口继续拒绝。复用 JDK 分句及现有词法／预算／引用组件，参考 LlamaIndex 和 Lucene，未加依赖。Java 原生隔离场景 7/7、.NET Knowledge 16/16、前端 3/3 及构建通过；未验证真实模型摘录质量、完整桌面包或 PostgreSQL 流程。提示契约升级 v2，须配套 Runtime／Desktop。仅本地 Git，不推送、合并或部署；[交付、复用评估、证据与限制](engineering/KNOWLEDGE-BOUNDED-EXCERPTS-REPORT.md)。
+
 2026-11-09 开发已按用户指示恢复，首个增量为 Knowledge 持续使用：修复同一桌面会话累计 64 个知识回答后永久 `QueueFull` 的本地授权限制。容量不足时只回收最早确认终态的授权；已验证 `TaskNotFound` 也撤销对应授权，活动／未知任务不因时间被回收，迟到结果须重新核对会话与授权实例。旧实现聚焦复现失败、修复后 16 项现有 Knowledge 所属测试通过（新增 3 项）；未调用模型、访问真实数据或部署。本轮仅本地 Git 收尾，不推送；[结果、复用取舍与保留限制](engineering/KNOWLEDGE-ANSWER-LIFECYCLE-REPORT.md)。记忆完成及其小样本边界仍有效，个人备份／恢复仍未开放；下列“暂停”等表述是原阶段历史状态。
 
 2026-11-07 记忆系统收尾完成：当前 **Development-only 的显式记忆范围**已完成必要验收。真实 AssistantApp／WPF／WebView／原生 Runtime／SQLite／Ollama 0.40.1／Qwen3.5 4B 的生成、审核、保存、检索、会话引用、过期拒绝、清除、完整进程重启及归档／恢复／删除闭环通过；同版本独立 11 次质量小样本另行断言及语义复核通过。PostgreSQL Store 综合场景、最终合成桌面回归及必要安全／协议回归通过。全部测试使用合成数据，自有实例已退出；这不表示当前正在运行或 Ready，不代表正式发布或 Production GO。按用户要求完成 Git 收尾后暂停，不启动下一阶段。[完成报告、证据与剩余限制](engineering/MEMORY-SYSTEM-COMPLETION-REPORT.md)是当前结论；下列 WIP 和失败条目保留其历史时点。

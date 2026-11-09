@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-09 最新增量：[长中文 Knowledge 有界原文摘录](../engineering/KNOWLEDGE-BOUNDED-EXCERPTS-REPORT.md)完成实现与合成流程验证，首个长命中可按句子和相邻上下文适配既有预算，引用保持准确版本与范围。真实模型质量、真实桌面使用及 PostgreSQL 全流程尚未随此增量复验；本地提交未推送，仍为 Development-only。
+
 2026-11-09 接续：用户已恢复开发。11 月 7 日[显式记忆系统](../engineering/MEMORY-SYSTEM-COMPLETION-REPORT.md)完成必要开发验收；本阶段先完成[知识回答授权生命周期修复](../engineering/KNOWLEDGE-ANSWER-LIFECYCLE-REPORT.md)，消除已确认终态任务造成的会话累计上限。日常启动／恢复、长资料 Knowledge、真实个人备份和正式分发仍按各自范围推进；未因这一步增加模型质量、真实桌面或生产发布结论。下方表格保留早期阶段信息，具体能力以较新的专项报告为准。
 
 2026-10-28，历史源码核验基线 `12dce0765dcdb89b75fd605c2b4fc7bf5db00617`。文档现代化与 Closing 随 main 发布；最新主线提交与固定核验基线的区别见 [当前状态](../STATUS.md)。
