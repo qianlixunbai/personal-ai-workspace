@@ -16,6 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import static io.github.qianlixunbai.workspace.backup.MaintenanceFiles.*;
 import static io.github.qianlixunbai.workspace.memory.MemoryItem.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -75,6 +76,9 @@ class MemoryPostgresqlLifecycleTest {
             sql(db, "GRANT SELECT ON workspace.storage_metadata,workspace.write_lock TO " + APP);
             sql(db, "GRANT UPDATE ON workspace.write_lock TO " + APP);
             sql(db, "GRANT SELECT,INSERT,UPDATE,DELETE ON workspace.memory_items,workspace.conversations,workspace.conversation_turns,workspace.conversation_messages,workspace.conversation_memory_selections TO " + APP);
+            sql(db, "GRANT SELECT,UPDATE ON workspace.knowledge_control TO " + APP);
+            sql(db, "GRANT SELECT,INSERT,UPDATE,DELETE ON workspace.knowledge_documents,workspace.knowledge_revisions,workspace.knowledge_jobs,workspace.knowledge_deletes,workspace.knowledge_index_metadata,workspace.knowledge_chunks TO " + APP);
+            sql(db, "GRANT SELECT,INSERT ON workspace.knowledge_sqlite_import TO " + APP);
             sql(db, "REVOKE ALL ON FUNCTION workspace.reject_immutable_update() FROM PUBLIC");
         }
         try (var db = app.getConnection()) {
@@ -132,11 +136,39 @@ class MemoryPostgresqlLifecycleTest {
             boundedRanking(owner, reopened);
         }
         verifyConversationSearch(app);
+        verifyKnowledgeScope(app);
         try (var db = owner.getConnection()) { assertEquals("UNCHANGED_SYNTHETIC", text(db, "SELECT value FROM public.fixture_sentinel")); }
         write(root.resolve("memory-postgresql-evidence.json"), JsonMapper.builder().build().writeValueAsBytes(Map.of(
                 "status", "POSTGRESQL_MEMORY_LIFECYCLE_VERIFIED", "sqliteRankingParity", true,
                 "leastPrivilegeStore", true, "currentRevisionAndReopen", true, "conversationReferencesRetained", true,
-                "readOnlyRepeatableSnapshot", true, "boundedRanking", true, "postgresqlConversationSearch", true, "realModelCalled", false)));
+                "readOnlyRepeatableSnapshot", true, "boundedRanking", true, "postgresqlConversationSearch", true, "postgresqlKnowledgeScope", true, "realModelCalled", false)));
+    }
+    private void verifyKnowledgeScope(PGSimpleDataSource app)throws Exception {
+        var data=temporary.resolve("pk");var token=temporary.resolve("credentials/client-token");
+        String id;
+        try(var store=new io.github.qianlixunbai.workspace.knowledge.KnowledgeStore(app,data,token);
+            var ingestion=new io.github.qianlixunbai.workspace.knowledge.KnowledgeIngestion(store);
+            var index=new io.github.qianlixunbai.workspace.knowledge.KnowledgeLexicalIndex(store)) {
+            id=null;
+            for(int i=0;i<13;i++){
+                byte[] bytes=(i==12?"background ".repeat(55)+"budget chosen":"budget unrelated "+i).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                var job=ingestion.upload(UUID.randomUUID().toString(),null,null,i==12?"selected.txt":"budget-"+i+".txt",bytes.length,new java.io.ByteArrayInputStream(bytes));
+                long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                while(Set.of("PENDING","PARSING").contains(store.job(job.requestId()).state())&&System.nanoTime()<end)Thread.sleep(10);
+                assertEquals("READY",store.job(job.requestId()).state());if(i==12)id=job.documentId();
+            }
+            long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+            while(!index.status().state().equals("READY")&&System.nanoTime()<end)Thread.sleep(10);
+            assertEquals("READY",index.status().state());
+            var scope=new io.github.qianlixunbai.workspace.knowledge.KnowledgeScope(id,"1");
+            assertEquals(10,index.search("budget",10).hits().size());
+            assertTrue(index.search("budget",10).hits().stream().noneMatch(h->h.documentId().equals(scope.documentId())));
+            var hits=index.search("budget",10,scope).hits();assertEquals(1,hits.size());assertEquals(id,hits.getFirst().documentId());
+            assertTrue(index.search("unrelated",10,scope).hits().isEmpty());
+            store.lifecycle(id,store.get(id).metadataVersion(),"ARCHIVED");
+            assertEquals(ErrorCode.KNOWLEDGE_REVISION_CONFLICT,assertThrows(WorkspaceException.class,()->index.search("budget",10,scope)).error().code());
+        }
+        System.out.println("POSTGRESQL_KNOWLEDGE_SCOPE_BEFORE_TOP_K_NO_FALLBACK_PASS");
     }
     private void verifyConversationSearch(PGSimpleDataSource app) {
         String query="Pg字面😀%_Alpha"; UUID active,archived;

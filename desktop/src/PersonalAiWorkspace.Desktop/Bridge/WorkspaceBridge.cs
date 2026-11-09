@@ -239,13 +239,13 @@ internal sealed class WorkspaceBridge : IDisposable
                 if(knowledge is null)throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Knowledge 暂时不可用。");
                 string? id=payload.TryGetProperty("documentId",out var documentId)&&documentId.ValueKind==JsonValueKind.String?documentId.GetString():null;
                 result=method switch {
-                    "knowledge.answerSubmit"=>await knowledge.AnswerSubmitAsync(session,payload.GetProperty("question").GetString()!,payload.GetProperty("query").GetString()!,cancellation),
+                    "knowledge.answerSubmit"=>await knowledge.AnswerSubmitAsync(session,payload.GetProperty("question").GetString()!,payload.GetProperty("query").GetString()!,cancellation,ReadKnowledgeScope(payload)),
                     "knowledge.answerGet"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,false,cancellation),
                     "knowledge.answerCancel"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,true,cancellation),
                     "knowledge.answerHistory"=>await knowledge.AnswerHistoryAsync(session,payload.GetProperty("page").GetInt32(),cancellation),
                     "knowledge.answerHistoryGet"=>await knowledge.AnswerHistoryGetAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
                     "knowledge.answerHistoryDelete"=>await knowledge.AnswerHistoryDeleteAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
-                    "knowledge.search"=>await knowledge.SearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("limit").GetInt32(),cancellation),
+                    "knowledge.search"=>await knowledge.SearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("limit").GetInt32(),cancellation,ReadKnowledgeScope(payload)),
                     "knowledge.searchStatus"=>await knowledge.SearchStatusAsync(session,cancellation),
                     "knowledge.rebuildSearchIndex"=>await knowledge.RebuildSearchAsync(session,cancellation),
                     "knowledge.list"=>await knowledge.ListAsync(session,payload.GetProperty("status").GetString()!,payload.GetProperty("page").GetInt32(),cancellation),
@@ -475,11 +475,11 @@ internal sealed class WorkspaceBridge : IDisposable
     {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
-        if(method=="knowledge.answerSubmit")return Fields(p,"question","query")&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
+        if(method=="knowledge.answerSubmit")return Fields(p,p.TryGetProperty("scope",out _)?["question","query","scope"]:["question","query"])&&ValidKnowledgeScope(p)&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
         if(method=="knowledge.answerHistory")return Fields(p,"page")&&Page(p)&&p.GetProperty("page").GetInt32()<50;
         if(method is "knowledge.answerGet" or "knowledge.answerCancel" or "knowledge.answerHistoryGet" or "knowledge.answerHistoryDelete")return Fields(p,"taskId")&&Text(p,"taskId",36,out var taskId)&&CanonicalId(taskId);
         if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex")return Fields(p);
-        if(method=="knowledge.search")return Fields(p,"query","limit")&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128
+        if(method=="knowledge.search")return Fields(p,p.TryGetProperty("scope",out _)?["query","limit","scope"]:["query","limit"])&&ValidKnowledgeScope(p)&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128
             &&!query.Any(char.IsControl)&&p.GetProperty("limit").ValueKind==JsonValueKind.Number&&p.GetProperty("limit").TryGetInt32(out int limit)&&limit is >=1 and <=10;
         bool Id(string name)=>Text(p,name,36,out var id)&&CanonicalId(id);
         bool Version(string name)=>Text(p,name,19,out var v)&&v[0] is >= '1' and <= '9'&&v.All(x=>x is >= '0' and <= '9')&&long.TryParse(v,NumberStyles.None,CultureInfo.InvariantCulture,out _);
@@ -493,6 +493,14 @@ internal sealed class WorkspaceBridge : IDisposable
             &&p.GetProperty("offset").ValueKind==JsonValueKind.Number&&p.GetProperty("offset").TryGetInt32(out int o)&&o is >=0 and <=1_000_000;
         return Fields(p,"documentId","expectedMetadataVersion")&&Id("documentId")&&Version("expectedMetadataVersion");
     }
+    private static bool ValidKnowledgeScope(JsonElement payload)
+    {
+        if(!payload.TryGetProperty("scope",out var scope)||scope.ValueKind==JsonValueKind.Null)return true;
+        return Fields(scope,"documentId","sourceRevision")&&Text(scope,"documentId",36,out var id)&&CanonicalId(id)
+            &&Text(scope,"sourceRevision",2,out var revision)&&revision is "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10";
+    }
+    private static KnowledgeSourceScope? ReadKnowledgeScope(JsonElement payload)=>!payload.TryGetProperty("scope",out var scope)||scope.ValueKind==JsonValueKind.Null
+        ?null:new(scope.GetProperty("documentId").GetString()!,scope.GetProperty("sourceRevision").GetString()!);
     private static MemoryQuery ReadMemoryQuery(JsonElement payload) => new(payload.GetProperty("query").GetString()!,
         Enum.Parse<MemoryStatus>(payload.GetProperty("status").GetString()!),
         payload.GetProperty("type").ValueKind == JsonValueKind.Null ? null : ReadMemoryType(payload), payload.GetProperty("page").GetInt32(), WorkspaceMemory.PageSize);

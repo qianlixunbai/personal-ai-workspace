@@ -75,6 +75,35 @@ class KnowledgeAnswerTest {
             } finally {manager.close();}
         }
     }
+    @Test void explicitDocumentFiltersBeforeTopKAndFreezesExactRevisionIntoHistory()throws Exception {
+        var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));
+        try(var store=new KnowledgeStore(temporary.resolve("data"),temporary.resolve("auth/token"));var ingestion=new KnowledgeIngestion(store);var index=new KnowledgeLexicalIndex(store)) {
+            for(int i=0;i<12;i++)KnowledgeLexicalIndexTest.ingest(store,ingestion,null,"budget-"+i+".txt","budget unrelated source "+i);
+            var selected=KnowledgeLexicalIndexTest.ingest(store,ingestion,null,"selected.txt","background ".repeat(55)+"budget chosen source");
+            KnowledgeLexicalIndexTest.ready(index);var scope=new KnowledgeScope(selected.documentId(),"1");
+            assertEquals(10,index.search("budget",10).hits().size());
+            assertTrue(index.search("budget",10).hits().stream().noneMatch(h->h.documentId().equals(scope.documentId())));
+            var hits=index.search("budget",10,scope).hits();assertEquals(1,hits.size());assertEquals(scope.documentId(),hits.getFirst().documentId());
+            assertTrue(index.search("unrelated",10,scope).hits().isEmpty());
+            var provider=new LocalProvider();var service=new KnowledgeAnswerService(new KnowledgeEvidenceAdmission(store,index),submission(provider,manager),history);
+            var accepted=service.submit(new KnowledgeAnswerRequest("What is the selected budget?","budget",scope));
+            assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
+            KnowledgeLexicalIndexTest.ingest(store,ingestion,selected.documentId(),"selected.txt","budget replacement");
+            provider.release.countDown();var done=terminal(manager,accepted);assertEquals(TaskStatus.SUCCEEDED,done.status());
+            var input=JSON.readTree(provider.execution.input());assertEquals(1,input.path("evidence").size());
+            assertTrue(input.path("evidence").get(0).path("text").asString().contains("chosen source"));
+            assertFalse(provider.execution.input().contains("unrelated"));
+            assertEquals(scope,history.get(done.taskId()).scope());
+            var citation=((TaskResult.KnowledgeAnswer)done.result()).citations().getFirst();assertTrue(scope.matches(citation.documentId(),citation.sourceRevision()));
+            KnowledgeLexicalIndexTest.code(ErrorCode.KNOWLEDGE_REVISION_CONFLICT,()->index.search("budget",10,scope));
+            KnowledgeLexicalIndexTest.code(ErrorCode.KNOWLEDGE_REVISION_CONFLICT,()->service.submit(new KnowledgeAnswerRequest("again","budget",scope)));
+            store.lifecycle(selected.documentId(),store.get(selected.documentId()).metadataVersion(),"ARCHIVED");
+            KnowledgeLexicalIndexTest.code(ErrorCode.KNOWLEDGE_REVISION_CONFLICT,()->index.search("budget",10,new KnowledgeScope(selected.documentId(),"2")));
+            var saved=history.get(done.taskId());assertEquals(done.result(),saved.task().result());
+            history.close();history=new KnowledgeAnswerHistory(temporary.resolve("history-data"),temporary.resolve("auth/token"));
+            assertEquals(scope,history.get(done.taskId()).scope());assertEquals(saved,history.get(done.taskId()));
+        }finally{manager.close();}
+    }
     private static Evidence item(int label,String text) {return new Evidence("S"+label,new TaskResult.KnowledgeCitation(UUID.randomUUID().toString(),"fixture.txt","1","TXT",0,text.length(),1,1,null,new TaskResult.KnowledgeLocator("TXT_LINES",1,1,0,text.length(),null)),text,"internal");}
     @Test void serializedCompleteRankedPrefixUsesSharedCharacterAndByteBudget()throws Exception {
         var owner=mock(KnowledgeEvidenceAdmission.class);var snapshot=new Snapshot(List.of(item(1,"x".repeat(1200)),item(2,"中".repeat(2048)),item(3,"small")));

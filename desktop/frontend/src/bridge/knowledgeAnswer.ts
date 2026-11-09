@@ -1,6 +1,7 @@
 import { exactFields, isId, isObject, isSafeError } from './contracts'
 import type { SafeError, TaskStatus } from './contracts'
 import { decimal } from './knowledge'
+import { isKnowledgeScope, type KnowledgeScope } from './knowledgeScope'
 
 export interface KnowledgeAnswerLocator { type: 'TXT_LINES' | 'MARKDOWN_SECTION_LINES'; startLine: number; endLine: number; startOffset: number; endOffset: number; section: string | null }
 export interface KnowledgeAnswerCitation { documentId: string; title: string; sourceRevision: string; sourceType: 'TXT' | 'MARKDOWN'; startOffset: number; endOffset: number; startLine: number; endLine: number; heading: string | null; locator: KnowledgeAnswerLocator }
@@ -22,10 +23,13 @@ export function isKnowledgeAnswerTask(v: unknown): v is KnowledgeAnswerTask {
   if (v.status === 'QUEUED' || v.status === 'RUNNING') return v.error === null
   return isSafeError(v.error) && (v.status === 'CANCELLED' ? v.error.code === 'Cancelled' : v.status === 'TIMED_OUT' ? v.error.code === 'TimedOut' : ['ProviderUnavailable', 'ModelUnavailable', 'ModelStateUnavailable', 'ModelIdentityChanged', 'ModelExecutionUncertain', 'ProviderResponseInvalid', 'PolicyDenied', 'InvalidRequest', 'InternalError', 'QueueFull', 'KnowledgeInterrupted', 'KnowledgeStorageUnavailable', 'KnowledgeLimitExceeded'].includes(v.error.code))
 }
-export interface KnowledgeAnswerHistoryEntry { question: string; query: string; task: KnowledgeAnswerTask }
+export interface KnowledgeAnswerHistoryEntry { question: string; query: string; task: KnowledgeAnswerTask; scope?: KnowledgeScope | null }
 export interface KnowledgeAnswerHistoryPage { items: { taskId: string; question: string; status: string; createdAt: string }[]; total: number; page: number; limit: number }
 export function isKnowledgeAnswerHistoryEntry(v: unknown): v is KnowledgeAnswerHistoryEntry {
-  return isObject(v) && exactFields(v, ['question', 'query', 'task']) && typeof v.question === 'string' && !!v.question.trim() && v.question.length <= 3000 && unicode(v.question) && typeof v.query === 'string' && !!v.query.trim() && [...v.query].length <= 128 && unicode(v.query) && !/[\x00-\x1f\x7f-\x9f]/.test(v.query) && isKnowledgeAnswerTask(v.task)
+  if (!isObject(v) || !exactFields(v, 'scope' in v ? ['question', 'query', 'task', 'scope'] : ['question', 'query', 'task']) || !isKnowledgeScope(v.scope === undefined ? null : v.scope)) return false
+  const scope = v.scope as KnowledgeScope | null | undefined
+  return typeof v.question === 'string' && !!v.question.trim() && v.question.length <= 3000 && unicode(v.question) && typeof v.query === 'string' && !!v.query.trim() && [...v.query].length <= 128 && unicode(v.query) && !/[\x00-\x1f\x7f-\x9f]/.test(v.query) && isKnowledgeAnswerTask(v.task)
+    && (!scope || !v.task.result || v.task.result.citations.every(c => c.documentId === scope.documentId && c.sourceRevision === scope.sourceRevision))
 }
 export function isKnowledgeAnswerHistoryPage(v: unknown): v is KnowledgeAnswerHistoryPage {
   return isObject(v) && exactFields(v, ['items', 'total', 'page', 'limit']) && int(v.total, 0, 1000) && int(v.page, 0, 49) && v.limit === 20 && Array.isArray(v.items) && v.items.length === Math.min(20, Math.max(0, v.total - v.page * 20)) && v.items.every(row => isObject(row) && exactFields(row, ['taskId', 'question', 'status', 'createdAt']) && isId(row.taskId) && typeof row.question === 'string' && !!row.question.trim() && [...row.question].length <= 120 && unicode(row.question) && ['QUEUED', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(String(row.status)) && typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))) && new Set(v.items.map(row => row.taskId)).size === v.items.length

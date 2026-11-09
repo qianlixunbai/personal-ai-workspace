@@ -33,6 +33,9 @@ final class PostgresqlKnowledgeIndex {
             while(r.next())meta.put(r.getString(1),r.getString(2));}return meta;
     }
     static List<Row> search(Connection db,String fingerprint,Map<String,String> versions,List<String> query,int limit,int maxChunks,long maxBytes)throws SQLException{
+        return search(db,fingerprint,versions,query,limit,maxChunks,maxBytes,null);
+    }
+    static List<Row> search(Connection db,String fingerprint,Map<String,String> versions,List<String> query,int limit,int maxChunks,long maxBytes,KnowledgeScope scope)throws SQLException{
         db.setReadOnly(true);db.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);db.setAutoCommit(false);
         try{
             var meta=metadata(db);
@@ -50,6 +53,8 @@ final class PostgresqlKnowledgeIndex {
             PriorityQueue<Row> best=new PriorityQueue<>(order.reversed());
             if(documents[0]>0){double average=(double)length[0]/documents[0];
                 scan(db,r->{
+                    // Keep corpus-wide BM25 statistics, but filter candidates before the top-k heap.
+                    if(scope!=null&&!scope.matches(r.getString("document"),Long.toString(r.getLong("revision"))))return;
                     String[][] fields=fields(r);int[] frequency=counts(fields,query);for(int n:frequency)if(n==0)return;
                     int dl=0;for(String[] field:fields)dl+=field.length;
                     double score=0;

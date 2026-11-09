@@ -24,9 +24,11 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
           CHECK((status IN ('FAILED','CANCELLED','TIMED_OUT'))=(error_code IS NOT NULL)))
         """;
     private Connection db;
+    private static final String SCOPE_DDL="CREATE TABLE answer_scopes(id TEXT PRIMARY KEY REFERENCES answers(id),document_id TEXT NOT NULL,source_revision TEXT NOT NULL)";
     private FileChannel lockChannel;
     private FileLock processLock;
-    public record Entry(String question, String query, TaskView task) {
+    public record Entry(String question, String query, TaskView task, KnowledgeScope scope) {
+        public Entry(String question,String query,TaskView task){this(question,query,task,null);}
         @Override public String toString() { return "KnowledgeAnswerHistoryEntry[redacted]"; }
     }
     public record Summary(UUID taskId, String question, TaskStatus status, Instant createdAt) {
@@ -65,10 +67,17 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
                 long version = count("PRAGMA user_version");
                 if (version == 0 && count("SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'") == 0) {
                     execute(DDL); execute("PRAGMA user_version=1");
-                } else if (version != 1) throw failure(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
-                try (var s = db.createStatement(); var r = s.executeQuery("SELECT sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")) {
-                    if (!r.next() || !DDL.strip().equals(r.getString(1).strip()) || r.next()) throw failure(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
+                    version=1;
+                } else if (version != 1 && version != 2) throw failure(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
+                Map<String,String> schema=new HashMap<>();
+                try (var s = db.createStatement(); var r = s.executeQuery("SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")) {
+                    while(r.next())schema.put(r.getString(1),r.getString(2).strip());
                 }
+                if(!schema.equals(version==1?Map.of("answers",DDL.strip()):Map.of("answers",DDL.strip(),"answer_scopes",SCOPE_DDL)))
+                    throw failure(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
+                if(version==1){execute(SCOPE_DDL);execute("PRAGMA user_version=2");}
+                if(count("SELECT count(*) FROM answer_scopes s LEFT JOIN answers a ON a.id=s.id WHERE a.id IS NULL")!=0)
+                    throw failure(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED);
                 if (count("SELECT count(*) FROM answers") > LIMIT) throw failure(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
                 // Startup owns the file lock. Interrupted executions are never replayed.
                 execute("UPDATE answers SET status='FAILED',finished=created,error_code='KNOWLEDGE_INTERRUPTED',error_phase='RESTART' WHERE status='QUEUED'");
@@ -77,12 +86,16 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
         } catch (Exception e) { close(); if (e instanceof WorkspaceException w) throw w; throw failure(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE); }
     }
     public synchronized void begin(UUID id, String question, String query, ModelProfile.PublicProfile profile, String prompt) {
+        begin(id,question,query,profile,prompt,null);
+    }
+    public synchronized void begin(UUID id, String question, String query, ModelProfile.PublicProfile profile, String prompt, KnowledgeScope scope) {
         if (question == null || question.isBlank() || question.length() > 3000 || query == null || query.length() > 256)
             throw failure(ErrorCode.INVALID_REQUEST);
         transaction(() -> {
             if (count("SELECT count(*) FROM answers") >= LIMIT) throw failure(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
             execute("INSERT INTO answers VALUES(?,?,?,?,?,?,NULL,'QUEUED',NULL,NULL,NULL)", id.toString(), question, query,
                     JSON.writeValueAsString(profile), prompt, Instant.now().toString());
+            saveScope(id,scope);
             return null;
         });
     }
@@ -108,7 +121,7 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
                 var error = r.getString("error_code") == null ? null : ApiError.of(ErrorCode.valueOf(r.getString("error_code")), r.getString("error_phase"));
                 var task = new TaskView(id, "knowledge-answer", status, JSON.readValue(r.getString("profile"), ModelProfile.PublicProfile.class),
                         r.getString("prompt"), Instant.parse(r.getString("created")), r.getString("finished") == null ? null : Instant.parse(r.getString("finished")), result, error);
-                return new Entry(r.getString("question"), r.getString("query"), task);
+                return new Entry(r.getString("question"), r.getString("query"), task,scope(id));
             }
         });
     }
@@ -128,6 +141,7 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
     public synchronized void delete(UUID id) {
         transaction(() -> {
             if (get(id).task().status() == TaskStatus.QUEUED) throw failure(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
+            execute("DELETE FROM answer_scopes WHERE id=?",id.toString());
             execute("DELETE FROM answers WHERE id=?", id.toString()); return null;
         });
     }
@@ -154,8 +168,17 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
             execute("INSERT INTO answers VALUES(?,?,?,?,?,?,?,?,?,?,?)",t.taskId().toString(),entry.question(),entry.query(),
                     JSON.writeValueAsString(t.profile()),t.promptVersion(),t.createdAt().toString(),t.finishedAt().toString(),t.status().name(),
                     t.result()==null?null:JSON.writeValueAsString(t.result()),error==null?null:error.code().name(),error==null?null:error.phase());
+            saveScope(t.taskId(),entry.scope());
             return null;
         });
+    }
+    private KnowledgeScope scope(UUID id)throws SQLException {
+        try(var s=prepare("SELECT document_id,source_revision FROM answer_scopes WHERE id=?",id.toString());var r=s.executeQuery()){
+            return r.next()?new KnowledgeScope(r.getString(1),r.getString(2)):null;
+        }
+    }
+    private void saveScope(UUID id,KnowledgeScope scope)throws SQLException {
+        if(scope!=null)execute("INSERT INTO answer_scopes VALUES(?,?,?)",id.toString(),scope.documentId(),scope.sourceRevision());
     }
     private interface Operation<T> { T run() throws Exception; }
     private <T> T read(Operation<T> work) {

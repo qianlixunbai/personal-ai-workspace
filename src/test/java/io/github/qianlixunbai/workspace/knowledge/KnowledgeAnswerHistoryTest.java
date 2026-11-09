@@ -80,4 +80,19 @@ class KnowledgeAnswerHistoryTest {
         try(var db=DriverManager.getConnection("jdbc:sqlite:"+data().resolve("knowledge-answer-history/history.db"));var s=db.createStatement()){s.execute("CREATE TABLE unexpected(x TEXT)");}
         assertEquals(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED,assertThrows(WorkspaceException.class,this::open).error().code());
     }
+    @Test void legacyHistoryUpgradeKeepsRecordsAndDeletesScopeWithItsAnswer()throws Exception {
+        UUID old=UUID.randomUUID(),scoped=UUID.randomUUID();TaskView saved;
+        try(var h=open()){begin(h,old);h.finish(old,TaskStatus.SUCCEEDED,answer(),null);saved=h.get(old).task();}
+        try(var db=DriverManager.getConnection("jdbc:sqlite:"+data().resolve("knowledge-answer-history/history.db"));var s=db.createStatement()){
+            s.execute("DROP TABLE answer_scopes");s.execute("PRAGMA user_version=1");
+        }
+        var scope=new KnowledgeScope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","1");
+        try(var h=open()){
+            assertEquals(saved,h.get(old).task());assertNull(h.get(old).scope());
+            h.begin(scoped,"scoped question","budget",TestSettings.ask().publicInfo(),"knowledge-answer-v2",scope);
+            h.finish(scoped,TaskStatus.SUCCEEDED,answer(),null);
+        }
+        try(var h=open()){assertEquals(scope,h.get(scoped).scope());h.delete(scoped);assertEquals(1,h.list(0).total());}
+        try(var h=open()){assertEquals(saved,h.get(old).task());assertNull(h.get(old).scope());}
+    }
 }

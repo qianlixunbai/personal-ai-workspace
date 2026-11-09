@@ -33,7 +33,7 @@ public final class KnowledgeAnswerService {
     public TaskView submit(KnowledgeAnswerRequest request) {
         if(!ClientIdentity.current().equals(ClientIdentity.NATIVE))throw new WorkspaceException(ErrorCode.POLICY_DENIED,"CAPABILITY");
         if(request==null||request.question()==null||request.question().isBlank())throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"REQUEST");
-        Snapshot snapshot=evidence.capture(request.query()); // Store lock ends before packing/queue/provider execution.
+        Snapshot snapshot=request.scope()==null?evidence.capture(request.query()):evidence.capture(request.query(),request.scope()); // Store lock ends before packing/queue/provider execution.
         var reservation=tasks.reserve("knowledge-answer","chat.balanced",KnowledgeAnswerPrompt.VERSION);
         try {
             if(!tasks.fitsInput(reservation,request.question()))throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"INPUT_BUDGET");
@@ -58,7 +58,7 @@ public final class KnowledgeAnswerService {
             UUID id=UUID.randomUUID();
             return tasks.submitPersistent(reservation,"knowledge-answer",KnowledgeAnswerPrompt.SYSTEM,
                     input,output->KnowledgeAnswerParser.parse(output,admitted),id,history::finish,
-                    ()->history.begin(id,request.question(),request.query(),reservation.profile().publicInfo(),reservation.promptVersion()));
+                    ()->history.begin(id,request.question(),request.query(),reservation.profile().publicInfo(),reservation.promptVersion(),request.scope()));
         } finally { reservation.closeUnlessTransferred(); }
     }
 }

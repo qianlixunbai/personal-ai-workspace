@@ -11,6 +11,8 @@ public sealed record KnowledgeSearchHit(string DocumentId,string Title,string So
 public sealed record KnowledgeSearchResult(KnowledgeSearchHit[] Hits)
 { public override string ToString()=>$"KnowledgeSearchResult[count={Hits.Length}]"; }
 public sealed record KnowledgeSearchStatus(string State,int IndexedDocuments,int IndexedChunks);
+public sealed record KnowledgeSourceScope(string DocumentId,string SourceRevision)
+{ public override string ToString()=>"KnowledgeSourceScope[redacted]"; }
 
 public sealed partial class RuntimeClient
 {
@@ -20,14 +22,26 @@ public sealed partial class RuntimeClient
         if(string.IsNullOrWhiteSpace(query)||query.Any(char.IsControl))throw new DesktopException(DesktopError.KnowledgeSearchInvalid);
         if(query.EnumerateRunes().Count()>128)throw new DesktopException(DesktopError.KnowledgeQueryTooComplex);
     }
-    public async Task<KnowledgeSearchResult> SearchKnowledgeAsync(string query,int limit,CancellationToken token)
+    public async Task<KnowledgeSearchResult> SearchKnowledgeAsync(string query,int limit,CancellationToken token,KnowledgeSourceScope? scope=null)
     {
         ValidateKnowledgeQuery(query);if(limit is <1 or >10)throw new DesktopException(DesktopError.KnowledgeSearchInvalid);
-        using var body=await KnowledgeJson(HttpMethod.Post,"/search",new{query,limit},token);var root=body.RootElement;MemoryFields(root,"hits");
+        ValidateKnowledgeScope(scope);
+        object request=scope is null?new{query,limit}:new{query,limit,scope=KnowledgeScopePayload(scope)};
+        using var body=await KnowledgeJson(HttpMethod.Post,"/search",request,token);var root=body.RootElement;MemoryFields(root,"hits");
         var hits=Property(root,"hits");if(hits.ValueKind!=JsonValueKind.Array||hits.GetArrayLength()>limit)throw Invalid();
         var rows=hits.EnumerateArray().Select(KSearchHit).ToArray();
         if(rows.Select(r=>(r.DocumentId,r.SourceRevision,r.StartOffset)).Distinct().Count()!=rows.Length)throw Invalid();
+        if(scope is not null&&rows.Any(r=>r.DocumentId!=scope.DocumentId||r.SourceRevision!=scope.SourceRevision))throw Invalid();
         return new(rows);
+    }
+    private static void ValidateKnowledgeScope(KnowledgeSourceScope? scope)
+    {if(scope is not null){KId(scope.DocumentId);if(KVersion(scope.SourceRevision)>10)throw new DesktopException(DesktopError.InvalidRequest);}}
+    private static object? KnowledgeScopePayload(KnowledgeSourceScope? scope)=>scope is null?null:new{documentId=scope.DocumentId,sourceRevision=scope.SourceRevision};
+    private static KnowledgeSourceScope? ReadKnowledgeScope(JsonElement r)
+    {
+        if(r.ValueKind==JsonValueKind.Null)return null;
+        MemoryFields(r,"documentId","sourceRevision");var scope=new KnowledgeSourceScope(String(r,"documentId"),String(r,"sourceRevision"));
+        try{ValidateKnowledgeScope(scope);}catch(DesktopException){throw Invalid();}return scope;
     }
     public async Task<KnowledgeSearchStatus> KnowledgeSearchStatusAsync(CancellationToken token)
     {using var body=await KnowledgeJson(HttpMethod.Get,"/search/status",null,token);return KSearchStatus(body.RootElement);}

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KnowledgePage } from './KnowledgePage'
 import { WorkspaceClient } from '../bridge/client'
@@ -21,6 +21,27 @@ it('explicit keyword submit renders safe marks, keeps query ephemeral and opens 
   expect(location.href).not.toContain('预算'); expect(storage).not.toHaveBeenCalled()
   await click('打开此位置'); expect(port.sent.find(r => r.method === 'knowledge.preview')?.payload).toEqual({ documentId: port.document.documentId, sourceRevision: '1', offset: 0 })
   await act(async () => port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc')); expect((input as HTMLInputElement).value).toBe(''); expect(screen.queryByText('打开此位置')).toBeNull()
+})
+it('pins an explicitly selected source version without changing drafts or silently broadening after a refresh', async () => {
+  const { port } = await setup(); await click(/fixture.md/)
+  const search = within(screen.getByRole('region', { name: '查找资料' })), input = screen.getByLabelText('检索关键词')
+  fireEvent.change(input, { target: { value: '预算' } })
+  await act(async () => fireEvent.click(search.getByRole('button', { name: '限定为当前文档' })))
+  await act(async () => fireEvent.submit(input.closest('form')!))
+  expect(port.sent.filter(r => r.method === 'knowledge.search').at(-1)?.payload).toEqual({ query: '预算', limit: 10, scope: { documentId: port.document.documentId, sourceRevision: '1' } })
+  const first = port.detail()
+  vi.spyOn(port, 'detail').mockImplementation(() => ({ ...first, document: { ...port.document }, revisions: [...first.revisions, { sourceRevision: '2', sourceType: 'MARKDOWN', byteLength: 20 }] }))
+  port.document.currentReadyRevision = '2'; await click('刷新详情')
+  expect(search.getByText(/资料范围：fixture.md · 源版本 1/)).toBeTruthy()
+  expect((input as HTMLInputElement).value).toBe('预算')
+  await act(async () => fireEvent.click(search.getByRole('button', { name: '限定为当前文档' })))
+  await act(async () => fireEvent.submit(input.closest('form')!))
+  expect(search.getByRole('alert').textContent).toContain('返回的资料范围不一致')
+  expect(search.queryByRole('button', { name: '打开此位置' })).toBeNull()
+  await act(async () => fireEvent.click(search.getByRole('button', { name: '使用全部资料' })))
+  expect((input as HTMLInputElement).value).toBe('预算')
+  await act(async () => fireEvent.submit(input.closest('form')!))
+  expect(port.sent.filter(r => r.method === 'knowledge.search').at(-1)?.payload).toEqual({ query: '预算', limit: 10 })
 })
 it('delete defaults to cancel, Escape returns focus and confirmation sends optimistic delete', async () => {
   const { port } = await setup(); await click(/fixture.md/); const button = screen.getByRole('button', { name: '物理删除…' }); button.focus(); await click('物理删除…')

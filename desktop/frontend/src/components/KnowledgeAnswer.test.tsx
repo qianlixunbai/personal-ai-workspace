@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { KnowledgePage } from '../pages/KnowledgePage'
 import { WorkspaceClient } from '../bridge/client'
@@ -50,12 +50,13 @@ class ReaderService extends AnswerService {
 }
 class HistoryService extends AnswerService {
   deleted = false; holdHistory = false
+  scope: { documentId: string; sourceRevision: string } | null = null
   override postMessage(value: unknown) {
     const request = value as { method: string }
     if (!request.method.startsWith('knowledge.answerHistory')) { super.postMessage(value); return }
     this.sent.push(value as typeof this.sent[number]); const index = this.sent.length - 1
     if (request.method === 'knowledge.answerHistory') this.reply(index, { items: this.deleted ? [] : [{ taskId: this.answer().taskId, question: '保存的问题 <script>fixture</script>', status: 'SUCCEEDED', createdAt: '2026-11-09T00:00:00Z' }], total: this.deleted ? 0 : 1, page: 0, limit: 20 })
-    else if (request.method === 'knowledge.answerHistoryGet' && !this.holdHistory) this.reply(index, { question: '保存的问题 <script>fixture</script>', query: 'budget', task: this.answer() })
+    else if (request.method === 'knowledge.answerHistoryGet' && !this.holdHistory) this.reply(index, { question: '保存的问题 <script>fixture</script>', query: 'budget', task: this.answer(), scope: this.scope })
     else if (request.method === 'knowledge.answerHistoryDelete') { this.deleted = true; this.reply(index, { deleted: true }) }
   }
 }
@@ -81,6 +82,26 @@ it('clears loaded history and ignores a late historical answer after session rot
 const clients: WorkspaceClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
 const readerClick = async (name: string) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
+it('keeps an explicit answer scope through source refresh and restores the saved scope without resubmitting', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />)
+  const choose = await screen.findByRole('button', { name: /fixture.md/ }); await act(async () => fireEvent.click(choose))
+  const answer = within(screen.getByRole('region', { name: '基于文档回答' }))
+  fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: '保留问题草稿' } })
+  fireEvent.change(screen.getByLabelText('回答检索关键词'), { target: { value: 'budget' } })
+  await act(async () => fireEvent.click(answer.getByRole('button', { name: '限定为当前文档' })))
+  port.document.currentReadyRevision = '2'; await readerClick('刷新详情')
+  expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('保留问题草稿')
+  await readerClick('基于知识回答')
+  expect(port.sent.find(r => r.method === 'knowledge.answerSubmit')?.payload).toEqual({ question: '保留问题草稿', query: 'budget', scope: { documentId: port.document.documentId, sourceRevision: '1' } })
+  port.scope = { documentId: port.document.documentId, sourceRevision: '1' }
+  await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  expect(answer.getByText(/资料范围：fixture.md · 源版本 1/)).toBeTruthy()
+  expect(port.sent.filter(r => r.method === 'knowledge.answerSubmit')).toHaveLength(1)
+  await act(async () => port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'))
+  expect(answer.getByText('资料范围：全部可用资料')).toBeTruthy()
+  expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('')
+})
 const readerAnswer = async () => {
   fireEvent.change(screen.getByLabelText('想了解什么'), { target: { value: '适用条件是什么？' } })
   fireEvent.change(screen.getByLabelText('回答检索关键词'), { target: { value: '预算' } })

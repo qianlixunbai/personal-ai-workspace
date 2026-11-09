@@ -13,9 +13,9 @@ public final class KnowledgeSearchController {
     @PostMapping KnowledgeLexicalIndex.Results search(@RequestBody JsonNode body){
         KnowledgeController.nativeOnly();
         if(!body.isObject()||!body.has("query")||!body.get("query").isString()
-                ||body.size()!=(body.has("limit")?2:1)||body.has("limit")&&(!body.get("limit").isIntegralNumber()||!body.get("limit").canConvertToInt()))
+                ||body.size()!=1+(body.has("limit")?1:0)+(body.has("scope")?1:0)||body.has("limit")&&(!body.get("limit").isIntegralNumber()||!body.get("limit").canConvertToInt()))
             throw new WorkspaceException(ErrorCode.KNOWLEDGE_SEARCH_INVALID,"KNOWLEDGE");
-        return index.search(body.get("query").asString(),body.has("limit")?body.get("limit").asInt():null);
+        return index.search(body.get("query").asString(),body.has("limit")?body.get("limit").asInt():null,io.github.qianlixunbai.workspace.knowledge.KnowledgeScope.read(body));
     }
     @GetMapping("/status") KnowledgeLexicalIndex.Status status(){KnowledgeController.nativeOnly();return index.status();}
     @PostMapping("/rebuild") KnowledgeLexicalIndex.Status rebuild(@RequestBody JsonNode body){KnowledgeController.nativeOnly();

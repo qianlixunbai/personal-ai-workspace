@@ -488,14 +488,21 @@ class RuntimeApiTest {
         try {
             long end=System.nanoTime()+10_000_000_000L;
             while((!knowledgeStore.job(job.requestId()).state().equals("READY")||!knowledgeIndex.status().state().equals("READY"))&&System.nanoTime()<end)Thread.sleep(10);
+            var scope=Map.of("documentId",job.documentId(),"sourceRevision","1");
+            var scopedSearch=send("POST","/api/v1/knowledge/search",json.writeValueAsString(Map.of("query",canary,"scope",scope)),true);
+            assertEquals(200,scopedSearch.statusCode());assertEquals(job.documentId(),tree(scopedSearch).path("hits").get(0).path("documentId").asString());
+            assertEquals(400,send("POST",endpoint,json.writeValueAsString(Map.of("question","q","query",canary,"scope",Map.of("documentId",job.documentId(),"sourceRevision",1))),true).statusCode());
+            assertEquals(409,send("POST",endpoint,json.writeValueAsString(Map.of("question","q","query",canary,"scope",Map.of("documentId",job.documentId(),"sourceRevision","2"))),true).statusCode());
+            assertEquals(0,CHAT_CALLS.get());
             BATCH_OUTPUT.set("{\"answer\":\"synthetic grounded answer\",\"citations\":[\"S1\"]}");startMock();
-            var accepted=send("POST",endpoint,json.writeValueAsString(Map.of("question",canary+"?","query",canary)),true);
+            var accepted=send("POST",endpoint,json.writeValueAsString(Map.of("question",canary+"?","query",canary,"scope",scope)),true);
             assertEquals(202,accepted.statusCode());String id=tree(accepted).path("taskId").asString();assertEquals("/api/v1/tasks/"+id,accepted.headers().firstValue("Location").orElseThrow());
             var done=pollNative(id);assertEquals("SUCCEEDED",done.path("status").asString());assertEquals("knowledge-answer",done.path("capability").asString());
             assertEquals(job.documentId(),done.path("result").path("citations").get(0).path("documentId").asString());
             int beforeHistory=CHAT_CALLS.get();
             var page=send("GET",endpoint+"?page=0",null,true);assertEquals(200,page.statusCode());assertEquals("no-store",page.headers().firstValue("Cache-Control").orElseThrow());
             var receipt=tree(send("GET",endpoint+"/"+id,null,true));assertEquals(canary+"?",receipt.path("question").asString());
+            assertEquals(json.valueToTree(scope),receipt.path("scope"));
             assertEquals(done.path("result"),receipt.path("task").path("result"));assertEquals(beforeHistory,CHAT_CALLS.get());
             assertEquals(200,send("DELETE",endpoint+"/"+id,null,true).statusCode());assertEquals(404,send("GET",endpoint+"/"+id,null,true).statusCode());
             assertEquals(job.documentId(),knowledgeStore.get(job.documentId()).documentId());

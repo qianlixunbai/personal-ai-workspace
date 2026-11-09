@@ -20,9 +20,12 @@ public final class KnowledgeEvidenceAdmission {
         @Override public String toString() { return "EvidenceSnapshot[count="+items.size()+"]"; }
     }
     public Snapshot capture(String query) {
+        return capture(query,null);
+    }
+    public Snapshot capture(String query,KnowledgeScope scope) {
         if (!ClientIdentity.current().equals(ClientIdentity.NATIVE)) throw new WorkspaceException(ErrorCode.POLICY_DENIED,"CAPABILITY");
         synchronized(store) {
-            var hits=index.search(query,10).hits();
+            var hits=index.search(query,10,scope).hits();
             if(hits.isEmpty())throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"KNOWLEDGE_NO_EVIDENCE");
             try {
                 var refs=store.searchCorpus();
@@ -31,6 +34,7 @@ public final class KnowledgeEvidenceAdmission {
                 List<Evidence> evidence=new ArrayList<>();
                 Set<TaskResult.KnowledgeCitation> identities=new HashSet<>();
                 for(var hit:hits) {
+                    if(scope!=null&&!scope.matches(hit.documentId(),hit.sourceRevision()))throw mismatch();
                     var ref=refs.stream().filter(r->r.documentId().equals(hit.documentId())&&r.sourceRevision().equals(hit.sourceRevision()))
                             .findFirst().orElseThrow(KnowledgeEvidenceAdmission::mismatch);
                     var source=sources.computeIfAbsent(ref.documentId(),id->store.searchSource(ref));

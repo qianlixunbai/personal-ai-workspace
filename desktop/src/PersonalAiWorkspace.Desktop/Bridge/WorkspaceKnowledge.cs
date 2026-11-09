@@ -12,12 +12,12 @@ internal sealed record KnowledgeRevisionView(string SourceRevision,string Source
 internal sealed record KnowledgeDetailView(KnowledgeDocument Document,KnowledgeRevisionView[] Revisions,KnowledgeJob? Job);
 internal sealed record KnowledgeAnswerView(string TaskId,string Status,KnowledgeAnswerResult? Result,WorkspaceSafeError? Error)
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
-internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task)
+internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryView[redacted]"; }
 internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
 {
     private const int MaximumAnswerTasks=64;
-    private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;}
+    private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;internal KnowledgeSourceScope? Scope;}
     private sealed class Authority {
         internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);
         internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);
@@ -50,6 +50,8 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     private KnowledgeAnswerView AnswerView(string session,Authority known,AnswerAuthority access,KnowledgeAnswerTask task)
     {
         CurrentAnswer(session,known,task.TaskId,access);
+        if(access.Scope is { } scope&&task.Result is not null&&task.Result.Citations.Any(c=>c.DocumentId!=scope.DocumentId||c.SourceRevision!=scope.SourceRevision))
+            throw new DesktopException(DesktopError.InvalidResponse);
         // Only a validated Runtime terminal response makes this grant reclaimable.
         // Keep its first completion order; late in-flight observations cannot make it active again.
         if(task.Status is not (TaskState.QUEUED or TaskState.RUNNING)&&access.Completed is null)
@@ -57,20 +59,20 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
         if(task.Result is not null)foreach(var citation in task.Result.Citations)Authorize(session,known,citation.DocumentId);
         return new(task.TaskId.ToString("D"),task.Status.ToString(),task.Result,task.Error is { } error?new(error.ToString(),ErrorText.For(error)):null);
     }
-    internal async Task<KnowledgeAnswerView> AnswerSubmitAsync(string session,string question,string query,CancellationToken ct)
+    internal async Task<KnowledgeAnswerView> AnswerSubmitAsync(string session,string question,string query,CancellationToken ct,KnowledgeSourceScope? scope=null)
     {
         Authority known;
         lock(sync){
-            known=Require(session);
+            known=Require(session,scope?.DocumentId);
             while(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks&&known.CompletedAnswers.First is { } oldest)
                 ForgetAnswer(known,oldest.Value,known.AnswerTasks[oldest.Value]);
             if(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks)throw new DesktopException(DesktopError.QueueFull);
             known.AnswerSubmissions++;
         }
         try{
-            var task=await runtime.SubmitKnowledgeAnswerAsync(question,query,ct);
+            var task=await runtime.SubmitKnowledgeAnswerAsync(question,query,ct,scope);
             lock(sync){
-                Current(session,known);var access=new AnswerAuthority();
+                Current(session,known);var access=new AnswerAuthority{Scope=scope};
                 if(!known.AnswerTasks.TryAdd(task.TaskId,access))throw new DesktopException(DesktopError.OutcomeUnknown);
                 return AnswerView(session,known,access,task);
             }
@@ -106,9 +108,11 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
             if(!known.AnswerTasks.TryGetValue(id,out var access)){
                 while(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks&&known.CompletedAnswers.First is { } oldest)ForgetAnswer(known,oldest.Value,known.AnswerTasks[oldest.Value]);
                 if(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks)throw new DesktopException(DesktopError.QueueFull);
-                access=new();known.AnswerTasks.Add(id,access);
+                access=new(){Scope=entry.Scope};known.AnswerTasks.Add(id,access);
             }
-            return new(entry.Question,entry.Query,AnswerView(session,known,access,entry.Task));
+            if(access.Scope!=entry.Scope)throw new DesktopException(DesktopError.InvalidResponse);
+            if(entry.Scope is not null)Authorize(session,known,entry.Scope.DocumentId);
+            return new(entry.Question,entry.Query,AnswerView(session,known,access,entry.Task),entry.Scope);
         }
     }
     internal async Task<object> AnswerHistoryDeleteAsync(string session,string taskId,CancellationToken ct)
@@ -131,8 +135,8 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     internal async Task<KnowledgeList> ListAsync(string session,string status,int page,CancellationToken ct)
     {Authority known;lock(sync)known=Require(session);var result=await runtime.ListKnowledgeAsync(status,page,ct);lock(sync)foreach(var d in result.Items)Authorize(session,known,d.DocumentId,d.RequestId);return result;}
-    internal async Task<KnowledgeSearchResult> SearchAsync(string session,string query,int limit,CancellationToken ct)
-    {Authority known;lock(sync)known=Require(session);var result=await runtime.SearchKnowledgeAsync(query,limit,ct);lock(sync)foreach(var hit in result.Hits)Authorize(session,known,hit.DocumentId);return result;}
+    internal async Task<KnowledgeSearchResult> SearchAsync(string session,string query,int limit,CancellationToken ct,KnowledgeSourceScope? scope=null)
+    {Authority known;lock(sync)known=Require(session,scope?.DocumentId);var result=await runtime.SearchKnowledgeAsync(query,limit,ct,scope);lock(sync){Current(session,known);foreach(var hit in result.Hits)Authorize(session,known,hit.DocumentId);return result;}}
     internal Task<KnowledgeSearchStatus> SearchStatusAsync(string session,CancellationToken ct)
     {lock(sync)Require(session);return runtime.KnowledgeSearchStatusAsync(ct);}
     internal Task<KnowledgeSearchStatus> RebuildSearchAsync(string session,CancellationToken ct)

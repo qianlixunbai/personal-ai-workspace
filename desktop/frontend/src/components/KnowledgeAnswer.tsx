@@ -1,36 +1,44 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import type { KnowledgeAnswerCitation, KnowledgeAnswerTask, KnowledgeAnswerHistoryPage } from '../bridge/knowledgeAnswer'
+import { KnowledgeScopePicker } from './KnowledgeScopePicker'
+import type { KnowledgeScope } from '../bridge/knowledgeScope'
+import type { KnowledgeDocument } from '../bridge/knowledge'
 
-export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void> }) {
+export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined }) {
+  const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [history, setHistory] = useState<KnowledgeAnswerHistoryPage | null>(null), [deleteId, setDeleteId] = useState<string | null>(null)
   const generation = useRef(0), composing = useRef(false)
   const active = task?.status === 'QUEUED' || task?.status === 'RUNNING'
-  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null) }
+  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null); setScope(null); setScopeTitle('') }
+  const checked = (result: KnowledgeAnswerTask) => {
+    if (scope && result.result?.citations.some(c => c.documentId !== scope.documentId || c.sourceRevision !== scope.sourceRevision)) throw new Error('返回的引用超出了所选资料范围。')
+    return result
+  }
   useEffect(() => { const unsubscribe = bridge.onSession(clear); return () => { generation.current++; unsubscribe() } }, [bridge])
   useEffect(() => { if (!visible) clear() }, [visible])
   useEffect(() => {
     if (!visible || !enabled || !active || busy || error || !task) return
     const epoch = generation.current, id = task.taskId
     const timer = setTimeout(() => {
-      void bridge.getKnowledgeAnswer(id).then(result => { if (epoch === generation.current) setTask(result) })
+      void bridge.getKnowledgeAnswer(id).then(result => { if (epoch === generation.current) setTask(checked(result)) })
         .catch(e => { if (epoch === generation.current) setError(e instanceof Error ? e.message : '回答状态暂时不可用。') })
     }, 1000)
     return () => clearTimeout(timer)
-  }, [bridge, visible, enabled, active, busy, error, task])
+  }, [bridge, visible, enabled, active, busy, error, task, scope])
   const submit = async () => {
     if (!enabled || !visible || busy || active || composing.current || !question.trim() || !query.trim()) return
     const epoch = ++generation.current; setBusy(true); setTask(null); setError('')
-    try { const result = await bridge.submitKnowledgeAnswer(question, query); if (epoch === generation.current) setTask(result) }
+    try { const result = await bridge.submitKnowledgeAnswer(question, query, scope); if (epoch === generation.current) setTask(checked(result)) }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '基于知识回答暂时不可用。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
   const cancel = async () => {
     if (!task || !active || busy) return
     const epoch = ++generation.current; setBusy(true); setError('')
-    try { const result = await bridge.cancelKnowledgeAnswer(task.taskId); if (epoch === generation.current) setTask(result) }
+    try { const result = await bridge.cancelKnowledgeAnswer(task.taskId); if (epoch === generation.current) setTask(checked(result)) }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '取消状态暂时无法确认。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
@@ -44,7 +52,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: Wo
   const readHistory = async (id: string) => {
     if (!enabled || !visible || busy || active) return
     const epoch = ++generation.current; setBusy(true); setError(''); setDeleteId(null)
-    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { setQuestion(result.question); setQuery(result.query); setTask(result.task) } }
+    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { setQuestion(result.question); setQuery(result.query); setTask(result.task); setScope(result.scope ?? null); setScopeTitle(result.task.result?.citations[0]?.title ?? '') } }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '读取历史回答失败。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
@@ -57,6 +65,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: Wo
   }
   return <section className="card knowledge-answer" aria-labelledby="knowledge-answer-title">
     <h2 id="knowledge-answer-title">基于文档回答</h2>
+    <KnowledgeScopePicker scope={scope} title={scopeTitle} current={currentDocument} disabled={!enabled || busy || active} change={(next, title) => { generation.current++; setScope(next); setScopeTitle(title); setTask(null); setError('') }} />
     <p className="hint">输入问题和关键词，从匹配的可用文档中寻找答案，并附上引用来源。首个长片段可能改用相关句子及相邻上下文；预算不足时会拒绝回答。关键词不会自动改写。</p>
     <p className="hint">问题、回答和引用保存在本机当前资料配置中，重启后可查看，最多 1000 条。现有备份不包含问答历史；删除源文档后，其历史引用可能无法打开。历史不会自动用于新问题或重新执行。</p>
     <button disabled={!enabled || busy || active} onClick={() => { void loadHistory() }}>查看问答历史</button>

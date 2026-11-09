@@ -23,12 +23,12 @@ final class KnowledgeHistorySnapshotRecord {
     record Reference(String availability,String sourceDigest,String representationDigest,String excerptDigest) {}
     record Saved(String taskId,String question,String query,ModelProfile.PublicProfile profile,String promptVersion,
                  String createdAt,String finishedAt,TaskStatus status,TaskResult.KnowledgeAnswer result,
-                 ErrorCode errorCode,String errorPhase,List<Reference> references) {
+                 ErrorCode errorCode,String errorPhase,List<Reference> references,KnowledgeScope scope) {
         @Override public String toString(){return "KnowledgeSnapshotRecord[redacted]";}
         KnowledgeAnswerHistory.Entry entry(){
             return new KnowledgeAnswerHistory.Entry(question,query,new TaskView(UUID.fromString(taskId),"knowledge-answer",status,
                     profile,promptVersion,Instant.parse(createdAt),Instant.parse(finishedAt),result,
-                    errorCode==null?null:ApiError.of(errorCode,errorPhase)));
+                    errorCode==null?null:ApiError.of(errorCode,errorPhase)),scope);
         }
     }
     static WorkspaceException invalid(){return new WorkspaceException(ErrorCode.KNOWLEDGE_BACKUP_INVALID,"KNOWLEDGE_SNAPSHOT");}
@@ -45,12 +45,21 @@ final class KnowledgeHistorySnapshotRecord {
         validate(saved.entry());byte[] bytes=JSON.writeValueAsBytes(saved);
         require(bytes.length<=MAX_RECORD_BYTES);return bytes;
     }
+    static Saved decodeSaved(byte[] bytes,int version) {
+        if(version==2)return decode(bytes,Saved.class);
+        require(version==1&&bytes.length<=MAX_RECORD_BYTES);
+        try {
+            var tree=JSON.readTree(bytes);require(tree.isObject()&&!tree.has("scope"));
+            ((tools.jackson.databind.node.ObjectNode)tree).putNull("scope");
+            return decode(JSON.writeValueAsBytes(tree),Saved.class);
+        }catch(WorkspaceException e){throw e;}catch(Exception e){throw invalid();}
+    }
     static Saved capture(KnowledgeAnswerHistory.Entry entry,KnowledgeStore source) throws Exception {
         validate(entry);var t=entry.task();var result=(TaskResult.KnowledgeAnswer)t.result();
         var references=new ArrayList<Reference>();
         if(result!=null)for(var c:result.citations())references.add(reference(source,c));
         return new Saved(t.taskId().toString(),entry.question(),entry.query(),t.profile(),t.promptVersion(),t.createdAt().toString(),
-                t.finishedAt().toString(),t.status(),result,t.error()==null?null:t.error().code(),t.error()==null?null:t.error().phase(),List.copyOf(references));
+                t.finishedAt().toString(),t.status(),result,t.error()==null?null:t.error().code(),t.error()==null?null:t.error().phase(),List.copyOf(references),entry.scope());
     }
     static KnowledgeAnswerHistory.Entry verify(Saved saved,KnowledgeStore source) throws Exception {
         require(saved!=null&&saved.taskId()!=null&&UUID.fromString(saved.taskId()).toString().equals(saved.taskId()));
@@ -72,6 +81,7 @@ final class KnowledgeHistorySnapshotRecord {
                 Set<String> ids=new HashSet<>();
                 for(var c:a.citations()){
                     require(c!=null);KnowledgeStore.id(c.documentId());KnowledgeParser.filename(c.title());
+                    require(entry.scope()==null||entry.scope().matches(c.documentId(),c.sourceRevision()));
                     require(KnowledgeStore.version(c.sourceRevision())<=10&&Set.of("TXT","MARKDOWN").contains(c.sourceType()));
                     require(c.startOffset()>=0&&c.endOffset()>c.startOffset()&&c.endOffset()<=1000000
                             &&c.endOffset()-c.startOffset()<=4096&&c.startLine()>=1&&c.endLine()>=c.startLine()&&c.endLine()<=100000);

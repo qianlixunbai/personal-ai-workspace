@@ -16,7 +16,7 @@ public sealed record KnowledgeAnswerTask(Guid TaskId,TaskState Status,KnowledgeA
 public sealed record KnowledgeAnswerSummary(string TaskId,string Question,string Status,string CreatedAt)
 { public override string ToString()=>"KnowledgeAnswerSummary[redacted]"; }
 public sealed record KnowledgeAnswerHistoryPage(IReadOnlyList<KnowledgeAnswerSummary> Items,int Total,int Page,int Limit);
-public sealed record KnowledgeAnswerHistoryEntry(string Question,string Query,KnowledgeAnswerTask Task)
+public sealed record KnowledgeAnswerHistoryEntry(string Question,string Query,KnowledgeAnswerTask Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryEntry[redacted]"; }
 
 public sealed partial class RuntimeClient
@@ -38,21 +38,26 @@ public sealed partial class RuntimeClient
     public async Task<KnowledgeAnswerHistoryEntry> GetKnowledgeAnswerHistoryAsync(Guid id,CancellationToken token)
     {
         KId(id.ToString("D"));using var body=await SendAsync(HttpMethod.Get,$"/api/v1/knowledge/answer/tasks/{id:D}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:131072);
-        var r=body.RootElement;MemoryFields(r,"question","query","task");string question=String(r,"question"),query=String(r,"query");
+        var r=body.RootElement;MemoryFields(r,r.TryGetProperty("scope",out var selected)?["question","query","task","scope"]:["question","query","task"]);string question=String(r,"question"),query=String(r,"query");
         try{new AskInput(question).Validate();ValidateUnicode(question);ValidateKnowledgeQuery(query);}catch(DesktopException){throw Invalid();}
-        return new(question,query,ParseKnowledgeAnswerTask(Property(r,"task"),id));
+        var scope=selected.ValueKind==JsonValueKind.Undefined?null:ReadKnowledgeScope(selected);var task=ParseKnowledgeAnswerTask(Property(r,"task"),id);
+        if(scope is not null&&task.Result is not null&&task.Result.Citations.Any(c=>c.DocumentId!=scope.DocumentId||c.SourceRevision!=scope.SourceRevision))throw Invalid();
+        return new(question,query,task,scope);
     }
     public async Task DeleteKnowledgeAnswerHistoryAsync(Guid id,CancellationToken token)
     {
         KId(id.ToString("D"));using var body=await SendAsync(HttpMethod.Delete,$"/api/v1/knowledge/answer/tasks/{id:D}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:1024);
         MemoryFields(body.RootElement,"deleted");if(Property(body.RootElement,"deleted").ValueKind!=JsonValueKind.True)throw Invalid();
     }
-    public async Task<KnowledgeAnswerTask> SubmitKnowledgeAnswerAsync(string question,string query,CancellationToken token)
+    public async Task<KnowledgeAnswerTask> SubmitKnowledgeAnswerAsync(string question,string query,CancellationToken token,KnowledgeSourceScope? scope=null)
     {
         new AskInput(question).Validate();ValidateUnicode(question);ValidateKnowledgeQuery(query);
+        ValidateKnowledgeScope(scope);
+        object request=scope is null?new{question,query}:new{question,query,scope=KnowledgeScopePayload(scope)};
         try {
-            using var body=await SendAsync(HttpMethod.Post,"/api/v1/knowledge/answer/tasks",JsonSerializer.SerializeToUtf8Bytes(new{question,query}),true,HttpStatusCode.Accepted,token,
-                (response,document)=>{var task=ParseKnowledgeAnswerTask(document.RootElement,null);if(response.Headers.Location?.OriginalString!=$"/api/v1/tasks/{task.TaskId:D}")throw Invalid();},
+            using var body=await SendAsync(HttpMethod.Post,"/api/v1/knowledge/answer/tasks",JsonSerializer.SerializeToUtf8Bytes(request),true,HttpStatusCode.Accepted,token,
+                (response,document)=>{var task=ParseKnowledgeAnswerTask(document.RootElement,null);if(response.Headers.Location?.OriginalString!=$"/api/v1/tasks/{task.TaskId:D}")throw Invalid();
+                    if(scope is not null&&task.Result is not null&&task.Result.Citations.Any(c=>c.DocumentId!=scope.DocumentId||c.SourceRevision!=scope.SourceRevision))throw Invalid();},
                 endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
             return ParseKnowledgeAnswerTask(body.RootElement,null);
         } catch(DesktopException e)when(e.Error is DesktopError.RuntimeUnavailable or DesktopError.ClientTimeout or DesktopError.InvalidResponse) {

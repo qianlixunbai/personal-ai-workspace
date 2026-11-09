@@ -9,6 +9,7 @@ import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeLi
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
+import type { KnowledgeScope } from './knowledgeScope'
 import { isKnowledgeAnswerTask, isKnowledgeAnswerHistoryPage, isKnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import type { KnowledgeAnswerTask, KnowledgeAnswerHistoryPage, KnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
@@ -182,13 +183,13 @@ export class WorkspaceClient {
   deleteMemory(memoryId: string, expectedRevision: string) { return this.request('memory.delete', { memoryId, expectedRevision }) as Promise<{ deleted: true }> }
   memoryEditorState(dirty: boolean) { return this.request('memory.editorState', { dirty }) as Promise<{ acknowledged: true }> }
   listKnowledge(status: 'ACTIVE' | 'ARCHIVED', page: number) { return this.request('knowledge.list', { status, page }) as Promise<KnowledgeList> }
-  submitKnowledgeAnswer(question: string, query: string) { return this.request('knowledge.answerSubmit', { question, query }) as Promise<KnowledgeAnswerTask> }
+  submitKnowledgeAnswer(question: string, query: string, scope: KnowledgeScope | null = null) { return this.request('knowledge.answerSubmit', scope ? { question, query, scope } : { question, query }) as Promise<KnowledgeAnswerTask> }
   getKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerGet', { taskId }) as Promise<KnowledgeAnswerTask> }
   cancelKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerCancel', { taskId }) as Promise<KnowledgeAnswerTask> }
   knowledgeAnswerHistory(page = 0) { return this.request('knowledge.answerHistory', { page }) as Promise<KnowledgeAnswerHistoryPage> }
   getKnowledgeAnswerHistory(taskId: string) { return this.request('knowledge.answerHistoryGet', { taskId }) as Promise<KnowledgeAnswerHistoryEntry> }
   deleteKnowledgeAnswerHistory(taskId: string) { return this.request('knowledge.answerHistoryDelete', { taskId }) as Promise<{ deleted: true }> }
-  searchKnowledge(query: string) { return this.request('knowledge.search', { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
+  searchKnowledge(query: string, scope: KnowledgeScope | null = null) { return this.request('knowledge.search', scope ? { query, limit: 10, scope } : { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
   knowledgeSearchStatus() { return this.request('knowledge.searchStatus') as Promise<KnowledgeSearchStatus> }
   rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
   getKnowledge(documentId: string) { return this.request('knowledge.get', { documentId }) as Promise<KnowledgeDetail> }

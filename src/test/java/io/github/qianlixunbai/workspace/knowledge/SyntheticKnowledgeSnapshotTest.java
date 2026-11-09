@@ -40,7 +40,8 @@ class SyntheticKnowledgeSnapshotTest {
         String revision=doc.currentReadyRevision();var preview=f.source().preview(doc.documentId(),revision,0);var locator=preview.locators().getFirst();
         var citation=new TaskResult.KnowledgeCitation(doc.documentId(),doc.title(),revision,"TXT",locator.startOffset(),locator.endOffset(),locator.startLine(),locator.endLine(),null,
                 new TaskResult.KnowledgeLocator(locator.type(),locator.startLine(),locator.endLine(),locator.startOffset(),locator.endOffset(),locator.section()));
-        UUID id=begin(f);f.history().finish(id,TaskStatus.SUCCEEDED,new TaskResult.KnowledgeAnswer("合成答案 😀",List.of(citation)),null);return id;
+        UUID id=UUID.randomUUID();f.history().begin(id,"合成问题 <script>fixture</script>","合成",TestSettings.ask().publicInfo(),"knowledge-answer-v2",new KnowledgeScope(doc.documentId(),revision));
+        f.history().finish(id,TaskStatus.SUCCEEDED,new TaskResult.KnowledgeAnswer("合成答案 😀",List.of(citation)),null);return id;
     }
     private UUID begin(SyntheticKnowledgeSnapshot f){UUID id=UUID.randomUUID();f.history().begin(id,"合成问题 <script>fixture</script>","合成",TestSettings.ask().publicInfo(),"knowledge-answer-v2");return id;}
     private static void code(ErrorCode expected,org.junit.jupiter.api.function.Executable action){assertEquals(expected,assertThrows(WorkspaceException.class,action).error().code());}
@@ -90,6 +91,17 @@ class SyntheticKnowledgeSnapshotTest {
             code(ErrorCode.KNOWLEDGE_RESTORE_TARGET_NOT_EMPTY,()->receiver.restore(snapshot,target));
         }
     }
+    @Test void versionOneHistoryRemainsReadableWithoutInventingDocumentScope()throws Exception{
+        try(var original=fixture();var receiver=fixture()){
+            UUID id=begin(original);original.history().finish(id,TaskStatus.CANCELLED,null,ApiError.of(ErrorCode.TASK_CANCELLED,"EXECUTION"));
+            var before=original.history().get(id);Path snapshot=copy(original.snapshot(),receiver);
+            row(snapshot,text->{var tree=(tools.jackson.databind.node.ObjectNode)JSON.readTree(text);tree.remove("scope");return JSON.writeValueAsString(tree);});
+            var m=decode(Files.readAllBytes(snapshot.resolve("manifest.json")),SyntheticKnowledgeSnapshot.Manifest.class);
+            Files.write(snapshot.resolve("manifest.json"),JSON.writeValueAsBytes(new SyntheticKnowledgeSnapshot.Manifest(m.format(),1,m.protection(),m.answers(),m.sourceBytes(),m.sourceSha256(),m.historyBytes(),m.historySha256())));
+            Path target=receiver.candidate();assertEquals(1,receiver.restore(snapshot,target).version());
+            try(var h=new KnowledgeAnswerHistory(target,token())){assertEquals(before,h.get(id));assertNull(h.get(id).scope());}
+        }
+    }
     @Test void bothStoreOperationsAndSeparateSqlWritersAreExcludedUntilSnapshotFinishes()throws Exception{
         try(var f=fixture();var pool=Executors.newFixedThreadPool(3)){
             var doc=ingest(f,null,null,"source.txt","合成稳定源\n");UUID id=answer(f,doc);
@@ -133,6 +145,7 @@ class SyntheticKnowledgeSnapshotTest {
                     s->s.replace("\"status\":\"SUCCEEDED\"","\"status\":2"),
                     s->s.replace("\"sourceRevision\":\"1\"","\"sourceRevision\":\"2\""),
                     s->s.replace("\"sourceRevision\":\"1\"","\"sourceRevision\":1"),
+                    s->{var tree=(tools.jackson.databind.node.ObjectNode)JSON.readTree(s);((tools.jackson.databind.node.ObjectNode)tree.get("scope")).put("sourceRevision","2");return JSON.writeValueAsString(tree);},
                     s->s.replace("\"availability\":\"AVAILABLE\"","\"availability\":\"UNAVAILABLE_AT_SNAPSHOT\""),
                     s->s.replace("\"startOffset\":0","\"startOffset\":1"),
                     s->s.substring(0,s.length()-1)+",\"path\":\"../user-file\"}",
@@ -149,7 +162,7 @@ class SyntheticKnowledgeSnapshotTest {
             Path huge=copy(valid,receiver);byte[] body=Files.readAllBytes(huge.resolve("answers.bin"));ByteBuffer.wrap(body).putInt(4,MAX_RECORD_BYTES+1);Files.write(huge.resolve("answers.bin"),body);manifest(huge);
             code(ErrorCode.KNOWLEDGE_BACKUP_INVALID,()->receiver.restore(huge,receiver.candidate()));
             Path extra=copy(valid,receiver);PrivateKnowledgeDirectory.file(extra.resolve("history.db"));code(ErrorCode.KNOWLEDGE_BACKUP_INVALID,()->receiver.restore(extra,receiver.candidate()));
-            Path version=copy(valid,receiver);Files.writeString(version.resolve("manifest.json"),Files.readString(version.resolve("manifest.json")).replace("\"version\":1","\"version\":2"));code(ErrorCode.KNOWLEDGE_BACKUP_UNSUPPORTED,()->receiver.restore(version,receiver.candidate()));
+            Path version=copy(valid,receiver);Files.writeString(version.resolve("manifest.json"),Files.readString(version.resolve("manifest.json")).replace("\"version\":2","\"version\":3"));code(ErrorCode.KNOWLEDGE_BACKUP_UNSUPPORTED,()->receiver.restore(version,receiver.candidate()));
             Path damaged=copy(valid,receiver);byte[] corrupt=Files.readAllBytes(damaged.resolve("answers.bin"));corrupt[corrupt.length-1]^=1;Files.write(damaged.resolve("answers.bin"),corrupt);code(ErrorCode.KNOWLEDGE_BACKUP_INVALID,()->receiver.restore(damaged,receiver.candidate()));
             Path target=receiver.candidate();PrivateKnowledgeDirectory.directory(target);Path user=target.resolve("user-file");PrivateKnowledgeDirectory.file(user);Files.writeString(user,"preserve");
             Path archive=copy(valid,receiver);code(ErrorCode.KNOWLEDGE_RESTORE_TARGET_NOT_EMPTY,()->receiver.restore(archive,target));assertEquals("preserve",Files.readString(user));

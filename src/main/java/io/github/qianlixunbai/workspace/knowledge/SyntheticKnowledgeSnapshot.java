@@ -67,7 +67,7 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
                 history.visitSnapshot(row->{byte[] bytes=encode(capture(row,source));data.writeInt(bytes.length);data.write(bytes);written[0]++;});
                 require(written[0]==count);data.flush();
             });
-            var manifest=new Manifest(FORMAT,1,"UNENCRYPTED_SYNTHETIC_ONLY",count,
+            var manifest=new Manifest(FORMAT,2,"UNENCRYPTED_SYNTHETIC_ONLY",count,
                     sourceFile.bytes(),sourceFile.sha256(),historyFile.bytes(),historyFile.sha256());
             sink.write("manifest.json",4096,out->out.write(JSON.writeValueAsBytes(manifest)));return null;
         }));
@@ -99,7 +99,7 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
             for(String name:FILES){var file=snapshot.resolve(name);PrivateKnowledgeDirectory.regular(file);PrivateKnowledgeDirectory.protect(file,false);}
             require(Files.size(snapshot.resolve("manifest.json"))<=4096);
             var manifest=decode(Files.readAllBytes(snapshot.resolve("manifest.json")),Manifest.class);
-            if(!FORMAT.equals(manifest.format())||manifest.version()!=1)throw new WorkspaceException(ErrorCode.KNOWLEDGE_BACKUP_UNSUPPORTED,"SYNTHETIC_SNAPSHOT");
+            if(!FORMAT.equals(manifest.format())||(manifest.version()!=1&&manifest.version()!=2))throw new WorkspaceException(ErrorCode.KNOWLEDGE_BACKUP_UNSUPPORTED,"SYNTHETIC_SNAPSHOT");
             require("UNENCRYPTED_SYNTHETIC_ONLY".equals(manifest.protection())&&manifest.answers()>=0&&manifest.answers()<=KnowledgeAnswerHistory.LIMIT);
             verifyFile(snapshot.resolve("knowledge.backup"),manifest.sourceBytes(),manifest.sourceSha256(),KnowledgeLimits.BACKUP_BYTES);
             verifyFile(snapshot.resolve("answers.bin"),manifest.historyBytes(),manifest.historySha256(),HISTORY_BYTES);
@@ -117,7 +117,7 @@ final class SyntheticKnowledgeSnapshot implements AutoCloseable {
                     for(int i=0;i<manifest.answers();i++){
                         int length=input.readInt();require(length>0&&length<=MAX_RECORD_BYTES);
                         byte[] bytes=input.readNBytes(length);require(bytes.length==length);
-                        var row=decode(bytes,Saved.class);var entry=verify(row,restored);require(ids.add(entry.task().taskId()));
+                        var row=decodeSaved(bytes,manifest.version());var entry=verify(row,restored);require(ids.add(entry.task().taskId()));
                         restoredHistory.restoreTerminal(entry);
                     }
                     require(input.read()==-1&&HexFormat.of().formatHex(historyHash.digest()).equals(manifest.historySha256()));

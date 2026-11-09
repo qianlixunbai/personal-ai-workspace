@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeSearchHit, KnowledgeSearchResult, KnowledgeSearchStatus } from '../bridge/knowledgeSearch'
 import { HighlightedText } from './HighlightedText'
+import { KnowledgeScopePicker } from './KnowledgeScopePicker'
+import type { KnowledgeScope } from '../bridge/knowledgeScope'
+import type { KnowledgeDocument } from '../bridge/knowledge'
 
 const labels = { READY: '可用', BUILDING: '正在重建', STALE: '等待重建', FAILED: '重建失败' }
-export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void> }) {
+export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void>; currentDocument?: KnowledgeDocument | undefined }) {
+  const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [query, setQuery] = useState(''), [status, setStatus] = useState<KnowledgeSearchStatus | null>(null), [result, setResult] = useState<KnowledgeSearchResult | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const generation = useRef(0), input = useRef<HTMLInputElement>(null), results = useRef<HTMLHeadingElement>(null)
-  const clear = () => { generation.current++; setQuery(''); setResult(null); setStatus(null); setBusy(false); setError('') }
+  const clear = () => { generation.current++; setQuery(''); setResult(null); setStatus(null); setBusy(false); setError(''); setScope(null); setScopeTitle('') }
   useEffect(() => { const unsubscribe = bridge.onSession(clear); return () => { generation.current++; unsubscribe() } }, [bridge])
   useEffect(() => { if (!visible) clear() }, [visible])
   useEffect(() => { generation.current++; setResult(null); setBusy(false) }, [corpusEpoch])
@@ -25,7 +29,9 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }:
     if (busy || !enabled) return
     if (!query.trim() || [...query].length > 128) { setError('请输入 1–128 个 Unicode 字符的关键词。'); return }
     const epoch = ++generation.current; setBusy(true); setResult(null); setError('')
-    try { const hits = await bridge.searchKnowledge(query); if (epoch === generation.current) { setResult(hits); setTimeout(() => { if (epoch === generation.current) results.current?.focus() }, 0) } }
+    try { const hits = await bridge.searchKnowledge(query, scope); if (epoch === generation.current) {
+      if (scope && hits.hits.some(hit => hit.documentId !== scope.documentId || hit.sourceRevision !== scope.sourceRevision)) throw new Error('返回的资料范围不一致，请重新检索。')
+      setResult(hits); setTimeout(() => { if (epoch === generation.current) results.current?.focus() }, 0) } }
     catch (e) { if (epoch === generation.current) { setError(e instanceof Error ? e.message : '词法检索暂时不可用。'); if (e instanceof BridgeError && e.code.startsWith('KnowledgeIndex')) setStatus({ state: 'STALE', indexedDocuments: 0, indexedChunks: 0 }) } }
     finally { if (epoch === generation.current) setBusy(false) }
   }
@@ -35,6 +41,7 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open }:
     <form onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void search() }}><label className="sr-only" htmlFor="knowledge-search-query">检索关键词</label>
       <input id="knowledge-search-query" placeholder="检索关键词" aria-describedby="knowledge-search-help" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setError('') }} />
       <button type="submit" disabled={!enabled || busy || !query.trim()}>检索</button></form></div>
+    <KnowledgeScopePicker scope={scope} title={scopeTitle} current={currentDocument} disabled={!enabled || busy} change={(next, title) => { generation.current++; setScope(next); setScopeTitle(title); setResult(null); setError('') }} />
     <div className="knowledge-search-meta"><p role="status" aria-live="polite">索引：{status ? labels[status.state] : '等待状态'}{busy ? ' · 正在处理' : ''}</p>
     {status?.state === 'BUILDING' && <p role="progressbar" aria-label="关键词索引重建">索引正在重建，完成后请显式检索。</p>}
     <details className="input-details"><summary>检索说明与索引维护</summary><p className="hint">所有关键词需出现在同一片段中；只检索当前可用版本，关键词仅保留在本页。</p><button disabled={!enabled || busy} onClick={() => { void rebuild() }}>重建关键词索引</button></details></div>

@@ -22,6 +22,7 @@ public sealed class KnowledgeTests
         internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
         internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
         internal bool HistoryDeleted,HistoryMalformed;
+        internal JsonElement? LastScope;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -53,7 +54,7 @@ public sealed class KnowledgeTests
                     if(AnswerReadError is { } status)return RuntimeClientTests.Response(status,"{\"code\":\"TASK_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
                 }
                 if(path.EndsWith("/answer/tasks")){
-                    using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal(2,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());if(AnswerLost)throw new HttpRequestException();
+                    using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));LastScope=payload.RootElement.TryGetProperty("scope",out var selected)?selected.Clone():null;Assert.Equal(LastScope is null?2:3,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());if(AnswerLost)throw new HttpRequestException();
                 }
                 string json=JsonSerializer.Serialize(AnswerTask());if(AnswerInvalid is not null)json=AnswerInvalid;
                 if(!path.EndsWith("/answer/tasks")&&AnswerReadHold is { } hold)await hold.Task;
@@ -64,6 +65,7 @@ public sealed class KnowledgeTests
             if(path.EndsWith("/search")){
                 Assert.Equal(HttpMethod.Post,request.Method);Assert.Equal("",request.RequestUri.Query);
                 using var search=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal("budget",search.RootElement.GetProperty("query").GetString());
+                LastScope=search.RootElement.TryGetProperty("scope",out var selected)?selected.Clone():null;
                 return SearchMalformed?Reply(new{hits=new[]{SearchHit()},corpusFingerprint=new string('a',64)}):Reply(new{hits=Enumerable.Range(0,SearchWorstCase?10:1).Select(i=>SearchHit(i)).ToArray()});
             }
             if(path.EndsWith("/imports")&&request.Method==HttpMethod.Post){Uploads++;Request=request.Headers.GetValues("X-Knowledge-Request").Single();
@@ -93,6 +95,28 @@ public sealed class KnowledgeTests
         f.Handler.AnswerInvalid=null;foreach(string state in new[]{"QUEUED","RUNNING","FAILED","CANCELLED","TIMED_OUT"}){f.Handler.AnswerState=state;Assert.Equal(state,(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default)).Status.ToString());}
         f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerLost=true;int calls=f.Handler.Calls;
         var lost=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal("OutcomeUnknown",lost.GetProperty("error").GetProperty("code").GetString());Assert.Equal(calls+1,f.Handler.Calls);
+    }
+    [Fact]public async Task DocumentScopeNeedsExistingGrantAndRejectsEscapingSearchOrAnswer()
+    {
+        using var f=new Fixture();string selected=f.Handler.Id;var scope=new{documentId=selected,sourceRevision="1"};
+        foreach(var method in new[]{"knowledge.search","knowledge.answerSubmit"}){
+            object request=method=="knowledge.search"?new{query="budget",limit=10,scope}:new{question="question",query="budget",scope};
+            Assert.Equal("KnowledgeNotFound",(await f.Send(method,request)).GetProperty("error").GetProperty("code").GetString());
+        }
+        Assert.Equal(0,f.Handler.Calls);await f.Send("knowledge.list",new{status="ACTIVE",page=0});
+        Assert.True((await f.Send("knowledge.search",new{query="budget",limit=10,scope})).GetProperty("ok").GetBoolean());
+        Assert.Equal(selected,f.Handler.LastScope!.Value.GetProperty("documentId").GetString());
+        f.Handler.Id=Guid.NewGuid().ToString("D");
+        Assert.Equal("InvalidResponse",(await f.Send("knowledge.search",new{query="budget",limit=10,scope})).GetProperty("error").GetProperty("code").GetString());
+        f.Handler.Id=selected;f.Handler.AnswerState="QUEUED";
+        Assert.True((await f.Send("knowledge.answerSubmit",new{question="question",query="budget",scope})).GetProperty("ok").GetBoolean());
+        Assert.Equal("1",f.Handler.LastScope!.Value.GetProperty("sourceRevision").GetString());
+        f.Handler.Id=Guid.NewGuid().ToString("D");f.Handler.AnswerState="SUCCEEDED";
+        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerGet",new{taskId=f.Handler.AnswerTaskId})).GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        int calls=f.Handler.Calls;f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");
+        Assert.Equal("OutcomeUnknown",(await f.Send("knowledge.answerSubmit",new{question="question",query="budget",scope})).GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(calls+1,f.Handler.Calls);
     }
     [Fact]public async Task HistoryNeedsCurrentPageGrantAndReopensCitationsWithoutSubmission()
     {
