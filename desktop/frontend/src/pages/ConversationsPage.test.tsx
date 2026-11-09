@@ -18,6 +18,10 @@ class Service extends Port {
   holdGet = false
   holdSend = false
   holdMemory = false
+  holdSearch = false
+  searchId = conversation.id
+  searchSequence = 11
+  searchScopeMismatch = false
   memoryError: string | null = null
   referencedMemory = { ...memoryItem(), id: uuid(5000), revision: '9223372036854775807' }
   admittedSequences = [1]
@@ -26,11 +30,16 @@ class Service extends Port {
     super.postMessage(message)
     const index = this.sent.length - 1, request = this.sent[index]!, method = String(request.method)
     const payload = request.payload as Record<string, unknown>
-    if (this.holdGet && method === 'conversations.get' || this.holdSend && method === 'conversations.send' || this.holdMemory && method === 'memory.get') return
+    if (this.holdGet && method === 'conversations.get' || this.holdSend && method === 'conversations.send' || this.holdMemory && method === 'memory.get' || this.holdSearch && method === 'conversations.search') return
     queueMicrotask(() => {
       let result: unknown
       const item = { ...conversation, title: this.title, status: this.lifecycle }
-      if (method === 'conversations.list') {
+      if (method === 'conversations.search') {
+        const query = String(payload.query)
+        result = { query, scope: this.searchScopeMismatch ? 'ARCHIVED' : payload.scope, page: payload.page, limit: 10, hasMore: false,
+          items: [{ conversation: { ...item, id: this.searchId }, turnId: uuid(100 + this.searchSequence), sequence: this.searchSequence,
+            messageId: uuid(2000 + this.searchSequence * 2), role: 'USER', snippet: `前${query}后<script>字面文本</script>`, matchStart: 1, matchEnd: 1 + query.length, before: false, after: false }] }
+      } else if (method === 'conversations.list') {
         const page = Number(payload.page)
         result = { items: Array.from({ length: Math.min(10, Math.max(0, this.total - page * 10)) }, (_, i) => ({ ...item, id: uuid(page * 10 + i + 1), status: payload.status, title: `Synthetic conversation ${page * 10 + i + 1}` })), total: this.total, page, limit: 10 }
       } else if (method === 'conversations.get') result = { ...history(this.turns, Number(payload.page), this.state), conversation: { ...item, id: payload.conversationId } }
@@ -65,6 +74,41 @@ async function setup(config: Partial<Service> = {}) {
   return { port, bridge, view, input: screen.getByLabelText('会话消息') as HTMLTextAreaElement }
 }
 const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+it('searches literal messages and opens the exact older turn while protecting unsent drafts', async () => {
+  const { port, input } = await setup({ turns: 23, total: 2 })
+  fireEvent.click(screen.getByText('查找历史消息'))
+  fireEvent.change(input, { target: { value: '未发送草稿' } })
+  fireEvent.change(screen.getByLabelText('原文关键词'), { target: { value: '中文😀%_' } })
+  await click('查找消息')
+  const results = screen.getByLabelText('历史消息查找结果')
+  expect(results.querySelector('mark')?.textContent).toBe('中文😀%_'); expect(results.querySelector('script')).toBeNull()
+  await click('Synthetic conversation · 第 11 轮 · 你')
+  expect(screen.getByRole('article', { name: '第 11 轮 · 已完成' })).toBe(document.activeElement)
+  expect(input.value).toBe('未发送草稿')
+  expect(port.sent.filter(x => x.method === 'conversations.get').at(-1)?.payload).toEqual({ conversationId: conversation.id, page: 1 })
+  port.searchId = uuid(2); port.lifecycle = 'ARCHIVED'
+  await click('查找消息'); await click('Synthetic conversation · 第 11 轮 · 你 · 已归档')
+  expect(screen.getByRole('dialog', { name: '打开其他会话？' })).toBeTruthy(); await click('取消')
+  expect(input.value).toBe('未发送草稿')
+  await click('Synthetic conversation · 第 11 轮 · 你 · 已归档'); await click('清空草稿并打开')
+  expect(screen.getByRole('article', { name: '第 11 轮 · 已完成' })).toBe(document.activeElement)
+  expect(screen.getByRole('button', { name: '恢复' })).toBeTruthy()
+  expect(port.sent.some(x => ['conversations.send', 'conversations.selectMemories'].includes(String(x.method)))).toBe(false)
+})
+it('rejects mismatched search replies and discards late results after leaving the page or rotating session', async () => {
+  const { port, bridge, view } = await setup({ turns: 12, searchScopeMismatch: true })
+  fireEvent.click(screen.getByText('查找历史消息')); fireEvent.change(screen.getByLabelText('原文关键词'), { target: { value: 'x' } })
+  await click('查找消息'); expect(screen.queryByLabelText('历史消息查找结果')).toBeNull()
+  expect(screen.getByRole('alert')).toBeTruthy()
+  port.searchScopeMismatch = false; port.holdSearch = true; await click('查找消息')
+  const index = port.sent.map(x => x.method).lastIndexOf('conversations.search')
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible={false} />)
+  await act(async () => { port.reply(index, { query: 'x', scope: 'ALL', items: [], page: 0, limit: 10, hasMore: false }) })
+  view.rerender(<ConversationsPage bridge={bridge} enabled visible />)
+  expect((screen.getByLabelText('原文关键词') as HTMLInputElement).value).toBe(''); expect(screen.queryByLabelText('历史消息查找结果')).toBeNull()
+  await act(async () => { port.session(uuid(919)) })
+  expect(screen.queryByLabelText('历史消息查找结果')).toBeNull()
+})
 it('inspects historical memory references on demand without replacing versions, selecting context or retaining late previews', async () => {
   const { port, bridge, view, input } = await setup({ total: 2, turns: 2 })
   fireEvent.change(input, { target: { value: 'Unsent synthetic draft' } }); await click('选择记忆…')

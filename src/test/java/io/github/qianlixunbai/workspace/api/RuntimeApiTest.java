@@ -167,6 +167,27 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @Test void nativeConversationSearchReadsTerminalTextWithoutModelAndRejectsBrowser() throws Exception {
+        var c=conversations.create("Synthetic private search title");
+        String query="合成-search-private-😀%_"; privateValues.add(query); privateValues.add(c.title());
+        try {
+            var turn=conversations.createTurnWithUserMessage(c.id(),"before "+query+" after");
+            conversations.completeTurnWithAssistantMessage(c.id(),turn.id(),"Saved synthetic answer");
+            String body=json.writeValueAsString(Map.of("query",query,"scope","ALL","page",0));
+            String path="/api/v1/conversations/search";
+            var response=send("POST",path,body,true); assertEquals(200,response.statusCode());
+            var result=json.readTree(response.body()); assertEquals(query,result.path("query").asString());
+            assertEquals(1,result.path("items").size()); var hit=result.path("items").get(0);
+            assertEquals(c.id().toString(),hit.path("conversation").path("id").asString()); assertEquals(turn.id().toString(),hit.path("turnId").asString());
+            assertEquals(query,hit.path("snippet").asString().substring(hit.path("matchStart").asInt(),hit.path("matchEnd").asInt()));
+            assertEquals(401,send("POST",path,body,false).statusCode());
+            var client=pairBrowser("chrome-extension://"+"k".repeat(32));
+            assertEquals(403,browser("POST",path,body,client.credential(),client.origin()).statusCode());
+            assertEquals(400,send("POST",path,"{\"query\":\"x\",\"scope\":\"OTHER\",\"page\":0}",true).statusCode());
+            assertEquals(400,send("POST",path,"{\"query\":\"x\",\"scope\":\"ALL\",\"page\":-1}",true).statusCode());
+            assertEquals(0,CHAT_CALLS.get()); assertEquals(0,PROBE_CALLS.get()); assertFalse(activeModels.status().ready());
+        } finally { conversations.delete(c.id()); }
+    }
     @org.springframework.beans.factory.annotation.Autowired io.github.qianlixunbai.workspace.model.ActiveModelManager activeModels;
     @org.springframework.beans.factory.annotation.Autowired org.springframework.context.ApplicationContext application;
     @Test

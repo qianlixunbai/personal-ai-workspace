@@ -14,6 +14,12 @@ export interface Turn {
   memoryReferences: HistoricalMemory[]; canCancel: boolean
 }
 export interface ConversationDetail { conversation: Conversation; turns: Turn[]; totalTurns: number; page: number; limit: 10 }
+export type ConversationSearchScope = 'ALL' | ConversationStatus
+export interface ConversationSearchHit {
+  conversation: Conversation; turnId: string; sequence: number; messageId: string; role: 'USER' | 'ASSISTANT'
+  snippet: string; matchStart: number; matchEnd: number; before: boolean; after: boolean
+}
+export interface ConversationSearchPage { query: string; scope: ConversationSearchScope; items: ConversationSearchHit[]; hasMore: boolean; page: number; limit: 10 }
 export interface ConversationAdmission { accepted: true; conversationId: string; turnId: string; admittedSequences: number[]; memoryCount: number }
 export const conversationResponseBytes = 1024 * 1024
 const integer = (value: unknown, max: number): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
@@ -27,6 +33,22 @@ function time(value: unknown): value is string {
     && parsed.getUTCDate() === Number(parts[3]) && parsed.getUTCHours() === Number(parts[4]) && parsed.getUTCMinutes() === Number(parts[5]) && parsed.getUTCSeconds() === Number(parts[6])
 }
 export const isTitle = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && unicode(value) && [...value].length <= 160
+export const isConversationSearchQuery = (value: unknown): value is string => typeof value === 'string' && content(value) && [...value].length <= 100
+export function isConversationSearchPage(value: unknown): value is ConversationSearchPage {
+  if (!isObject(value) || !exactFields(value, ['query', 'scope', 'items', 'hasMore', 'page', 'limit'])
+    || !isConversationSearchQuery(value.query) || !['ALL', 'ACTIVE', 'ARCHIVED'].includes(String(value.scope))
+    || !integer(value.page, 199999) || value.limit !== 10 || typeof value.hasMore !== 'boolean'
+    || !Array.isArray(value.items) || value.items.length > 10 || value.hasMore && value.items.length !== 10) return false
+  const query = value.query, scope = value.scope
+  const valid = value.items.every((hit): hit is ConversationSearchHit => isObject(hit)
+    && exactFields(hit, ['conversation', 'turnId', 'sequence', 'messageId', 'role', 'snippet', 'matchStart', 'matchEnd', 'before', 'after'])
+    && isConversation(hit.conversation) && (scope === 'ALL' || hit.conversation.status === scope)
+    && isId(hit.turnId) && isId(hit.messageId) && integer(hit.sequence, 1000) && hit.sequence > 0 && ['USER', 'ASSISTANT'].includes(String(hit.role))
+    && content(hit.snippet) && [...hit.snippet].length <= 220 && integer(hit.matchStart, hit.snippet.length)
+    && integer(hit.matchEnd, hit.snippet.length) && hit.matchEnd > hit.matchStart && hit.snippet.slice(hit.matchStart, hit.matchEnd) === query
+    && typeof hit.before === 'boolean' && typeof hit.after === 'boolean')
+  return valid && new Set(value.items.map(hit => hit.messageId)).size === value.items.length
+}
 function content(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 8192 && unicode(value) && new TextEncoder().encode(value).length <= 8192
     && !/^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(value)

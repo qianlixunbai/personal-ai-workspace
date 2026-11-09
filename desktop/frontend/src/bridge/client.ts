@@ -29,8 +29,8 @@ import { isFinancePositionQuery, isFinancePositionPage, isFinancePositionDetail 
 import type { FinancePositionQuery, FinancePositionPage, FinancePositionDetail } from './financeInvestments'
 import { isMemoryItem, isMemoryList } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
-import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList } from './conversations'
-import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus } from './conversations'
+import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList, isConversationSearchPage, isConversationSearchQuery } from './conversations'
+import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, ConversationSearchPage, ConversationSearchScope } from './conversations'
 import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
 
@@ -41,7 +41,7 @@ const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.ar
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
-interface Pending { method: Method; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { method: Method; searchQuery?: string; searchScope?: string; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
   private session: string | null = null
   private pending = new Map<string, Pending>()
@@ -156,6 +156,11 @@ export class WorkspaceClient {
   cancelOperation(operationId: string) { return this.request('operations.cancel', { operationId }) as Promise<{ requested: true }> }
   copyResult(operationId: string) { return this.request('operations.copyResult', { operationId }) as Promise<{ copied: true }> }
   listConversations(status: ConversationStatus, page: number) { return this.request('conversations.list', { status, page }) as Promise<ConversationList> }
+  searchConversations(query: string, scope: ConversationSearchScope, page: number) {
+    if (!isConversationSearchQuery(query) || !['ALL', 'ACTIVE', 'ARCHIVED'].includes(scope) || !Number.isInteger(page) || page < 0 || page > 199999)
+      return Promise.reject(new BridgeError('ConversationInvalid', '请输入最多 100 个字的原文关键词。'))
+    return this.request('conversations.search', { query, scope, page }) as Promise<ConversationSearchPage>
+  }
   getConversation(conversationId: string, page: number) { return this.request('conversations.get', { conversationId, page }) as Promise<ConversationDetail> }
   createConversation() { return this.request('conversations.create') as Promise<Conversation> }
   renameConversation(conversationId: string, title: string) { return this.request('conversations.rename', { conversationId, title }) as Promise<Conversation> }
@@ -206,6 +211,7 @@ export class WorkspaceClient {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
         : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
+        ...(method === 'conversations.search' ? { searchQuery: payload.query as string, searchScope: payload.scope as string } : {}),
         ...(method === 'finance.annual' ? { year: payload.year as number } : {}),
         ...(method === 'finance.transactions' ? { transactionQuery: payload as unknown as FinanceTransactionQuery } : {}),
         ...(method === 'finance.history' ? { historyQuery: payload as unknown as FinanceHistoryQuery } : {}),
@@ -316,6 +322,7 @@ export class WorkspaceClient {
           && (pending.method === 'memory.create' || pending.method === 'memory.restore' ? data.result.status === 'ACTIVE' : pending.method === 'memory.archive' ? data.result.status === 'ARCHIVED' : true)
         : pending.method === 'memory.delete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
         : pending.method === 'memory.editorState' ? isObject(data.result) && exactFields(data.result, ['acknowledged']) && data.result.acknowledged === true
+        : pending.method === 'conversations.search' ? isConversationSearchPage(data.result) && data.result.page === pending.page && data.result.query === pending.searchQuery && data.result.scope === pending.searchScope
         : pending.method === 'conversations.list' ? isConversationList(data.result) && data.result.page === pending.page && data.result.items.every(x => x.status === pending.status)
         : pending.method === 'conversations.get' ? isConversationDetail(data.result) && data.result.conversation.id === pending.conversationId && data.result.page === pending.page
         : pending.method === 'conversations.send' ? isAdmission(data.result) && data.result.conversationId === pending.conversationId && data.result.memoryCount === pending.memoryCount

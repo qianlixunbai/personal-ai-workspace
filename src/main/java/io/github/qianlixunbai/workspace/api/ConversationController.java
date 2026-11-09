@@ -35,6 +35,11 @@ public class ConversationController {
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int limit) {
         nativeOnly(); return store.list(status, page, limit);
     }
+    // Read-only POST keeps private search text out of URLs/access-log query strings.
+    @PostMapping("/search")
+    ConversationSearch.Page search(@RequestBody ConversationSearch.Request body) {
+        nativeOnly(); return store.search(body);
+    }
     @PostMapping("/{conversationId}/turns")
     ResponseEntity<ConversationExecution.Accepted> send(@PathVariable String conversationId, @RequestBody ConversationExecution.Request body) {
         nativeOnly(); var result = execution.submit(id(conversationId), body);

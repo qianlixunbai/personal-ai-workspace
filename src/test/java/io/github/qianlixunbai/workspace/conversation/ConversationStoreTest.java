@@ -27,6 +27,42 @@ class ConversationStoreTest {
         var failure = assertThrows(WorkspaceException.class, op);
         assertEquals(expected, failure.error().code()); assertNull(failure.getCause()); assertEquals(expected.name(), failure.getMessage());
     }
+    @Test void literalSearchPagesTerminalMessagesAndSurvivesReopenWithoutWrites() throws Exception {
+        var active = store.create("合成查找会话"); var archived = store.create("合成归档会话");
+        String query = "特征😀%_", text = "😀".repeat(75) + query + "<script>仅原文</script>" + "尾".repeat(80);
+        for (int i = 0; i < 13; i++) {
+            var t = store.createTurnWithUserMessage(active.id(), text);
+            store.completeTurnWithAssistantMessage(active.id(), t.id(), "答复 " + query);
+        }
+        var old = store.createTurnWithUserMessage(archived.id(), query);
+        store.markTurnTerminated(archived.id(), old.id(), TurnStatus.CANCELLED); store.archive(archived.id());
+        store.createTurnWithUserMessage(active.id(), "未结束 " + query);
+        var before = store.detail(active.id(), 0, 10);
+        var ids = new HashSet<UUID>();
+        for (int page = 0; page < 3; page++) {
+            var found = store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ACTIVE, page));
+            assertEquals(page < 2, found.hasMore()); assertEquals(page < 2 ? 10 : 6, found.items().size());
+            for (var hit : found.items()) {
+                assertTrue(ids.add(hit.messageId())); assertEquals(active.id(), hit.conversation().id()); assertTrue(hit.sequence() <= 13);
+                assertEquals(query, hit.snippet().substring(hit.matchStart(), hit.matchEnd()));
+                assertTrue(hit.snippet().codePointCount(0, hit.snippet().length()) <= 220);
+                ConversationLimits.unicode(hit.snippet());
+                if (hit.role() == Role.USER) { assertTrue(hit.before()); assertTrue(hit.after()); assertTrue(hit.snippet().contains("<script>")); }
+            }
+        }
+        assertEquals(26, ids.size()); assertEquals(before, store.detail(active.id(), 0, 10));
+        assertEquals(1, store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ARCHIVED, 0)).items().size());
+        assertTrue(store.search(new ConversationSearch.Request("' OR 1=1 --", ConversationSearch.Scope.ALL, 0)).items().isEmpty());
+        assertTrue(store.search(new ConversationSearch.Request("SCRIPT", ConversationSearch.Scope.ALL, 0)).items().isEmpty());
+        assertEquals(10, store.search(new ConversationSearch.Request("%_", ConversationSearch.Scope.ALL, 0)).items().size());
+        for (String invalid : List.of("", " ", "\uD800", "a\0b", "字".repeat(101)))
+            code(ErrorCode.CONVERSATION_INVALID, () -> store.search(new ConversationSearch.Request(invalid, ConversationSearch.Scope.ALL, 0)));
+        code(ErrorCode.CONVERSATION_INVALID, () -> store.search(new ConversationSearch.Request(query, null, 0)));
+        code(ErrorCode.CONVERSATION_INVALID, () -> store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ALL, 200000)));
+        var snapshot = store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ALL, 0));
+        store.close(); store = new ConversationStore(memory.databaseFile()); assertEquals(snapshot, store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ALL, 0)));
+        store.delete(archived.id()); assertTrue(store.search(new ConversationSearch.Request(query, ConversationSearch.Scope.ARCHIVED, 0)).items().isEmpty());
+    }
     @Test void lifecycleDefaultRenameArchiveRestartAndCascadeDeletion() throws Exception {
         var item = store.create(null); assertEquals("New conversation", item.title()); assertEquals(Status.ACTIVE, item.status());
         item = store.rename(item.id(), "  synthetic renamed  "); assertEquals("synthetic renamed", item.title());

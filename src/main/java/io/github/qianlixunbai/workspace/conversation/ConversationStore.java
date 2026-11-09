@@ -78,6 +78,30 @@ public final class ConversationStore implements AutoCloseable {
             return new Page(items, total, page, limit);
         });
     }
+    public synchronized ConversationSearch.Page search(ConversationSearch.Request request) {
+        if (request == null) throw error(ErrorCode.CONVERSATION_INVALID);
+        request.validate();
+        return transaction(false, () -> {
+            List<ConversationSearch.Hit> items = new ArrayList<>();
+            // Both databases use a case-sensitive literal substring, including % and _.
+            // Only the bounded result page enters Java; no entire transcript is cached.
+            String match = postgresql ? "strpos(m.content,?)" : "instr(m.content,?)";
+            String scope = request.scope() == ConversationSearch.Scope.ALL ? "" : " AND c.status=?";
+            var values = new ArrayList<Object>(); values.add(request.query());
+            if (!scope.isEmpty()) values.add(request.scope().name());
+            values.add((long) request.page() * 10);
+            try (var s = prepare("SELECT c.*,t.id AS turn_id,t.sequence,m.id AS message_id,m.role,m.content "
+                    + "FROM conversation_messages m JOIN conversation_turns t ON t.id=m.turn_id "
+                    + "JOIN conversations c ON c.id=t.conversation_id WHERE t.status<>'PENDING' AND " + match + ">0" + scope
+                    + " ORDER BY c.updated_at DESC,c.id ASC,t.sequence ASC,m.role DESC,m.id ASC LIMIT 11 OFFSET ?", values.toArray());
+                 var r = s.executeQuery()) {
+                while (r.next()) items.add(ConversationSearch.hit(conversation(r), UUID.fromString(r.getString("turn_id")), r.getLong("sequence"),
+                        UUID.fromString(r.getString("message_id")), Role.valueOf(r.getString("role")), r.getString("content"), request.query()));
+            }
+            boolean more = items.size() > 10;
+            return new ConversationSearch.Page(request.query(), request.scope(), items.subList(0, Math.min(10, items.size())), more, request.page(), 10);
+        });
+    }
     public synchronized Detail detail(UUID id, int page, int limit) {
         id(id); page(page, limit);
         return transaction(false, () -> {

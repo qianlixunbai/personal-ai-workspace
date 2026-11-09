@@ -78,6 +78,17 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
         lock (sync) { if (Current(session, state)) foreach (var item in value.Items) Authorize(state, item.Id); }
         return new { items = value.Items.Select(ConversationView).ToArray(), value.Total, value.Page, value.Limit };
     }
+    internal async Task<object> SearchAsync(string session, string query, string scope, int page, CancellationToken ct)
+    {
+        Session state; lock (sync) state = Require(session);
+        var value = await runtime.SearchConversationsAsync(query, scope, page, ct);
+        lock (sync)
+        {
+            if (!Current(session, state)) throw Denied();
+            foreach (var item in value.Items) Authorize(state, item.Conversation.Id);
+        }
+        return new { value.Query, value.Scope, value.Items, value.HasMore, value.Page, value.Limit };
+    }
     internal async Task<object> GetAsync(string session, Guid id, int page, CancellationToken ct)
     {
         Session state; lock (sync) state = Require(session, id);

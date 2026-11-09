@@ -22,7 +22,9 @@ public sealed class WorkspaceConversationsTests
     }
     private sealed class Handler : HttpMessageHandler
     {
-        internal int Posts, Cancels, Deletes, Gets;
+        internal int Posts, Cancels, Deletes, Gets, Searches;
+        internal bool InvalidSearchMatch;
+        internal TaskCompletionSource? HoldSearch;
         internal string Status = "ACTIVE", State = "PENDING", Title = "Synthetic conversation";
         internal bool Stale, Unknown, Large, ChangedTask, Deleted, GenericUnknown;
         internal Guid CreatedId = Id;
@@ -34,6 +36,16 @@ public sealed class WorkspaceConversationsTests
         {
             Assert.Equal(new string('t', 43), request.Headers.Authorization?.Parameter);
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/v1/conversations/search")
+            {
+                Assert.Equal(HttpMethod.Post, request.Method); Assert.Empty(request.RequestUri.Query); Searches++;
+                using var query = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                string text = query.RootElement.GetProperty("query").GetString()!;
+                if (HoldSearch is not null) await HoldSearch.Task;
+                return Reply(new { query = text, scope = query.RootElement.GetProperty("scope").GetString(), page = 0, limit = 10, hasMore = false,
+                    items = new[] { new { conversation = Metadata(), turnId = TurnId, sequence = 1, messageId = Guid.NewGuid(), role = "USER",
+                        snippet = "前" + text + "后", matchStart = InvalidSearchMatch ? 0 : 1, matchEnd = 1 + text.Length, before = false, after = false } } });
+            }
             if (path == "/api/v1/conversations")
             {
                 var response = Reply(request.Method == HttpMethod.Post ? Metadata(CreatedId) : new { items = new[] { Metadata() }, total = 1, page = 0, limit = 10 }, request.Method == HttpMethod.Post ? HttpStatusCode.Created : HttpStatusCode.OK);
@@ -92,6 +104,30 @@ public sealed class WorkspaceConversationsTests
         }
         private static HttpResponseMessage Reply(object body, HttpStatusCode status = HttpStatusCode.OK) => RuntimeClientTests.Response(status, JsonSerializer.Serialize(body));
         private static HttpResponseMessage Error(string code, HttpStatusCode status) => Reply(new { code, message = "private SQL/provider body", phase = "ADMISSION" }, status);
+    }
+    [Fact]
+    public async Task SearchAuthorizesOnlyReturnedConversationsAndDoesNotSelectOrSend()
+    {
+        using var f = new Fixture(); await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
+        await f.Call("conversations.search", new { query = "合成😀%_<script>", scope = "ALL", page = 0 });
+        Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        Assert.Equal("前合成😀%_<script>后", f.Last.GetProperty("result").GetProperty("items")[0].GetProperty("snippet").GetString());
+        await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        await f.Call("conversations.get", new { conversationId = Other, page = 0 }); Assert.Equal("ConversationNotFound", f.Code);
+        Assert.Equal(1, f.Handler.Searches); Assert.Equal(0, f.Handler.Posts); Assert.Equal(0, f.Handler.Cancels);
+        f.Handler.InvalidSearchMatch = true;
+        await f.Call("conversations.search", new { query = "x", scope = "ALL", page = 0 }); Assert.False(f.Last.GetProperty("ok").GetBoolean());
+    }
+    [Fact]
+    public async Task SearchRejectsInvalidPayloadAndLateSessionCannotGrantAuthority()
+    {
+        using var f = new Fixture();
+        foreach (var payload in new object[] { new { query = " ", scope = "ALL", page = 0 }, new { query = "x", scope = "OTHER", page = 0 }, new { query = "x", scope = "ALL", page = -1 }, new { query = "x", scope = "ALL", page = "0" } })
+        { await f.Call("conversations.search", payload); Assert.Empty(f.Sent); }
+        Assert.Equal(0, f.Handler.Searches); f.Handler.HoldSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = f.Call("conversations.search", new { query = "x", scope = "ALL", page = 0 });
+        Assert.Equal(1, f.Handler.Searches); f.Rotate(); f.Handler.HoldSearch.SetResult(); await pending;
+        await f.Get(); Assert.Equal("ConversationNotFound", f.Code); Assert.Equal(0, f.Handler.Gets);
     }
     private sealed class Fixture : IDisposable
     {

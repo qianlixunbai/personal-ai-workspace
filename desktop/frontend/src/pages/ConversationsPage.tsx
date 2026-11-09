@@ -4,6 +4,8 @@ import type { SelectedMemory } from '../bridge/contracts'
 import { isTitle } from '../bridge/conversations'
 import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
 import { ConversationMemoryPreview } from '../components/ConversationMemoryPreview'
+import { ConversationSearch } from '../components/ConversationSearch'
+import type { ConversationSearchHit } from '../bridge/conversations'
 
 const failureText: Record<FailureCode, string> = {
   EXECUTION_INTERRUPTED: 'Runtime 重启中断了执行。', PROVIDER_UNAVAILABLE: '本机 Ollama 不可用。', MODEL_UNAVAILABLE: '本机模型不可用。',
@@ -138,6 +140,21 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     if (token !== generation.current) return
     if (id) await loadDetail(id)
   }
+  const openSearchResult = async (hit: ConversationSearchHit) => {
+    if (!enabled || !visible || busy || historyLoading) return
+    const id = hit.conversation.id
+    let token = generation.current
+    if (selectedRef.current !== id) {
+      const opening = chooseConversation(id); token = generation.current; await opening
+    }
+    if (token !== generation.current || selectedRef.current !== id || detailRef.current?.conversation.id !== id) return
+    await loadDetail(id, Math.floor((hit.sequence - 1) / 10), false, hit.sequence)
+    if (token !== generation.current || selectedRef.current !== id) return
+    const turn = detailRef.current?.turns.find(item => item.turnId === hit.turnId && item.sequence === hit.sequence)
+    if (!turn || ![turn.userMessage.messageId, turn.assistantMessage?.messageId].includes(hit.messageId)) {
+      setNotice(''); setError('该匹配消息已不可用，请重新查找。')
+    }
+  }
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
     setAdmission(null); actionLock.current = false; setBusy(false); setNotice('')
@@ -239,6 +256,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   return <div className="conversations-layout">
     <section className="card conversation-list" aria-labelledby="conversation-list-title">
       <div className="card-heading"><h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>新建对话</button></div>
+      <ConversationSearch bridge={bridge} enabled={enabled && !busy && !historyLoading} visible={visible} selected={selected} hasDraft={draft.length > 0} onOpen={openSearchResult} />
       <div className="conversation-tabs" role="tablist" aria-label="会话状态">{(['ACTIVE', 'ARCHIVED'] as const).map(filter => <button key={filter} role="tab" aria-selected={status === filter}
         id={`conversation-tab-${filter}`} aria-controls="conversation-list-panel" disabled={busy} onClick={() => {
           setStatus(filter); setList(null); void chooseConversation(null)

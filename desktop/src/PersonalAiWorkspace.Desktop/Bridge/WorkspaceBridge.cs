@@ -278,10 +278,11 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (ConversationMethods.Contains(method))
             {
                 if (conversations is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Conversation 暂时不可用，请打开原生窗口。");
-                var id = method is "conversations.list" or "conversations.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
+                var id = method is "conversations.list" or "conversations.create" or "conversations.search" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
                 result = method switch
                 {
                     "conversations.list" => await conversations.ListAsync(session, Enum.Parse<ConversationStatus>(payload.GetProperty("status").GetString()!), payload.GetProperty("page").GetInt32(), cancellation),
+                    "conversations.search" => await conversations.SearchAsync(session, payload.GetProperty("query").GetString()!, payload.GetProperty("scope").GetString()!, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.get" => await conversations.GetAsync(session, id, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.create" => await conversations.CreateAsync(session, cancellation),
                     "conversations.selectMemories" => await conversations.SelectAsync(session, id, cancellation),
@@ -364,7 +365,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> BusinessMethods = new HashSet<string>(StringComparer.Ordinal)
     { "assistant.selectMemories", "assistant.submit", "assistant.proposeMemory", "translate.submit", "operations.get", "operations.cancel", "operations.copyResult" };
     internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
-    { "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
+    { "conversations.search", "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
       "conversations.send", "conversations.cancelPending" };
     internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
@@ -527,6 +528,10 @@ internal sealed class WorkspaceBridge : IDisposable
     }
     private static bool ValidConversationPayload(string method, JsonElement payload)
     {
+        if (method == "conversations.search") return Fields(payload, "query", "scope", "page")
+            && Text(payload, "query", 200, out var query) && Text(payload, "scope", 8, out var scope)
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number
+            && payload.GetProperty("page").TryGetInt32(out var searchPage) && RuntimeClient.ValidConversationSearch(query, scope, searchPage);
         if (method == "conversations.create") return Fields(payload);
         if (method == "conversations.list") return Fields(payload, "status", "page")
             && Text(payload, "status", 8, out var status) && status is "ACTIVE" or "ARCHIVED" && Page(payload);

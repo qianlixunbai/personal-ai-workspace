@@ -235,6 +235,12 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .conversation-list, .conversation-detail { min-width: 0; padding: 16px; }
 .conversation-list ul { list-style: none; padding: 0; margin: 8px 0; max-height: clamp(200px, calc(100vh - 320px), 600px); overflow-y: auto; }
 .conversation-select { width: 100%; text-align: start; margin-bottom: 4px; padding: 8px 10px; overflow-wrap: anywhere; }
+.conversation-search { margin: 12px 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.conversation-search form { display: grid; gap: 8px; margin-top: 12px; }
+.conversation-search label { display: grid; gap: 4px; }
+.conversation-search pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; margin: 6px 0 14px; }
+.conversation-search li > button { text-align: start; width: 100%; overflow-wrap: anywhere; }
+.conversation-search mark { background: var(--accent-soft); color: var(--text); text-decoration: underline; }
 .conversation-select span { display: block; font-size: 11px; opacity: .7; margin-top: 4px; }
 .conversation-select[aria-pressed=true], .conversation-tabs [aria-selected=true] { outline: 2px solid var(--accent); outline-offset: -2px; }
 .conversation-select[aria-pressed=true], .conversation-tabs [aria-selected=true], .memory-select[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
