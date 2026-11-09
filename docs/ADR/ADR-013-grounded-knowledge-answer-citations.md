@@ -2,6 +2,15 @@
 
 Status: Accepted
 
+2026-11-09 local development extension: new knowledge answers now have a bounded,
+profile-local SQLite execution journal and explicit history list/open/delete UI.
+This supersedes this ADR's original ephemeral-only result/restart policy for new
+answers, while keeping source authority, native-only access and no automatic replay.
+It does not migrate `knowledge.db` or PostgreSQL schemas. Existing Knowledge and
+Workspace backups exclude this local journal; it is not a cross-profile recovery
+mechanism. See [implementation, evidence and limits](../engineering/KNOWLEDGE-ANSWER-HISTORY-REPORT.md).
+Historical K3 approval/publication below does not cover this new local extension.
+
 2026-11-09 extension: bounded sentence excerpts are implemented for an oversized
 first hit, using `knowledge-answer-v2`. The packing decision below supersedes the
 original full-first-chunk-only policy; historical K3 approval and model results do

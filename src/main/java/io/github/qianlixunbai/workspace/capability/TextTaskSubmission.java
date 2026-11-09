@@ -60,6 +60,15 @@ public class TextTaskSubmission {
     }
     private TaskView submitReserved(ActiveModelManager.Reservation reservation, String capability, String system, String input,
                                    int textCharacters, Function<String, ?> mapping, ResponseFormat format) {
+        return submitReserved(reservation,capability,system,input,textCharacters,mapping,format,java.util.UUID.randomUUID(),null,()->{});
+    }
+    public TaskView submitPersistent(ActiveModelManager.Reservation reservation, String capability, String system, String input,
+                                    Function<String, ?> mapping, java.util.UUID id, TaskManager.Completion completion, Runnable admission) {
+        return submitReserved(reservation,capability,system,input,input.length(),mapping,ResponseFormat.TEXT,id,completion,admission);
+    }
+    private TaskView submitReserved(ActiveModelManager.Reservation reservation, String capability, String system, String input,
+                                   int textCharacters, Function<String, ?> mapping, ResponseFormat format, java.util.UUID id,
+                                   TaskManager.Completion completion, Runnable admission) {
         var client = ClientIdentity.current();
         if (!client.allowedCapabilities().contains(capability)) throw new WorkspaceException(ErrorCode.POLICY_DENIED, "CAPABILITY");
         ModelProfile profile = reservation.profile();
@@ -76,16 +85,22 @@ public class TextTaskSubmission {
             throw new WorkspaceException(ErrorCode.POLICY_DENIED, "OUTPUT_CONTRACT");
         Provider.ProviderExecution execution = new Provider.ProviderExecution(profile, PrivacyMode.LOCAL_ONLY, system, input,
                 List.of(new Provider.ChatMessage("user", input)), reservation, format);
+        admission.run(); // Durable pending record must commit before any provider execution.
         reservation.transferToTask();
-        try { return tasks.submit(java.util.UUID.randomUUID(), client.clientId(), capability, profile, reservation.promptVersion(), cancellation -> {
+        try { return tasks.submit(id, client.clientId(), capability, profile, reservation.promptVersion(), cancellation -> {
             policy.verify(profile, provider, PrivacyMode.LOCAL_ONLY);
             String output = provider.execute(execution, cancellation);
             if (output == null || output.isBlank()
                     || output.getBytes(StandardCharsets.UTF_8).length > profile.outputBudget() * 4)
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "OUTPUT_BUDGET");
             return mapping.apply(output);
-        }, null, reservation); }
-        catch (RuntimeException rejected) { reservation.close(); throw rejected; }
+        }, completion, reservation); }
+        catch (RuntimeException rejected) {
+            reservation.close();
+            if(completion!=null) completion.finish(id,TaskStatus.FAILED,null,
+                    rejected instanceof WorkspaceException w ? w.error() : ApiError.of(ErrorCode.INTERNAL_ERROR,"ADMISSION"));
+            throw rejected;
+        }
     }
     /** Uses the submission budget against the actual serialized candidate; submission revalidates. */
     public boolean fitsInput(String profileId, String input) {

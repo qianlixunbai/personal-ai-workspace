@@ -17,7 +17,9 @@ public final class KnowledgeAnswerService {
     private static final JsonMapper JSON=JsonMapper.builder().build();
     private final KnowledgeEvidenceAdmission evidence;
     private final TextTaskSubmission tasks;
-    public KnowledgeAnswerService(KnowledgeEvidenceAdmission evidence, TextTaskSubmission tasks) { this.evidence=evidence;this.tasks=tasks; }
+    private final io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history;
+    public KnowledgeAnswerService(KnowledgeEvidenceAdmission evidence, TextTaskSubmission tasks,
+            io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history) { this.evidence=evidence;this.tasks=tasks;this.history=history; }
     private record ModelEvidence(String label,String title,String heading,String text,boolean excerpt) {
         @Override public String toString(){return "ModelEvidence[redacted]";}
     }
@@ -53,8 +55,10 @@ public final class KnowledgeAnswerService {
             }
             if(input==null)throw new WorkspaceException(ErrorCode.INVALID_REQUEST,"KNOWLEDGE_EVIDENCE_BUDGET");
             Snapshot admitted=new Snapshot(prefix);
-            return tasks.submitReserved(reservation,"knowledge-answer",KnowledgeAnswerPrompt.SYSTEM,
-                    input,input.length(),output->KnowledgeAnswerParser.parse(output,admitted));
+            UUID id=UUID.randomUUID();
+            return tasks.submitPersistent(reservation,"knowledge-answer",KnowledgeAnswerPrompt.SYSTEM,
+                    input,output->KnowledgeAnswerParser.parse(output,admitted),id,history::finish,
+                    ()->history.begin(id,request.question(),request.query(),reservation.profile().publicInfo(),reservation.promptVersion()));
         } finally { reservation.closeUnlessTransferred(); }
     }
 }

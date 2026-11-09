@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
-import type { KnowledgeAnswerCitation, KnowledgeAnswerTask } from '../bridge/knowledgeAnswer'
+import type { KnowledgeAnswerCitation, KnowledgeAnswerTask, KnowledgeAnswerHistoryPage } from '../bridge/knowledgeAnswer'
 
 export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void> }) {
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [history, setHistory] = useState<KnowledgeAnswerHistoryPage | null>(null), [deleteId, setDeleteId] = useState<string | null>(null)
   const generation = useRef(0), composing = useRef(false)
   const active = task?.status === 'QUEUED' || task?.status === 'RUNNING'
-  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError('') }
+  const clear = () => { generation.current++; composing.current = false; setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null) }
   useEffect(() => { const unsubscribe = bridge.onSession(clear); return () => { generation.current++; unsubscribe() } }, [bridge])
   useEffect(() => { if (!visible) clear() }, [visible])
   useEffect(() => {
@@ -33,9 +34,43 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open }: { bridge: Wo
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '取消状态暂时无法确认。') }
     finally { if (epoch === generation.current) setBusy(false) }
   }
+  const loadHistory = async (page = 0) => {
+    if (!enabled || !visible || busy || active) return
+    const epoch = ++generation.current; setBusy(true); setError(''); setDeleteId(null)
+    try { const result = await bridge.knowledgeAnswerHistory(page); if (epoch === generation.current) setHistory(result) }
+    catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '历史记录暂时不可用。') }
+    finally { if (epoch === generation.current) setBusy(false) }
+  }
+  const readHistory = async (id: string) => {
+    if (!enabled || !visible || busy || active) return
+    const epoch = ++generation.current; setBusy(true); setError(''); setDeleteId(null)
+    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { setQuestion(result.question); setQuery(result.query); setTask(result.task) } }
+    catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '读取历史回答失败。') }
+    finally { if (epoch === generation.current) setBusy(false) }
+  }
+  const removeHistory = async () => {
+    if (!deleteId || !enabled || !visible || busy || active) return
+    const id = deleteId, epoch = ++generation.current; setBusy(true); setError('')
+    try { await bridge.deleteKnowledgeAnswerHistory(id); if (epoch !== generation.current) return; setDeleteId(null); if (task?.taskId === id) { setTask(null); setQuestion(''); setQuery('') }; const result = await bridge.knowledgeAnswerHistory(0); if (epoch === generation.current) setHistory(result) }
+    catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '删除结果暂时无法确认，请刷新历史记录。') }
+    finally { if (epoch === generation.current) setBusy(false) }
+  }
   return <section className="card knowledge-answer" aria-labelledby="knowledge-answer-title">
     <h2 id="knowledge-answer-title">基于文档回答</h2>
     <p className="hint">输入问题和关键词，从匹配的可用文档中寻找答案，并附上引用来源。首个长片段可能改用相关句子及相邻上下文；预算不足时会拒绝回答。关键词不会自动改写。</p>
+    <p className="hint">问题、回答和引用保存在本机当前资料配置中，重启后可查看，最多 1000 条。现有备份不包含问答历史；删除源文档后，其历史引用可能无法打开。历史不会自动用于新问题或重新执行。</p>
+    <button disabled={!enabled || busy || active} onClick={() => { void loadHistory() }}>查看问答历史</button>
+    {history && <section aria-label="问答历史"><p>共 {history.total} 条，第 {history.page + 1} 页</p>
+      {history.items.length === 0 && <p>暂无问答记录</p>}
+      <ul>{history.items.map(row => <li key={row.taskId}>
+        <button disabled={!enabled || busy || active} onClick={() => { void readHistory(row.taskId) }}>{row.question}</button>
+        <span> · {new Date(row.createdAt).toLocaleString()} · {({ QUEUED: '尚未完成', SUCCEEDED: '已完成', FAILED: '未完成', CANCELLED: '已取消', TIMED_OUT: '已超时' } as Record<string, string>)[row.status]}</span>
+        <button aria-label={`删除记录：${row.question}`} disabled={!enabled || busy || active || row.status === 'QUEUED'} onClick={() => setDeleteId(row.taskId)}>删除记录</button>
+      </li>)}</ul>
+      <button disabled={!enabled || busy || active || history.page === 0} onClick={() => { void loadHistory(history.page - 1) }}>上一页问答</button>
+      <button disabled={!enabled || busy || active || (history.page + 1) * history.limit >= history.total} onClick={() => { void loadHistory(history.page + 1) }}>下一页问答</button>
+      {deleteId && <div role="group" aria-label="确认删除问答"><p>删除这条问题、回答和引用记录？源文档会保留。</p><button disabled={!enabled || busy || active} onClick={() => { void removeHistory() }}>确认删除问答</button><button disabled={busy} onClick={() => setDeleteId(null)}>保留记录</button></div>}
+    </section>}
     <form onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={e => { if (e.key === 'Enter' && (e.nativeEvent.isComposing || composing.current)) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor="knowledge-answer-question">想了解什么</label>
       <textarea id="knowledge-answer-question" value={question} maxLength={3000} disabled={!enabled || busy || active} autoComplete="off" spellCheck={false} onChange={e => setQuestion(e.target.value)} />

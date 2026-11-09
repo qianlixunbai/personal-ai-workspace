@@ -79,7 +79,7 @@ public static class ErrorText
         DesktopError.KnowledgeNotFound => "Knowledge 文档、版本或导入记录不存在。",
         DesktopError.KnowledgeQueueFull => "导入容量已满，请等待当前导入完成。",
         DesktopError.KnowledgeIngestionFailed => "导入处理失败，旧 READY 版本仍可使用。",
-        DesktopError.KnowledgeInterrupted => "导入已中断，请先检查记录再显式重试。",
+        DesktopError.KnowledgeInterrupted => "知识任务已中断，没有自动重试。请查看记录后决定是否重新发起。",
         DesktopError.KnowledgeCancelled => "导入已取消。",
         DesktopError.KnowledgeStorageUnavailable => "Knowledge 存储不可用，请检查 Runtime。",
         DesktopError.KnowledgeSchemaUnsupported => "Knowledge 数据或解析版本不受支持。",

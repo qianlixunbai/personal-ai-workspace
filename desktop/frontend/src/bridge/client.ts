@@ -9,8 +9,8 @@ import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeLi
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
-import { isKnowledgeAnswerTask } from './knowledgeAnswer'
-import type { KnowledgeAnswerTask } from './knowledgeAnswer'
+import { isKnowledgeAnswerTask, isKnowledgeAnswerHistoryPage, isKnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
+import type { KnowledgeAnswerTask, KnowledgeAnswerHistoryPage, KnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
 import type { WebFetchOperation, WebFetchSubmission } from './webFetch'
 import { modelMethods, isModelRequest, isModelSnapshot, isModelOutcome } from './models'
@@ -37,7 +37,7 @@ import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
-const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete'].includes(method)
+const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerHistoryDelete'].includes(method)
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
@@ -180,6 +180,9 @@ export class WorkspaceClient {
   submitKnowledgeAnswer(question: string, query: string) { return this.request('knowledge.answerSubmit', { question, query }) as Promise<KnowledgeAnswerTask> }
   getKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerGet', { taskId }) as Promise<KnowledgeAnswerTask> }
   cancelKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerCancel', { taskId }) as Promise<KnowledgeAnswerTask> }
+  knowledgeAnswerHistory(page = 0) { return this.request('knowledge.answerHistory', { page }) as Promise<KnowledgeAnswerHistoryPage> }
+  getKnowledgeAnswerHistory(taskId: string) { return this.request('knowledge.answerHistoryGet', { taskId }) as Promise<KnowledgeAnswerHistoryEntry> }
+  deleteKnowledgeAnswerHistory(taskId: string) { return this.request('knowledge.answerHistoryDelete', { taskId }) as Promise<{ deleted: true }> }
   searchKnowledge(query: string) { return this.request('knowledge.search', { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
   knowledgeSearchStatus() { return this.request('knowledge.searchStatus') as Promise<KnowledgeSearchStatus> }
   rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
@@ -258,7 +261,7 @@ export class WorkspaceClient {
     if (data.version !== 1 || data.sessionId !== this.session || !isId(data.requestId)) return
     const pending = this.pending.get(data.requestId)
     if (!pending) return
-    if (bytes > (pending.method === 'conversations.get' ? conversationResponseBytes : 64 * 1024)) return
+    if (bytes > (pending.method === 'conversations.get' ? conversationResponseBytes : pending.method === 'knowledge.answerHistoryGet' ? 128 * 1024 : 64 * 1024)) return
     clearTimeout(pending.timer); this.pending.delete(data.requestId)
     if (data.ok === true && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'result'])) {
       const valid = pending.method.startsWith('shell.') ? isStatus(data.result)
@@ -294,6 +297,9 @@ export class WorkspaceClient {
         : pending.method === 'web.saveKnowledge' || pending.method === 'web.knowledgeState' ? isKnowledgeImport(data.result) && data.result.outcome !== 'CANCELLED'
         : pending.method === 'web.fetchGet' || pending.method === 'web.fetchCancel' ? isWebFetchOperation(data.result) && data.result.operationId === pending.operationId
         : ['knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel'].includes(pending.method) ? isKnowledgeAnswerTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
+        : pending.method === 'knowledge.answerHistory' ? isKnowledgeAnswerHistoryPage(data.result) && data.result.page === pending.page
+        : pending.method === 'knowledge.answerHistoryGet' ? isKnowledgeAnswerHistoryEntry(data.result) && data.result.task.taskId === pending.taskId
+        : pending.method === 'knowledge.answerHistoryDelete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
         : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)
         : pending.method === 'knowledge.list' ? isKnowledgeList(data.result) && data.result.page === pending.page && data.result.items.every(d => d.status === pending.status)

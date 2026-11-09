@@ -13,9 +13,40 @@ public sealed record KnowledgeAnswerResult(string Answer,IReadOnlyList<Knowledge
 { public override string ToString()=>$"KnowledgeAnswerResult[count={Citations.Count},redacted]"; }
 public sealed record KnowledgeAnswerTask(Guid TaskId,TaskState Status,KnowledgeAnswerResult? Result,DesktopError? Error)
 { public override string ToString()=>$"KnowledgeAnswerTask[taskId={TaskId},status={Status}]"; }
+public sealed record KnowledgeAnswerSummary(string TaskId,string Question,string Status,string CreatedAt)
+{ public override string ToString()=>"KnowledgeAnswerSummary[redacted]"; }
+public sealed record KnowledgeAnswerHistoryPage(IReadOnlyList<KnowledgeAnswerSummary> Items,int Total,int Page,int Limit);
+public sealed record KnowledgeAnswerHistoryEntry(string Question,string Query,KnowledgeAnswerTask Task)
+{ public override string ToString()=>"KnowledgeAnswerHistoryEntry[redacted]"; }
 
 public sealed partial class RuntimeClient
 {
+    public async Task<KnowledgeAnswerHistoryPage> ListKnowledgeAnswersAsync(int page,CancellationToken token)
+    {
+        if(page is <0 or >=50)throw new DesktopException(DesktopError.InvalidRequest);
+        using var body=await SendAsync(HttpMethod.Get,$"/api/v1/knowledge/answer/tasks?page={page}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
+        var r=body.RootElement;MemoryFields(r,"items","total","page","limit");
+        if(KNumber(r,"page",0,49)!=page||KNumber(r,"limit",20,20)!=20)throw Invalid();int total=(int)KNumber(r,"total",0,1000);
+        var items=Property(r,"items");if(items.ValueKind!=JsonValueKind.Array||items.GetArrayLength()!=Math.Clamp(total-page*20,0,20))throw Invalid();
+        var rows=items.EnumerateArray().Select(row=>{
+            MemoryFields(row,"taskId","question","status","createdAt");string id=String(row,"taskId"),question=String(row,"question"),status=String(row,"status");KId(id);ValidateUnicode(question);KTime(row,"createdAt");
+            if(string.IsNullOrWhiteSpace(question)||question.EnumerateRunes().Count()>120||status is not ("QUEUED" or "SUCCEEDED" or "FAILED" or "CANCELLED" or "TIMED_OUT"))throw Invalid();
+            return new KnowledgeAnswerSummary(id,question,status,String(row,"createdAt"));
+        }).ToArray();if(rows.Select(x=>x.TaskId).Distinct().Count()!=rows.Length)throw Invalid();
+        return new(Array.AsReadOnly(rows),total,page,20);
+    }
+    public async Task<KnowledgeAnswerHistoryEntry> GetKnowledgeAnswerHistoryAsync(Guid id,CancellationToken token)
+    {
+        KId(id.ToString("D"));using var body=await SendAsync(HttpMethod.Get,$"/api/v1/knowledge/answer/tasks/{id:D}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:131072);
+        var r=body.RootElement;MemoryFields(r,"question","query","task");string question=String(r,"question"),query=String(r,"query");
+        try{new AskInput(question).Validate();ValidateUnicode(question);ValidateKnowledgeQuery(query);}catch(DesktopException){throw Invalid();}
+        return new(question,query,ParseKnowledgeAnswerTask(Property(r,"task"),id));
+    }
+    public async Task DeleteKnowledgeAnswerHistoryAsync(Guid id,CancellationToken token)
+    {
+        KId(id.ToString("D"));using var body=await SendAsync(HttpMethod.Delete,$"/api/v1/knowledge/answer/tasks/{id:D}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:1024);
+        MemoryFields(body.RootElement,"deleted");if(Property(body.RootElement,"deleted").ValueKind!=JsonValueKind.True)throw Invalid();
+    }
     public async Task<KnowledgeAnswerTask> SubmitKnowledgeAnswerAsync(string question,string query,CancellationToken token)
     {
         new AskInput(question).Validate();ValidateUnicode(question);ValidateKnowledgeQuery(query);
@@ -25,7 +56,7 @@ public sealed partial class RuntimeClient
                 endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
             return ParseKnowledgeAnswerTask(body.RootElement,null);
         } catch(DesktopException e)when(e.Error is DesktopError.RuntimeUnavailable or DesktopError.ClientTimeout or DesktopError.InvalidResponse) {
-            // No discovery API exists for a lost server-generated ID. Never replay this POST.
+            // History can discover the receipt later. Never replay this POST.
             throw new DesktopException(DesktopError.OutcomeUnknown);
         }
     }
@@ -33,7 +64,7 @@ public sealed partial class RuntimeClient
     public Task<KnowledgeAnswerTask> CancelKnowledgeAnswerAsync(Guid id,CancellationToken token)=>KnowledgeAnswerTaskRequest(HttpMethod.Delete,id,token);
     private async Task<KnowledgeAnswerTask> KnowledgeAnswerTaskRequest(HttpMethod method,Guid id,CancellationToken token)
     {
-        KId(id.ToString("D"));using var body=await SendAsync(method,$"/api/v1/tasks/{id:D}",null,true,HttpStatusCode.OK,token,maximumResponse:65536);
+        KId(id.ToString("D"));using var body=await SendAsync(method,$"/api/v1/tasks/{id:D}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
         return ParseKnowledgeAnswerTask(body.RootElement,id);
     }
     private static DesktopError KnowledgeAnswerError(HttpStatusCode status,JsonElement root)
@@ -41,7 +72,7 @@ public sealed partial class RuntimeClient
         MemoryFields(root,"code","message","phase");string code=String(root,"code");_=String(root,"message");_=String(root,"phase");
         if(code.StartsWith("KNOWLEDGE_",StringComparison.Ordinal))return KnowledgeError(status,root);
         int expected=code switch {"INVALID_REQUEST"=>400,"POLICY_DENIED"=>403,"QUEUE_FULL"=>429,
-            "MODEL_SWITCH_CONFLICT" or "MODEL_SELECTION_REVISION_CONFLICT" or "MODEL_EXECUTION_UNCERTAIN"=>409,
+            "TASK_NOT_FOUND"=>404,"MODEL_SWITCH_CONFLICT" or "MODEL_SELECTION_REVISION_CONFLICT" or "MODEL_EXECUTION_UNCERTAIN"=>409,
             "PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "MODEL_STATE_UNAVAILABLE" or "MODEL_CONFIGURATION_INVALID" or "MODEL_IDENTITY_CHANGED"=>503,
             "TASK_TIMEOUT"=>504,"INTERNAL_ERROR" or "PROVIDER_RESPONSE_INVALID"=>500,_=>throw Invalid()};
         if((int)status!=expected)throw Invalid();return MapError(code);
@@ -63,8 +94,9 @@ public sealed partial class RuntimeClient
         MemoryFields(error,"code","message","phase");_=String(error,"message");_=String(error,"phase");string code=String(error,"code");
         if(status==TaskState.CANCELLED?code!="TASK_CANCELLED":status==TaskState.TIMED_OUT?code!="TASK_TIMEOUT":
             code is not ("PROVIDER_UNAVAILABLE" or "MODEL_UNAVAILABLE" or "MODEL_STATE_UNAVAILABLE" or "MODEL_IDENTITY_CHANGED" or "MODEL_EXECUTION_UNCERTAIN"
-                or "PROVIDER_RESPONSE_INVALID" or "POLICY_DENIED" or "INVALID_REQUEST" or "INTERNAL_ERROR"))throw Invalid();
-        return new(id,status,null,MapError(code));
+                or "PROVIDER_RESPONSE_INVALID" or "POLICY_DENIED" or "INVALID_REQUEST" or "INTERNAL_ERROR" or "QUEUE_FULL"
+                or "KNOWLEDGE_INTERRUPTED" or "KNOWLEDGE_STORAGE_UNAVAILABLE" or "KNOWLEDGE_LIMIT_EXCEEDED"))throw Invalid();
+        return new(id,status,null,code.StartsWith("KNOWLEDGE_",StringComparison.Ordinal)?KError(code):MapError(code));
     }
     private static KnowledgeAnswerResult KAnswerResult(JsonElement r)
     {

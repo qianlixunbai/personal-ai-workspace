@@ -59,7 +59,7 @@ public sealed class ConversationExecutionClientTests
                 client.SubmitKnowledgeAnswerAsync("question", "budget", default))).Error);
         }
         foreach (string code in new[] { "MODEL_STATE_UNAVAILABLE", "MODEL_IDENTITY_CHANGED", "MODEL_EXECUTION_UNCERTAIN" }) {
-            string body = TaskBody("FAILED").Replace("conversation", "knowledge-answer").Replace("PROVIDER_UNAVAILABLE", code);
+            string body = TaskBody("FAILED").Replace("conversation-v1", "knowledge-answer-v2").Replace("\"conversation\"", "\"knowledge-answer\"").Replace("PROVIDER_UNAVAILABLE", code);
             using var client = Client(body);
             Assert.NotNull((await client.GetKnowledgeAnswerAsync(TaskId, default)).Error);
         }

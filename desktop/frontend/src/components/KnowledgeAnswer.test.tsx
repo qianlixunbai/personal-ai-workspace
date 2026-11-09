@@ -48,6 +48,36 @@ class ReaderService extends AnswerService {
     this.reply(this.sent.length - 1, this.wrongVersion ? { ...page, sourceRevision: '2' } : page)
   }
 }
+class HistoryService extends AnswerService {
+  deleted = false; holdHistory = false
+  override postMessage(value: unknown) {
+    const request = value as { method: string }
+    if (!request.method.startsWith('knowledge.answerHistory')) { super.postMessage(value); return }
+    this.sent.push(value as typeof this.sent[number]); const index = this.sent.length - 1
+    if (request.method === 'knowledge.answerHistory') this.reply(index, { items: this.deleted ? [] : [{ taskId: this.answer().taskId, question: '保存的问题 <script>fixture</script>', status: 'SUCCEEDED', createdAt: '2026-11-09T00:00:00Z' }], total: this.deleted ? 0 : 1, page: 0, limit: 20 })
+    else if (request.method === 'knowledge.answerHistoryGet' && !this.holdHistory) this.reply(index, { question: '保存的问题 <script>fixture</script>', query: 'budget', task: this.answer() })
+    else if (request.method === 'knowledge.answerHistoryDelete') { this.deleted = true; this.reply(index, { deleted: true }) }
+  }
+}
+it('reopens saved answer and exact citation without model submission, then deletes only after confirmation', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />)
+  await readerClick('查看问答历史'); await readerClick('保存的问题 <script>fixture</script>')
+  expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('保存的问题 <script>fixture</script>')
+  expect(screen.getByText('<script>grounded answer</script> [link](https://invalid)')).toBeTruthy()
+  await readerClick('打开引用来源'); expect(document.querySelector('script,a,img,iframe')).toBeNull()
+  expect(port.sent.some(r => r.method === 'knowledge.answerSubmit')).toBe(false)
+  await readerClick('删除记录：保存的问题 <script>fixture</script>'); expect(port.deleted).toBe(false)
+  await readerClick('确认删除问答'); expect(port.deleted).toBe(true); expect(screen.getByText('暂无问答记录')).toBeTruthy()
+  expect(port.sent.some(r => r.method === 'knowledge.delete')).toBe(false)
+})
+it('clears loaded history and ignores a late historical answer after session rotation', async () => {
+  const port = new HistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />); await readerClick('查看问答历史'); port.holdHistory = true
+  await readerClick('保存的问题 <script>fixture</script>'); const index = port.sent.length - 1
+  await act(async () => { port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'); port.reply(index, { question: '保存的问题', query: 'budget', task: port.answer() }) })
+  expect(screen.queryByRole('region', { name: '问答历史' })).toBeNull(); expect(screen.queryByText('<script>grounded answer</script> [link](https://invalid)')).toBeNull()
+})
 const clients: WorkspaceClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
 const readerClick = async (name: string) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
@@ -168,10 +198,10 @@ it('lost K3 submission is OutcomeUnknown without replay and task contracts stay 
   expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, citations: [{ ...citation, sourceDigest: 'private' }] } })).toBe(false)
   expect(isKnowledgeAnswerTask({ ...answer, result: { ...answer.result, citations: [{ ...citation, locator: { ...citation.locator, endOffset: citation.endOffset - 1 } }] } })).toBe(false)
   const failed = { ...answer, status: 'FAILED', result: null, error: { code: 'ModelIdentityChanged', message: '请检查模型安全状态。' } }
-  for (const code of ['ModelStateUnavailable', 'ModelIdentityChanged', 'ModelExecutionUncertain']) {
+  for (const code of ['ModelStateUnavailable', 'ModelIdentityChanged', 'ModelExecutionUncertain', 'QueueFull', 'KnowledgeInterrupted', 'KnowledgeStorageUnavailable', 'KnowledgeLimitExceeded']) {
     expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, code } })).toBe(true)
   }
-  for (const code of ['UnknownFailure', 'ModelSwitchConflict', 'ModelSelectionRevisionConflict', 'ModelConfigurationInvalid', 'QueueFull']) {
+  for (const code of ['UnknownFailure', 'ModelSwitchConflict', 'ModelSelectionRevisionConflict', 'ModelConfigurationInvalid']) {
     expect(isKnowledgeAnswerTask({ ...failed, error: { ...failed.error, code } })).toBe(false)
   }
   expect(isKnowledgeAnswerTask({ ...failed, sourceDigest: 'private' })).toBe(false)

@@ -39,6 +39,12 @@ public final class TaskManager {
         timer.scheduleWithFixedDelay(this::expire, 1, 1, TimeUnit.SECONDS);
     }
 
+    // Keep durable history open until active tasks have published their shutdown outcomes.
+    @org.springframework.beans.factory.annotation.Autowired
+    public TaskManager(RuntimeProperties properties, io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history) {
+        this(properties);
+    }
+
     public synchronized TaskView submit(String capability, ModelProfile profile, String promptVersion, Work work) {
         return submit(ClientIdentity.NATIVE_OWNER, capability, profile, promptVersion, work);
     }
@@ -135,7 +141,7 @@ public final class TaskManager {
             try { job.completion.finish(job.id, status, result, error); }
             catch (RuntimeException persistenceFailure) {
                 status = TaskStatus.FAILED; result = null;
-                error = ApiError.of(ErrorCode.CONVERSATION_STORAGE_UNAVAILABLE, "PERSISTENCE");
+                error = ApiError.of("knowledge-answer".equals(job.capability) ? ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE : ErrorCode.CONVERSATION_STORAGE_UNAVAILABLE, "PERSISTENCE");
                 // A failed successful commit rolls back. If storage remains unavailable,
                 // durable PENDING stays for startup reconciliation; never report success.
                 try { job.completion.finish(job.id, status, null, error); }

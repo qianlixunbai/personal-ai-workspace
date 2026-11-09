@@ -12,6 +12,8 @@ internal sealed record KnowledgeRevisionView(string SourceRevision,string Source
 internal sealed record KnowledgeDetailView(KnowledgeDocument Document,KnowledgeRevisionView[] Revisions,KnowledgeJob? Job);
 internal sealed record KnowledgeAnswerView(string TaskId,string Status,KnowledgeAnswerResult? Result,WorkspaceSafeError? Error)
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
+internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task)
+{ public override string ToString()=>"KnowledgeAnswerHistoryView[redacted]"; }
 internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files)
 {
     private const int MaximumAnswerTasks=64;
@@ -22,6 +24,8 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
         internal readonly Dictionary<Guid,AnswerAuthority> AnswerTasks=[];
         internal readonly LinkedList<Guid> CompletedAnswers=new();
         internal int AnswerSubmissions;
+        internal HashSet<Guid> HistoryPage=[];
+        internal int HistoryGeneration;
     }
     private readonly Dictionary<string,Authority> sessions=new(StringComparer.Ordinal);
     private readonly object sync=new();
@@ -85,6 +89,34 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
             // cancellation request, transport failure or malformed response.
             lock(sync){Current(session,known);ForgetAnswer(known,id,access);}throw;
         }
+    }
+    internal async Task<KnowledgeAnswerHistoryPage> AnswerHistoryAsync(string session,int page,CancellationToken ct)
+    {
+        Authority known;int generation;lock(sync){known=Require(session);generation=++known.HistoryGeneration;known.HistoryPage.Clear();}
+        var result=await runtime.ListKnowledgeAnswersAsync(page,ct);
+        lock(sync){Current(session,known);if(generation!=known.HistoryGeneration)throw new OperationCanceledException();known.HistoryPage=result.Items.Select(x=>Guid.Parse(x.TaskId)).ToHashSet();return result;}
+    }
+    internal async Task<KnowledgeAnswerHistoryView> AnswerHistoryGetAsync(string session,string taskId,CancellationToken ct)
+    {
+        Guid id=Guid.ParseExact(taskId,"D");Authority known;int generation;
+        lock(sync){known=Require(session);generation=known.HistoryGeneration;if(!known.HistoryPage.Contains(id))throw new DesktopException(DesktopError.TaskNotFound);}
+        var entry=await runtime.GetKnowledgeAnswerHistoryAsync(id,ct);
+        lock(sync){
+            Current(session,known);if(generation!=known.HistoryGeneration||!known.HistoryPage.Contains(id))throw new OperationCanceledException();
+            if(!known.AnswerTasks.TryGetValue(id,out var access)){
+                while(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks&&known.CompletedAnswers.First is { } oldest)ForgetAnswer(known,oldest.Value,known.AnswerTasks[oldest.Value]);
+                if(known.AnswerTasks.Count+known.AnswerSubmissions>=MaximumAnswerTasks)throw new DesktopException(DesktopError.QueueFull);
+                access=new();known.AnswerTasks.Add(id,access);
+            }
+            return new(entry.Question,entry.Query,AnswerView(session,known,access,entry.Task));
+        }
+    }
+    internal async Task<object> AnswerHistoryDeleteAsync(string session,string taskId,CancellationToken ct)
+    {
+        Guid id=Guid.ParseExact(taskId,"D");Authority known;Task work;
+        lock(sync){known=Require(session);if(!known.HistoryPage.Contains(id))throw new DesktopException(DesktopError.TaskNotFound);work=runtime.DeleteKnowledgeAnswerHistoryAsync(id,ct);}
+        await work;
+        lock(sync){Current(session,known);known.HistoryPage.Remove(id);known.HistoryGeneration++;if(known.AnswerTasks.TryGetValue(id,out var access))ForgetAnswer(known,id,access);return new{deleted=true};}
     }
     private Authority Require(string session,string? document=null,string? request=null)
     {

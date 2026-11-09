@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 
 @Configuration
 public class KnowledgeConfiguration {
+    @Bean(destroyMethod="close") KnowledgeAnswerHistory knowledgeAnswerHistory(@Value("${workspace.data-directory}") Path directory, RuntimeProperties p) {
+        return new KnowledgeAnswerHistory(directory, p.security().tokenFile());
+    }
     @Bean(destroyMethod="close") KnowledgeStore knowledgeStore(@Value("${workspace.data-directory}") Path directory,RuntimeProperties p,
             @Value("${workspace.persistence.backend:sqlite}") String backend,
             @Qualifier("workspacePostgresqlDataSource") ObjectProvider<DataSource> data){

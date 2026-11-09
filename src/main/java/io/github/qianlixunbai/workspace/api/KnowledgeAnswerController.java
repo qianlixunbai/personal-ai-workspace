@@ -12,7 +12,19 @@ import java.net.URI;
 @RequestMapping("/api/v1/knowledge/answer/tasks")
 public final class KnowledgeAnswerController {
     private final KnowledgeAnswerService service;
-    public KnowledgeAnswerController(KnowledgeAnswerService service){this.service=service;}
+    private final io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history;
+    private final io.github.qianlixunbai.workspace.task.TaskManager tasks;
+    public KnowledgeAnswerController(KnowledgeAnswerService service,io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history,
+            io.github.qianlixunbai.workspace.task.TaskManager tasks){this.service=service;this.history=history;this.tasks=tasks;}
+    @GetMapping public Object list(@RequestParam(defaultValue="0") int page) { KnowledgeController.nativeOnly();return history.list(page); }
+    @GetMapping("/{id}") public Object history(@PathVariable java.util.UUID id) {
+        KnowledgeController.nativeOnly();var entry=history.get(id);
+        try { return new io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory.Entry(entry.question(),entry.query(),tasks.get(id)); }
+        catch(WorkspaceException e) { if(e.error().code()!=ErrorCode.TASK_NOT_FOUND)throw e;return entry; }
+    }
+    @DeleteMapping("/{id}") public Object delete(@PathVariable java.util.UUID id) {
+        KnowledgeController.nativeOnly();history.delete(id);return java.util.Map.of("deleted",true);
+    }
     @PostMapping public ResponseEntity<TaskView> submit(@RequestBody JsonNode body) {
         KnowledgeController.nativeOnly();
         if(!body.isObject()||body.size()!=2||!body.has("question")||!body.get("question").isString()

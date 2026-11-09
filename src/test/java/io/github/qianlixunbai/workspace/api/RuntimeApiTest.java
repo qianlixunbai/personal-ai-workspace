@@ -398,6 +398,10 @@ class RuntimeApiTest {
     @Test void knowledgeAnswerNativeAdmissionBrowserPreBodyDenialAndOrdinaryAskIsolation() throws Exception {
         String endpoint="/api/v1/knowledge/answer/tasks",canary="k3canary"+java.util.UUID.randomUUID().toString().replace("-","");
         privateValues.add(canary);var browserClient=pairBrowser("chrome-extension://"+"e".repeat(32));
+        for(var route:List.of(new String[]{"GET",endpoint},new String[]{"GET",endpoint+"/"+java.util.UUID.randomUUID()},new String[]{"DELETE",endpoint+"/"+java.util.UUID.randomUUID()})) {
+            assertEquals(401,send(route[0],route[1],null,false).statusCode());
+            assertEquals(403,browser(route[0],route[1],null,browserClient.credential(),browserClient.origin()).statusCode());
+        }
         assertEquals(403,browser("POST",endpoint,"{malformed-private-canary",browserClient.credential(),browserClient.origin()).statusCode());
         assertEquals(0,CHAT_CALLS.get());
         assertEquals(400,send("POST",endpoint,"{\"question\":\"q\",\"query\":\"q\",\"model\":\"other\"}",true).statusCode());
@@ -411,6 +415,12 @@ class RuntimeApiTest {
             assertEquals(202,accepted.statusCode());String id=tree(accepted).path("taskId").asString();assertEquals("/api/v1/tasks/"+id,accepted.headers().firstValue("Location").orElseThrow());
             var done=pollNative(id);assertEquals("SUCCEEDED",done.path("status").asString());assertEquals("knowledge-answer",done.path("capability").asString());
             assertEquals(job.documentId(),done.path("result").path("citations").get(0).path("documentId").asString());
+            int beforeHistory=CHAT_CALLS.get();
+            var page=send("GET",endpoint+"?page=0",null,true);assertEquals(200,page.statusCode());assertEquals("no-store",page.headers().firstValue("Cache-Control").orElseThrow());
+            var receipt=tree(send("GET",endpoint+"/"+id,null,true));assertEquals(canary+"?",receipt.path("question").asString());
+            assertEquals(done.path("result"),receipt.path("task").path("result"));assertEquals(beforeHistory,CHAT_CALLS.get());
+            assertEquals(200,send("DELETE",endpoint+"/"+id,null,true).statusCode());assertEquals(404,send("GET",endpoint+"/"+id,null,true).statusCode());
+            assertEquals(job.documentId(),knowledgeStore.get(job.documentId()).documentId());
             assertEquals(404,browser("GET","/api/v1/tasks/"+id,null,browserClient.credential(),browserClient.origin()).statusCode());
             assertFalse(LAST_CHAT.get().toString().contains(job.documentId()));
             BATCH_OUTPUT.set("{\"answer\":\"bad\",\"citations\":[\"S99\"]}");

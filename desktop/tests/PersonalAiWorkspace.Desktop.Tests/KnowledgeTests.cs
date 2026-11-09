@@ -21,6 +21,7 @@ public sealed class KnowledgeTests
         internal bool SearchMalformed,SearchWorstCase;
         internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
         internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
+        internal bool HistoryDeleted,HistoryMalformed;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -39,6 +40,13 @@ public sealed class KnowledgeTests
             Calls++;if(Hold is not null)await Hold.Task;
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
+            if(path=="/api/v1/knowledge/answer/tasks"&&request.Method==HttpMethod.Get)
+                return Reply(new{items=HistoryDeleted?Array.Empty<object>():new object[]{new{taskId=AnswerTaskId,question="question",status=HistoryMalformed?"INVALID":AnswerState,createdAt="2026-10-06T00:00:00Z"}},total=HistoryDeleted?0:1,page=0,limit=20});
+            if(path=="/api/v1/knowledge/answer/tasks/"+AnswerTaskId){
+                if(request.Method==HttpMethod.Delete){HistoryDeleted=true;return Reply(new{deleted=true});}
+                if(AnswerReadHold is { } hold)await hold.Task;
+                return Reply(new{question=AnswerWorstCase?new string('<',3000):"question",query="budget",task=AnswerTask()});
+            }
             if(path=="/api/v1/knowledge/answer/tasks"||path=="/api/v1/tasks/"+AnswerTaskId){
                 if(!path.EndsWith("/answer/tasks")){
                     if(AnswerReadLost)throw new HttpRequestException();
@@ -85,6 +93,34 @@ public sealed class KnowledgeTests
         f.Handler.AnswerInvalid=null;foreach(string state in new[]{"QUEUED","RUNNING","FAILED","CANCELLED","TIMED_OUT"}){f.Handler.AnswerState=state;Assert.Equal(state,(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default)).Status.ToString());}
         f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerLost=true;int calls=f.Handler.Calls;
         var lost=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal("OutcomeUnknown",lost.GetProperty("error").GetProperty("code").GetString());Assert.Equal(calls+1,f.Handler.Calls);
+    }
+    [Fact]public async Task HistoryNeedsCurrentPageGrantAndReopensCitationsWithoutSubmission()
+    {
+        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
+        var denied=await f.Send("knowledge.answerHistoryGet",new{taskId=id});Assert.Equal("TaskNotFound",denied.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
+        var page=await f.Send("knowledge.answerHistory",new{page=0});Assert.True(page.GetProperty("ok").GetBoolean());
+        var read=await f.Send("knowledge.answerHistoryGet",new{taskId=id});Assert.True(read.GetProperty("ok").GetBoolean());Assert.Equal("question",read.GetProperty("result").GetProperty("question").GetString());
+        Assert.Equal(1,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        Assert.True((await f.Send("knowledge.answerHistoryDelete",new{taskId=id})).GetProperty("ok").GetBoolean());Assert.True(f.Handler.HistoryDeleted);
+        Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerHistoryGet",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
+    }
+    [Fact]public async Task HistoryRejectsMalformedRowsAndLateSessionResults()
+    {
+        using var f=new Fixture();f.Handler.HistoryMalformed=true;
+        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerHistory",new{page=0})).GetProperty("error").GetProperty("code").GetString());
+        f.Handler.HistoryMalformed=false;await f.Send("knowledge.answerHistory",new{page=0});f.Handler.AnswerReadHold=new();
+        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerHistoryGet",new{taskId=f.Handler.AnswerTaskId}));
+        f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;Assert.Empty(f.Sent);
+        Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
+    }
+    [Fact]public async Task HistoryDetailBoundsIncludeOriginalQuestionAndWorstCaseCitations()
+    {
+        using var f=new Fixture();await f.Send("knowledge.answerHistory",new{page=0});f.Handler.AnswerWorstCase=true;
+        var read=await f.Send("knowledge.answerHistoryGet",new{taskId=f.Handler.AnswerTaskId});Assert.True(read.GetProperty("ok").GetBoolean());
+        Assert.Equal(3000,read.GetProperty("result").GetProperty("question").GetString()!.Length);
+        Assert.Equal(10,read.GetProperty("result").GetProperty("task").GetProperty("result").GetProperty("citations").GetArrayLength());
+        Assert.InRange(Encoding.UTF8.GetByteCount(f.Sent.Last()),65537,128*1024);
     }
     [Fact]public async Task AnswerTaskAuthorityIsSessionBoundAndLateSubmitOrGetCannotAuthorizeNewSession()
     {

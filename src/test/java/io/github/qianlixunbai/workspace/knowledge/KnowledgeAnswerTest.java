@@ -23,6 +23,9 @@ import static org.mockito.Mockito.*;
 
 class KnowledgeAnswerTest {
     @TempDir Path temporary;
+    private KnowledgeAnswerHistory history;
+    @BeforeEach void openHistory(){history=new KnowledgeAnswerHistory(temporary.resolve("history-data"),temporary.resolve("auth/token"));}
+    @AfterEach void closeHistory(){if(history!=null)history.close();}
     private static final JsonMapper JSON=JsonMapper.builder().build();
     private static class LocalProvider implements Provider {
         volatile ProviderExecution execution;
@@ -48,7 +51,7 @@ class KnowledgeAnswerTest {
             assertEquals(text,e.text());assertEquals(0,e.citation().startOffset());assertEquals(text.length(),e.citation().endOffset());
             assertEquals("题".repeat(120),e.citation().heading());assertEquals("MARKDOWN_SECTION_LINES",e.citation().locator().type());
             assertThrows(UnsupportedOperationException.class,()->snapshot.items().clear());assertFalse(e.toString().contains("private"));
-            var provider=new LocalProvider();var accepted=new KnowledgeAnswerService(owner,submission(provider,manager)).submit(new KnowledgeAnswerRequest("private question","budget"));
+            var provider=new LocalProvider();var accepted=new KnowledgeAnswerService(owner,submission(provider,manager),history).submit(new KnowledgeAnswerRequest("private question","budget"));
             assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
             // These synchronized mutations complete while inference is still held, proving lock release.
             KnowledgeLexicalIndexTest.ingest(store,ingestion,job.documentId(),"fixture.md","replacement budget");
@@ -67,7 +70,7 @@ class KnowledgeAnswerTest {
             KnowledgeLexicalIndexTest.ingest(store,ingestion,null,"fixture.txt","budget exact source");KnowledgeLexicalIndexTest.ready(index);
             try(var db=DriverManager.getConnection("jdbc:sqlite:"+store.root().resolve("index/lexical.db"));var s=db.createStatement()){s.execute("UPDATE chunks SET start=1");}
             var provider=new LocalProvider();var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));try {
-                var service=new KnowledgeAnswerService(new KnowledgeEvidenceAdmission(store,index),submission(provider,manager));
+                var service=new KnowledgeAnswerService(new KnowledgeEvidenceAdmission(store,index),submission(provider,manager),history);
                 KnowledgeLexicalIndexTest.code(ErrorCode.KNOWLEDGE_INDEX_NOT_READY,()->service.submit(new KnowledgeAnswerRequest("question","budget")));assertNull(provider.execution);
             } finally {manager.close();}
         }
@@ -78,7 +81,7 @@ class KnowledgeAnswerTest {
         when(owner.capture("budget")).thenReturn(snapshot);
         var provider=new LocalProvider();provider.release.countDown();var manager=new TaskManager(TestSettings.settings(URI.create("http://127.0.0.1:1")));try {
             var tasks=submission(provider,manager);assertFalse(tasks.fitsInput("chat.balanced","中".repeat(2000)));assertFalse(tasks.fitsInput("chat.balanced","x".repeat(3001)));
-            var service=new KnowledgeAnswerService(owner,tasks);assertEquals(TaskStatus.SUCCEEDED,terminal(manager,service.submit(new KnowledgeAnswerRequest("question","budget"))).status());
+            var service=new KnowledgeAnswerService(owner,tasks,history);assertEquals(TaskStatus.SUCCEEDED,terminal(manager,service.submit(new KnowledgeAnswerRequest("question","budget"))).status());
             var input=JSON.readTree(provider.execution.input());assertEquals(1,input.path("evidence").size());assertEquals(snapshot.items().getFirst().text(),input.path("evidence").get(0).path("text").asString());
             when(owner.capture("budget")).thenReturn(new Snapshot(List.of(item(1,"\"".repeat(2048)))));provider.execution=null;
             KnowledgeLexicalIndexTest.code(ErrorCode.INVALID_REQUEST,()->service.submit(new KnowledgeAnswerRequest("question","budget")));assertNull(provider.execution);
@@ -104,7 +107,7 @@ class KnowledgeAnswerTest {
             assertEquals(source,original.text()); // One valid K2 chunk; no change to ingestion or ranking.
             var provider=new LocalProvider();var tasks=submission(provider,manager);
             assertFalse(tasks.fitsInput("chat.balanced",source)); // Even before JSON overhead, the full Chinese chunk cannot fit.
-            var accepted=new KnowledgeAnswerService(owner,tasks).submit(new KnowledgeAnswerRequest("琥珀项目的预算是多少？","十二"));
+            var accepted=new KnowledgeAnswerService(owner,tasks,history).submit(new KnowledgeAnswerRequest("琥珀项目的预算是多少？","十二"));
             assertTrue(provider.entered.await(2,TimeUnit.SECONDS));
             KnowledgeLexicalIndexTest.ingest(store,ingestion,job.documentId(),"fixture.md","新版本的预算已变更。");
             provider.release.countDown();var done=terminal(manager,accepted);assertEquals(TaskStatus.SUCCEEDED,done.status());
