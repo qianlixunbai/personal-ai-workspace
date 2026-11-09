@@ -94,20 +94,24 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     setListLoading(true)
     try {
       let result = await bridge.listMemory(view)
-      if (token !== listGeneration.current) return
+      if (token !== listGeneration.current) return false
       if (result.page > 0 && result.page * 20 >= result.total) {
         view = { ...view, page: Math.max(0, Math.ceil(result.total / 20) - 1) }
         result = await bridge.listMemory(view)
-        if (token !== listGeneration.current) return
+        if (token !== listGeneration.current) return false
       }
       queryRef.current = view; setQuery(view); setList(result)
-    } catch (problem) { if (token === listGeneration.current) setList(null); throw problem }
+      return true
+    } catch (problem) {
+      if (token !== listGeneration.current) return false
+      setList(null); throw problem
+    }
     finally { if (token === listGeneration.current) setListLoading(false) }
   }
   const refresh = async (view = queryRef.current) => {
     const token = generation.current
     setError('')
-    try { await fetchList(view); if (token === generation.current) setNotice('列表已刷新；编辑器中的修改保持原样。') }
+    try { if (await fetchList(view) && token === generation.current) setNotice('列表已刷新；编辑器中的修改保持原样。') }
     catch (problem) { if (token === generation.current) setError(message(problem)) }
   }
   useEffect(() => bridge.onSession(() => {

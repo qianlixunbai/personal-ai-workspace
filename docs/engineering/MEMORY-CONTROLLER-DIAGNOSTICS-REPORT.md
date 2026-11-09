@@ -1,6 +1,16 @@
 # Memory controller startup diagnosis
 
-2026-11-09. Diagnostic fixture work only; the historical WebView2 controller timeout and Memory desktop save/reopen acceptance remain unresolved.
+2026-11-09. Diagnostic fixture work only; the historical WebView2 controller timeout root cause and Memory desktop save/reopen acceptance remain unresolved. The follow-up below reached controller creation but timed out while clearing profile data.
+
+## Follow-up using committed asset fix 2b20642
+
+One newly coordinated default-sandbox startup-only run used the previously empty UserDataFolder of synthetic Profile `6e6394fc23d54ee6945233f0d3703b3d`, the existing rebuilt test-host DLL, and the verified copied production assets. No rebuild, JVM, model, offline Python seed, security change, or additional desktop retry was used.
+
+The 2026-11-09 20:14 UTC log recorded ASSETS at 1 ms, PROFILE_VALIDATED/ENVIRONMENT_START at 15 ms, ENVIRONMENT_CREATED at 25 ms, and CONTROLLER_START at 33 ms. The initialization callback succeeded; CONTROLLER_CREATED was recorded at 536 ms. STA, DispatcherSynchronizationContext, matching UI/HWND thread 5092 and 30 one-second Dispatcher heartbeats were observed. The thread desktop remained the sandbox desktop and the input desktop remained Default; their difference did not prevent controller creation in this run.
+
+Startup then remained in PROFILE_CLEAR_START and reached STARTUP_TIMEOUT at 30055 ms while awaiting the production `ClearBrowsingDataAsync(AllProfile)`. PROFILE_CLEAR_COMPLETED, navigation and REACT_BRIDGE_READY were not reached. The UI thread continued pumping; a missing message pump is not supported as the explanation for this particular wait. This result does not establish the cause of the older controller timeouts, nor prove that profile clearing is generally broken outside this environment. Its privacy requirement and the 30-second deadline were retained.
+
+The host (5080) exited normally with fixture exit code 10; no Runtime was started, port 18765 remained closed, and no forced termination was used. Browser enumeration was not repeated after the prior CIM permission denial, so complete browser-process cleanup remains independently unverified. Evidence: `.verification/memory-controller-diagnostics-20261109/startup-assets-fixed{.log,-summary.json,-failure.json,-result.json}`. No Memory draft/cancel/save/reopen acceptance passed.
 
 ## Verified baseline and rollback
 
@@ -46,7 +56,9 @@ Evidence is in `.verification/memory-controller-diagnostics-20261109/`: startup/
 
 ## Next bounded step
 
-After coordination, run `--memory-draft-host 6e6394fc23d54ee6945233f0d3703b3d startup` once using the now-verified copied assets. This is needed because the first new observation stopped before the historical failure stage. Assess heartbeats/controller callback and stage before changing product code. Do not switch desktops, relax WebView2 security, or increase the timeout as a diagnostic substitute. A full Memory cancel/save/reopen flow still needs a permitted deterministic history-preparation method and a successful controller start. No model-quality, citation-ingestion, or desktop end-to-end success is claimed.
+The asset-fixed startup check above is complete; do not repeat it without a materially new diagnostic condition and another resource window. Profile clearing now blocks READY, so preserve that failure and continue independently useful Memory work instead of extending the desktop loop. Do not switch desktops, skip clearing, relax WebView2 security, or increase the timeout as a diagnostic substitute.
+
+After a supported fix reaches READY, the smallest core Memory acceptance can reuse the production-component host, its existing UI scripting helpers and real RuntimeClient assertions: enter a synthetic manual draft, explicitly discard it and verify zero records, save one draft exactly once despite a repeated click, shut down the owned host/Runtime, then reopen in a new host and verify the original content and MANUAL source. This would require one bounded WPF/WebView2 plus small owned JVM flow, no model and no Python. A manual-only fixture scenario still needs to be added; the current save/reopen modes specifically require a Knowledge history record. That separate Knowledge-answer-to-Memory flow must retain its history-preparation/provenance requirements. Neither plan has been executed here; no model-quality, citation-ingestion, or desktop end-to-end success is claimed.
 
 ## Agent desktop skill download
 

@@ -4,7 +4,7 @@ import { MemoryPage } from './MemoryPage'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
 import { candidatePrompt, parseCandidate } from '../components/memoryCandidate'
-import { MemoryService, memoryItem } from '../test/memoryFixtures'
+import { MemoryService, memoryItem, metadata as memoryMetadata } from '../test/memoryFixtures'
 import { conversation, history as conversationHistory, uuid } from '../test/conversationFixtures'
 import { Port } from '../test/fixtures'
 const clients: WorkspaceClient[] = []
@@ -490,6 +490,48 @@ it('confirmed mutation remains successful when follow-up list fails and hostile 
   edit(title, '<script>evil</script>'); edit(content, '<img onerror=x>&amp;\u202e\u0001'); port.failList = true; await click('保存')
   expect(screen.getByRole('alert').textContent).toContain('操作已成功'); expect(screen.getByRole('status').textContent).toContain('已保存')
   expect(title.value).toBe('<script>evil</script>'); expect(content.value).toBe('<img onerror=x>&amp;\u202e\u0001'); expect(document.querySelector('script,img')).toBeNull()
+})
+it.each(['failure', 'success'] as const)('keeps a confirmed save and current list when an earlier refresh returns a late %s', async outcome => {
+  class HeldRefreshService extends MemoryService {
+    holdNextList = false
+    heldList = -1
+    postMessage(request: unknown) {
+      if (this.holdNextList && (request as { method: string }).method === 'memory.list') {
+        this.holdNextList = false
+        Port.prototype.postMessage.call(this, request)
+        this.heldList = this.sent.length - 1
+        return
+      }
+      super.postMessage(request)
+    }
+  }
+  const service = new HeldRefreshService()
+  const { port, content } = await setup(service)
+  await click(/Synthetic Memory 1 /); edit(content, 'Saved while an earlier refresh is pending')
+  const oldList = { items: service.items.map(memoryMetadata), total: 1, page: 0, limit: 20 }
+  service.holdNextList = true
+  await click('刷新')
+  // Saving an editor is supported while a read-only list refresh is pending.
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(false)
+  await click('保存')
+  const currentRow = /^Synthetic Memory 1 PROJECT_NOTE ACTIVE Revision 9007199254740994 /
+  await screen.findByRole('button', { name: currentRow })
+  expect(screen.getByRole('status').textContent).toBe('Memory 已保存。')
+  await act(async () => {
+    const held = port.sent[service.heldList]!
+    if (outcome === 'failure') port.emit({ version: 1, sessionId: held.sessionId, requestId: held.requestId, ok: false,
+      error: { code: 'MemoryStorageUnavailable', message: 'Safe stale refresh failure' } })
+    else port.reply(service.heldList, oldList)
+  })
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByRole('status').textContent).toBe('Memory 已保存。')
+  expect(screen.getByRole('button', { name: currentRow })).toBeTruthy()
+  expect(content.value).toBe('Saved while an earlier refresh is pending')
+  expect(service.items[0]?.content).toBe(content.value)
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
+  expect(port.sent.filter(x => x.method === 'memory.list')).toHaveLength(3)
 })
 it('session rotation clears editor and confirmation and suppresses an old pending refresh error', async () => {
   const { port, bridge, title, content } = await setup(); edit(title, 'Synthetic unsaved'); edit(content, 'Synthetic old draft')
