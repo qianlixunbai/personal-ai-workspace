@@ -88,6 +88,8 @@ if ($stage) {
         '-p:RuntimeFrameworkVersion=10.0.14' `
         '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' '-p:DebugType=None' '-p:DebugSymbols=false' -o $stage -v minimal
     if ($LASTEXITCODE -ne 0) { throw 'Development Desktop publish failed.' }
+    $assets = Get-Content -LiteralPath (Join-Path $repo 'desktop/src/PersonalAiWorkspace.Desktop/obj/project.assets.json') -Raw | ConvertFrom-Json
+    Copy-DevelopmentNotices $stage $assets.project.restore.packagesPath (Join-Path $repo 'desktop/frontend')
     Copy-Item -LiteralPath (Join-Path $repo 'scripts/distribution/README-development.txt') -Destination (Join-Path $stage 'README.txt')
     $payload = @(Get-ChildItem -LiteralPath $stage -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
         [ordered]@{path=$_.FullName.Substring($stage.Length + 1).Replace('\', '/'); sha256=(Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant(); bytes=$_.Length}

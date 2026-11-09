@@ -1,6 +1,38 @@
 # Build/inspection tooling only. This manifest proves completeness, not publisher identity.
 Set-StrictMode -Version Latest
 
+function Copy-DevelopmentNotices([string]$Root, [string]$NuGetRoot, [string]$FrontendRoot) {
+    # Read the exact runtime/SDK package versions in the published payload.
+    $config = Get-Content -LiteralPath (Join-Path $Root 'PersonalAiWorkspace.Desktop.runtimeconfig.json') -Raw | ConvertFrom-Json
+    $deps = Get-Content -LiteralPath (Join-Path $Root 'PersonalAiWorkspace.Desktop.deps.json') -Raw | ConvertFrom-Json
+    $web = @($deps.libraries.PSObject.Properties.Name | Where-Object { $_ -cmatch '^Microsoft.Web.WebView2/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' })
+    if ($web.Count -ne 1) { throw 'Published WebView2 package identity missing.' }
+    $sources = [ordered]@{
+        'WebView2-LICENSE.txt' = Join-Path $NuGetRoot ($web[0].ToLowerInvariant() + '/LICENSE.txt')
+        'WebView2-NOTICE.txt' = Join-Path $NuGetRoot ($web[0].ToLowerInvariant() + '/NOTICE.txt')
+        'react-LICENSE.txt' = Join-Path $FrontendRoot 'node_modules/react/LICENSE'
+        'react-dom-LICENSE.txt' = Join-Path $FrontendRoot 'node_modules/react-dom/LICENSE'
+    }
+    foreach ($runtime in @(@('Microsoft.NETCore.App', 'microsoft.netcore.app.runtime.win-x64', 'dotnet-runtime-LICENSE.txt', 'LICENSE.TXT'),
+                           @('Microsoft.WindowsDesktop.App', 'microsoft.windowsdesktop.app.runtime.win-x64', 'dotnet-desktop-LICENSE.txt', 'LICENSE'))) {
+        $framework = @($config.runtimeOptions.includedFrameworks | Where-Object name -CEQ $runtime[0])
+        if ($framework.Count -ne 1 -or $framework[0].version -cnotmatch '^10\.0\.[0-9]+$') { throw 'Published runtime identity missing.' }
+        $package = Join-Path $NuGetRoot ($runtime[1] + '/' + $framework[0].version)
+        $sources[$runtime[2]] = Join-Path $package $runtime[3]
+        if ($runtime[0] -ceq 'Microsoft.NETCore.App') { $sources['dotnet-runtime-NOTICES.txt'] = Join-Path $package 'THIRD-PARTY-NOTICES.TXT' }
+    }
+    $notices = Join-Path $Root 'ThirdPartyNotices'
+    [IO.Directory]::CreateDirectory($notices) | Out-Null
+    foreach ($source in $sources.GetEnumerator()) {
+        for ($part = [IO.Path]::GetFullPath($source.Value); $part; $part = [IO.Path]::GetDirectoryName($part)) {
+            if ((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked notice source rejected.' }
+        }
+        $target = Join-Path $notices $source.Key
+        if (Test-Path -LiteralPath $target) { throw 'Notice destination already exists.' }
+        Copy-Item -LiteralPath $source.Value -Destination $target
+    }
+}
+
 function Assert-DevelopmentBootstrap([string]$Directory) {
     $helper = Join-Path $Directory 'PersonalAiWorkspace.NativeBootstrap'
     foreach ($pin in @(
@@ -50,7 +82,10 @@ function Assert-DevelopmentBundle([string]$Root) {
         'WebView2Loader.dll', 'MainWorkspace/workspace-assets.json', 'NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.exe',
         'NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.dll', 'NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.deps.json',
         'NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.runtimeconfig.json', 'runtime/personal-ai-workspace.jar', 'runtime/jna-5.17.0.jar',
-        'runtime/java/bin/java.exe', 'runtime/java/bin/server/jvm.dll', 'runtime/java/lib/modules', 'runtime/java/release', 'runtime/java/LICENSE', 'README.txt')) {
+        'runtime/java/bin/java.exe', 'runtime/java/bin/server/jvm.dll', 'runtime/java/lib/modules', 'runtime/java/release', 'runtime/java/LICENSE', 'README.txt',
+        'ThirdPartyNotices/dotnet-runtime-LICENSE.txt', 'ThirdPartyNotices/dotnet-runtime-NOTICES.txt', 'ThirdPartyNotices/dotnet-desktop-LICENSE.txt',
+        'ThirdPartyNotices/WebView2-LICENSE.txt', 'ThirdPartyNotices/WebView2-NOTICE.txt', 'ThirdPartyNotices/react-LICENSE.txt', 'ThirdPartyNotices/react-dom-LICENSE.txt',
+        'ThirdPartyNotices/Open-XML-SDK.txt', 'ThirdPartyNotices/jsdiff.txt', 'ThirdPartyNotices/react-error-boundary.txt')) {
         if (-not $names.Contains($path)) { throw 'Required bundle payload missing.' }
     }
     $config = Get-Content -LiteralPath (Join-Path $Root 'PersonalAiWorkspace.Desktop.runtimeconfig.json') -Raw | ConvertFrom-Json
