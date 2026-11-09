@@ -62,7 +62,11 @@ internal sealed class NativeKnowledgeAnswerExport(Func<Window?> owner):IKnowledg
         if(!selected)return false;
         await SaveNewAsync(picker.FileName,markdown,token);return true;
     }
-    internal static async Task SaveNewAsync(string destination,string markdown,CancellationToken token)
+    internal static Task SaveNewAsync(string destination,string markdown,CancellationToken token)
+        => SaveNewAsync(destination,markdown,token,KnowledgeBackupWindow.ProtectFile);
+
+    // The protection callback is internal for deterministic failure/cancellation tests on synthetic files.
+    internal static async Task SaveNewAsync(string destination,string markdown,CancellationToken token,Action<FileStream> protectFile)
     {
         string? staging=null;
         try{
@@ -75,7 +79,7 @@ internal sealed class NativeKnowledgeAnswerExport(Func<Window?> owner):IKnowledg
             // Same-directory staging and no replacement: existing user documents are never overwritten.
             string candidate=Path.Combine(parent,".knowledge-note-"+Guid.NewGuid().ToString("N")+".tmp");
             using(var file=new FileStream(candidate,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,true)){
-                staging=candidate;KnowledgeBackupWindow.ProtectFile(staging);
+                staging=candidate;protectFile(file);
                 await file.WriteAsync(new UTF8Encoding(false,true).GetBytes(markdown),token);
                 await file.FlushAsync(token);file.Flush(true);
             }

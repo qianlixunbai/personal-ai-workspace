@@ -37,11 +37,11 @@ internal static class TrustedNative
         string profile = Win32.Profile(user.Token);
         Win32.ValidatePath(profile);
         string parent = profileMode ? WindowsProfileSecurity.Parent() : profile;
-        string root = profileMode ? Path.Combine(parent, fixtureId) : Path.Combine(profile, FixturePrefix + fixtureId);
+        using var profilePins = profileMode ? WindowsProfileSecurity.BindRoot(fixtureId) : null;
+        string root = profilePins?.Root ?? Path.Combine(profile, FixturePrefix + fixtureId);
         string native = Path.Combine(root, NativeDirectory);
         string final = Path.Combine(native, "jnidispatch.dll");
         var pins = new List<SafeFileHandle>();
-        using var profilePins = profileMode ? WindowsProfileSecurity.HoldDirectories(root) : null;
         using var activation=activationMode?SyntheticRecoveryPublication.RequireHelperCaller(fixtureId,
             mode=="VerifyRecoveryRuntimeNative",mode=="ProvisionRecoveryNative"):null;
         void Private(SafeFileHandle handle, bool directory)
@@ -53,7 +53,8 @@ internal static class TrustedNative
         {
             if (profileMode)
             {
-                WindowsProfileSecurity.State(fixtureId, false);
+                if (!string.Equals(WindowsProfileSecurity.State(fixtureId, false), root, StringComparison.OrdinalIgnoreCase))
+                    throw new Rejected("PROFILE_BINDING_CHANGED");
                 string recovery=Path.Combine(Path.GetDirectoryName(parent)!,"Recovery");
                 bool Exists(string path){try{_ = File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
                 if(Exists(Path.Combine(recovery,"targets",fixtureId)))throw new Rejected("PERSONAL_RECOVERY_BLOCKED");
@@ -175,8 +176,11 @@ internal static class TrustedNative
     {
         using var user=Win32.CurrentUser();
         if(user.Elevated)throw new Rejected("ELEVATED_PROFILE");
-        string root=WindowsProfileSecurity.State(targetId,false);
+        using var binding=WindowsProfileSecurity.BindRoot(targetId);
+        string root=binding.Root;
+        if(!string.Equals(WindowsProfileSecurity.State(targetId,false),root,StringComparison.OrdinalIgnoreCase))throw new Rejected("PROFILE_BINDING_CHANGED");
         using var rootPins=WindowsProfileSecurity.HoldDirectories(root);
+        WindowsProfileSecurity.RequireSameIdentity(WindowsProfileSecurity.Identity(binding.Leaf),WindowsProfileSecurity.Identity(rootPins.Handles[^1]));
         using var dataPins=WindowsProfileSecurity.HoldDirectories(Path.Combine(root,"data"));
         string[] names=Directory.EnumerateFileSystemEntries(root).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
         if(!names.SequenceEqual(WindowsProfileSecurity.Directories.Order(StringComparer.Ordinal)))throw new Rejected("PREPARED_LAYOUT");

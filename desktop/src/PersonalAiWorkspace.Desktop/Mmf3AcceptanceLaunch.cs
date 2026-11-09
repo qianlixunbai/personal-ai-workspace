@@ -126,7 +126,7 @@ internal static class Mmf3ProfileState
     internal static string Root(string id) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.Root(id);
     internal static string Verify(string id) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.State(id, false);
     internal static string Prepare(string id) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.State(id, true);
-    internal static IDisposable Pin(string id) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.HoldDirectories(Root(id));
+    internal static IDisposable Pin(string id) => PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.BindRoot(id);
 }
 // END MMF3 PROFILE STATE
 #endif

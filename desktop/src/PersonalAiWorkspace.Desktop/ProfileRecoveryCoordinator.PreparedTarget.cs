@@ -58,7 +58,10 @@ internal sealed partial class ProfileRecoveryCoordinator
         WindowsProfileSecurity.CreateDirectory(entry,user.User!);HoldPrivateDirectory(entry);
         PublishRecord(entry,"plan",SyntheticTargetEntropy(target,"plan"),plan); // Before any Profile/SQL CREATE.
         if(ReadRecord<SyntheticTargetPlan>(Path.Combine(entry,"plan.dpapi"),SyntheticTargetEntropy(target,"plan"))!=plan)throw Stop();
-        if(WindowsProfileSecurity.State(target,true)!=root)throw Stop();
+        string created=WindowsProfileSecurity.State(target,true);
+        var targetBinding=WindowsProfileSecurity.BindRoot(target);held.Add(targetBinding);
+        root=targetBinding.Root;
+        if(!string.Equals(created,root,StringComparison.OrdinalIgnoreCase))throw Stop();
         string rootIdentity=HoldSourceDirectoryIdentity(root),dataIdentity=HoldSourceDirectoryIdentity(Path.Combine(root,"data"));
         foreach(string name in WindowsProfileSecurity.Directories)
             if(Directory.EnumerateFileSystemEntries(Path.Combine(root,name)).Any())throw Stop();

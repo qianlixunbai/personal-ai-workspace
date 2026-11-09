@@ -13,6 +13,8 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 public sealed class Mmf3AcceptanceTests
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    private static void RequireSyntheticOrdinary(string root) => ProfileRecoveryCoordinator.RequireOrdinaryProfileAtApplication(root, Path.GetDirectoryName(Path.GetDirectoryName(root)!)!);
+
     [Fact]
     public async Task RecoveryPreflightDoesNotReadCredentialsAndNativeConnectionConsentIsExplicit()
     {
@@ -381,7 +383,7 @@ public sealed class Mmf3AcceptanceTests
         Assert.Equal(1, interrupted.OwnerCleanupObserved);
         Assert.Contains("START_OUTCOME_UNCONFIRMED", interrupted.Issues);
         Assert.Contains("OWNER_CLEANUP_NOT_SAFE_STOP", interrupted.Issues);
-        ProfileRecoveryCoordinator.RequireOrdinaryProfile(profile); // No change to ordinary Profile selection.
+        RequireSyntheticOrdinary(profile); // No change to ordinary Profile selection.
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(app, "Recovery", "targets")));
         Assert.False(Directory.Exists(Path.Combine(profile, "data")));
         Assert.False(Directory.Exists(Path.Combine(profile, "credentials")));
@@ -428,7 +430,7 @@ public sealed class Mmf3AcceptanceTests
             Assert.False(Directory.Exists(Path.Combine(recovery, "sources")));
             Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(recovery, "targets")));
             Assert.Empty(Directory.EnumerateFileSystemEntries(data));
-            ProfileRecoveryCoordinator.RequireOrdinaryProfile(root);
+            RequireSyntheticOrdinary(root);
         }
         string directory = Path.Combine(intents, intent.BackupId), file = Path.Combine(directory, "intent.dpapi");
         byte[] encrypted = File.ReadAllBytes(file);
@@ -500,7 +502,7 @@ public sealed class Mmf3AcceptanceTests
             System.Text.Encoding.UTF8.GetBytes(json), sourceEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser));
         string sourceJson = System.Text.Json.JsonSerializer.Serialize(registration);
         ProfileRecoveryCoordinator.Plan plan;
-        ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(source));
+        RequireSyntheticOrdinary(Profile(source));
         using (var journal = Open())
         {
             Assert.Throws<IOException>(() => journal.ReservePlan(backup, new string('a', 64), new string('b', 64)));
@@ -545,8 +547,8 @@ public sealed class Mmf3AcceptanceTests
             Assert.Equal("SourceRegistration[private]", registration.ToString());
             Assert.Equal(plan, journal.Inspect(plan.TargetProfileId));
             Assert.Throws<IOException>(() => Directory.Move(Path.Combine(app, "Recovery"), Path.Combine(app, "moved")));
-            Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
-            ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(source));
+            Assert.Throws<IOException>(() => RequireSyntheticOrdinary(Profile(plan.TargetProfileId)));
+            RequireSyntheticOrdinary(Profile(source));
         }
         Assert.False(Directory.Exists(Path.Combine(app, "Profiles"))); // Reservation creates no actual target.
         Assert.Equal(source, File.ReadAllText(preference));
@@ -574,7 +576,7 @@ public sealed class Mmf3AcceptanceTests
                 System.Security.Cryptography.DataProtectionScope.CurrentUser));
             var failure = Record.Exception(() => reopened.Inspect(plan.TargetProfileId));
             Assert.True(failure is IOException or System.Text.Json.JsonException);
-            Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+            Assert.Throws<IOException>(() => RequireSyntheticOrdinary(Profile(plan.TargetProfileId)));
         }
         File.WriteAllBytes(file, [1, 2, 3]);
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => reopened.Inspect(plan.TargetProfileId));
@@ -584,15 +586,15 @@ public sealed class Mmf3AcceptanceTests
         File.WriteAllBytes(file, System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(legacyJson), entropy,
             System.Security.Cryptography.DataProtectionScope.CurrentUser));
         Assert.Equal(legacy, reopened.Inspect(plan.TargetProfileId));
-        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+        Assert.Throws<IOException>(() => RequireSyntheticOrdinary(Profile(plan.TargetProfileId)));
         File.WriteAllBytes(file, ciphertext); // Restore only this test's synthetic record for interrupted-publication check.
         File.WriteAllText(Path.Combine(reservation, "plan.pending"), "synthetic interrupted publication");
         Assert.Throws<IOException>(() => reopened.Inspect(plan.TargetProfileId));
-        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(plan.TargetProfileId)));
+        Assert.Throws<IOException>(() => RequireSyntheticOrdinary(Profile(plan.TargetProfileId)));
         string emptyTarget = Guid.NewGuid().ToString("N");
         PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity.CreateDirectory(Path.Combine(app, "Recovery", "targets", emptyTarget), WindowsIdentity.GetCurrent().User!);
         Assert.Throws<IOException>(() => reopened.Inspect(emptyTarget));
-        Assert.Throws<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Profile(emptyTarget)));
+        Assert.Throws<IOException>(() => RequireSyntheticOrdinary(Profile(emptyTarget)));
         Assert.Equal(source, File.ReadAllText(preference));
 
         // A failure before/during publication carries a stable attempt identity for inspection.
@@ -610,7 +612,7 @@ public sealed class Mmf3AcceptanceTests
         Assert.Equal("PREPARING", incomplete.Attempt.State);
         Assert.Equal(32, incomplete.Attempt.OperationId.Length);
         Assert.Equal(32, incomplete.Attempt.TargetProfileId.Length);
-        Assert.ThrowsAny<IOException>(() => ProfileRecoveryCoordinator.RequireOrdinaryProfile(Path.Combine(brokenApp, "Profiles", source)));
+        Assert.ThrowsAny<IOException>(() => RequireSyntheticOrdinary(Path.Combine(brokenApp, "Profiles", source)));
         Assert.False(Directory.Exists(Path.Combine(brokenApp, "Profiles")));
     }
 #endif

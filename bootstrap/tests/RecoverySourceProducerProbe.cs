@@ -199,7 +199,9 @@ internal static class RecoverySourceProducerProbe
         var launch=Owner("Mmf3AcceptanceLaunch");string argument=(string)launch.GetField("Argument",methods)!.GetRawConstantValue()!;
         try{launch.GetMethod("Parse",methods)!.Invoke(null,[new[]{argument,target}]);throw new Exception("Authorized ordinary startup admitted");}
         catch(TargetInvocationException denied)when(denied.InnerException is IOException){}
-        string preference=Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(targetRoot)!)!,"last-workspace");
+        var security=assembly.GetType("PersonalAiWorkspace.WindowsSecurity.WindowsProfileSecurity",true)!;
+        string profileParent=(string)security.GetMethod("Parent",methods)!.Invoke(null,null)!;
+        string preference=Path.Combine(Path.GetDirectoryName(profileParent)!,"last-workspace");
         string? PreferenceHash()=>File.Exists(preference)?Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(preference))):null;
         string? before=PreferenceHash();Exception? failure=null;int? runtimePid=null;int revisions=0;bool callbackCompleted=false;
         Action<object> observe=value=>

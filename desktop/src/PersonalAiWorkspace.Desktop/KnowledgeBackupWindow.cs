@@ -1,6 +1,7 @@
 using System;
 using System.IO;
-using System.Linq;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Threading;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop;
@@ -36,7 +38,7 @@ internal sealed class KnowledgeBackupWindow:Window
         if(dialog.ShowDialog(this)!=true||closed)return;bool overwrite=File.Exists(dialog.FileName);string? staging=null;
         try{string parent=Path.GetDirectoryName(dialog.FileName)!;NoLinks(parent);staging=Path.Combine(parent,".knowledge-export-"+Guid.NewGuid().ToString("N"));KnowledgeBackupMetadata metadata;
             using(var file=new FileStream(staging,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None,65536,true)){
-                ProtectFile(staging);await runtime.DownloadKnowledgeBackupAsync(file,lifetime.Token);await file.FlushAsync(lifetime.Token);file.Flush(true);
+                ProtectFile(file);await runtime.DownloadKnowledgeBackupAsync(file,lifetime.Token);await file.FlushAsync(lifetime.Token);file.Flush(true);
                 metadata=await runtime.ValidateKnowledgeBackupAsync(file,lifetime.Token);
             }
             lifetime.Token.ThrowIfCancellationRequested();if(File.Exists(dialog.FileName))NoLinks(dialog.FileName);File.Move(staging,dialog.FileName,overwrite);staging=null;
@@ -51,7 +53,69 @@ internal sealed class KnowledgeBackupWindow:Window
     private static string Summary(KnowledgeBackupMetadata m)=>$"format {m.FormatVersion} · 文档 {m.DocumentCount} · 源版本 {m.RevisionCount}";
     private static void NoLinks(string path){if(!Path.IsPathFullyQualified(path)||path.StartsWith(@"\\",StringComparison.Ordinal))throw new IOException();
         for(string? p=path;p is not null;p=Path.GetDirectoryName(p))if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)throw new IOException();}
-    internal static void ProtectFile(string path){var user=WindowsIdentity.GetCurrent().User!;var security=new FileSecurity();security.SetOwner(user);security.SetAccessRuleProtection(true,false);
-        security.AddAccessRule(new FileSystemAccessRule(user,FileSystemRights.FullControl,AccessControlType.Allow));var file=new FileInfo(path);file.SetAccessControl(security);
-        var actual=file.GetAccessControl();if(!user.Equals(actual.GetOwner(typeof(SecurityIdentifier)))||actual.GetAccessRules(true,true,typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().Any(r=>r.AccessControlType==AccessControlType.Allow&&!user.Equals(r.IdentityReference)))throw new IOException();}
+    // Metadata-only rights: owner assignment is neither necessary nor authorized here.
+    private const uint ExportSecurityAccess = 0x00020000 | 0x00040000; // READ_CONTROL | WRITE_DAC
+    private const uint ExportSecurityShare = 1 | 2; // Share reads/writes, never deletion/replacement.
+
+    internal static void ProtectFile(string path)
+    {
+        // Compatibility entry point. Production writers use the existing-handle overload below.
+        using var handle = OpenExportSecurityFile(path, ExportSecurityAccess, ExportSecurityShare,
+            IntPtr.Zero, 3, 0x00200000, IntPtr.Zero); // OPEN_EXISTING | FILE_FLAG_OPEN_REPARSE_POINT
+        ProtectExportHandle(handle);
+    }
+
+    internal static void ProtectFile(FileStream file)
+    {
+        // Reopen the object, not its pathname: an ancestor/path replacement cannot redirect protection.
+        // Metadata-only access is compatible with the writer's FileShare.None data handle.
+        using var handle = ReopenExportSecurityFile(file.SafeFileHandle, ExportSecurityAccess, ExportSecurityShare, 0);
+        ProtectExportHandle(handle);
+    }
+
+    private static void ProtectExportHandle(SafeFileHandle handle)
+    {
+        if (handle.IsInvalid) throw new IOException("Cannot open export file security.", new Win32Exception(Marshal.GetLastWin32Error()));
+        if ((File.GetAttributes(handle) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+            throw new IOException("Export requires a regular file.");
+        using var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User ?? throw new IOException("Export owner is unavailable.");
+        // FileStream is used only for the framework's handle-based security APIs, never for data I/O.
+        using var securityStream = new FileStream(handle, FileAccess.Read, 1);
+        RequireExportOwner(securityStream.GetAccessControl(), user);
+        securityStream.SetAccessControl(CreateExportDacl(user));
+        ValidateExportSecurity(securityStream.GetAccessControl(), user);
+    }
+
+    internal static FileSecurity CreateExportDacl(SecurityIdentifier user)
+    {
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(true, false);
+        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+        return security; // Only Access is dirty: never SetOwner, SetGroup, or SetAuditRule.
+    }
+
+    internal static void RequireExportOwner(FileSecurity security, SecurityIdentifier user)
+    {
+        if (!user.Equals(security.GetOwner(typeof(SecurityIdentifier)))) throw new IOException("Export owner mismatch.");
+    }
+
+    internal static void ValidateExportSecurity(FileSecurity security, SecurityIdentifier user)
+    {
+        RequireExportOwner(security, user);
+        if (!security.AreAccessRulesProtected || !security.AreAccessRulesCanonical)
+            throw new IOException("Export DACL is not protected and canonical.");
+        var descriptor = new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0);
+        // Require exactly the supported user-only ACE. Null DACLs, foreign/conditional/object grants,
+        // inherited permissions, and partial rights all fail closed rather than trusting rule projection.
+        if (descriptor.DiscretionaryAcl is not { Count: 1 } acl || acl[0] is not CommonAce ace
+            || ace.IsCallback || ace.AceQualifier != AceQualifier.AccessAllowed || ace.AceFlags != AceFlags.None
+            || !user.Equals(ace.SecurityIdentifier) || ace.AccessMask != (int)FileSystemRights.FullControl)
+            throw new IOException("Export DACL is not account-private.");
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    private static extern SafeFileHandle OpenExportSecurityFile(string path, uint access, uint share, IntPtr attributes, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", EntryPoint = "ReOpenFile", ExactSpelling = true, SetLastError = true)]
+    private static extern SafeFileHandle ReopenExportSecurityFile(SafeFileHandle original, uint access, uint share, uint flags);
 }

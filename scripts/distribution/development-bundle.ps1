@@ -38,8 +38,8 @@ function Assert-DevelopmentBootstrap([string]$Directory) {
     foreach ($pin in @(
         # Match the already-reviewed WindowsNativeGate BOOTSTRAP constants (2d417c6).
         # These are source-controlled pins, never computed from the candidate binary.
-        @('.exe', '816d253e5f707b1813eabc25a29a8ee5ba3da366fcf27e679cc7964a6c2abcf2'),
-        @('.dll', '4a8536eca1f7c85e893003c3079a7bd3a7e4dffd6f9bcfbf37cd3b8bad6134fb'),
+        @('.exe', 'd1166043c27929957e2c8597c6fd6bbe8a369ad1cfa45791d7dd665506983166'),
+        @('.dll', '9dafed0b1379e9f013d6eb83c9ac5518e611c0e15faa3557991a0c4341029698'),
         @('.deps.json', '27af3a8da9f3b6155d86236c59339053f077e3ad33724e8f5e40281fb0375885'),
         @('.runtimeconfig.json', '3e965cd7cfd553c2ff4e842d8d8019aaae2da0a21d92ff85a87573dd8d1b95c6'))) {
         $path = $helper + $pin[0]

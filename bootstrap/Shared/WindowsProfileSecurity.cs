@@ -45,6 +45,14 @@ internal static class WindowsProfileSecurity
 
     internal static string Root(string id)
     {
+        string logical = LogicalRoot(id);
+        if (!Path.Exists(logical)) return logical; // Precreation intent only, never an admission.
+        using var binding = BindRoot(id);
+        return binding.Root;
+    }
+
+    private static string LogicalRoot(string id)
+    {
         if (!Regex.IsMatch(id, @"\A[0-9a-f]{32}\z", RegexOptions.CultureInvariant))
             throw new IOException("Invalid development Profile identity.");
         return Path.Combine(Parent(), id);
@@ -52,7 +60,7 @@ internal static class WindowsProfileSecurity
 
     internal static string State(string id, bool create)
     {
-        string root = Root(id), parent = Path.GetDirectoryName(root)!, app = Path.GetDirectoryName(parent)!;
+        string root = LogicalRoot(id), parent = Path.GetDirectoryName(root)!, app = Path.GetDirectoryName(parent)!;
         using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
         var sid = user.User ?? throw new IOException();
         // Pin the OS-owned Known Folder chain before creating/validating the private boundary.
@@ -60,7 +68,7 @@ internal static class WindowsProfileSecurity
         if (create && Path.Exists(root)) throw new IOException("Development Profile already exists.");
         if (create && !Path.Exists(app)) CreateDirectory(app, sid);
         // Re-derive after creation so filesystem virtualization cannot change the bound root.
-        root = Root(id); parent = Path.GetDirectoryName(root)!; app = Path.GetDirectoryName(parent)!;
+        root = LogicalRoot(id); parent = Path.GetDirectoryName(root)!; app = Path.GetDirectoryName(parent)!;
         foreach (string directory in new[] { app, parent })
         {
             if (create && !Path.Exists(directory)) CreateDirectory(directory, sid);
@@ -68,12 +76,8 @@ internal static class WindowsProfileSecurity
             ValidatePrivate(handle, sid, directory: true);
         }
         if (create) CreateDirectory(root, sid);
-        using var profile = HoldDirectories(root);
-        foreach (string directory in new[] { app, parent, root })
-        {
-            using var handle = OpenDirectory(directory);
-            ValidatePrivate(handle, sid, directory: true);
-        }
+        using var profile = BindRoot(id);
+        root = profile.Root;
         foreach (string name in Directories)
         {
             string directory = Path.Combine(root, name);
@@ -82,6 +86,68 @@ internal static class WindowsProfileSecurity
             ValidatePrivate(handle, sid, directory: true);
         }
         return root;
+    }
+
+    // A binding, rather than a validated string, owns both namespace chains for its lifetime.
+    // The only exceptional open is the root derived from the OS Known Folder and a strict ID.
+    internal static ProfileBinding BindRoot(string id)
+    {
+        string logical = LogicalRoot(id);
+        var pins = new List<IDisposable>();
+        try
+        {
+            using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
+            var sid = user.User ?? throw new IOException();
+            var logicalPins = HoldDirectories(Path.GetDirectoryName(logical)!); pins.Add(logicalPins);
+            ValidatePrivate(logicalPins.Handles[^1], sid, true);
+            ValidatePrivate(logicalPins.Handles[^2], sid, true);
+            var original = OpenDirectory(logical, allowSystemRedirection: true); pins.Add(original);
+            string canonical = FinalPath(original);
+            ValidateProfileRoot(canonical, id);
+            var actual = HoldDirectories(canonical); pins.Add(actual);
+            foreach (int offset in new[] { 1, 2, 3 }) ValidatePrivate(actual.Handles[^offset], sid, true);
+            RequireSameIdentity(Identity(original), Identity(actual.Handles[^1]));
+            // Both chains and the original leaf remain pinned while re-reading the logical name.
+            using var recheck = OpenDirectory(logical, allowSystemRedirection: true);
+            if (!string.Equals(FinalPath(recheck), canonical, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Development Profile binding changed.");
+            RequireSameIdentity(Identity(original), Identity(recheck));
+            return new ProfileBinding(canonical, actual.Handles[^1], pins);
+        }
+        catch { for (int i = pins.Count - 1; i >= 0; i--) pins[i].Dispose(); throw; }
+    }
+
+    internal sealed class ProfileBinding(string root, SafeFileHandle leaf, List<IDisposable> pins) : IDisposable
+    {
+        internal string Root { get; } = root;
+        internal SafeFileHandle Leaf { get; } = leaf;
+        public void Dispose() { for (int i = pins.Count - 1; i >= 0; i--) pins[i].Dispose(); pins.Clear(); }
+    }
+
+    internal static void ValidateProfileRoot(string path, string id)
+    {
+        ValidatePath(path);
+        string? parent = Path.GetDirectoryName(path), app = parent is null ? null : Path.GetDirectoryName(parent);
+        if (!Regex.IsMatch(id, @"\A[0-9a-f]{32}\z", RegexOptions.CultureInvariant)
+            || !string.Equals(Path.GetFileName(path), id, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetFileName(parent), ParentName, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetFileName(app), ApplicationDirectory, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Development Profile root rejected.");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly record struct DirectoryIdentity(ulong Volume, ulong Low, ulong High);
+
+    internal static DirectoryIdentity Identity(SafeFileHandle handle)
+    {
+        if (!GetFileInformationByHandleEx(handle, 18, out DirectoryIdentity identity, 24))
+            throw new IOException("Development directory identity unavailable.");
+        return identity;
+    }
+
+    internal static void RequireSameIdentity(DirectoryIdentity expected, DirectoryIdentity actual)
+    {
+        if (expected != actual) throw new IOException("Development directory identity changed.");
     }
 
     internal static bool Trusted(SecurityIdentifier value, SecurityIdentifier user) => value == user
@@ -204,6 +270,8 @@ internal static class WindowsProfileSecurity
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool CreateDirectoryW(string path, ref SecurityAttributes attributes);
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int kind, out AttributeTag info, uint size);
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int kind, out DirectoryIdentity info, uint size);
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
 }

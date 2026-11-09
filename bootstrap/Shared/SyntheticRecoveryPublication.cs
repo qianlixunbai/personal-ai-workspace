@@ -43,7 +43,9 @@ internal static class SyntheticRecoveryPublication
         try
         {
             using var user=WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-            evidence.Root=WindowsProfileSecurity.State(id,false);
+            var binding=WindowsProfileSecurity.BindRoot(id);evidence.Pins.Add(binding);
+            evidence.Root=binding.Root;
+            if(!string.Equals(WindowsProfileSecurity.State(id,false),evidence.Root,StringComparison.OrdinalIgnoreCase))throw Stop();
             string app=Path.GetDirectoryName(WindowsProfileSecurity.Parent())!;
             string recovery=Path.Combine(app,"Recovery"),targets=Path.Combine(recovery,"synthetic-targets");
             evidence.Entry=Path.Combine(targets,id);

@@ -35,7 +35,7 @@ internal sealed partial class ProfileRecoveryCoordinator
         if (authority is null) throw Stop();
         authority.Validate();
         Mmf3ProfileNative.Verify(authority);
-        if (!string.Equals(authority.Root, Path.Combine(applicationRoot, "Profiles", authority.RunId),
+        if (!string.Equals(authority.Root, WindowsProfileSecurity.Root(authority.RunId),
             StringComparison.OrdinalIgnoreCase)) throw Stop();
         return ReserveBackupIntentForProfile(authority.RunId);
     }
@@ -47,7 +47,13 @@ internal sealed partial class ProfileRecoveryCoordinator
         if (backupIntent is not null) throw Stop(); // No replay even when publication was uncertain.
         RequireHex(sourceProfileId, 32);
         string profiles = Path.Combine(applicationRoot, "Profiles"), root = Path.Combine(profiles, sourceProfileId);
-        RequireOrdinaryProfile(root);
+        if (authority is not null)
+        {
+            var binding = WindowsProfileSecurity.BindRoot(sourceProfileId); held.Add(binding);
+            root = binding.Root; profiles = Path.GetDirectoryName(root)!;
+        }
+        // The private synthetic seam uses its isolated application; production retains its bound root.
+        RequireOrdinaryProfileAtApplication(root, applicationRoot);
         HoldPrivateDirectory(profiles);
         string rootIdentity = HoldSourceDirectoryIdentity(root);
         string dataIdentity = HoldSourceDirectoryIdentity(Path.Combine(root, "data"));

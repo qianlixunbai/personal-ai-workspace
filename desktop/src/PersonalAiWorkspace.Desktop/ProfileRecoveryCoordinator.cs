@@ -208,10 +208,19 @@ internal sealed partial class ProfileRecoveryCoordinator : IDisposable
     internal static void RequireOrdinaryProfile(string profileRoot)
     {
         string id = Path.GetFileName(profileRoot);
+        using var binding = WindowsProfileSecurity.BindRoot(id);
+        if (!string.Equals(binding.Root, profileRoot, StringComparison.OrdinalIgnoreCase)) throw Stop();
+        // A redirected Profile does not relocate the independent recovery registry.
+        RequireOrdinaryProfileAtApplication(profileRoot, Path.GetDirectoryName(WindowsProfileSecurity.Parent())!);
+    }
+
+    // Kept separate so isolated synthetic registry tests never need a real recovery registration.
+    internal static void RequireOrdinaryProfileAtApplication(string profileRoot, string app)
+    {
+        string id = Path.GetFileName(profileRoot);
         RequireHex(id, 32);
         string profiles = Path.GetDirectoryName(profileRoot) ?? throw Stop();
         if (Path.GetFileName(profiles) != "Profiles") throw Stop();
-        string app = Path.GetDirectoryName(profiles) ?? throw Stop();
         string recovery = Path.Combine(app, "Recovery");
         if (!Exists(recovery)) return; // Only actual not-found counts; access errors propagate.
         using var pins = WindowsProfileSecurity.HoldDirectories(recovery);
