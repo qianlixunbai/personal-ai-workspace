@@ -302,11 +302,13 @@ it('routes live knowledge answers through the real memory editor without saving 
   expect(location.hash).toBe('#/memory')
   expect((screen.getByLabelText('记忆内容') as HTMLTextAreaElement).value).toBe(port.answer().result!.answer)
   expect(screen.getByText(/助手回复（未经核实）/)).toBeTruthy()
+  expect(screen.getByText(/来源角色仅用于本次草稿审阅/).textContent).toContain('保存后标记为由你确认保存（MANUAL）')
   expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
   fireEvent.change(screen.getByLabelText('记忆标题'), { target: { value: 'Reviewed project note' } })
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存' })); fireEvent.click(screen.getByRole('button', { name: '保存' })) })
   expect(create).toHaveBeenCalledTimes(1)
   expect(create).toHaveBeenCalledWith({ type: 'PROJECT_NOTE', title: 'Reviewed project note', content: port.answer().result!.answer })
+  expect(screen.getByText(/保存方式：由你确认保存（MANUAL）/).textContent).toContain('不保留草稿中的来源角色、原会话、问答或引用关联')
   expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
 })
 
