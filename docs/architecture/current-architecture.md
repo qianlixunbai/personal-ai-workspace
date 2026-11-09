@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-09 [同版本整合验收](../engineering/WORKSPACE-INTEGRATED-DESKTOP-REPORT.md)：近期功能分支均已包含于同一提交链，成果保存在 `codex/knowledge-answer-export`，默认 `main` 更新待授权。普通 Runtime 与完整 AssistantApp 的 SQLite 检索、历史读取、精确引用、原生导出和独立进程重开通过。本轮仅扩展既有手工探针，产品架构及安全合同不变；专用模型验收构建依赖测试目录，不能替代普通开发构建。
+
 2026-11-09 增量：[问答笔记导出](../engineering/KNOWLEDGE-ANSWER-EXPORT-REPORT.md)由 Native 按当前会话已授权 taskId 读取持久历史，再逐条获取原版本精确引用；React 只接收 SAVED／CANCELLED，不持有输出路径。固定 Markdown 笔记经 WPF 原生选址保存到新文件，复用现有文件权限保护；无新 Runtime API、schema、模型调用或恢复格式。
 
 核对日期：2026-10-28。历史源码核验基线 `12dce0765dcdb89b75fd605c2b4fc7bf5db00617`；当前 main 另包含文档现代化与 Closing 提交，最新主线状态见 [STATUS](../STATUS.md)。本次只同步文档发布状态，模块关系与安全合同未变。

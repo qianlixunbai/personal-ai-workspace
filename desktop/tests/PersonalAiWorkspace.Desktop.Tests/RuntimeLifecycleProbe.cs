@@ -54,7 +54,9 @@ public static partial class RuntimeLifecycleProbe
         bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
             && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
         bool memory = args.Length == 2 && args[1] is "gui-memory" or "gui-memory-reopen";
-        bool webKnowledge = args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations"
+        bool integratedNote = args.Length == 3 && args[1] is "gui-integrated-note" or "gui-integrated-note-reopen"
+            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
+        bool webKnowledge = integratedNote || args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations"
             or "gui-document-scope" or "gui-document-scope-reopen" or "gui-document-scope-history"
             or "gui-knowledge-quality-baseline" or "gui-knowledge-quality" or "gui-knowledge-quality-inspect"
             or "gui-knowledge-quality-unseen" or "gui-knowledge-quality-unseen-inspect";
@@ -72,7 +74,8 @@ public static partial class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (webKnowledge && args[1].StartsWith("gui-knowledge-quality", StringComparison.Ordinal)) VerifyKnowledgeQuality(app, launch, args[1]);
+                if (integratedNote) VerifyIntegratedNote(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2]);
+                else if (webKnowledge && args[1].StartsWith("gui-knowledge-quality", StringComparison.Ordinal)) VerifyKnowledgeQuality(app, launch, args[1]);
                 else if (webKnowledge) VerifyWebKnowledgeGui(app, launch, args[1]);
                 else if (memory) VerifyMemoryGui(app, launch, args[1] == "gui-memory-reopen");
                 else if (args.Length == 2 && args[1] is "gui-x1" or "gui-x1-native") VerifyX1Gui(app, args[1] == "gui-x1-native");

@@ -3,6 +3,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Windows.Automation;
+using System.Windows.Interop;
 using PersonalAiWorkspace.Core;
 using Xunit;
 
@@ -10,6 +13,111 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public static partial class RuntimeLifecycleProbe
 {
+    // One opt-in integration path, using the recorded synthetic unseen-quality Profile.
+    // No fixtures are inserted into product stores; saved model answers are read through Runtime.
+    private static void VerifyIntegratedNote(AssistantApp app,Mmf3AcceptanceLaunch launch,bool reopen,string run)
+    {
+        bool passed=false;string stage="STARTUP";Process? java=null;
+        string root=Path.Combine(launch.Root,"evidence","integrated-note-"+run),prefix=reopen?"reopen":"first";
+        if(!reopen){Assert.False(Directory.Exists(root));Directory.CreateDirectory(root);}else Assert.True(Directory.Exists(root));
+        void Save(string suffix,object value)=>File.WriteAllText(Path.Combine(root,prefix+suffix),JsonSerializer.Serialize(value,WebKnowledgeJson));
+        app.Startup+=async(_,_)=>{
+            using var deadline=new CancellationTokenSource(TimeSpan.FromMinutes(4));var ct=deadline.Token;
+            async Task Wait(Func<Task<bool>> ready,int seconds=45){var clock=Stopwatch.StartNew();while(!await ready()){Assert.True(clock.Elapsed.TotalSeconds<seconds,stage);await Task.Delay(100,ct);}}
+            var methods=new List<string>();
+            try{
+                await Wait(()=>Task.FromResult(app.Workspace?.Host.IsReady is true&&app.DevelopmentRuntime!.Snapshot().CanQueryStorage));
+                java=Process.GetProcessById(app.DevelopmentRuntime!.OwnedProcessId!.Value);
+                Save("-process.json",new{appPid=Environment.ProcessId,javaPid=java.Id,javaStartedUtc=java.StartTime.ToUniversalTime()});
+                using var client=RuntimeClient.CreateMmf3Acceptance(app.DevelopmentRuntime.ReadCredential);
+                var oracle=JsonSerializer.Deserialize<QualityOutcome[]>(File.ReadAllText(Path.Combine(launch.Root,"evidence","quality-unseen.json")))!;
+                Assert.Equal(3,oracle.Length);Assert.Equal(3,(await client.ListKnowledgeAsync("ACTIVE",0,ct)).Total);
+                Assert.Equal(3,(await client.ListKnowledgeAnswersAsync(0,ct)).Total);
+                foreach(var row in oracle){
+                    var sample=Assert.Single(UnseenQualityCases,c=>c.Id==row.Id);Assert.Equal(sample.Question,row.Question);
+                    var stored=await client.GetKnowledgeAnswerHistoryAsync(row.Task.TaskId,ct);
+                    Assert.Equal(row.Question,stored.Question);Assert.Equal(row.Scope,stored.Scope);Assert.Equal(sample.Query,stored.Query);
+                    Assert.Equal(JsonSerializer.Serialize(row.Task),JsonSerializer.Serialize(stored.Task));
+                }
+                var selected=oracle[0];var entry=await client.GetKnowledgeAnswerHistoryAsync(selected.Task.TaskId,ct);
+                var detail=await client.GetKnowledgeAsync(selected.Scope.DocumentId,ct);var citation=Assert.Single(entry.Task.Result!.Citations);
+                var source=await client.PreviewKnowledgeAsync(citation.DocumentId,citation.SourceRevision,citation.StartOffset,ct);
+                string cited=source.Text[..(citation.EndOffset-citation.StartOffset)];Assert.Equal(selected.CitationTexts[0],cited);
+                var shell=app.Workspace!;var core=shell.Browser.CoreWebView2;
+                core.WebMessageReceived+=(_,message)=>{using var item=JsonDocument.Parse(message.WebMessageAsJson);if(item.RootElement.TryGetProperty("method",out var method))methods.Add(method.GetString()!);};
+                Task<string> Script(string js)=>core.ExecuteScriptAsync(js);
+                async Task<bool> Is(string js)=>await Script(js)=="true";
+                string Json(string value)=>JsonSerializer.Serialize(value);
+                async Task Click(string selector,string label){string expression="[...document.querySelectorAll("+Json(selector+" button")+")].find(b=>b.getClientRects().length>0&&!b.disabled&&b.textContent==="+Json(label)+")";await Wait(()=>Is("Boolean("+expression+")"));await Script(expression+".click()");}
+                async Task Input(string id,string value)=>_ = await Script("(()=>{const e=document.getElementById("+Json(id)+");Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,"+Json(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+                async Task Snapshot(string name){using var image=new FileStream(Path.Combine(root,prefix+"-"+name+".png"),FileMode.CreateNew);await core.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,image);}
+                stage="SCOPED_SEARCH";await Script("location.hash='#/knowledge'");
+                await Wait(()=>Is("document.querySelectorAll('.knowledge-list .memory-select').length===3"));
+                await Script("[...document.querySelectorAll('.knowledge-list .memory-select')].find(b=>b.firstChild.textContent==="+Json(detail.Document.Title)+").click()");
+                await Wait(()=>Is("document.getElementById('knowledge-detail-title')?.textContent==="+Json(detail.Document.Title)));
+                await Click(".knowledge-search","限定为当前文档");await Input("knowledge-search-query","Nacre");await Click(".knowledge-search","检索");
+                await Wait(()=>Is("document.querySelector('.knowledge-search').innerText.includes('没有满足全部关键词的当前来源。')"));
+                await Input("knowledge-search-query","Quarantine");await Click(".knowledge-search","检索");
+                await Wait(()=>Is("document.querySelectorAll('.knowledge-search li').length===1"));await Click(".knowledge-search","打开此位置");
+                await Wait(()=>Is("Boolean(document.querySelector('[aria-label=纯文本预览] mark'))"));
+                stage="HISTORY_AND_CITATION";
+                await Script("(()=>{const d=document.querySelector('.knowledge-answer').closest('details');if(!d.open)d.querySelector('summary').click()})()");
+                await Click(".knowledge-answer","查看问答历史");await Click(".knowledge-answer",entry.Question);
+                await Wait(()=>Is("document.querySelector('.knowledge-answer .knowledge-snippet')?.textContent==="+Json(entry.Task.Result.Answer)));
+                Assert.True(await Is("document.querySelector('.knowledge-answer [aria-label=资料范围]').innerText.includes("+Json(detail.Document.Title)+")"));
+                await Click(".knowledge-answer","打开引用来源");
+                await Wait(()=>Is("document.querySelector('[aria-label=纯文本预览] mark')?.textContent==="+Json(cited)));
+                await Script("document.querySelector('[aria-label=纯文本预览]').scrollIntoView({block:'center'})");await Snapshot("source");
+                string target=Path.Combine(root,"answer-note.md");
+                if(!reopen){
+                    stage="NATIVE_SAVE";Assert.False(File.Exists(target));await Input("knowledge-answer-question","尚未提交的新草稿，不应进入已保存笔记。");
+                    async Task NativeDialog(bool cancel){
+                        uint thread=GetCurrentThreadId();IntPtr owner=new WindowInteropHelper(shell).Handle;
+                        await Task.Run(async()=>{
+                            IntPtr dialog=IntPtr.Zero;var clock=Stopwatch.StartNew();
+                            while(dialog==IntPtr.Zero){
+                                EnumThreadWindows(thread,(window,_)=>{var name=new StringBuilder(32);GetClassName(window,name,name.Capacity);if(GetWindow(window,4)==owner&&name.ToString()=="#32770"){dialog=window;return false;}return true;},IntPtr.Zero);
+                                Assert.True(clock.Elapsed.TotalSeconds<25,"Owned save dialog missing");if(dialog==IntPtr.Zero)await Task.Delay(100,ct);
+                            }
+                            var element=AutomationElement.FromHandle(dialog);Assert.Contains("导出问答笔记",element.Current.Name);
+                            Assert.Equal(Environment.ProcessId,element.Current.ProcessId);
+                            if(cancel){SendMessage(dialog,0x0111,2,0);return;}
+                            AutomationElement? filename=null;
+                            while(filename is null){
+                                filename=element.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.AutomationIdProperty,"1001"));
+                                Assert.True(clock.Elapsed.TotalSeconds<25,"Owned save filename control missing");
+                                if(filename is null)await Task.Delay(100,ct);
+                            }
+                            ((ValuePattern)filename.GetCurrentPattern(ValuePattern.Pattern)).SetValue(target);
+                            SendMessage(dialog,0x0111,1,0);
+                        },ct);
+                    }
+                    var save=NativeDialog(false);await Click(".knowledge-answer","导出问答笔记…");await save;
+                    await Wait(()=>Is("document.querySelector('.knowledge-answer').innerText.includes('已保存问答笔记，包含引用原文。')"));
+                    Assert.True(File.Exists(target));stage="NATIVE_CANCEL";
+                    string savedHash=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(target)));
+                    var cancel=NativeDialog(true);await Click(".knowledge-answer","导出问答笔记…");await cancel;
+                    await Wait(()=>Is("document.querySelector('.knowledge-answer').innerText.includes('已取消导出。')"));
+                    Assert.Equal(savedHash,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(target))));
+                    Assert.True(await Is("document.getElementById('knowledge-answer-question').value.includes('尚未提交的新草稿')"));
+                }
+                stage="READ_EXPORTED_NOTE";string note=File.ReadAllText(target,new UTF8Encoding(false,true));
+                Assert.Contains(entry.Question,note);Assert.Contains(entry.Query,note);Assert.Contains(entry.Task.Result.Answer,note);Assert.Contains(cited,note);
+                Assert.Contains(citation.DocumentId,note);Assert.Contains("源版本："+citation.SourceRevision,note);Assert.DoesNotContain("尚未提交的新草稿",note);
+                Assert.Equal(3,(await client.ListKnowledgeAnswersAsync(0,ct)).Total);Assert.Equal(3,(await client.ListKnowledgeAsync("ACTIVE",0,ct)).Total);
+                Assert.DoesNotContain(methods,m=>m is "knowledge.answerSubmit" or "models.mutate" or "web.fetchSubmit" or "knowledge.import" or "knowledge.answerHistoryDelete");
+                Assert.Equal(reopen?0:2,methods.Count(m=>m=="knowledge.answerExport"));
+                await Script("document.querySelector('.knowledge-answer .knowledge-snippet').scrollIntoView({block:'start'})");await Snapshot("answer");
+                string noteHash=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(target)));
+                if(reopen){using var first=JsonDocument.Parse(File.ReadAllText(Path.Combine(root,"first-result.json")));Assert.Equal(first.RootElement.GetProperty("noteHash").GetString(),noteHash);}
+                Save("-result.json",new{passed=true,mode=prefix,noteHash,historyCount=3,sourceCount=3,methods,modelCalls=0,systemDialogSaveVerified=!reopen,systemDialogCancelVerified=!reopen});
+                passed=true;Console.WriteLine("INTEGRATED_NOTE_DESKTOP_PASS "+prefix);
+            }
+            catch(Exception error){Save("-failure.json",new{stage,startup=app.DevelopmentRuntime?.Snapshot(),type=error.GetType().Name,message=error.Message,frames=new StackTrace(error,true).GetFrames().Select(f=>new{method=f.GetMethod()?.Name,line=f.GetFileLineNumber()})});Console.WriteLine("INTEGRATED_NOTE_DESKTOP_STOP "+stage);}
+            finally{try{await app.ExitAsync();if(java is not null)Assert.True(java.WaitForExit(10000));}catch{passed=false;app.Shutdown(10);}finally{java?.Dispose();}}
+        };
+        app.Run();Assert.True(passed);
+    }
     // Frozen before inference. Expectations stay in the fixture, never in model input.
     private sealed record QualityCase(string Id, string Source, string Question, string Query, string Language, string[] Exact);
     private sealed record QualityOutcome(string Id, string Question, KnowledgeSourceScope Scope, KnowledgeAnswerTask Task,
