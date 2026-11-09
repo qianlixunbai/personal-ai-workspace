@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 跨会话原文查找已交付：对话页可查找当前工作区的终态消息，按使用中／归档筛选，查看字面高亮并打开对应会话和轮次；同会话保留草稿，跨会话先确认，离页／session 重置清除结果。复用现有 Store／原生授权／分页，不新增搜索服务、schema、模型调用或持久副本。原生 HTTP／SQLite 3/3、桌面 Bridge 31/31、前端 16/16 及构建通过；完整真实桌面、PG、最大容量性能未随本轮验收。已评估 Open WebUI／LibreChat；恢复入口仍缺来源与激活合同，本轮转向直接用户能力，不继续扩张备份基础设施。六份用户文档与既有服务保持不变，仅本地提交，仍为 Development-only。[实现、取舍、逐轮证据及限制](engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)。
+
 2026-11-09 合成加密恢复的隔离桌面闭环通过：恢复来源及五条终态问答后，真实 WPF／WebView／Bridge／HTTP／SQLite 可阅读历史、精确打开旧版本引用并提示已删除来源；第一轮 JVM 完全退出后，第二轮独立 JVM 重开同一数据通过，两轮各 1/1、零跳过。未启动模型、未重放任务、桌面写请求为 0；自有进程和端口退出，最近工作区选择与六份未跟踪文档未变。本轮只扩展测试工具，正式用户入口、原生登记／Profile 激活、完整 AssistantApp 恢复及 PG 仍未完成；不能视作个人数据已备份。仅本地提交，仍为 Development-only。[实测、截图与边界](engineering/KNOWLEDGE-ENCRYPTED-RECOVERY-DESKTOP-REPORT.md)。以下记录保留各自时点结论。
 
 2026-11-09 合成联合快照已增加认证加密：复用既有 Bouncy Castle OpenPGP 流，来源和终态历史直接写密文，完整认证后再解包／重建／发布新候选，恢复保留原问题、答案和旧版本引用。原生隔离验证 16/16、零跳过；错口令、重算摘要后的篡改、非法 KDF、越界内容及中断均拒绝，旧来源备份和旧容器流合同通过相关回归。没有个人数据操作、用户按钮、PG 或 Profile 激活；恢复库仍为私有明文，完整新 JVM／桌面恢复尚未验收。六份未跟踪文档未改，仅本地提交，仍为 Development-only。[实现与实测边界](engineering/SYNTHETIC-KNOWLEDGE-HISTORY-ENCRYPTION-REPORT.md)。以下较早记录保留各自时点结论。
