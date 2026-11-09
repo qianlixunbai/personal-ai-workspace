@@ -21,9 +21,9 @@
 | 能力 | 当前实现与边界 |
 | --- | --- |
 | **助手与翻译** | 本地文本问答、摘要、单条／批量翻译；通过受控任务执行，支持取消与明确失败状态。 |
-| **持续对话** | 持久化多轮 Conversations，保留轮次、成功／失败／取消状态与重开能力；[跨会话查找原文并定位轮次](docs/engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，记忆按次显式选择。 |
+| **持续对话** | 持久化多轮 Conversations，保留轮次、成功／失败／取消状态与重开能力；[跨会话查找原文并定位轮次](docs/engineering/CONVERSATION-MESSAGE-SEARCH-REPORT.md)，记忆按次显式选择；[完整会话导出](docs/engineering/CONVERSATION-EXPORT-REPORT.md)保留所有已保存轮次的原文和状态，不含未发送草稿。 |
 | **个人记忆** | 手动创建、编辑、归档与删除 Memory，保留 revision 冲突保护；不会自动从对话提取或注入。 |
-| **知识库与引用** | 原生导入 TXT / Markdown 及经预览确认的 Word 正文摘录，支持[源版本对比与原文回看](docs/engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)、词法检索和显式问答；可[限定一份文档的当前源版本](docs/engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，引用与问答历史保留范围。 |
+| **知识库与引用** | 原生导入 TXT / Markdown 及经预览确认的 Word／[PDF 文字层摘录](docs/engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)，支持[源版本对比与原文回看](docs/engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)、词法检索和显式问答；可[限定一份文档的当前源版本](docs/engineering/KNOWLEDGE-DOCUMENT-SCOPE-REPORT.md)，引用与问答历史保留范围。 |
 | **跨应用快速助手** | `Ctrl+Alt+Shift+Q` 获取主动选区并选择翻译、总结或解释／提问；`Ctrl+Alt+Shift+T` 直接翻译。真实完整流程仍 **PARTIAL**。 |
 | **财务工作区** | 显式绑定后的账户、流水、资产、持仓、投资历史、导入回执、财务总览与统计等只读查询；不修改账本。 |
 | **行情参考** | 用户主动刷新 Massive 日线参考值；AAPL、SPY、USD/CNY 有用户报告的真实人工成功证据。成功不保证最新，不进入持久缓存或派生估值。 |

@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-09：[完整会话导出](engineering/CONVERSATION-EXPORT-REPORT.md)提供全部持久轮次的原文笔记、原生保存与取消证据、新统一开发包及开源评估。记录草稿排除、状态／记忆引用保真、宿主新 Profile 和仓库目录写权限失败；不等同于个人恢复或正式发布。
+
 2026-11-09：[PDF 导入与完整应用验证](engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)提供最新统一开发 ZIP、实际 EXE 启动、PDF 预览确认／检索／重开证据、许可来源和边界。无 OCR，0 模型调用；上一阅读包的完整启动也已补验，下列文档保留各自原时点范围。
 
 2026-11-09：[回答排版阅读与原文保真](engineering/ANSWER-MARKDOWN-READING-REPORT.md)提供阅读开发预览 ZIP、成熟组件／许可评估、34 项聚焦验证和实际 WPF WebView 截图。其实际产品启动／JVM 链路由后续 PDF 轮补验，下面旧包的其他完整验收保留原范围。

@@ -1,6 +1,8 @@
 # 当前功能链的 Windows 开发包整合验收
 
-最新入口：[PDF 导入与完整应用验证](KNOWLEDGE-PDF-IMPORT-REPORT.md)提供包含本报告全部功能及回答排版、PDF 摘录的新统一 ZIP，绑定 `fc6bac7`；新包实际 EXE 启动和完整 PDF 导入／重开已通过。以下整合包的细节与其他场景仍保留原验证范围。
+最新增量：[完整会话导出](CONVERSATION-EXPORT-REPORT.md)在同一资料链增加全部持久轮次的原生 Markdown 保存，提供新统一开发 ZIP。真实 WPF／Native／HTTP／SQLite 导出通过；完整应用启动仍以此前 PDF 包证据为准，不将旧结论扩大为新包已重跑。下列历史包记录保持原时点范围。
+
+前一完整应用验收入口：[PDF 导入与完整应用验证](KNOWLEDGE-PDF-IMPORT-REPORT.md)提供包含本报告全部功能及回答排版、PDF 摘录的新统一 ZIP，绑定 `fc6bac7`；新包实际 EXE 启动和完整 PDF 导入／重开已通过。以下整合包的细节与其他场景仍保留原验证范围。
 
 后续增量：[回答排版阅读报告](ANSWER-MARKDOWN-READING-REPORT.md)提供[阅读开发预览 ZIP](../../artifacts/Workspace-answer-reading-development-final-20261109.zip)，基于 `60f7a0f`。前端、隔离真实 WebView 和包文件已核对；其实际 EXE／包内 JVM／UI 启动由后续 PDF 轮补验。本报告下方其他完整场景仍仅属于原整合包，不能自动沿用到新包。
 
