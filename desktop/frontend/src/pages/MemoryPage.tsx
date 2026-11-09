@@ -6,6 +6,7 @@ import type { MemoryDraft, MemoryItem, MemoryList, MemoryMetadata, MemoryQuery, 
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { MemoryPreview } from '../components/MemoryPreview'
 import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
+import { MemoryDraftDuplicateCheck } from '../components/MemoryDraftDuplicateCheck'
 import type { MemorySourceRole } from '../components/memoryCandidate'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
@@ -266,6 +267,9 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled || !!revisionReview} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
         <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
         {fromConversation && !validContent(draft.content) && <p role="alert" className="error">来源原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
+        {!loaded && !revisionReview && validContent(draft.content) && <MemoryDraftDuplicateCheck key={`draft-duplicates-${candidateEpoch}`} bridge={bridge}
+          enabled={enabled && visible && !busy && !confirmation && !blocked} content={draft.content}
+          openMemory={id => requestDiscard(() => get(id))} />}
         <div className="operation-actions"><button className="primary" disabled={disabled || !!revisionReview || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
           <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
           <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>

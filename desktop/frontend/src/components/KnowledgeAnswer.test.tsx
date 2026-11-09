@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { App } from '../app/App'
 import { status } from '../test/fixtures'
-import { memoryItem } from '../test/memoryFixtures'
+import { memoryItem, metadata as memoryMetadata } from '../test/memoryFixtures'
 import { KnowledgePage } from '../pages/KnowledgePage'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import { KnowledgeService } from '../test/knowledgeFixtures'
@@ -290,7 +290,9 @@ it('routes live knowledge answers through the real memory editor without saving 
   const port = new AnswerService(), bridge = new WorkspaceClient(port); clients.push(bridge)
   history.replaceState(null, '', '#/knowledge')
   vi.spyOn(bridge, 'bootstrap').mockResolvedValue(status)
-  vi.spyOn(bridge, 'listMemory').mockResolvedValue({ items: [], total: 0, page: 0, limit: 20 })
+  const existing = { ...memoryItem(88), title: 'Existing reviewed answer', content: port.answer().result!.answer }
+  const list = vi.spyOn(bridge, 'listMemory').mockImplementation(async query => ({ items: query.query ? [memoryMetadata(existing)] : [], total: query.query ? 1 : 0, page: 0, limit: 20 }))
+  const get = vi.spyOn(bridge, 'getMemory').mockResolvedValue(existing)
   vi.spyOn(bridge, 'memoryEditorState').mockResolvedValue({ acknowledged: true })
   const create = vi.spyOn(bridge, 'createMemory').mockImplementation(async draft => ({ ...memoryItem(), ...draft }))
   const update = vi.spyOn(bridge, 'updateMemory')
@@ -303,6 +305,13 @@ it('routes live knowledge answers through the real memory editor without saving 
   expect((screen.getByLabelText('记忆内容') as HTMLTextAreaElement).value).toBe(port.answer().result!.answer)
   expect(screen.getByText(/助手回复（未经核实）/)).toBeTruthy()
   expect(screen.getByText(/来源角色仅用于本次草稿审阅/).textContent).toContain('保存后标记为由你确认保存（MANUAL）')
+  expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
+  expect(get).not.toHaveBeenCalled()
+  await readerClick('检查草稿是否重复')
+  expect(list).toHaveBeenLastCalledWith({ query: port.answer().result!.answer, status: 'ACTIVE', type: null, page: 0 })
+  expect(get).toHaveBeenCalledWith(existing.id)
+  expect(within(screen.getByRole('region', { name: '草稿重复检查' })).getByText(existing.title)).toBeTruthy()
+  expect((screen.getByLabelText('记忆内容') as HTMLTextAreaElement).value).toBe(port.answer().result!.answer)
   expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(propose).not.toHaveBeenCalled()
   fireEvent.change(screen.getByLabelText('记忆标题'), { target: { value: 'Reviewed project note' } })
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存' })); fireEvent.click(screen.getByRole('button', { name: '保存' })) })

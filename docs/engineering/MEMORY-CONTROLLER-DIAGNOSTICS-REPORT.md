@@ -14,6 +14,8 @@ The host (5080) exited normally with fixture exit code 10; no Runtime was starte
 
 Subsequent [profile-clear static analysis](MEMORY-PROFILE-CLEAR-ANALYSIS.md) records the verified production ordering, current owned-profile runtime metadata, and upstream limitations. A bounded follow-up moves the existing browser-failure subscription before clearing and adds runtime/browser-PID/failed-kind observations to the test fixture. The managed incremental build passes; no new desktop run has validated those observations or resolved the clearing wait.
 
+The later single run of committed `de4e51d` did validate the added observation: new synthetic Profile `39d1b9009361437a865463b06c0cc647`, live runtime `157.0.4341.42`, browser PID 27448. GPU and renderer exits were captured before clearing; subsequent GPU/browser exits occurred while clearing was pending. The host still ended at the original 30-second bound without READY. Exact host/browser PIDs 21740/27448 exited, 18765 was closed, and the window was released. The [full event ordering and limits](MEMORY-PROFILE-CLEAR-ANALYSIS.md#fresh-profile-observation-with-de4e51d) supersede the earlier lack of process-failure evidence; no retry or security workaround followed.
+
 ## Verified baseline and rollback
 
 Read the Memory desktop delivery, Profile path/export ACL, and Knowledge-to-Memory draft reports. Repository/ancestor searches found no applicable AGENTS.md. At diagnostic start, the branch was `codex/knowledge-version-compare`, baseline HEAD was `87364638399872a755e3403c28a06b88da74495d`, and main was `f5266bf4383f52a2293b0fe4bfe1964af958e64a`.

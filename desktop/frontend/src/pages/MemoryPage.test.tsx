@@ -64,6 +64,64 @@ it('previews one search result without replacing a dirty draft, rejects changed 
   expect(title.value).toBe('Unsent draft title'); expect(content.value).toBe('Unsent draft body')
   expect(port.sent.every(x => ['memory.list', 'memory.get', 'memory.editorState'].includes(String(x.method)))).toBe(true)
 })
+it('checks manual draft duplicates without a model or write and guards opening an existing record', async () => {
+  const service = new MemoryService(), body = 'Manual original 😀 <img src=x> exact\nbody'
+  service.items = [{ ...memoryItem(), content: body }, { ...memoryItem(2), title: body, content: 'Only the title matches' },
+    { ...memoryItem(3), status: 'ARCHIVED', content: body }]
+  const { port, title, content } = await setup(service)
+  edit(content, body)
+  expect(title.value).toBe('') // The body can be checked before choosing a title.
+  expect(port.sent.some(x => x.method === 'memory.get')).toBe(false)
+  const before = port.sent.length
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查草稿是否重复' })); fireEvent.click(screen.getByRole('button', { name: '检查草稿是否重复' })) })
+  const review = screen.getByRole('region', { name: '草稿重复检查' })
+  expect(within(review).getAllByRole('listitem')).toHaveLength(1)
+  expect(within(review).getByText('Synthetic Memory 1')).toBeTruthy()
+  expect(port.sent.slice(before).filter(x => ['memory.list', 'memory.get'].includes(String(x.method))).map(x => ({ method: x.method, payload: x.payload }))).toEqual([
+    { method: 'memory.list', payload: { query: body, status: 'ACTIVE', type: null, page: 0 } },
+    ...[1, 2].map(n => ({ method: 'memory.get', payload: { memoryId: memoryItem(n).id } })),
+  ])
+  expect(content.value).toBe(body); expect(review.querySelector('img')).toBeNull()
+  await click('打开已有记忆：Synthetic Memory 1'); await click('取消')
+  expect(content.value).toBe(body); expect(title.value).toBe('')
+  expect(screen.getByRole('region', { name: '草稿重复检查' })).toBeTruthy()
+  await click('打开已有记忆：Synthetic Memory 1'); await click('丢弃并继续')
+  expect(title.value).toBe('Synthetic Memory 1'); expect(content.value).toBe(body)
+  expect(screen.queryByRole('region', { name: '草稿重复检查' })).toBeNull()
+  expect(port.sent.every(x => ['memory.list', 'memory.get', 'memory.editorState'].includes(String(x.method)))).toBe(true)
+})
+it('reports bounded or failed draft checks and discards late results after editing or leaving', async () => {
+  const { port, bridge, view, content } = await setup()
+  const body = 'Manual pending body'; edit(content, body); port.failList = true
+  await click('检查草稿是否重复')
+  const review = screen.getByRole('region', { name: '草稿重复检查' })
+  expect(within(review).getByRole('alert').textContent).toContain('不能判断是否已有相同正文')
+  expect(within(review).queryByText(/未发现正文完全相同项/)).toBeNull()
+  port.failList = false
+  port.items = Array.from({ length: 21 }, (_, i) => ({ ...memoryItem(i + 1), content: i === 20 ? body : body + ` other ${i}` }))
+  const before = port.sent.length; await click('检查草稿是否重复')
+  expect(port.sent.slice(before).filter(x => x.method === 'memory.get')).toHaveLength(20)
+  expect(within(review).getByRole('alert').textContent).toContain('检查不完整')
+  expect(within(review).getByText(/本次已核对的 20 条记录中/)).toBeTruthy()
+  port.items = [{ ...memoryItem(), content: body }, { ...memoryItem(2), content: body + ' extra' }]
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  const late = vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('检查草稿是否重复')
+  edit(content, 'Edited while reading')
+  const afterEdit = port.sent.length; await act(async () => complete(port.items[0]!))
+  expect(port.sent).toHaveLength(afterEdit)
+  expect(within(review).queryByRole('listitem')).toBeNull(); expect(within(review).queryByRole('alert')).toBeNull()
+  expect(content.value).toBe('Edited while reading')
+  port.items[0] = { ...port.items[0]!, content: content.value }
+  late.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('检查草稿是否重复')
+  view.rerender(<MemoryPage bridge={bridge} enabled visible={false} registerLeave={() => () => {}} openBackup={() => {}} />)
+  await act(async () => complete(port.items[0]!))
+  view.rerender(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => {}} />)
+  expect(within(review).queryByRole('listitem')).toBeNull()
+  expect(within(review).getByRole('alert').textContent).toContain('检查已中断')
+  expect(port.sent.every(x => ['memory.list', 'memory.get', 'memory.editorState'].includes(String(x.method)))).toBe(true)
+})
 class ConversationMemoryService extends MemoryService {
   detail = conversationHistory()
   candidateStatus: 'SUCCEEDED' | 'QUEUED' = 'SUCCEEDED'
