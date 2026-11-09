@@ -50,7 +50,7 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 
 **新机器可能因工具链／产物字节不同而在固定 Bootstrap pin 处拒绝。** 当前脚本没有通用、自助的重新授信流程；应保留诊断并独立审查来源，不修改 pin、复制他人 manifest、放宽 ACL 或伪造 receipt。普通 Debug / Release 编译并不自动获得开发 Profile 准入。
 
-本文未使用 `-DistributionName`；该参数会创建单独开发目录／ZIP，不是日常文档验证所必需，也不构成正式 Release。本轮没有执行打包。
+需要独立目录／ZIP 时，可为同一脚本指定一个尚不存在的 `-DistributionName`；分发路径固定自包含 .NET 10.0.14，并从实际依赖包复制许可材料。该操作仍保留 NativeBootstrap 固定来源准入，不是正式 Release。2026-11-09 已完成[当前统一开发包及实际桌面验证](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)，报告列出本地最终产物、代码／打包版本、精确哈希和限制；普通源码构建与历史命令核验不自动继承该包的验证结果。
 
 ## 启动与原生配置
 

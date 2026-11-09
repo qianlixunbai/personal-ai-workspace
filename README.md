@@ -33,6 +33,8 @@
 
 当前实现、证据来源及未完成关卡见 [STATUS](docs/STATUS.md)。不承诺任意 Ollama 版本、模型或本机环境都能通过现有准入。
 
+近期资料功能已整合为同一个[本地 Windows 开发包](docs/engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)，Word 两版本导入／对比、历史笔记导出和应用重开通过隔离桌面验证。报告提供本机产物入口及可用范围；仓库仍无正式安装器。
+
 ## Windows 客户端
 
 **Conversations · 深色主题**：会话列表、历史阅读与输入分区，记忆按次显式选择。点击图片查看原始分辨率。

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-09 [统一 Windows 开发包](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)已包含 Word 导入、版本对比、限定检索、历史问答与笔记导出。修正旧打包 helper 常量、固定包内 .NET 10.0.14 并补齐许可材料；最终 ZIP 7/7 合同通过，两条桌面流程共四次独立应用启动及实际 EXE 无参数启动通过，0 模型调用。仅本地提交，`main` 保持 `f5266bf`；六份用户文档、最近工作区记录与既有服务未变。仍为 Development-only；附最终包、精确哈希、失败记录和未验证范围。
+
 2026-11-09 [文档版本对比](engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)接续 Word 导入：选择两个已发布版本，完整读取后显示逐行增删，并跳回对应版本原文。固定复用 BSD jsdiff 9.0.0；前端必要检查 9/9，实际合成 Word 两版本及独立应用重开通过，0 模型调用。成果沿同一链位于 `codex/knowledge-version-compare`，本地 `main` 已按此前明确授权更新到 `f5266bf`，没有进一步更新或推送；下列拒绝记录保留原时点经过。仍为 Development-only。
 
 2026-11-09 [Word 正文摘录导入](engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)完成并于重连后提交 `6910ba8`：选择 DOCX → 原生预览确认 → TXT 摘录入库 → 检索／精确原文 → 独立应用重开。随后复现并修正公式／字体符号被跳过却仍成功的问题，改为明确拒绝，普通 Unicode 字符保留。初轮桌面 29/29、前端 14/14；修复后相关 6/6，完整桌面再次两次独立启动通过，失败记录保留。复用 MIT Open XML SDK 3.5.1，不改 Runtime／schema，0 模型调用。六份用户文档与既有服务未动，成果在 `codex/knowledge-docx-import`，基于 `main @ f5266bf`，未推送，仍为 Development-only。

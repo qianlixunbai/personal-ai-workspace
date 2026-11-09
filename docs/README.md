@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-09：[当前完整开发包与验收](engineering/WORKSPACE-CURRENT-BUNDLE-REPORT.md)提供近期资料功能的统一 Windows 入口；包含最终本地 ZIP、.NET 补丁及许可整合、真实包内桌面流程、回滚点和可用边界。`main` 当前为已获授权的 `f5266bf`，下列较早记录保留原时点经过。
+
 2026-11-09：[文档版本对比与 Word 更新闭环](engineering/KNOWLEDGE-VERSION-COMPARISON-REPORT.md)提供逐行增删和对应版本原文入口；含 jsdiff 许可／安全／维护评估、必要前端检查及完整桌面重开证据，读取超限不会显示部分结果。
 
 2026-11-09：[Word 正文导入与实际桌面验收](engineering/KNOWLEDGE-DOCX-IMPORT-REPORT.md)新增 DOCX 预览确认后导入文字摘录，支持既有检索、原文和重开；附开源许可评估、格式限制、失败记录和断线后的收尾核对。原 Word 文件与图片版式不进入知识库备份。
