@@ -1,6 +1,7 @@
 package io.github.qianlixunbai.workspace.knowledge;
 
 import com.sun.nio.file.ExtendedOpenOption;
+import io.github.qianlixunbai.workspace.persistence.SqliteFileUrl;
 import org.sqlite.*;
 import javax.sql.DataSource;
 import java.io.*;
@@ -38,12 +39,12 @@ public final class SqliteKnowledgeMigration {
                 var held=lock.tryLock()){
                 if(held==null)throw new IOException();
                 var rw=new SQLiteConfig();rw.resetOpenMode(SQLiteOpenMode.CREATE);rw.setBusyTimeout(3000);
-                try(var freeze=DriverManager.getConnection("jdbc:sqlite:"+sourceRoot.resolve("knowledge.db"),rw.toProperties())){
+                try(var freeze=DriverManager.getConnection(SqliteFileUrl.forFile(sourceRoot.resolve("knowledge.db")),rw.toProperties())){
                     sql(freeze,"BEGIN IMMEDIATE");
                     try(var reader=sqlite(sourceRoot.resolve("knowledge.db"))){
                         verifySqlite(reader);PrivateKnowledgeDirectory.directory(backupRoot);
                         Path backup=backupRoot.resolve("knowledge.db");PrivateKnowledgeDirectory.file(backup);
-                        if(reader.unwrap(SQLiteConnection.class).getDatabase().backup("main",backup.toString(),null)!=0)throw new IOException();
+                        if(reader.unwrap(SQLiteConnection.class).getDatabase().backup("main",SqliteFileUrl.forNativeFile(backup),null)!=0)throw new IOException();
                         try(var snapshot=sqlite(backup);var proof=new FileProof(snapshot,sourceRoot)){
                             if(!summarize(freeze,false).equals(summarize(snapshot,false)))throw new IOException();
                             PrivateKnowledgeDirectory.directory(backupRoot.resolve("sources"));
@@ -201,7 +202,7 @@ public final class SqliteKnowledgeMigration {
         void verify()throws IOException{for(var file:files)file.verify();}
         public void close()throws IOException{IOException failed=null;for(var file:files)try{file.channel.close();}catch(IOException e){failed=e;}if(failed!=null)throw failed;}
     }
-    private static Connection sqlite(Path file)throws SQLException{var config=new SQLiteConfig();config.setReadOnly(true);config.setBusyTimeout(3000);return DriverManager.getConnection("jdbc:sqlite:"+file,config.toProperties());}
+    private static Connection sqlite(Path file)throws SQLException{var config=new SQLiteConfig();config.setReadOnly(true);config.setBusyTimeout(3000);return DriverManager.getConnection(SqliteFileUrl.forFile(file),config.toProperties());}
     private static void verifyPrivate(Path path,boolean directory)throws IOException{
         if(io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.isWindows()){PrivateKnowledgeDirectory.protect(path,directory);return;}
         var attributes=Files.readAttributes(path,java.nio.file.attribute.PosixFileAttributes.class,LinkOption.NOFOLLOW_LINKS);

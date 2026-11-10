@@ -49,11 +49,11 @@ public final class SqliteWorkspaceMigration {
             else Files.createFile(backup, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
             PrivateMemoryDirectory.protect(backup, false);
             var write = new SQLiteConfig(); write.resetOpenMode(SQLiteOpenMode.CREATE); write.setBusyTimeout(3000);
-            try (var freeze = DriverManager.getConnection("jdbc:sqlite:" + source, write.toProperties())) {
+            try (var freeze = DriverManager.getConnection(SqliteFileUrl.forFile(source), write.toProperties())) {
                 sql(freeze, "BEGIN IMMEDIATE");
                 try (var reader = readOnly(source)) {
                     verifySource(reader);
-                    int code = reader.unwrap(SQLiteConnection.class).getDatabase().backup("main", backup.toString(), null);
+                    int code = reader.unwrap(SQLiteConnection.class).getDatabase().backup("main", SqliteFileUrl.forNativeFile(backup), null);
                     if (code != 0) throw new SQLException();
                     PrivateMemoryDirectory.protect(backup, false);
                     try (var snapshot = readOnly(backup)) {
@@ -127,7 +127,7 @@ public final class SqliteWorkspaceMigration {
 
     private static Connection readOnly(Path path) throws SQLException {
         var config = new SQLiteConfig(); config.setReadOnly(true); config.setBusyTimeout(3000);
-        return DriverManager.getConnection("jdbc:sqlite:" + path, config.toProperties());
+        return DriverManager.getConnection(SqliteFileUrl.forFile(path), config.toProperties());
     }
     private static void verifyPrivate(Path path, boolean directory) throws IOException {
         if (WindowsPrivateAcl.isWindows()) { WindowsPrivateAcl.verify(path, directory); return; }

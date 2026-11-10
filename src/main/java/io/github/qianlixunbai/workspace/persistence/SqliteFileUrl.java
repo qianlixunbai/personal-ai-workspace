@@ -8,10 +8,15 @@ public final class SqliteFileUrl {
     private SqliteFileUrl() {}
 
     public static String forFile(Path file) {
-        if (!WindowsPrivateAcl.isWindows()) return "jdbc:sqlite:" + file;
+        return "jdbc:sqlite:" + forNativeFile(file);
+    }
+
+    /** SQLite JDBC's native backup API accepts a filename/URI, without the JDBC prefix. */
+    public static String forNativeFile(Path file) {
+        if (!WindowsPrivateAcl.isWindows()) return file.toString();
         // The wide Win32 API needs the extended prefix; the default VFS still caps UTF-8
         // paths at 1040 bytes. Encode '?' and filename characters before adding VFS options.
         // win32-longpath retains ordinary Windows locking (never use its -none variant).
-        return "jdbc:sqlite:file:////%3F" + file.toUri().getRawPath() + "?vfs=win32-longpath";
+        return "file:////%3F" + file.toUri().getRawPath() + "?vfs=win32-longpath";
     }
 }
