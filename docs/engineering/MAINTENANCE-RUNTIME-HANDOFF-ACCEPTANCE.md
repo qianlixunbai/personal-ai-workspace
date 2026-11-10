@@ -46,10 +46,22 @@
 
 初版验收宿主的 RID assets 缺失导致一次构建失败；随后两次宿主在进入产品前因 framework-dependent 启动方式／10.0.14 与已装 10.0.12 不匹配而失败。修正仅使用已有 `dotnet exec` 和项目默认 .NET 10.0 框架配置，没有安装运行时或改系统策略。r3 实际进入正常 Runtime 初始化后，旧只读状态调用遇到工厂返回类型变化的 `NoSuchMethodError`；已保留原工厂签名并分离真实 bean 移交，r4 正常完整验证通过。r5 中断产品和后来数据保全通过，但末尾普通启动检查脚本的 helper 路径含 `..`，不符合原 Gate 规范路径合同；仅规范化脚本路径，r6 复用相同候选补齐通过。所有失败包装已收尾，证据未覆盖成成功。
 
-本会话一次沙箱只读 `Test-Path` 检查 r3 合成 Profile 的 `evidence/sqlite-activation` 目录收到 Access denied；该动作未重试、未提升权限或换路线读取同一目录。已查用户消息，没有相关新授权，其他项目尚待确认的 RemoteSigned 请求不适用。本轮无自动审批拒绝、待审批或未知执行结果；此目录检查不再需要，产品验证依靠新合成会话自身授权流程的回执完成。既有 Get-NetTCPConnection／Docker／Crashpad／原生诊断及 KAG 脚本拒绝均未触碰。
+本会话一次沙箱只读 `Test-Path` 检查 r3 合成 Profile `bf786634eabb4e5b80edeadf25cecab8` 的 `evidence/sqlite-activation` 目录收到 Access denied；该动作未重试、未提升权限或换路线读取同一目录。目标绝对根由 r3 的 `prepare/owned-profile.json` 记录。已查用户消息，没有相关新授权，其他项目尚待确认的 RemoteSigned 请求不适用。本轮无自动审批拒绝、待审批或未知执行结果；此目录检查不再需要，产品验证依靠新合成会话自身授权流程的回执完成。既有 Get-NetTCPConnection／Docker／Crashpad／原生诊断及 KAG 脚本拒绝均未触碰。
 
 本次完成的是受保护的新 Runtime **会话接管与安全停止**，不是持续可重开的个人迁移。普通重启仍被维护记录阻断；还需设计并验证完成迁移后可以消费的原生普通重启权威，而非删除 evidence、根据 VERIFIED_STOPPED 自动放行或复用旧后端证明。模型 exclusion 全程保持，未验证模型配置所有权移交／模型调用；完整 Spring 启动不代表 AI 功能已接管。通用未注册写入者证明、真实用户明确选择／确认、完整 UI 接线、正式发布仍未完成。没有验证任意阶段断电、数据库中途崩溃、全部消息丢失组合、跨机、后来配置替换或并发外部 SQL 注入；既有配置 pin 和未知结果不重放保护保留，但不虚报新矩阵覆盖。
 
 ## 本地交付
 
-产品提交和统一开发包的精确 SHA 在完成构建后补记；旧包保持原样，不推送，不改 main、六份用户文档或真实数据。下一阶段应基于这里的终态边界解决安全普通重启与明确用户入口，不重新实施已验收的共同事务或发布 owner。
+产品提交：`1c37625595aff3dddd3544be850239da329c72e1`，分支 `codex/knowledge-version-compare`。
+
+新包：`artifacts/PersonalAiWorkspace-maintenance-runtime-handoff-20261110.zip`；933 payload 文件、934 ZIP 条目逐一核对；420 条内嵌 Runtime pins 与实际文件一致。
+
+- ZIP SHA-256：`CF7567E167BAD79CD7AF65A883035BB7B08AB3BD11AC20E63884E86FE657CB8C`
+- Runtime SHA-256：`1DFB28CD9A7018758679D929DF0DE1011F1C9BA94CA7667C04C1C484A02F66A1`
+- Desktop DLL SHA-256：`703A335C9251C0E489BCBA5A4F7BF9E5CA6A12626B78CBBD92C8C98BFF398209`
+
+Runtime 交付只更新 `META-INF/workspace-runtime.properties`，其余 JAR 条目与最终验收候选逐字节一致；Desktop 从已验收源重新构建并嵌入交付 pins。没有额外重跑默认 EXE／网页／模型矩阵，也不把此打包当成正式发布验收。打包 guardian 17664 在 `2026-11-10T14:06:38.9228883Z` 记录 Job active 0、锁释放，详见 r4 的 `delivery-result.json`／`publish-cleanup.json`。
+
+前一所有权包与前一绑定配置包 ZIP SHA 分别仍为 `6DB6D33DBBF5BE20D630D723AA94A8BBFF20530EB1CEDE4F258BA1CE972EBD5D`、`0EAC0591CB9751D756638BF97E373C41B31948B9258550E2EB27B0127B259827`；旧包未覆盖。main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，六份用户文档与本会话前层 baseline SHA 一致且保持未跟踪。没有推送、真实数据修改、待审批或未知执行结果。
+
+下一阶段应基于这里的终态边界解决安全普通重启与明确用户入口，不重新实施已验收的共同事务或发布 owner。与前一已交付的发布所有权合计，本会话完成约三项真实模块；继续集成时仍需保留 BLOCKED，不能仅因正常停止记录存在就开放普通启动或迁移按钮。

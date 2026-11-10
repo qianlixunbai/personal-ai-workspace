@@ -1,6 +1,6 @@
 # 当前状态
 
-2026-11-10 原生分阶段 Runtime 接管与本次会话安全结束已通过真实合成验证：来源／备份／配置保护重叠移交，真正 Spring 数据源在绑定核对后结束维护 SHARE 阶段，正常 Knowledge 初始化执行；实际三个 Store 后端、配置版本与目标绑定核对通过。真实 HTTP 写入在结束后保留，新进程核对完整终态；真实会话中断保留未完成记录，普通新 JVM 继续被 fence 阻断。两组临时库正常停止、凭据清理、Job 0／共享锁释放。普通重启授权、模型所有权和完整用户迁移入口仍未完成，BLOCKED／未注册写入者保护保持。候选已验证，待本地提交及统一新包。[协议、实际证据、历史失败与剩余边界](engineering/MAINTENANCE-RUNTIME-HANDOFF-ACCEPTANCE.md)。
+2026-11-10 原生分阶段 Runtime 接管与本次会话安全结束已交付：产品提交 `1c37625595aff3dddd3544be850239da329c72e1`；新包 `artifacts/PersonalAiWorkspace-maintenance-runtime-handoff-20261110.zip`（SHA-256 `CF7567E167BAD79CD7AF65A883035BB7B08AB3BD11AC20E63884E86FE657CB8C`），933 payload／934 ZIP 条目／420 内嵌 pins 核对通过，Runtime 除来源标记外与验收候选一致。来源／备份／配置重叠移交，真正 Spring 数据源完成绑定核对后进入可写初始化，正常 Knowledge 初始化和三个实际 Store 后端核对通过。HTTP 新增数据在安全结束后保留；新进程核对完整终态，真实中断保留未完成记录，普通新 JVM 继续被 fence 阻断。两组临时库正常停止、凭据清理，验收及打包 Job 0／共享锁释放。普通重启授权、模型所有权和完整用户入口仍未完成，BLOCKED／未注册写入者保护保持。旧包、main、六份用户文档和真实数据不变，无推送。[完整协议、SHA、实际证据、历史失败与接续](engineering/MAINTENANCE-RUNTIME-HANDOFF-ACCEPTANCE.md)。
 
 2026-11-10 发布后所有权模块已本地交付：产品提交 `6b133f078bda9051ce98d521005d90a5a22637ea`，新包 `artifacts/PersonalAiWorkspace-maintenance-publication-owner-20261110.zip`（SHA-256 `6DB6D33DBBF5BE20D630D723AA94A8BBFF20530EB1CEDE4F258BA1CE972EBD5D`）。933 payload／934 ZIP 条目／420 内嵌 pins 核对通过，Runtime 除来源标记外与最终验收候选相同；publish Job 0、锁释放。只完成发布后持续持有与失效保全，没有完成原生接管、真实 Runtime 后端核对或安全结束协议，完整维护迁移保持 BLOCKED。旧包、main、六份用户文档和真实数据不变，无推送。[完整交付与精确接续冲突](engineering/MAINTENANCE-PUBLICATION-OWNERSHIP-ACCEPTANCE.md)。
 
