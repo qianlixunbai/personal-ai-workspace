@@ -299,6 +299,52 @@ public sealed class MemoryWindowTests
     });
 
     [Fact]
+    public Task NativeDuplicateCheckFindsExactBodiesAndContinuesIntoExplicitSameRecordSave() => StaAsync(async () =>
+    {
+        var store = new Store(); using var runtime = store.Client(); var window = new MemoryWindow(runtime, _ => true);
+        string body = string.Concat(Enumerable.Repeat("😀", 160)) + " synthetic exact suffix";
+        var active = store.Add(); store.Items[active.Id] = active = active with { Content = body };
+        var archived = store.Add(status: MemoryStatus.ARCHIVED); store.Items[archived.Id] = archived = archived with { Content = body };
+        var similar = store.Add(); store.Items[similar.Id] = similar with { Content = body + " different" };
+        try
+        {
+            window.TitleBox.Text = "Synthetic reviewed memory"; window.ContentBox.Text = body;
+            int reads = store.Reads;
+            await window.CheckDuplicatesAsync();
+            Assert.Equal(reads + 2, store.Reads); Assert.Equal(0, store.Mutations);
+            Assert.Equal(new[] { active.Id, archived.Id }, window.DuplicateMatches.Items.Cast<MemoryItem>().Select(x => x.Id));
+            Assert.DoesNotContain("检查不完整", window.DuplicateSummary.Text);
+            window.DuplicateMatches.SelectedItem = archived;
+            window.ReviewDuplicateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
+            Assert.Equal(body, window.ReviewContent.Text); Assert.False(window.AdoptReviewButton.IsEnabled);
+            window.DuplicateMatches.SelectedItem = active;
+            window.ReviewDuplicateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
+            Assert.True(window.AdoptReviewButton.IsEnabled); Assert.Equal(body, window.ContentBox.Text);
+            await window.AdoptReviewAsync(); Assert.Equal(0, store.Mutations);
+            window.ContentBox.Text = "Synthetic merged body";
+            Assert.Empty(window.DuplicateMatches.Items); Assert.Contains("重新检查", window.DuplicateSummary.Text);
+            await window.SaveAsync();
+            Assert.Equal(3, store.Items.Count); Assert.Equal("Synthetic merged body", store.Items[active.Id].Content);
+            Assert.Equal(2, store.Items[active.Id].Revision); Assert.Equal(1, store.Mutations);
+
+            await window.CheckDuplicatesAsync(); Assert.Empty(window.DuplicateMatches.Items); // Excludes current record.
+            window.NewItem(); window.TitleBox.Text = "Synthetic new draft"; window.ContentBox.Text = body;
+            for (int i = 0; i < 22; i++) { var item = store.Add(); store.Items[item.Id] = item with { Content = body }; }
+            reads = store.Reads; await window.CheckDuplicatesAsync();
+            Assert.Equal(reads + 2, store.Reads); Assert.Contains("检查不完整", window.DuplicateSummary.Text);
+            Assert.Equal(20, window.DuplicateMatches.Items.Count); // 19 exact active + one archived; similar row is excluded.
+            store.Failure = "MEMORY_REVISION_CONFLICT"; await window.CheckDuplicatesAsync();
+            Assert.Empty(window.DuplicateMatches.Items); Assert.Contains("未能完成检查", window.DuplicateSummary.Text);
+            Assert.Equal(body, window.ContentBox.Text); Assert.True(window.SaveButton.IsEnabled);
+            store.Pending = new(); var pending = window.CheckDuplicatesAsync();
+            Assert.True(window.TryClose()); Assert.True(store.PendingToken.IsCancellationRequested);
+            store.Pending.SetResult(Response(Page())); await pending;
+            Assert.Empty(window.DuplicateMatches.Items); Assert.Empty(window.DuplicateSummary.Text);
+        }
+        finally { window.TryClose(); }
+    });
+
+    [Fact]
     public Task ConflictCanBeReviewedAndMergedWithoutDiscardingDraftOrOverwritingUnseenChanges() => StaAsync(async () =>
     {
         var store = new Store(); var original = store.Add(); using var runtime = store.Client(); bool approve = false;

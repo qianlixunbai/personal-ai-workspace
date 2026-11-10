@@ -21,6 +21,7 @@ public partial class MemoryWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private MemoryItem? loaded;
     private MemoryItem? reviewed;
+    private string? duplicateBody;
     private MemoryPage? results;
     private MemoryQuery view = new();
     private bool busy, writing, closed, rendering, initialized, stale, missing, outcomeUnknown;
@@ -68,6 +69,9 @@ public partial class MemoryWindow : Window
         AdoptReviewButton.IsEnabled = available && CanAdoptReview;
         AdoptReviewButton.Content = loaded is null ? "保留草稿，修订这条记忆" : "保留草稿，以此版本继续编辑";
         ReviewCurrentButton.IsEnabled = available && loaded is not null;
+        CheckDuplicatesButton.IsEnabled = available && new MemoryCreateInput(MemoryType.PROJECT_NOTE, "检查", ContentBox.Text).IsValid();
+        DuplicateMatches.IsEnabled = available;
+        ReviewDuplicateButton.IsEnabled = available && DuplicateMatches.SelectedItem is MemoryItem;
         SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty && validDraft;
         DraftValidationText.Text = $"标题 {TitleBox.Text.EnumerateRunes().Count()} / 160 字符 · 正文 {ContentBox.Text.Length} / 2000 UTF-16 单位（{Encoding.UTF8.GetByteCount(ContentBox.Text)} / 8192 UTF-8 字节）";
         if (Dirty && !validDraft) DraftValidationText.Text += "\n暂不能保存：标题和正文均须填写有效文字，且不能超过上限。请修改草稿；内容不会自动截断。";
@@ -86,6 +90,7 @@ public partial class MemoryWindow : Window
     private void LoadEditor(MemoryItem? item)
     {
         ClearReview();
+        ClearDuplicates();
         rendering = true;
         loaded = item; stale = missing = outcomeUnknown = false;
         EditorType.SelectedIndex = item?.Type == MemoryType.PREFERENCE ? 0 : 1;
@@ -235,12 +240,52 @@ public partial class MemoryWindow : Window
         reviewed = null;
         ReviewTitle.Clear(); ReviewContent.Clear(); ReviewMetadata.Text = "";
     }
+    private void ClearDuplicates()
+    {
+        duplicateBody = null;
+        DuplicateMatches.ItemsSource = null;
+        DuplicateSummary.Text = "尚未检查当前正文。修改正文后请重新检查。";
+    }
+    internal Task CheckDuplicatesAsync()
+    {
+        string body = ContentBox.Text;
+        if (!new MemoryCreateInput(MemoryType.PROJECT_NOTE, "检查", body).IsValid()) return Task.CompletedTask;
+        return RunAsync(async () =>
+        {
+            ClearDuplicates(); DuplicatesTab.IsSelected = true;
+            DuplicateSummary.Text = "正在读取相同正文的候选记录；尚不能判断是否重复。";
+            try
+            {
+                string query = string.Concat(body.EnumerateRunes().Take(160).Select(x => x.ToString()));
+                var active = await runtime.ListMemoryAsync(new(Query: query, Limit: 20), lifetime.Token);
+                if (closed) return;
+                var archived = await runtime.ListMemoryAsync(new(Query: query, Status: MemoryStatus.ARCHIVED, Limit: 20), lifetime.Token);
+                if (closed) return;
+                // Both bounded list responses already include full bodies. No automatic detail-read loop.
+                var matches = active.Items.Concat(archived.Items)
+                    .Where(x => x.Id != loaded?.Id && x.Content == body).DistinctBy(x => x.Id).ToArray();
+                duplicateBody = body;
+                DuplicateMatches.ItemsSource = matches;
+                DuplicateSummary.Text = $"使用中：已核对 {active.Items.Count} / {active.Total} 条搜索结果；已归档：{archived.Items.Count} / {archived.Total} 条。\n"
+                    + $"本次找到 {matches.Length} 条相同正文（不含当前编辑记录）。结果对应检查时的内容。";
+                if (active.HasNext || archived.HasNext)
+                    DuplicateSummary.Text += "\n检查不完整：还有未核对的记录，不能据此排除重复。可用上方搜索继续查找。";
+                StatusText.Text = "草稿查重已结束。选择结果后可保留草稿并对照；不会自动合并或保存。";
+            }
+            catch
+            {
+                if (!closed) { ClearDuplicates(); DuplicateSummary.Text = "未能完成检查，不能判断是否重复。草稿已保留，可稍后重新检查。"; }
+                throw;
+            }
+        }, affectsLoaded: false);
+    }
     private void ShowReview(MemoryItem item)
     {
         reviewed = item;
         ReviewTitle.Text = item.Title; ReviewContent.Text = item.Content;
         ReviewMetadata.Text = $"{item.Id:D}\n{item.Type} · {item.Status} · Revision {item.Revision}\nUpdated {item.UpdatedAt:yyyy-MM-dd HH:mm:ss zzz}";
         if (item.Status == MemoryStatus.ARCHIVED) ReviewMetadata.Text += "\n已归档：仅供对照，不能采用为修订目标。";
+        ReviewPicker.IsExpanded = false;
         ReviewTab.IsSelected = true;
     }
     internal Task ReviewItemAsync(MemoryItem item) => RunAsync(async () =>
@@ -280,6 +325,10 @@ public partial class MemoryWindow : Window
     private async void AdoptReview(object sender, RoutedEventArgs e) => await AdoptReviewAsync();
     private async void ReviewCurrent(object sender, RoutedEventArgs e)
     { if (loaded is not null) await ReviewItemAsync(loaded); }
+    private async void CheckDuplicates(object sender, RoutedEventArgs e) => await CheckDuplicatesAsync();
+    private void DuplicateSelected(object sender, SelectionChangedEventArgs e) { if (initialized) UpdateControls(); }
+    private async void ReviewDuplicate(object sender, RoutedEventArgs e)
+    { if (DuplicateMatches.SelectedItem is MemoryItem item) await ReviewItemAsync(item); }
     private async void Opened(object sender, RoutedEventArgs e) => await RefreshAsync();
     private async void Search(object sender, RoutedEventArgs e) => await RefreshAsync(search: true);
     private async void Refresh(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -293,7 +342,14 @@ public partial class MemoryWindow : Window
     { if (initialized && !rendering) await RefreshAsync(page: 0); }
     private async void ItemSelected(object sender, SelectionChangedEventArgs e)
     { if (initialized && !rendering && MemoryList.SelectedItem is MemoryItem item) await SelectItemAsync(item); }
-    private void EditorTextChanged(object sender, TextChangedEventArgs e) { if (!rendering) UpdateControls(); }
+    private void EditorTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!rendering)
+        {
+            if (duplicateBody is not null && duplicateBody != ContentBox.Text) ClearDuplicates();
+            UpdateControls();
+        }
+    }
     private void EditorTypeChanged(object sender, SelectionChangedEventArgs e) { if (!rendering) UpdateControls(); }
     private void New(object sender, RoutedEventArgs e) => NewItem();
     private async void Save(object sender, RoutedEventArgs e) => await SaveAsync();
@@ -320,6 +376,7 @@ public partial class MemoryWindow : Window
         closed = true; lifetime.Cancel(); rendering = true;
         TitleBox.Clear(); ContentBox.Clear(); SearchBox.Clear(); MemoryList.ItemsSource = null;
         ReviewTarget.ItemsSource = null; ClearReview();
+        ClearDuplicates(); DuplicateSummary.Text = "";
         loaded = null; results = null; view = new(); stale = missing = outcomeUnknown = false;
         DraftValidationText.Text = MetadataText.Text = PageText.Text = StatusText.Text = "";
         lifetime.Dispose();
