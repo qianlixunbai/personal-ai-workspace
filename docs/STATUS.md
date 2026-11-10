@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [会话参考准备](engineering/CONVERSATION-REFERENCE-PREPARATION-REPORT.md)作为一个完整核心模块完成，产品 `3f8167f`：主动选择资料原文／记忆正文，预览完整消息，回查／移除，核对准确来源后插入当前会话草稿。失败／超限／迟到回执保留草稿，用户仍须手动发送；无真实模型或自动保存。两项新合成流程及最终类型检查通过，旧组未重跑，Job 与共享锁释放。仅本地提交，未打包／EXE／WebView 验收；旧包不含该功能。原 model-state 取证／登记停止，整体维护仍 BLOCKED / productionGo=false。
+
 2026-11-10 第三个独立模块[工作区查找与原文阅读](engineering/WORKSPACE-SEARCH-REPORT.md)完成，产品 `9cb7e31`：同一面板主动查找记忆、历史消息和资料，分组降级、分页并读取准确上下文，普通关闭保留当前草稿。两项新合成场景及一次类型检查通过，原失败夹具和修正证据保留；前两模块／旧组未重跑。main、六文档和六旧包不变，未推送；未生产构建、打包或实际 EXE／WebView 验收，旧包不含本轮三个模块。原 model-state 取证／登记继续停止，完整维护仍 BLOCKED / productionGo=false。
 
 2026-11-10 [记忆及对话回查准确原文](engineering/MEMORY-SOURCE-REVIEW-REPORT.md)已完成，产品 `f3df1da`：用户从记忆编辑／预览或版本一致的对话记忆引用主动读取正文出处中的准确资料、版本和范围，比较原文并阅读上下文；保留草稿，缺失不回退，出处文字不变成受信绑定。两项新合成流程通过，类型检查修正后通过，原失败保留，上一轮两项检查未重跑。未打包或进行 EXE／WebView 验收，旧包不含此增量；原 model-state 拒绝／取证提案保持停止和待确认，真实模型恢复及整体维护仍 BLOCKED / productionGo=false。

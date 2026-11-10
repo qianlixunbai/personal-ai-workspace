@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [会话参考准备](../engineering/CONVERSATION-REFERENCE-PREPARATION-REPORT.md)：ConversationsPage 以准确会话 ID／页面代次／草稿快照打开复用查找面板；临时参考列表仅保存已读 Memory 正文或 Knowledge 的版本／选区副本。显式插入前沿既有 get／preview 逐项核对，再一次性追加到原草稿；关闭与 session 变化使待回执失效。出处保持可编辑用户消息文本，不新增受信关联、Native 记忆选择权限、API、schema、模型行为或自动持久化；原用户发送才进入既有 Runtime admission。
+
 2026-11-10 [工作区查找](../engineering/WORKSPACE-SEARCH-REPORT.md)：App 的临时 dialog 保持底层页面挂载，显式并行调用 Memory list／Conversation search／Knowledge search，独立呈现各领域结果与失败。只读预览沿用 Memory revision 检查、精确消息身份和资料不可变源版本；面板／会话代次阻断迟到结果及后续读取。无跨领域索引、持久搜索状态、新 Native／Runtime API、schema、模型调用或隐式写入；未完成实际 EXE／WebView 验收。
 
 2026-11-10 [Memory 来源回查](../engineering/MEMORY-SOURCE-REVIEW-REPORT.md)：共享 React 只读组件解析单一可编辑出处，用户点击后经既有 get／preview 核对文档身份、版本存在及完整范围，再比较文字与分页阅读上下文。编辑器、只读预览和版本一致的 Conversation Memory 共用此能力。出处不进入持久化关联合同，原 USER／ASSISTANT／KNOWLEDGE 草稿语义、MANUAL 保存、revision、会话／请求身份及显式上下文选择不变；无 Native／Runtime／schema／权限变更。
