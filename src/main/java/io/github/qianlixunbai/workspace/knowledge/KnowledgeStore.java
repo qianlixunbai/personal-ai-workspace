@@ -1,6 +1,7 @@
 package io.github.qianlixunbai.workspace.knowledge;
 
 import io.github.qianlixunbai.workspace.common.*;
+import io.github.qianlixunbai.workspace.persistence.SqliteFileUrl;
 import java.io.*;
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -52,7 +53,7 @@ public final class KnowledgeStore implements AutoCloseable {
             lockChannel=FileChannel.open(lock,StandardOpenOption.WRITE);processLock=lockChannel.tryLock();
             if(processLock==null)throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);
             Path database=root.resolve("knowledge.db");if(!Files.exists(database))PrivateKnowledgeDirectory.file(database);
-            db=DriverManager.getConnection("jdbc:sqlite:"+database);
+            db=DriverManager.getConnection(SqliteFileUrl.forFile(database));
             exec("PRAGMA busy_timeout=3000");exec("PRAGMA foreign_keys=ON");exec("PRAGMA journal_mode=DELETE");exec("PRAGMA synchronous=FULL");
             if(scalar("PRAGMA foreign_keys")!=1)throw new SQLException();
             integrity();

@@ -5,6 +5,8 @@ import io.github.qianlixunbai.workspace.model.ModelProfile;
 import io.github.qianlixunbai.workspace.security.WindowsNativeGate;
 import io.github.qianlixunbai.workspace.task.*;
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
 import java.sql.*;
 import java.util.*;
 import tools.jackson.databind.json.JsonMapper;
@@ -17,9 +19,10 @@ public final class KnowledgeLongPathProbe {
     private static final String QUESTION = "Synthetic only: 长路径 # %23 & 😀";
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 2 || !Set.of("baseline", "save", "complete-save", "reopen").contains(args[0])) throw new IllegalArgumentException();
+        if (args.length != 2 || !Set.of("baseline", "save", "complete-save", "reopen", "catalog-baseline", "index-baseline", "knowledge-save", "knowledge-reopen").contains(args[0])) throw new IllegalArgumentException();
         Path root = WindowsNativeGate.profileRoot(), evidence = Path.of(args[1]);
         String phase = args[0];
+        if (phase.startsWith("knowledge-") || phase.endsWith("-baseline")) { knowledge(root, evidence, phase); return; }
         if (phase.equals("baseline")) {
             Path data = data(root, "baseline", true);
             try (var history = new KnowledgeAnswerHistory(data, root.resolve("credentials/client-token"))) {
@@ -76,6 +79,63 @@ public final class KnowledgeLongPathProbe {
             }
         }
         System.out.println("MEMORY_SHARED_URL_" + phase.toUpperCase(Locale.ROOT) + "_PASS pid=" + ProcessHandle.current().pid());
+    }
+    private static void knowledge(Path root, Path evidence, String phase) throws Exception {
+        Path token = root.resolve("credentials/client-token");
+        if (phase.equals("catalog-baseline")) {
+            Path data = data(root, phase, true), file = data.resolve("knowledge/knowledge.db");
+            check(!Files.exists(file));
+            try (var store = new KnowledgeStore(data, token)) { throw new AssertionError("Old catalog unexpectedly opened"); }
+            catch (WorkspaceException expected) { check(expected.error().code() == ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE && Files.size(file) == 0); }
+            System.out.println("BASELINE_CATALOG_FAILED_PRESERVED length=" + file.toString().length()); return;
+        }
+        if (phase.equals("index-baseline")) {
+            Path data = data(root, phase, true); check(!Files.exists(data));
+            try (var store = new KnowledgeStore(data, token); var index = new KnowledgeLexicalIndex(store)) {
+                awaitIndex(index, "FAILED"); check(store.list("ACTIVE", 0).total() == 0);
+                System.out.println("BASELINE_INDEX_FAILED_WITH_VALID_CATALOG");
+            }
+            return;
+        }
+        for (String name : List.of("short", "long")) {
+            Path data = data(root, "knowledge-" + name, name.equals("long"));
+            Path receipt = evidence.resolve("knowledge-" + name + "-receipt.json");
+            boolean write = phase.equals("knowledge-save");
+            String body = "# Synthetic only\n长路径预算 persistence 😀\n";
+            if (write) check(!Files.exists(data) && !Files.exists(receipt));
+            Path catalog = data.resolve("knowledge/knowledge.db");
+            byte[] before = write ? null : Files.readAllBytes(catalog);
+            try (var store = new KnowledgeStore(data, token)) {
+                String id;
+                if (write) {
+                    try (var ingestion = new KnowledgeIngestion(store)) {
+                        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+                        var job = ingestion.upload(UUID.randomUUID().toString(), null, null, "synthetic.md", bytes.length, new ByteArrayInputStream(bytes));
+                        long deadline = System.nanoTime() + 10_000_000_000L;
+                        while (Set.of("PENDING", "PARSING").contains(store.job(job.requestId()).state()) && System.nanoTime() < deadline) Thread.sleep(10);
+                        check(store.job(job.requestId()).state().equals("READY")); id = job.documentId();
+                    }
+                } else id = JSON.readTree(Files.readString(receipt)).get("documentId").asString();
+                check(store.list("ACTIVE", 0).total() == 1 && store.preview(id, "1", 0).text().equals(body));
+                try (var index = new KnowledgeLexicalIndex(store)) {
+                    if (!write) check(index.status().state().equals("READY")); // Existing index opened; no silent rebuild.
+                    awaitIndex(index, "READY");
+                    var hits = index.search("预算 persistence", 10, new KnowledgeScope(id, "1")).hits();
+                    check(hits.size() == 1 && hits.getFirst().documentId().equals(id));
+                    var snapshot = Map.of("documentId", id, "detail", store.detail(id), "hits", hits);
+                    if (write) Files.writeString(receipt, JSON.writeValueAsString(snapshot), StandardOpenOption.CREATE_NEW);
+                    else check(JSON.readTree(Files.readString(receipt)).equals(JSON.readTree(JSON.writeValueAsString(snapshot))));
+                }
+            }
+            if (before != null) check(Arrays.equals(before, Files.readAllBytes(catalog)));
+            System.out.println(phase.toUpperCase(Locale.ROOT) + "_PASS case=" + name + " catalogLength=" + catalog.toString().length()
+                    + " indexLength=" + data.resolve("knowledge/index/lexical.db").toString().length() + " pid=" + ProcessHandle.current().pid());
+        }
+    }
+    private static void awaitIndex(KnowledgeLexicalIndex index, String expected) throws Exception {
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (!Set.of("READY", "FAILED").contains(index.status().state()) && System.nanoTime() < deadline) Thread.sleep(10);
+        check(index.status().state().equals(expected));
     }
     private static Path data(Path root, String name, boolean longPath) {
         Path path = root.resolve("evidence").resolve(name);

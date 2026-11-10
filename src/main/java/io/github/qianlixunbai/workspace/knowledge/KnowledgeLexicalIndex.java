@@ -1,6 +1,7 @@
 package io.github.qianlixunbai.workspace.knowledge;
 
 import io.github.qianlixunbai.workspace.common.*;
+import io.github.qianlixunbai.workspace.persistence.SqliteFileUrl;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -53,7 +54,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
                     if(documentCount<0||documentCount>KnowledgeLimits.DOCUMENTS||chunkCount<0||chunkCount>maxChunks||scalar(db,"SELECT count(*) FROM workspace.knowledge_chunks")!=chunkCount)throw new SQLException();
                     publishedFingerprint=current;state="READY";}
             }else if(Files.exists(database,LinkOption.NOFOLLOW_LINKS)){
-                try(var db=DriverManager.getConnection("jdbc:sqlite:"+database)){var meta=verify(db);exec(db,"INSERT INTO lexical(lexical) VALUES('integrity-check')");if(!current.equals(meta.get("fingerprint")))throw new SQLException();
+                try(var db=DriverManager.getConnection(SqliteFileUrl.forFile(database))){var meta=verify(db);exec(db,"INSERT INTO lexical(lexical) VALUES('integrity-check')");if(!current.equals(meta.get("fingerprint")))throw new SQLException();
                     documentCount=Integer.parseInt(meta.get("documents"));chunkCount=Integer.parseInt(meta.get("chunks"));publishedFingerprint=current;state="READY";}
             }
         }catch(Exception ignored){state="STALE";}
@@ -105,7 +106,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         Path candidate=staging.resolve("k2-"+UUID.randomUUID()+".candidate");PrivateKnowledgeDirectory.file(candidate);
         int[] count={0};
         try {
-            try(var db=DriverManager.getConnection("jdbc:sqlite:"+candidate)) {
+            try(var db=DriverManager.getConnection(SqliteFileUrl.forFile(candidate))) {
                 exec(db,"PRAGMA journal_mode=MEMORY");exec(db,"PRAGMA temp_store=MEMORY");exec(db,"PRAGMA synchronous=FULL");
                 exec(db,"PRAGMA max_page_count="+Math.max(1,maxBytes/4096));
                 for(String ddl:DDL)exec(db,ddl);exec(db,"PRAGMA user_version=1");db.setAutoCommit(false);
@@ -171,7 +172,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
     }
     private Connection read(Path file)throws Exception {
         PrivateKnowledgeDirectory.regular(file);if(Files.size(file)>maxBytes)throw error(ErrorCode.KNOWLEDGE_INDEX_LIMIT_EXCEEDED);
-        var config=new org.sqlite.SQLiteConfig();config.setReadOnly(true);return DriverManager.getConnection("jdbc:sqlite:"+file,config.toProperties());
+        var config=new org.sqlite.SQLiteConfig();config.setReadOnly(true);return DriverManager.getConnection(SqliteFileUrl.forFile(file),config.toProperties());
     }
     private static void exec(Connection db,String sql)throws SQLException{try(var s=db.createStatement()){s.execute(sql);}}
     private static long scalar(Connection db,String sql)throws SQLException{try(var s=db.createStatement();var r=s.executeQuery(sql)){if(!r.next())throw new SQLException();return r.getLong(1);}}

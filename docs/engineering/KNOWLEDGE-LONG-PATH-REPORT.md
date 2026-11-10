@@ -27,8 +27,18 @@ KnowledgeAnswerHistory 原先直接拼接普通 SQLite URL。将 Memory 已有�
 
 工具首次包装在已经完成 baseline 后，因读取自身未关闭日志句柄而退出；确认 baseline 正常退出后，只接续未执行阶段。首次 save 已写入普通路径，但工具将 `TaskView.result` 的 JSON 无类型 Map 与实际 record 作 Java equality，断言失败；保留 `save-errors.log` 和收据，修正为 JSON 树比较，`complete-save` 仅核对已有短路径、保存未执行的长路径和 Memory，没有重复保存短路径。产品代码没有为这些工具问题改变。
 
+## 接续模块：Knowledge 源库与派生索引
+
+历史库修复保存于 `9fee49061dbe3cffe76755bea350909a7c17248b` 后，核对并实证两个同类缺口：原 KnowledgeStore 在 1,087 字符路径打开失败；只修复源库而保留旧 KnowledgeLexicalIndex 时，合法空源库可读，但索引构建进入 FAILED。两个 baseline 都使用新的隔离目录，证据为 `catalog-baseline.log`、`index-baseline.log`，未更改历史模块样本。
+
+最小产品改动为源库连接，以及索引的候选构建、现有索引打开、只读搜索三个连接点共用 `SqliteFileUrl`。内存数据库、索引算法、发布流程、重建策略、private-path 检查及 PostgreSQL 均未改。
+
+必要验证在短路径（源库 246 / 索引 250 字符）和长路径（1,087 / 1,091 字符）各导入一份新合成 Markdown，检查原文、单一版本、带明确文档范围的中英检索，并在独立 JVM 中读取相同文档、版本及命中。重开时已有索引立即 READY，未依靠静默重建掩盖打开失败；源库重开前后字节完全一致。实际产品 KnowledgeIngestion、KnowledgeStore、KnowledgeLexicalIndex 和 SQLite 全部参与，无模型或模拟 Store。
+
+保存 PID 32476；最终独立重开 PID 15564；均正常退出 0。`knowledge-save.log`、`corrected-knowledge-reopen.log`、各进程与清理收据、两份 `knowledge-*-receipt.json` 保存结果。初次重开在短路径收据比较处失败：JSON `valueToTree` 的 LongNode 与解析收据的 IntNode 不同；修正工具为双方均经过 JSON 文本解析后，仅读取既存样本重新核对通过，未重放导入。原 `knowledge-reopen-errors.log` 保留。这是验证工具修正，未改变产品数据。
+
 ## 边界与接续
 
-原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮没有打包或运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。Knowledge 源库、派生索引和 Conversation 仍有普通文件连接，下一步仅按实证缺口逐项处理。
+原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮尚未打包或运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。Conversation 仍有普通文件连接，下一步仅按实证缺口处理。
 
 所有构建及验证复用 Session 1 `Local\Dot_KAG_Workspace_HeavyRun` 短运行包装，覆盖同步子进程退出后 finally 释放；未遗弃、未强杀，未访问未知 18765 或 KAG 18895。未启动常驻服务。Git、编辑和报告不持锁。main 保持 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`；六份用户文档不修改、不暂存；仅本地可回滚提交，不推送。

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [Knowledge 源库与索引长路径接续](engineering/KNOWLEDGE-LONG-PATH-REPORT.md)：旧源库和旧索引分别实证失败后，四处文件连接共用已验证 URL。短路径和超过 1,000 字符路径均完成真实导入、范围检索及独立 JVM 重开；原文、版本及命中一致，重开直接加载已有索引，源库字节未变。无模型／浏览器，未更新旧包，Conversation 同类连接待核对。
+
 2026-11-10 [Knowledge 历史长路径修复](engineering/KNOWLEDGE-LONG-PATH-REPORT.md)：复用 Memory 已有 SQLite Windows 长路径连接，保持目录、schema、记录和安全校验。旧代码在新合成 1,100 字符路径失败，修复后实际保存及独立 JVM 重开通过；249 字符普通路径、第二写入者拒绝和 Memory 共用连接最小验证通过。原失败样本保留，无模型或浏览器，锁已释放。源库、索引及 Conversation 的同类连接待逐项核对；旧包未更新，完整 EXE/WebView2 验收边界不变。
 
 2026-11-10 [原生 Memory 真实持久化闭环](engineering/MEMORY-NATIVE-PERSISTENCE-REPORT.md)已通过：最终包 `0ad9665` 的实际原生窗口在新合成 Profile 内明确保存，经正常关闭后由独立桌面／Java 进程读取同一 SQLite 记录，重开写入 0、未保存修改未保留；两组服务正常退出、端口关闭、共享锁释放。使用真实 HTTP / Store，没有模型、WebView2 或既有用户数据。首次长合成路径在 Knowledge 历史库初始化失败，经只读对照证实 SQLite 路径限制；缩短全新验收子目录后闭环通过，产品长路径兼容性仍待处理。完整 AssistantApp／失败页入口与 WebView2 保存重开仍未通过本轮验收，不重复已通过的原生样本或旧测试。
