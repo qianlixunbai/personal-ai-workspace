@@ -11,7 +11,7 @@ namespace PersonalAiWorkspace.Desktop.Bridge;
 // Only session authorization lives here. Runtime owns history and execution, including
 // after a document/window disappears. There is no operation registry or transcript cache.
 internal sealed class WorkspaceConversations(RuntimeClient runtime,
-    Func<CancellationToken, Task<IReadOnlyList<MemorySelection>?>> select, IConversationExport? export = null)
+    Func<CancellationToken, Task<IReadOnlyList<MemorySelection>?>> select, IConversationExport? export = null, IConversationDraftFiles? drafts = null)
 {
     private sealed record Binding(Guid TaskId, int Page);
     private sealed class Session
@@ -28,6 +28,7 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
     private readonly Dictionary<string, Session> sessions = new(StringComparer.Ordinal);
     private readonly object sync = new();
     private bool exporting;
+    private bool draftFileBusy;
     internal void BeginSession(string session) { EndSession(session); lock (sync) sessions[session] = new(); }
     internal void EndSession(string session)
     {
@@ -144,6 +145,51 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
         var value = await runtime.CreateConversationAsync(null, ct);
         lock (sync) { if (Current(session, state)) Authorize(state, value.Id); }
         return ConversationView(value);
+    }
+    internal async Task<object> DraftFileAsync(string session, Guid id, string? message, CancellationToken ct)
+    {
+        if (message is not null && !ConversationDraftFormat.ValidMessage(message)) throw ConversationDraftFormat.Invalid();
+        Session state; CancellationTokenSource lifetime;
+        lock (sync)
+        {
+            state = Require(session, id);
+            if (drafts is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "草稿文件暂时不可用。");
+            if (draftFileBusy) throw new DesktopException(DesktopError.QueueFull);
+            lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, state.Ended.Token); draftFileBusy = true;
+        }
+        void Check()
+        {
+            lifetime.Token.ThrowIfCancellationRequested();
+            lock (sync) { Require(session, id); if (!Current(session, state)) throw Denied(); }
+        }
+        try
+        {
+            Check();
+            if (message is not null)
+            {
+                var detail = await runtime.GetConversationAsync(id, 0, 10, lifetime.Token); Check();
+                var draft = new ConversationDraftFile(id, detail.Conversation.CreatedAt.ToUniversalTime(), detail.Conversation.Title,
+                    message, DateTimeOffset.UtcNow, detail.TotalTurns);
+                bool saved = await drafts!.SaveAsync(draft, lifetime.Token);
+                Check(); return new { outcome = saved ? "SAVED" : "CANCELLED" };
+            }
+            var loaded = await drafts!.OpenAsync(lifetime.Token); Check();
+            if (loaded is null) return new { outcome = "CANCELLED", draft = (ConversationDraftFile?)null };
+            ConversationDraftFormat.Validate(loaded);
+            // File contents grant no authorization and never cause a different conversation read.
+            if (loaded.ConversationId != id) throw new WorkspaceOperationException("ConversationDraftMismatch", "文件属于其他会话。请先打开对应会话，当前草稿未改变。");
+            var current = await runtime.GetConversationAsync(id, 0, 10, lifetime.Token); Check();
+            if (current.Conversation.Status != ConversationStatus.ACTIVE || current.Conversation.CreatedAt != loaded.ConversationCreatedAt)
+                throw new WorkspaceOperationException("ConversationDraftMismatch", "会话已归档或身份与文件不符，当前草稿未改变。");
+            return new { outcome = "OPENED", draft = loaded };
+        }
+        catch (WorkspaceOperationException) { throw; }
+        catch (DesktopException error) when (error.Error == DesktopError.ConversationNotFound) { throw; }
+        catch (Exception) when (message is not null)
+        { throw new WorkspaceOperationException("ConversationDraftSaveUnknown", "未确认草稿文件已保存。请检查所选位置；不会自动重试或覆盖文件，当前草稿仍保留。"); }
+        catch (Exception)
+        { throw new WorkspaceOperationException("ConversationDraftInvalid", "无法读取草稿文件或核对会话。当前草稿未改变，请检查文件后主动重试。"); }
+        finally { lifetime.Dispose(); lock (sync) draftFileBusy = false; }
     }
     internal async Task<object> MutateAsync(string session, Guid id, string method, string? title, CancellationToken ct)
     {

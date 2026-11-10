@@ -21,9 +21,23 @@ export interface ConversationSearchHit {
 }
 export interface ConversationSearchPage { query: string; scope: ConversationSearchScope; items: ConversationSearchHit[]; hasMore: boolean; page: number; limit: 10 }
 export interface ConversationAdmission { accepted: true; conversationId: string; turnId: string; admittedSequences: number[]; memoryCount: number }
+export interface ConversationDraftFile {
+  conversationId: string; conversationCreatedAt: string; conversationTitle: string; message: string; savedAt: string; totalTurns: number
+}
+export type ConversationDraftOpen = { outcome: 'CANCELLED'; draft: null } | { outcome: 'OPENED'; draft: ConversationDraftFile }
 export const conversationResponseBytes = 1024 * 1024
 const integer = (value: unknown, max: number): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
 const unicode = (value: string) => !value.includes('\0') && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value)
+export const isDraftMessage = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 3000 && unicode(value)
+export function isConversationDraftOpen(value: unknown): value is ConversationDraftOpen {
+  if (!isObject(value) || !exactFields(value, ['outcome', 'draft'])) return false
+  if (value.outcome === 'CANCELLED') return value.draft === null
+  const draft = value.draft
+  return value.outcome === 'OPENED' && isObject(draft)
+    && exactFields(draft, ['conversationId', 'conversationCreatedAt', 'conversationTitle', 'message', 'savedAt', 'totalTurns'])
+    && isId(draft.conversationId) && time(draft.conversationCreatedAt) && isTitle(draft.conversationTitle)
+    && isDraftMessage(draft.message) && time(draft.savedAt) && integer(draft.totalTurns, 1000)
+}
 function time(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 40) return false
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,7})?(Z|\+00:00)$/.exec(value)

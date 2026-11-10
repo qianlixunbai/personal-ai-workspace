@@ -30,8 +30,8 @@ import { isFinancePositionQuery, isFinancePositionPage, isFinancePositionDetail 
 import type { FinancePositionQuery, FinancePositionPage, FinancePositionDetail } from './financeInvestments'
 import { isMemoryItem, isMemoryList, isMemoryRelated } from './memory'
 import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryRelated, MemoryType } from './memory'
-import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList, isConversationSearchPage, isConversationSearchQuery } from './conversations'
-import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, ConversationSearchPage, ConversationSearchScope } from './conversations'
+import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList, isConversationSearchPage, isConversationSearchQuery, isConversationDraftOpen } from './conversations'
+import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, ConversationSearchPage, ConversationSearchScope, ConversationDraftOpen } from './conversations'
 import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
 
@@ -39,7 +39,7 @@ export class BridgeError extends Error { constructor(public code: string, messag
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerHistoryDelete'].includes(method)
-const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
+const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
 interface Pending { method: Method; searchQuery?: string; searchScope?: string; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -170,6 +170,8 @@ export class WorkspaceClient {
   unarchiveConversation(conversationId: string) { return this.request('conversations.unarchive', { conversationId }) as Promise<Conversation> }
   deleteConversation(conversationId: string) { return this.request('conversations.delete', { conversationId }) as Promise<{ deleted: true }> }
   exportConversation(conversationId: string) { return this.request('conversations.export', { conversationId }) as Promise<{ outcome: 'SAVED' | 'CANCELLED' }> }
+  saveConversationDraft(conversationId: string, message: string) { return this.request('conversations.saveDraft', { conversationId, message }) as Promise<{ outcome: 'SAVED' | 'CANCELLED' }> }
+  openConversationDraft(conversationId: string) { return this.request('conversations.openDraft', { conversationId }) as Promise<ConversationDraftOpen> }
   selectConversationMemories(conversationId: string) { return this.request('conversations.selectMemories', { conversationId }) as Promise<MemoryChoice> }
   clearConversationMemories(conversationId: string) { return this.request('conversations.clearMemories', { conversationId }) as Promise<{ cleared: true }> }
   sendConversation(conversationId: string, message: string, selectedMemoryRefs: MemoryRef[], retainMemories = false) {
@@ -215,7 +217,7 @@ export class WorkspaceClient {
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.answerExport' || method === 'conversations.export' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(method === 'conversations.search' ? { searchQuery: payload.query as string, searchScope: payload.scope as string } : {}),
         ...(method === 'finance.annual' ? { year: payload.year as number } : {}),
@@ -313,7 +315,8 @@ export class WorkspaceClient {
         : pending.method === 'knowledge.answerHistory' ? isKnowledgeAnswerHistoryPage(data.result) && data.result.page === pending.page
         : pending.method === 'knowledge.answerHistoryGet' ? isKnowledgeAnswerHistoryEntry(data.result) && data.result.task.taskId === pending.taskId
         : pending.method === 'knowledge.answerHistoryDelete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
-        : pending.method === 'knowledge.answerExport' || pending.method === 'conversations.export' ? isObject(data.result) && exactFields(data.result, ['outcome']) && ['SAVED', 'CANCELLED'].includes(data.result.outcome as string)
+        : pending.method === 'knowledge.answerExport' || pending.method === 'conversations.export' || pending.method === 'conversations.saveDraft' ? isObject(data.result) && exactFields(data.result, ['outcome']) && ['SAVED', 'CANCELLED'].includes(data.result.outcome as string)
+        : pending.method === 'conversations.openDraft' ? isConversationDraftOpen(data.result) && (data.result.outcome === 'CANCELLED' || data.result.draft.conversationId === pending.conversationId)
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
         : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)
         : pending.method === 'knowledge.list' ? isKnowledgeList(data.result) && data.result.page === pending.page && data.result.items.every(d => d.status === pending.status)

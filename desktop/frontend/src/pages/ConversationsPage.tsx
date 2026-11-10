@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { SelectedMemory } from '../bridge/contracts'
-import { isTitle } from '../bridge/conversations'
-import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
+import { isTitle, isDraftMessage } from '../bridge/conversations'
+import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode, ConversationDraftFile } from '../bridge/conversations'
 import { ConversationMemoryPreview } from '../components/ConversationMemoryPreview'
 import { ConversationSearch } from '../components/ConversationSearch'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -28,6 +28,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [admission, setAdmission] = useState<ConversationAdmission | null>(null)
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
+  const [draftReview, setDraftReview] = useState<{ file: ConversationDraftFile; original: string; generation: number } | null>(null)
   const [preparation, setPreparation] = useState<{ conversationId: string; title: string; draft: string; generation: number } | null>(null)
   const [memories, setMemories] = useState<SelectedMemory[]>([])
   const [retainMemories, setRetainMemories] = useState(false)
@@ -170,7 +171,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       selectedRef.current = id; detailRef.current = next; composing.current = false
       historyFocus.current = hit && id ? { conversationId: id, sequence: hit.sequence, generation: token } : null
       setTurnNumber(hit ? String(hit.sequence) : ''); setPreviewTurn(null)
-      setSelected(id); setDetail(next); setAdmission(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
+      setSelected(id); setDetail(next); setAdmission(null); setDraft(''); setDraftReview(null); setMemories([]); setRetainMemories(false); setStale(false)
       const pendingTurn = latest?.turns.find(turn => turn.status === 'PENDING')
       setPending(pendingTurn ? { turnId: pendingTurn.turnId, canCancel: pendingTurn.canCancel } : null)
       setTitle(null); setDeleting(false); setPollingError(false)
@@ -201,7 +202,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
     setAdmission(null); actionLock.current = false; setBusy(false); setNotice(''); setTransition(null)
-    setPreviewTurn(null); setPreparation(null)
+    setPreviewTurn(null); setPreparation(null); setDraftReview(null)
     historyFocus.current = null; setTurnNumber('')
     const reset = () => {
       generation.current++; listGeneration.current++; selectedRef.current = null; detailRef.current = null
@@ -209,7 +210,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       setPreviewTurn(null)
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
-      setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
+      setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setDraftReview(null); setMemories([]); setRetainMemories(false); setStale(false)
       setTitle(null); setDeleting(false); setTransition(null); setPreparation(null); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
       composing.current = false
       if (visible && bridge.ready) void loadList('ACTIVE', 0)
@@ -218,7 +219,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
   useEffect(() => { if (!enabled || !visible) { setPreviewTurn(null); setTransition(null) } }, [enabled, visible])
-  useEffect(() => { setPreparation(null) }, [enabled, visible, selected])
+  useEffect(() => { setPreparation(null); setDraftReview(null) }, [enabled, visible, selected])
   useEffect(() => {
     if ((enabled && visible) || !retainMemories) return
     // Leaving the active page revokes continued use, including an in-flight
@@ -301,6 +302,23 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       } else { setNotice('新会话已创建，但未能打开。当前草稿已保留；可刷新列表后打开，无需再次新建。'); await loadList() }
     } catch (problem) { if (token === generation.current) setError(safeText(problem)) }
     finally { if (token === generation.current) { actionLock.current = false; setBusy(false) } }
+  }
+  const restoreDraft = () => {
+    const review = draftReview
+    if (!review || !preparationCurrent.current.allowed || actionLock.current) return
+    const current = () => review.generation === generation.current && selectedRef.current === review.file.conversationId
+      && preparationCurrent.current.draft === review.original && detailRef.current?.conversation.status === 'ACTIVE'
+      && Date.parse(detailRef.current.conversation.createdAt) === Date.parse(review.file.conversationCreatedAt)
+    setDraftReview(null)
+    if (!current()) { setError('会话或草稿已变化，未恢复文件内容。请重新打开并核对。'); return }
+    void run(async (id, token) => {
+      // Restored text never revives a prior picker authorization. Clear the current
+      // selection before replacing the text, preserving the draft if this fails.
+      try { await bridge.clearConversationMemories(id) }
+      finally { if (token === generation.current) { setMemories([]); setRetainMemories(false); setStale(false) } }
+      if (!current()) { if (token === generation.current) setError('草稿已变化，未覆盖后来内容。'); return }
+      setDraft(review.file.message); setNotice('已从文件恢复到当前草稿，尚未发送。请检查历史，避免重复发送已处理的问题；需要的记忆请重新选择。')
+    })
   }
   const changeStatus = (filter: ConversationStatus) => {
     if (filter === status) return
@@ -407,6 +425,28 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
           aria-describedby="conversation-input-help" onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
           onKeyDown={event => { if (event.key === 'Enter' && event.ctrlKey && !composing.current && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); send() } }} />
         <p id="conversation-input-help" className="hint">Enter 换行 · Ctrl+Enter 发送 · {draft.length} / 3000 字符</p>
+        <details className="input-details"><summary>保存或恢复草稿文件</summary>
+          <p className="hint">窗口内草稿不会自动保存到磁盘。需要中断工作时，可手动保存当前消息的明文副本；重开后先选择原会话，再打开文件、预览并确认恢复。</p>
+          <p className="hint">文件只保留点击保存时的消息文字（含已插入的参考），不含未保存标题、未插入参考、历史或另选的记忆。后续编辑和发送不会更新或删除文件，请自行妥善保管或删除。仅支持最多 3000 字符的有效文字，不截断。</p>
+          <div className="operation-actions"><button disabled={!enabled || !visible || busy || historyLoading || !isDraftMessage(draft)} onClick={() => { void run(async (id, token) => {
+            try {
+              const result = await bridge.saveConversationDraft(id, draft)
+              if (token === generation.current) setNotice(result.outcome === 'SAVED' ? '已保存点击时的草稿副本。后续编辑需再次保存为新文件；当前消息尚未因此发送。' : '已取消保存，当前草稿仍保留。')
+            } catch (problem) {
+              if (token === generation.current) setError(problem instanceof BridgeError && ['OutcomeUnknown', 'ConversationDraftSaveUnknown'].includes(problem.code)
+                ? '草稿文件保存结果未确认，请检查所选位置。不会自动重试或覆盖文件，当前草稿仍保留。' : safeText(problem))
+            }
+          }) }}>保存草稿为新文件…</button>
+            <button disabled={!sendAllowed || !visible} onClick={() => { void run(async (id, token) => {
+              const original = draft, result = await bridge.openConversationDraft(id)
+              if (token !== generation.current) return
+              if (result.outcome === 'CANCELLED') { setNotice('已取消打开，当前草稿保持不变。'); return }
+              if (result.draft.conversationId !== id || Date.parse(result.draft.conversationCreatedAt) !== Date.parse(detailRef.current!.conversation.createdAt)) {
+                setError('文件与当前会话身份不一致，草稿未改变。'); return
+              }
+              setDraftReview({ file: result.draft, original, generation: token })
+            }) }}>打开草稿文件…</button></div>
+        </details>
         {draft.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
         <div className="conversation-composer-toolbar">
         <button disabled={!sendAllowed || !visible} onClick={() => {
@@ -441,6 +481,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       </>}
       {error && <p className="error" role="alert">{error}</p>}<p role="status">{notice}</p>
     </section>
+    {draftReview && enabled && visible && <ConfirmationDialog title="恢复文件中的会话草稿？" confirmText="替换当前消息草稿" cancel={() => setDraftReview(null)} confirm={restoreDraft}>
+      <p>目标：<bdi>{detail?.conversation.title}</bdi> · 文件记录：<bdi>{draftReview.file.conversationTitle}</bdi></p>
+      <p className="hint">保存于 {new Date(draftReview.file.savedAt).toLocaleString('zh-CN')}；保存时 {draftReview.file.totalTurns} 轮，当前 {detail?.totalTurns} 轮。文件信息可编辑，不证明来源真实或消息从未发送。</p>
+      <p>确认将替换当前消息草稿并清除当前记忆选择。不会更改会话标题、保存记忆或发送消息；取消可保留原草稿。</p>
+      <div className="conversation-draft-comparison"><section><h3>当前消息草稿</h3><pre dir="auto">{draft}</pre></section>
+        <section><h3>文件中的消息</h3><pre dir="auto">{draftReview.file.message}</pre></section></div>
+      <p className="hint">恢复后请先核对历史及参考原文。文件中的出处文字不会自动更新、读取或变成已验证引用。</p>
+    </ConfirmationDialog>}
     {preparation && enabled && visible && selected === preparation.conversationId && <WorkspaceSearchDialog bridge={bridge}
       close={() => setPreparation(null)} preparation={{ ...preparation, apply: message => {
         if (generation.current !== preparation.generation || selectedRef.current !== preparation.conversationId

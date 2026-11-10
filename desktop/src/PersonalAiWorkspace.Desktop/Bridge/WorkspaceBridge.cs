@@ -290,6 +290,8 @@ internal sealed class WorkspaceBridge : IDisposable
                     "conversations.search" => await conversations.SearchAsync(session, payload.GetProperty("query").GetString()!, payload.GetProperty("scope").GetString()!, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.get" => await conversations.GetAsync(session, id, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.export" => await conversations.ExportAsync(session, id, cancellation),
+                    "conversations.saveDraft" => await conversations.DraftFileAsync(session, id, payload.GetProperty("message").GetString()!, cancellation),
+                    "conversations.openDraft" => await conversations.DraftFileAsync(session, id, null, cancellation),
                     "conversations.create" => await conversations.CreateAsync(session, cancellation),
                     "conversations.selectMemories" => await conversations.SelectAsync(session, id, cancellation),
                     "conversations.clearMemories" => conversations.ClearMemories(session, id),
@@ -373,7 +375,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
     { "conversations.search", "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
-      "conversations.send", "conversations.cancelPending", "conversations.export" };
+      "conversations.send", "conversations.cancelPending", "conversations.export", "conversations.saveDraft", "conversations.openDraft" };
     internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
     { "memory.list", "memory.recall", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
     private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()
@@ -559,6 +561,7 @@ internal sealed class WorkspaceBridge : IDisposable
         {
             "conversations.get" => ["conversationId", "page"],
             "conversations.rename" => ["conversationId", "title"],
+            "conversations.saveDraft" => ["conversationId", "message"],
             "conversations.send" => payload.TryGetProperty("retainMemories", out _)
                 ? ["conversationId", "message", "selectedMemoryRefs", "retainMemories"] : ["conversationId", "message", "selectedMemoryRefs"],
             "conversations.cancelPending" => ["conversationId", "turnId"],
@@ -570,6 +573,7 @@ internal sealed class WorkspaceBridge : IDisposable
             "conversations.get" => Page(payload),
             // 160 Unicode scalar values may occupy 320 UTF-16 units. Core validates text.
             "conversations.rename" => Text(payload, "title", 320, out _),
+            "conversations.saveDraft" => Text(payload, "message", 3000, out var draft) && ConversationDraftFormat.ValidMessage(draft),
             "conversations.send" => Text(payload, "message", 3000, out _) && ValidReferences(payload)
                 && (!payload.TryGetProperty("retainMemories", out var retain) || retain.ValueKind is JsonValueKind.True or JsonValueKind.False),
             "conversations.cancelPending" => Text(payload, "turnId", 36, out var turn) && CanonicalId(turn),

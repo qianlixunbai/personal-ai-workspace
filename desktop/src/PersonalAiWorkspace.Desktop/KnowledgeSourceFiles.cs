@@ -47,6 +47,11 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
         return new(OpenRegular(path,RuntimeClient.MaximumKnowledgeSourceBytes),filename);
     }
     internal static FileStream OpenBackup(string path)=>OpenRegular(path,RuntimeClient.MaximumKnowledgeBackupBytes);
+    internal static FileStream OpenConversationDraft(string path)
+    {
+        if (!path.EndsWith(".workspace-draft.md", StringComparison.OrdinalIgnoreCase)) throw ConversationDraftFormat.Invalid();
+        return OpenRegular(path, ConversationDraftFormat.MaximumBytes);
+    }
     internal static FileStream OpenVisionImage(string path)
     {
         try { return OpenRegular(path,4*1024*1024); }
