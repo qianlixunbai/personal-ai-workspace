@@ -79,6 +79,7 @@ public sealed class MemoryWindowTests
     {
         internal readonly Dictionary<Guid, MemoryItem> Items = [];
         internal int Reads, Mutations;
+        internal bool LoseNextWriteResponse;
         internal string? Failure;
         internal TaskCompletionSource<HttpResponseMessage>? Pending;
         internal CancellationToken PendingToken;
@@ -93,6 +94,12 @@ public sealed class MemoryWindowTests
             id = item.Id, type = item.Type.ToString(), title = item.Title, content = item.Content, status = item.Status.ToString(),
             revision = item.Revision, source = "MANUAL", createdAt = item.CreatedAt, updatedAt = item.UpdatedAt
         });
+        private void AfterWrite()
+        {
+            if (!LoseNextWriteResponse) return;
+            LoseNextWriteResponse = false;
+            throw new HttpRequestException(PrivateContent);
+        }
         internal RuntimeClient Client() => new(new Handler(async (request, ct) =>
         {
             if (request.Method == HttpMethod.Get) Reads++; else Mutations++;
@@ -121,6 +128,7 @@ public sealed class MemoryWindowTests
                 var added = Add() with { Type = Enum.Parse<MemoryType>(root.GetProperty("type").GetString()!),
                     Title = root.GetProperty("title").GetString()!, Content = root.GetProperty("content").GetString()! };
                 Items[added.Id] = added;
+                AfterWrite();
                 var response = Response(Json(added), HttpStatusCode.Created);
                 response.Headers.Location = new Uri($"/api/v1/memory/items/{added.Id:D}", UriKind.Relative); return response;
             }
@@ -128,15 +136,79 @@ public sealed class MemoryWindowTests
             if (!Items.TryGetValue(id, out var old)) return Response(Error("MEMORY_NOT_FOUND"), HttpStatusCode.NotFound);
             if (root.GetProperty("expectedRevision").GetInt64() != old.Revision)
                 return Response(Error("MEMORY_REVISION_CONFLICT"), HttpStatusCode.Conflict);
-            if (request.Method == HttpMethod.Delete) { Items.Remove(id); return new(HttpStatusCode.NoContent); }
+            if (request.Method == HttpMethod.Delete) { Items.Remove(id); AfterWrite(); return new(HttpStatusCode.NoContent); }
             var updated = old with { Revision = old.Revision + 1, UpdatedAt = DateTimeOffset.UtcNow };
             if (request.Method == HttpMethod.Put) updated = updated with
             { Type = Enum.Parse<MemoryType>(root.GetProperty("type").GetString()!), Title = root.GetProperty("title").GetString()!, Content = root.GetProperty("content").GetString()! };
             else updated = updated with { Status = path.EndsWith("/archive", StringComparison.Ordinal) ? MemoryStatus.ARCHIVED : MemoryStatus.ACTIVE };
-            Items[id] = updated; return Response(Json(updated));
+            Items[id] = updated; AfterWrite(); return Response(Json(updated));
         }), () => Token);
     }
 
+
+    [Fact]
+    public Task UnknownWriteBlocksReplayUntilExplicitReadAndKnownFailuresRemainRetryable() => StaAsync(async () =>
+    {
+        var store = new Store(); using var runtime = store.Client(); bool approve = false;
+        var window = new MemoryWindow(runtime, _ => approve);
+        try
+        {
+            window.ContentBox.Text = PrivateContent;
+            await window.SaveAsync(); // Validation fails before dispatch: retry remains possible.
+            Assert.Equal(0, store.Mutations);
+            Assert.Equal(ErrorText.For(DesktopError.MemoryInvalid), window.StatusText.Text);
+            Assert.True(window.SaveButton.IsEnabled);
+
+            window.TitleBox.Text = PrivateTitle;
+            store.LoseNextWriteResponse = true;
+            await window.SaveAsync();
+            var created = Assert.Single(store.Items.Values);
+            Assert.Equal(1, store.Mutations);
+            Assert.True(window.Dirty);
+            Assert.False(window.SaveButton.IsEnabled);
+            Assert.Contains("操作结果待确认", window.MetadataText.Text);
+            Safe(window.StatusText.Text);
+            await window.SaveAsync();
+            Assert.Equal(1, store.Mutations);
+
+            await window.RefreshAsync(); // Listing cannot acknowledge an uncertain write.
+            Assert.False(window.SaveButton.IsEnabled);
+            await window.SelectItemAsync(created); // Existing discard confirmation still applies.
+            Assert.True(window.Dirty);
+            Assert.False(window.SaveButton.IsEnabled);
+            approve = true;
+            await window.SelectItemAsync(created);
+            Assert.False(window.Dirty);
+            Assert.DoesNotContain("操作结果待确认", window.MetadataText.Text);
+
+            window.ContentBox.Text += " local update";
+            store.Pending = new();
+            var refresh = window.RefreshAsync();
+            store.Pending.SetException(new HttpRequestException(PrivateContent));
+            await refresh;
+            store.Pending = null;
+            Assert.True(window.SaveButton.IsEnabled); // A failed read cannot block writes as uncertain.
+
+            store.LoseNextWriteResponse = true;
+            await window.SaveAsync();
+            Assert.Equal(2, store.Mutations);
+            Assert.Equal(2, store.Items[created.Id].Revision);
+            Assert.True(window.Dirty);
+            Assert.False(window.SaveButton.IsEnabled);
+            Assert.False(window.LifecycleButton.IsEnabled);
+            Assert.False(window.DeleteButton.IsEnabled);
+            await window.SaveAsync(); await window.ChangeStatusAsync(); await window.DeleteAsync();
+            Assert.Equal(2, store.Mutations);
+            approve = false; await window.ReloadAsync();
+            Assert.True(window.Dirty);
+            Assert.False(window.SaveButton.IsEnabled);
+            approve = true; await window.ReloadAsync();
+            Assert.False(window.Dirty);
+            Assert.DoesNotContain("操作结果待确认", window.MetadataText.Text);
+            Assert.Equal(store.Items[created.Id].Content, window.ContentBox.Text);
+        }
+        finally { approve = true; window.TryClose(); }
+    });
 
     [Fact]
     public Task DirtySwitchNewReloadAndCloseRespectConfirmationAndSuccessfulSaveClearsDirty() => StaAsync(async () =>

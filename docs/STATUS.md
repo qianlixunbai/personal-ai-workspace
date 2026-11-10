@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [原生 Memory 备用入口](engineering/MEMORY-NATIVE-FALLBACK-REPORT.md)已提供 WebView2 失败页到既有记忆窗口的明确入口；[原生写入结果不明保护](engineering/MEMORY-NATIVE-OUTCOME-REPORT.md)防止已提交但响应丢失后重复保存，保留草稿与原有确认，允许只读核对。两个小阶段分别完成必要增量编译与单条 STA 用例，后一项先复现旧版失败；没有重跑前端回归或启动真实桌面／JVM／模型。共享短运行锁已采用并释放。分发包未更新，原 WebView2 保存／关闭／独立重开闭环仍未通过，继续为 Development-only。
+
 2026-11-10 [Memory 编辑状态通知竞态](engineering/MEMORY-EDITOR-STATE-RACE-REPORT.md)：保存成功后，旧的未保存状态通知失败不再给当前记录留下过期警告；当前通知失败仍明确提示。保留原有 native 通知顺序、确认与未知写入保护，不重试或自动写入。单条回归先复现失败，修复后 MemoryPage 24/24 和 TypeScript 通过；未更新分发包，真实桌面保存／关闭／重开仍未通过。
 
 2026-11-09 [Memory 草稿主动查重](engineering/MEMORY-DRAFT-DUPLICATE-REVIEW-REPORT.md)：手工及知识回答原文草稿可不调用模型、主动核对已有使用中记忆；复用现有有界查重，明确显示重复项、失败及检查不完整，打开已有记录仍需丢弃确认，保存仍由用户明确执行。两个相关前端文件 35/35、TypeScript 通过；首轮 React key 冲突已修正并保留日志。未更新分发包，未通过完整 Memory 桌面保存／重开。另一次唯一隔离 startup 已捕获 GPU／渲染／浏览器进程退出，宿主及已记录 browser PID 均退出，18765 关闭；未放宽清理或安全设置，仍为 Development-only。

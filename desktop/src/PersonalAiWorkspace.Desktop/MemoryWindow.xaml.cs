@@ -14,13 +14,14 @@ internal enum MemoryConfirmation { Discard, Reload, Delete }
 
 public partial class MemoryWindow : Window
 {
+    private const string UnknownOutcomeMessage = "操作结果待确认。不会自动重试。请刷新列表核对，再重新加载；新建结果不明时请先检查是否已存在。";
     private readonly RuntimeClient runtime;
     private readonly Func<MemoryConfirmation, bool> confirm;
     private readonly CancellationTokenSource lifetime = new();
     private MemoryItem? loaded;
     private MemoryPage? results;
     private MemoryQuery view = new();
-    private bool busy, closed, rendering, initialized, stale, missing;
+    private bool busy, closed, rendering, initialized, stale, missing, outcomeUnknown;
     internal bool Dirty => initialized && (TitleBox.Text != (loaded?.Title ?? "")
         || ContentBox.Text != (loaded?.Content ?? "") || SelectedType != (loaded?.Type ?? MemoryType.PROJECT_NOTE));
     internal bool Stale => stale;
@@ -54,8 +55,8 @@ public partial class MemoryWindow : Window
         StatusFilter.IsEnabled = TypeFilter.IsEnabled = MemoryList.IsEnabled = available;
         SearchBox.IsReadOnly = TitleBox.IsReadOnly = ContentBox.IsReadOnly = busy;
         EditorType.IsEnabled = available;
-        SaveButton.IsEnabled = available && !stale && !missing && Dirty;
-        LifecycleButton.IsEnabled = DeleteButton.IsEnabled = available && loaded is not null && !stale && !missing;
+        SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty;
+        LifecycleButton.IsEnabled = DeleteButton.IsEnabled = available && loaded is not null && !stale && !missing && !outcomeUnknown;
         ReloadButton.IsEnabled = available && loaded is not null && !missing;
         PreviousButton.IsEnabled = available && results?.HasPrevious == true;
         NextButton.IsEnabled = available && results?.HasNext == true;
@@ -65,11 +66,12 @@ public partial class MemoryWindow : Window
         if (Dirty) MetadataText.Text += " · 未保存";
         if (stale) MetadataText.Text += " · 需重新加载";
         if (missing) MetadataText.Text += " · 已不存在";
+        if (outcomeUnknown) MetadataText.Text += " · 操作结果待确认";
     }
     private void LoadEditor(MemoryItem? item)
     {
         rendering = true;
-        loaded = item; stale = missing = false;
+        loaded = item; stale = missing = outcomeUnknown = false;
         EditorType.SelectedIndex = item?.Type == MemoryType.PREFERENCE ? 0 : 1;
         TitleBox.Text = item?.Title ?? ""; ContentBox.Text = item?.Content ?? "";
         rendering = false;
@@ -81,7 +83,7 @@ public partial class MemoryWindow : Window
         MemoryList.SelectedItem = results?.Items.FirstOrDefault(x => x.Id == loaded?.Id);
         rendering = false;
     }
-    private async Task RunAsync(Func<Task> operation, bool affectsLoaded = true)
+    private async Task RunAsync(Func<Task> operation, bool affectsLoaded = true, bool mutation = false)
     {
         if (busy || closed) return;
         busy = true; UpdateControls(); StatusText.Text = "正在处理 Memory…";
@@ -89,9 +91,11 @@ public partial class MemoryWindow : Window
         catch (DesktopException error)
         {
             if (closed) return;
+            if (mutation && error.Error is DesktopError.OutcomeUnknown or DesktopError.ClientTimeout
+                or DesktopError.RuntimeUnavailable or DesktopError.InvalidResponse) outcomeUnknown = true;
             if (affectsLoaded && error.Error == DesktopError.MemoryRevisionConflict) stale = true;
             if (affectsLoaded && error.Error == DesktopError.MemoryNotFound) missing = true;
-            StatusText.Text = ErrorText.For(error.Error);
+            StatusText.Text = ErrorText.For(error.Error) + (outcomeUnknown ? "\n" + UnknownOutcomeMessage : "");
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!closed) StatusText.Text = ErrorText.For(DesktopError.InternalError); }
@@ -126,7 +130,7 @@ public partial class MemoryWindow : Window
         // Keep the editor, including dirty text, across list/search/filter refreshes.
         results = null; rendering = true; MemoryList.ItemsSource = null; rendering = false;
         await FetchListAsync();
-        if (!closed) StatusText.Text = stale ? ErrorText.For(DesktopError.MemoryRevisionConflict)
+        if (!closed) StatusText.Text = outcomeUnknown ? UnknownOutcomeMessage : stale ? ErrorText.For(DesktopError.MemoryRevisionConflict)
             : missing ? ErrorText.For(DesktopError.MemoryNotFound) : "Memory 列表已刷新。";
     }, affectsLoaded: false);
     internal async Task SelectItemAsync(MemoryItem item)
@@ -148,7 +152,7 @@ public partial class MemoryWindow : Window
     }
     internal Task SaveAsync()
     {
-        if (busy || closed || stale || missing || !Dirty) return Task.CompletedTask;
+        if (busy || closed || stale || missing || outcomeUnknown || !Dirty) return Task.CompletedTask;
         return RunAsync(async () =>
         {
             var saved = loaded is null
@@ -158,11 +162,11 @@ public partial class MemoryWindow : Window
             LoadEditor(saved);
             StatusText.Text = "Memory 已保存。";
             await RefreshAfterMutationAsync();
-        });
+        }, mutation: true);
     }
     internal Task ChangeStatusAsync()
     {
-        if (busy || closed || loaded is null || stale || missing) return Task.CompletedTask;
+        if (busy || closed || loaded is null || stale || missing || outcomeUnknown) return Task.CompletedTask;
         return RunAsync(async () =>
         {
             bool keepEdits = Dirty;
@@ -173,18 +177,18 @@ public partial class MemoryWindow : Window
             if (keepEdits) loaded = saved; else LoadEditor(saved);
             StatusText.Text = "Memory 状态已更新。" + (keepEdits ? "本地修改仍未保存。" : "");
             await RefreshAfterMutationAsync();
-        });
+        }, mutation: true);
     }
     internal Task DeleteAsync()
     {
-        if (busy || closed || loaded is null || stale || missing || !confirm(MemoryConfirmation.Delete)) return Task.CompletedTask;
+        if (busy || closed || loaded is null || stale || missing || outcomeUnknown || !confirm(MemoryConfirmation.Delete)) return Task.CompletedTask;
         return RunAsync(async () =>
         {
             await runtime.DeleteMemoryAsync(loaded.Id, loaded.Revision, lifetime.Token);
             if (closed) return;
             LoadEditor(null); StatusText.Text = "Memory 已删除。";
             await RefreshAfterMutationAsync();
-        });
+        }, mutation: true);
     }
     private async Task RefreshAfterMutationAsync()
     {
@@ -237,7 +241,7 @@ public partial class MemoryWindow : Window
     {
         closed = true; lifetime.Cancel(); rendering = true;
         TitleBox.Clear(); ContentBox.Clear(); SearchBox.Clear(); MemoryList.ItemsSource = null;
-        loaded = null; results = null; view = new(); stale = missing = false;
+        loaded = null; results = null; view = new(); stale = missing = outcomeUnknown = false;
         MetadataText.Text = PageText.Text = StatusText.Text = "";
         lifetime.Dispose();
     }
