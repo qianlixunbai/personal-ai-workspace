@@ -24,6 +24,7 @@ public sealed class KnowledgeTests
         internal bool HistoryDeleted,HistoryMalformed;internal string AnswerPromptVersion="knowledge-answer-v2";
         internal JsonElement? LastScope;
         internal string? ExportSource;internal bool ExportWrongRevision,ExportMissing;internal List<int> ExportOffsets=[];
+        internal string? BeforeInvalid;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -85,6 +86,11 @@ public sealed class KnowledgeTests
                 if(end<source.Length&&char.IsLowSurrogate(source[end]))end--;
                 return Reply(new{documentId=Id,sourceRevision=ExportWrongRevision?"2":"1",offset,text=source[offset..end],nextOffset=end<source.Length?(int?)end:null,
                     locators=new[]{new{type="MARKDOWN_SECTION_LINES",startLine=1,endLine=100000,startOffset=0,endOffset=source.Length,section="line-1",heading="Heading"}},parserVersion="text-1",normalizationVersion="lf-1"});
+            }
+            if(path.EndsWith("/preview-before")){
+                Assert.Equal(HttpMethod.Get,request.Method);Assert.Equal("?revision=1&before=10",request.RequestUri.Query);
+                return BeforeInvalid is not null?RuntimeClientTests.Response(HttpStatusCode.OK,BeforeInvalid):Reply(new{documentId=Id,sourceRevision="1",offset=6,text="😀前文",nextOffset=10,
+                    locators=new[]{new{type="TXT_LINES",startLine=1,endLine=1,startOffset=0,endOffset=18,section=(string?)null,heading=(string?)null}},parserVersion="text-1",normalizationVersion="lf-1"});
             }
             if(path.EndsWith("/preview"))return Reply(new{documentId=Id,sourceRevision="1",offset=0,text="<script>x</script>",nextOffset=(int?)null,
                 locators=new[]{new{type="TXT_LINES",startLine=1,endLine=1,startOffset=0,endOffset=18,section=(string?)null,heading=(string?)null}},parserVersion="text-1",normalizationVersion="lf-1"});
@@ -324,6 +330,26 @@ public sealed class KnowledgeTests
         Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));await f.Send("knowledge.get",new{documentId=f.Handler.Id});
         await f.Send("knowledge.preview",new{documentId=f.Handler.Id,sourceRevision="1",offset=0});f.Rotate();
         var denied=await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());
+    }
+    [Fact]public async Task PrecedingPreviewBindsTheRequestedBoundaryAndRetainsSessionAuthority()
+    {
+        using var f=new Fixture();
+        var denied=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
+        Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
+        await f.List();var good=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
+        Assert.True(good.GetProperty("ok").GetBoolean());Assert.Equal("😀前文",good.GetProperty("result").GetProperty("text").GetString());
+        string valid=good.GetProperty("result").GetRawText();int calls=f.Handler.Calls;
+        f.Sent.Clear();await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=0}));
+        Assert.Empty(f.Sent);Assert.Equal(calls,f.Handler.Calls);
+        foreach(string invalid in new[]{valid.Replace("\"offset\":6","\"offset\":7"),valid.Replace("\"sourceRevision\":\"1\"","\"sourceRevision\":\"2\""),valid.Replace("\"text\":","\"extra\":true,\"text\":")}){
+            f.Handler.BeforeInvalid=invalid;var rejected=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
+            Assert.Equal("InvalidResponse",rejected.GetProperty("error").GetProperty("code").GetString());
+        }
+        f.Handler.BeforeInvalid=null;f.Handler.Hold=new();
+        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10}));
+        f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);
+        denied=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
+        Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());
     }
     [Fact]public async Task LateSearchCannotAuthorizeReplacementSession()
     {

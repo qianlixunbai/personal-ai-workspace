@@ -34,6 +34,7 @@ public class KnowledgeController {
     public record Cancel(String documentId){}
     @PostMapping("/imports/{id}/cancel") KnowledgeStore.Job cancel(@PathVariable String id,@RequestBody Cancel m){nativeOnly();return store.cancel(id,m.documentId());}
     @GetMapping("/documents/{id}/preview") KnowledgeStore.Preview preview(@PathVariable String id,@RequestParam String revision,@RequestParam(defaultValue="0") int offset){nativeOnly();return store.preview(id,revision,offset);}
+    @GetMapping("/documents/{id}/preview-before") KnowledgeStore.Preview previewBefore(@PathVariable String id,@RequestParam String revision,@RequestParam int before){nativeOnly();return store.previewBefore(id,revision,before);}
     static String decode(String encoded,int maximum){try{
         if(encoded==null||encoded.length()>maximum*8||!encoded.matches("[A-Za-z0-9_-]+"))throw new IllegalArgumentException();
         String value=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(Base64.getUrlDecoder().decode(encoded))).toString();

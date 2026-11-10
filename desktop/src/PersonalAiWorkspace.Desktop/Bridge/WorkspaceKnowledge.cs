@@ -187,6 +187,12 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     }
     internal async Task<KnowledgePreview> PreviewAsync(string session,string id,string revision,int offset,CancellationToken ct)
     {lock(sync)Require(session,id);return await runtime.PreviewKnowledgeAsync(id,revision,offset,ct);}
+    internal async Task<KnowledgePreview> PreviewBeforeAsync(string session,string id,string revision,int before,CancellationToken ct)
+    {
+        Authority known;lock(sync)known=Require(session,id);
+        var result=await runtime.PreviewKnowledgeBeforeAsync(id,revision,before,ct);
+        lock(sync){Current(session,known);Require(session,id);return result;}
+    }
     internal async Task<KnowledgeImportResult> ImportAsync(string session,string? id,string? expected,CancellationToken ct)
     {
         Authority known;lock(sync)known=Require(session,id);using var selected=await files.PickAsync(ct);ct.ThrowIfCancellationRequested();

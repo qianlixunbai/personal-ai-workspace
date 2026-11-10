@@ -332,18 +332,33 @@ public final class KnowledgeStore implements AutoCloseable {
         }
     }
     public synchronized Preview preview(String doc,String revision,int offset) {
-        get(doc);long rev=version(revision);if(offset<0)throw error(ErrorCode.INVALID_REQUEST);
+        return preview(doc,revision,offset,false);
+    }
+    /** The immediately preceding bounded page, even when no page was visited before. */
+    public synchronized Preview previewBefore(String doc,String revision,int before) {
+        return preview(doc,revision,before,true);
+    }
+    private Preview preview(String doc,String revision,int offset,boolean backwards) {
+        get(doc);long rev=version(revision);if(offset<0||backwards&&offset==0)throw error(ErrorCode.INVALID_REQUEST);
         return sql(()->{try(var s=statement("SELECT * FROM revisions WHERE doc_id=? AND revision=?",doc,rev);var r=s.executeQuery()){
             if(!r.next())throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);String text=r.getString("text");
             if(offset>text.length()||offset>0&&offset<text.length()&&Character.isLowSurrogate(text.charAt(offset)))throw error(ErrorCode.INVALID_REQUEST);
             // Recreate only bounded structural interpretation of already verified immutable normalized text.
             var representation=KnowledgeParser.represent(text,r.getString("type"),()->false);
-            var locations=representation.locators().stream().filter(x->x.startOffset()<=offset&&x.endOffset()>offset).limit(1).toList();
-            int end=Math.min(text.length(),offset+PREVIEW_UNITS);
+            int point=backwards?offset-1:offset;
+            var locations=representation.locators().stream().filter(x->x.startOffset()<=point&&x.endOffset()>point).limit(1).toList();
+            int start=offset,end=Math.min(text.length(),offset+PREVIEW_UNITS);
             // A preview range stays inside one structural locator, including heading boundaries.
-            if(!locations.isEmpty())end=Math.min(end,locations.getFirst().endOffset());
-            if(end<text.length()&&Character.isLowSurrogate(text.charAt(end)))end--;
-            return new Preview(doc,revision,offset,text.substring(offset,end),end<text.length()?end:null,locations,r.getString("parser"),r.getString("normalizer"));
+            if(backwards){
+                end=offset;start=Math.max(locations.getFirst().startOffset(),offset-PREVIEW_UNITS);
+                // Advancing the start keeps the complete pair for the preceding page,
+                // while retaining the existing response-size limit.
+                if(Character.isLowSurrogate(text.charAt(start)))start++;
+            }else{
+                if(!locations.isEmpty())end=Math.min(end,locations.getFirst().endOffset());
+                if(end<text.length()&&Character.isLowSurrogate(text.charAt(end)))end--;
+            }
+            return new Preview(doc,revision,start,text.substring(start,end),end<text.length()?end:null,locations,r.getString("parser"),r.getString("normalizer"));
         }});
     }
     interface Operation<T>{T run()throws Exception;}

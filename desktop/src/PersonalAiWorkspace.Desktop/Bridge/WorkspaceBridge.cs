@@ -253,6 +253,7 @@ internal sealed class WorkspaceBridge : IDisposable
                     "knowledge.list"=>await knowledge.ListAsync(session,payload.GetProperty("status").GetString()!,payload.GetProperty("page").GetInt32(),cancellation),
                     "knowledge.get"=>await knowledge.GetAsync(session,id!,cancellation),
                     "knowledge.preview"=>await knowledge.PreviewAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
+                    "knowledge.previewBefore"=>await knowledge.PreviewBeforeAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
                     "knowledge.import"=>await knowledge.ImportAsync(session,id,payload.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null?null:payload.GetProperty("expectedMetadataVersion").GetString(),cancellation),
                     "knowledge.importState"=>await knowledge.ImportStateAsync(session,payload.GetProperty("requestId").GetString()!,cancellation),
                     "knowledge.cancelImport"=>await knowledge.CancelAsync(session,id!,payload.GetProperty("requestId").GetString()!,cancellation),
@@ -477,7 +478,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
         if(method=="knowledge.answerSubmit")return Fields(p,p.TryGetProperty("scope",out _)?["question","query","scope"]:["question","query"])&&ValidKnowledgeScope(p)&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
@@ -494,8 +495,8 @@ internal sealed class WorkspaceBridge : IDisposable
             (p.GetProperty("documentId").ValueKind==JsonValueKind.Null?p.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null:Id("documentId")&&Version("expectedMetadataVersion"));
         if(method=="knowledge.get")return Fields(p,"documentId")&&Id("documentId");
         if(method=="knowledge.cancelImport")return Fields(p,"documentId","requestId")&&Id("documentId")&&Id("requestId");
-        if(method=="knowledge.preview")return Fields(p,"documentId","sourceRevision","offset")&&Id("documentId")&&Version("sourceRevision")&&long.Parse(p.GetProperty("sourceRevision").GetString()!,CultureInfo.InvariantCulture)<=10
-            &&p.GetProperty("offset").ValueKind==JsonValueKind.Number&&p.GetProperty("offset").TryGetInt32(out int o)&&o is >=0 and <=1_000_000;
+        if(method is "knowledge.preview" or "knowledge.previewBefore")return Fields(p,"documentId","sourceRevision","offset")&&Id("documentId")&&Version("sourceRevision")&&long.Parse(p.GetProperty("sourceRevision").GetString()!,CultureInfo.InvariantCulture)<=10
+            &&p.GetProperty("offset").ValueKind==JsonValueKind.Number&&p.GetProperty("offset").TryGetInt32(out int o)&&o is >=0 and <=1_000_000&&(method=="knowledge.preview"||o>0);
         return Fields(p,"documentId","expectedMetadataVersion")&&Id("documentId")&&Version("expectedMetadataVersion");
     }
     private static bool ValidKnowledgeScope(JsonElement payload)

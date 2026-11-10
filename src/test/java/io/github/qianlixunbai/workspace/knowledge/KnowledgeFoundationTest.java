@@ -127,6 +127,29 @@ class KnowledgeFoundationTest {
             assertTrue(bytes(json).length<64*1024);assertFalse(json.contains(temporary.toString()));
         }
     }
+    @Test void precedingPreviewTraversesOldVersionSectionsWithoutGapsOrBrokenUnicode()throws Exception {
+        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
+            String text="# 前节\n"+"x".repeat(15)+"😀"+"y".repeat(4095)+"\n# 后节\n引用命中";
+            var job=importBytes(store,ingestion,null,null,"context.md",bytes(text));String id=job.documentId();
+            var original=store.get(id);var update=importBytes(store,ingestion,id,original.metadataVersion(),"context.md",bytes("# 新版\n不同内容"));
+            assertEquals("2",update.sourceRevision());String metadata=store.get(id).metadataVersion();
+            int boundary=text.indexOf("# 后节");String recovered="";int before=boundary;
+            while(before>0){
+                var page=store.previewBefore(id,"1",before);
+                assertFalse(page.text().isEmpty());assertTrue(page.text().length()<=4096);
+                assertEquals(before,page.offset()+page.text().length());assertEquals(before,page.nextOffset());
+                assertFalse(Character.isLowSurrogate(page.text().charAt(0)));assertFalse(Character.isHighSurrogate(page.text().charAt(page.text().length()-1)));
+                assertEquals(text.substring(page.offset(),before),page.text());
+                recovered=page.text()+recovered;before=page.offset();
+            }
+            assertEquals(text.substring(0,boundary),recovered);
+            var last=store.previewBefore(id,"1",text.length());assertNull(last.nextOffset());assertEquals("后节",last.locators().getFirst().heading());
+            code(ErrorCode.INVALID_REQUEST,()->store.previewBefore(id,"1",0));
+            code(ErrorCode.INVALID_REQUEST,()->store.previewBefore(id,"1",text.indexOf("😀")+1));
+            code(ErrorCode.KNOWLEDGE_NOT_FOUND,()->store.previewBefore(id,"3",1));
+            assertEquals(metadata,store.get(id).metadataVersion());assertEquals("2",store.get(id).currentReadyRevision());
+        }
+    }
     @Test void tenRevisionLimitStillAllowsSameBytesNoOpAndCorpusReservationIsBounded()throws Exception {
         try(var store=open();var ingestion=new KnowledgeIngestion(store)){
             var first=importBytes(store,ingestion,null,null,"limit.txt",bytes("revision-1"));String doc=first.documentId();

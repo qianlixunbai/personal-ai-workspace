@@ -27,11 +27,13 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const report = (e: unknown) => { setError(e instanceof Error ? e.message : 'Knowledge 操作暂时不可用。'); if (e instanceof BridgeError && ['KnowledgeRevisionConflict', 'OutcomeUnknown', 'KnowledgeDeleteIncomplete'].includes(e.code)) setStale(true) }
   const refreshList = async () => { const epoch = generation.current; const result = await bridge.listKnowledge(status, page); if (epoch === generation.current) { setList(result); setCorpusEpoch(n => n + 1) } }
   const load = async (id: string, reset = true) => {
-    const epoch = generation.current, pick = ++selection.current; selected.current = id
-    if (reset) { setPreview(null); setSourceTarget(null); offsets.current = [] }
+    const epoch = generation.current, pick = ++selection.current
     const result = await bridge.getKnowledge(id)
     if (epoch !== generation.current || pick !== selection.current) return false
-    setDetail(result); setRevision(result.document.currentReadyRevision ?? ''); setStale(false)
+    const keepReader = !reset && document?.documentId === id && !!revision
+    if (keepReader && !result.revisions.some(r => r.sourceRevision === revision)) throw new BridgeError('KnowledgeNotFound', '所选源版本已不可用。保留此前阅读内容，未切换到其他版本。')
+    if (!keepReader) { setPreview(null); setSourceTarget(null); offsets.current = []; setRevision(result.document.currentReadyRevision ?? '') }
+    selected.current = id; setDetail(result); setStale(false)
     return true
   }
   const run = async (work: () => Promise<void>) => {
@@ -69,17 +71,17 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (result.outcome === 'UNKNOWN') { setUnknownRequest(result.requestId); setNotice('导入结果暂无法确认；请检查导入状态，文件不会自动重发。'); return }
     setUnknownRequest(null); setStatus('ACTIVE'); setPage(0); await load(result.job!.documentId); await refreshList(); setNotice('导入已接受。')
   })
-  const showPreview = (offset: number, history: 'push' | 'back' | 'reset' = 'push') => run(async () => {
+  const showPreview = (offset: number, history: 'push' | 'back' | 'reset' | 'before' = 'push') => run(async () => {
     if (!enabled || !visible || !document || !revision) return
     const destination = history === 'back' ? offsets.current.at(-1) : offset
     if (destination === undefined) return
     const epoch = generation.current, pick = selection.current
-    const result = await bridge.previewKnowledge(document.documentId, revision, destination)
+    const result = await (history === 'before' ? bridge.previewKnowledgeBefore(document.documentId, revision, destination) : bridge.previewKnowledge(document.documentId, revision, destination))
     if (epoch !== generation.current || pick !== selection.current) return
     // A failed read must leave both the displayed source and its back stack intact.
     if (history === 'reset') offsets.current = []
     else if (history === 'back') offsets.current = offsets.current.slice(0, -1)
-    else if (preview && preview.offset !== destination) offsets.current = [...offsets.current.slice(-255), preview.offset]
+    else if (preview && preview.offset !== result.offset) offsets.current = [...offsets.current.slice(-255), preview.offset]
     setPreview(result)
   })
   const mutation = (action: 'archive' | 'restore' | 'delete') => run(async () => {
@@ -106,11 +108,15 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   })
   const openHit = (hit: Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'>, kind: KnowledgeSourceTarget['kind'] = 'search') => run(async () => {
     if (!enabled || !visible) return
-    const epoch = generation.current, pick = selection.current + 1; const loaded = await load(hit.documentId)
-    if (!loaded || epoch !== generation.current || pick !== selection.current) return
+    const epoch = generation.current, pick = ++selection.current
+    const nextDetail = await bridge.getKnowledge(hit.documentId)
+    if (epoch !== generation.current || pick !== selection.current) return
     const result = await bridge.previewKnowledge(hit.documentId, hit.sourceRevision, hit.startOffset)
     if (epoch !== generation.current || pick !== selection.current) return
-    setRevision(hit.sourceRevision); setPreview(result)
+    // Commit the complete destination together. A missing source or failed read
+    // must not replace the previous document/version, highlight or return stack.
+    selected.current = hit.documentId; offsets.current = []; setStale(false)
+    setDetail(nextDetail); setRevision(hit.sourceRevision); setPreview(result)
     setSourceTarget({ documentId: hit.documentId, sourceRevision: hit.sourceRevision, startOffset: hit.startOffset, endOffset: hit.endOffset, startLine: hit.startLine, endLine: hit.endLine, kind })
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
@@ -141,7 +147,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible} hasPrevious={offsets.current.length > 0} navigate={showPreview} />}
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
-          <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId) }) }}>刷新详情</button>
+          <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId, false) }) }}>刷新详情</button>
             <button disabled={!enabled || busy || processing || stale || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
             <button disabled={!enabled || busy || processing || stale} onClick={() => { void mutation(document.status === 'ACTIVE' ? 'archive' : 'restore') }}>{document.status === 'ACTIVE' ? '归档' : '恢复'}</button>
             <button className="destructive" disabled={!enabled || busy || processing || stale} onClick={() => setConfirmDelete(true)}>物理删除…</button>

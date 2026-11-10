@@ -40,14 +40,15 @@ class ReaderService extends AnswerService {
   }
   override postMessage(value: unknown) {
     const request = value as { method: string; payload: { offset: number; sourceRevision: string } }
-    if (request.method !== 'knowledge.preview') { super.postMessage(value); return }
+    if (!['knowledge.preview', 'knowledge.previewBefore'].includes(request.method)) { super.postMessage(value); return }
     this.sent.push(value as typeof this.sent[number])
     if (this.holdPreview) return
     if (this.failPreview) {
       this.failPreview = false; const pending = this.sent.at(-1)!
       this.emit({ version: 1, sessionId: pending.sessionId, requestId: pending.requestId, ok: false, error: { code: 'KnowledgeStorageUnavailable', message: '读取暂时不可用。' } }); return
     }
-    const page = this.page(request.payload.offset, request.payload.sourceRevision)
+    const before = request.payload.offset
+    const page = request.method === 'knowledge.previewBefore' ? { ...this.page(0, request.payload.sourceRevision), text: this.source.slice(0, before), nextOffset: before } : this.page(before, request.payload.sourceRevision)
     this.reply(this.sent.length - 1, this.wrongVersion ? { ...page, sourceRevision: '2' } : page)
   }
 }
@@ -63,6 +64,16 @@ class HistoryService extends AnswerService {
     if (request.method === 'knowledge.answerHistory') this.reply(index, { items: this.deleted ? [] : [{ taskId: this.answer().taskId, question: '保存的问题 <script>fixture</script>', status: 'SUCCEEDED', createdAt: '2026-11-09T00:00:00Z' }], total: this.deleted ? 0 : 1, page: 0, limit: 20 })
     else if (request.method === 'knowledge.answerHistoryGet' && !this.holdHistory) this.reply(index, { question: '保存的问题 <script>fixture</script>', query: 'budget', task: this.answer(), scope: this.scope })
     else if (request.method === 'knowledge.answerHistoryDelete') { this.deleted = true; this.reply(index, { deleted: true }) }
+  }
+}
+class HistoryReaderService extends ReaderService {
+  override postMessage(value: unknown) {
+    const request = value as { method: string }
+    if (!['knowledge.answerHistory', 'knowledge.answerHistoryGet'].includes(request.method)) { super.postMessage(value); return }
+    this.sent.push(value as typeof this.sent[number])
+    this.reply(this.sent.length - 1, request.method === 'knowledge.answerHistory'
+      ? { items: [{ taskId: this.answer().taskId, question: '保留的旧版证据', status: 'SUCCEEDED', createdAt: '2026-11-10T00:00:00Z' }], total: 1, page: 0, limit: 20 }
+      : { question: '保留的旧版证据', query: '预算', task: this.answer(), scope: null })
   }
 }
 it('exports the admitted saved answer by ID, handles native cancel and unknown outcome, and drops late session results', async () => {
@@ -146,6 +157,46 @@ const readerAnswer = async () => {
   fireEvent.change(screen.getByLabelText('回答检索关键词'), { target: { value: '预算' } })
   await readerClick('基于知识回答'); await readerClick('打开引用来源')
 }
+it('reads unvisited preceding context from an old citation and keeps its return position on failed or malformed reads', async () => {
+  const port = new ReaderService(); port.document.currentReadyRevision = '2'
+  const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ })
+  await readerAnswer()
+  const sourceText = () => screen.getByRole('region', { name: '纯文本预览' }).querySelector('pre')!
+  expect((screen.getByRole('button', { name: '上一页文本' }) as HTMLButtonElement).disabled).toBe(true)
+  port.failPreview = true; await readerClick('阅读前文')
+  expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  port.wrongVersion = true; await readerClick('阅读前文')
+  expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  port.wrongVersion = false; await readerClick('阅读前文')
+  expect(port.sent.filter(r => r.method === 'knowledge.previewBefore').at(-1)?.payload).toEqual({ documentId: port.document.documentId, sourceRevision: '1', offset: port.prefix.length })
+  expect(sourceText().textContent).toBe(port.prefix); expect(sourceText().querySelector('mark')).toBeNull()
+  expect((screen.getByRole('button', { name: '阅读前文' }) as HTMLButtonElement).disabled).toBe(true)
+  await readerClick('返回引用位置'); expect(sourceText().querySelector('mark')?.textContent).toBe(port.evidence)
+  port.holdPreview = true; await readerClick('阅读前文'); const pending = port.sent.length - 1
+  await act(async () => { port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc'); port.reply(pending, { ...port.page(0), text: port.prefix, nextOffset: port.prefix.length }) })
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+})
+it('preserves the current reading version and back stack on refresh or failed saved-citation navigation', async () => {
+  const port = new HistoryReaderService(); port.document.currentReadyRevision = '2'
+  const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  render(<KnowledgePage bridge={bridge} enabled visible />)
+  await readerClick('查看问答历史'); await readerClick('保留的旧版证据'); await readerClick('打开引用来源')
+  const text = () => screen.getByRole('region', { name: '纯文本预览' }).querySelector('pre')!
+  const version = () => (screen.getByLabelText('已发布源版本') as HTMLSelectElement).value
+  await readerClick('从本节开头阅读'); await readerClick('下一页文本')
+  const context = text().textContent
+  await readerClick('刷新详情'); expect(version()).toBe('1'); expect(text().textContent).toBe(context)
+  port.failPreview = true; await readerClick('打开引用来源')
+  expect(screen.getByRole('alert').textContent).toBe('读取暂时不可用。')
+  expect(version()).toBe('1'); expect(text().textContent).toBe(context)
+  await readerClick('上一页文本'); expect(text().textContent).toBe(port.source.slice(0, 4095))
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '2' } }); await readerClick('预览源文本')
+  port.failPreview = true; await readerClick('打开引用来源')
+  expect(version()).toBe('2'); expect(text().textContent).toBe('# Heading\n新版正文。')
+  await readerClick('打开引用来源'); expect(version()).toBe('1'); expect(text().querySelector('mark')?.textContent).toBe(port.evidence)
+  expect(port.sent.some(r => r.method === 'knowledge.answerSubmit')).toBe(false)
+})
 it('source reader marks only exact old-version evidence and supports Unicode-safe context navigation without losing failed back reads', async () => {
   const storage = vi.spyOn(Storage.prototype, 'setItem'), port = new ReaderService(); port.document.currentReadyRevision = '2'
   const bridge = new WorkspaceClient(port); clients.push(bridge); port.session()

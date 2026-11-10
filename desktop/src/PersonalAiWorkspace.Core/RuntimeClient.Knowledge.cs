@@ -61,9 +61,21 @@ public sealed partial class RuntimeClient
     public async Task<KnowledgePreview> PreviewKnowledgeAsync(string id,string revision,int offset,CancellationToken token)
     {
         KId(id);KVersion(revision);if(offset<0||offset>1_000_000)throw Invalid();
-        using var body=await KnowledgeJson(HttpMethod.Get,$"/documents/{id}/preview?revision={revision}&offset={offset}",null,token);var r=body.RootElement;
+        using var body=await KnowledgeJson(HttpMethod.Get,$"/documents/{id}/preview?revision={revision}&offset={offset}",null,token);
+        var result=KPreview(body.RootElement,id,revision);if(result.Offset!=offset)throw Invalid();return result;
+    }
+    public async Task<KnowledgePreview> PreviewKnowledgeBeforeAsync(string id,string revision,int before,CancellationToken token)
+    {
+        KId(id);KVersion(revision);if(before<=0||before>1_000_000)throw Invalid();
+        using var body=await KnowledgeJson(HttpMethod.Get,$"/documents/{id}/preview-before?revision={revision}&before={before}",null,token);
+        var result=KPreview(body.RootElement,id,revision);
+        if(result.Text.Length==0||result.Offset+result.Text.Length!=before||result.Locators.Length!=1)throw Invalid();return result;
+    }
+    private static KnowledgePreview KPreview(JsonElement r,string id,string revision)
+    {
         MemoryFields(r,"documentId","sourceRevision","offset","text","nextOffset","locators","parserVersion","normalizationVersion");
-        if(String(r,"documentId")!=id||String(r,"sourceRevision")!=revision||KNumber(r,"offset",0,1_000_000)!=offset)throw Invalid();
+        if(String(r,"documentId")!=id||String(r,"sourceRevision")!=revision)throw Invalid();
+        int offset=(int)KNumber(r,"offset",0,1_000_000);
         string text=String(r,"text");if(text.Length>4096)throw Invalid();ValidateUnicode(text);
         int? next=Property(r,"nextOffset").ValueKind==JsonValueKind.Null?null:(int)KNumber(r,"nextOffset",0,1_000_000);
         if(next is not null&&next!=offset+text.Length)throw Invalid();var locators=Property(r,"locators");
