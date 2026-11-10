@@ -12,7 +12,7 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public static partial class RuntimeLifecycleProbe
 {
-    private static int RunMaintenanceRuntimeHandoff(string id,bool interrupt=false)
+    private static int RunMaintenanceRuntimeHandoff(string id,bool interrupt=false,bool reopen=false)
     {
         string boundary="PROFILE";
         try
@@ -28,7 +28,7 @@ public static partial class RuntimeLifecycleProbe
             string modelSelection=Path.Combine(profile.Root,"model-state","active-model.json");
             string? modelHash=File.Exists(modelSelection)?Hash(modelSelection):null;
             boundary="NATIVE_HANDOFF";
-            using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(150));
+            using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(reopen?300:150));
             bool pendingModelRejected=false;
             if(modelHash is not null){
                 boundary="PENDING_MODEL_PREFLIGHT";
@@ -83,11 +83,65 @@ public static partial class RuntimeLifecycleProbe
             if(handoff.VerifiedStopped==interrupt||!sources.Select(Hash).SequenceEqual(before)
                 ||modelHash!=(File.Exists(modelSelection)?Hash(modelSelection):null))throw new IOException();
             if(Hash(Path.Combine(profile.Root,"data","database.dpapi")).ToLowerInvariant()!=handoff.ConfigurationVersion)throw new IOException();
+            object? reopening=null;
+            if(reopen){
+                boundary="NATIVE_REOPEN";handoff.Dispose();
+                using var resumed=MaintenanceRuntimeHandoff.ReopenAsync(profile,handoff.Operation,deadline.Token).GetAwaiter().GetResult();
+                if(resumed.Session!="00000001"||resumed.ConfigurationVersion!=handoff.ConfigurationVersion)throw new IOException();
+                using var resumedHttp=new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=false})
+                    {BaseAddress=resumed.Endpoint,Timeout=TimeSpan.FromSeconds(20)};
+                boundary="REOPEN_SESSION_CREDENTIAL";
+                resumedHttp.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",credential);
+                using var stale=resumedHttp.GetAsync("/api/v1/memory/items/"+row).GetAwaiter().GetResult();
+                if(stale.StatusCode!=HttpStatusCode.Unauthorized)throw new IOException();
+                string resumedCredential=CredentialStore.ReadPrivateFile(profile.ValidateTokenImport(profile.TokenFile),requireProtected:true);
+                if(resumedCredential==credential)throw new IOException();
+                resumedHttp.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",resumedCredential);
+                boundary="REOPEN_PRESERVED_DATA";
+                using var oldRow=resumedHttp.GetAsync("/api/v1/memory/items/"+row).GetAwaiter().GetResult();
+                if(oldRow.StatusCode!=HttpStatusCode.OK)throw new IOException();
+                using var laterContent=new StringContent(JsonSerializer.Serialize(new{type="PROJECT_NOTE",title="After maintenance reopen",content="Second session persists"}),Encoding.UTF8,"application/json");
+                using var later=resumedHttp.PostAsync("/api/v1/memory/items",laterContent).GetAwaiter().GetResult();
+                if(later.StatusCode!=HttpStatusCode.Created)throw new IOException();
+                using var laterBody=JsonDocument.Parse(later.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult());
+                string secondRow=laterBody.RootElement.GetProperty("id").GetString()??throw new IOException();
+                using var blocked=resumedHttp.GetAsync("/api/v1/models").GetAwaiter().GetResult();
+                if(blocked.StatusCode!=HttpStatusCode.ServiceUnavailable)throw new IOException();
+                resumed.FinishAsync(deadline.Token).GetAwaiter().GetResult();int resumedPid=resumed.RuntimePid;resumed.Dispose();
+                boundary="REOPEN_INTERRUPTION";
+                using var interrupted=MaintenanceRuntimeHandoff.ReopenAsync(profile,handoff.Operation,deadline.Token).GetAwaiter().GetResult();
+                if(interrupted.Session!="00000002")throw new IOException();
+                using var interruptedHttp=new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=false})
+                    {BaseAddress=interrupted.Endpoint,Timeout=TimeSpan.FromSeconds(20)};
+                string interruptedCredential=CredentialStore.ReadPrivateFile(profile.ValidateTokenImport(profile.TokenFile),requireProtected:true);
+                if(interruptedCredential==resumedCredential)throw new IOException();
+                interruptedHttp.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",interruptedCredential);
+                using var preserved=interruptedHttp.GetAsync("/api/v1/memory/items/"+secondRow).GetAwaiter().GetResult();
+                if(preserved.StatusCode!=HttpStatusCode.OK)throw new IOException();
+                using(var body=JsonDocument.Parse(preserved.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()))
+                    if(body.RootElement.GetProperty("content").GetString()!="Second session persists")throw new IOException();
+                int interruptedPid=interrupted.RuntimePid;interrupted.Dispose();
+                string activation=Path.Combine(profile.Root,"evidence","sqlite-activation",handoff.Operation);
+                var records=Directory.GetFiles(Path.Combine(activation,"sessions","00000002")).Select(Path.GetFileName).Order().ToArray();
+                if(!records.SequenceEqual(new[]{"00-pinned.dpapi","01-initializing.dpapi","02-verified.dpapi","intent.dpapi"}))throw new IOException();
+                var evidenceBefore=Directory.GetFiles(activation,"*",SearchOption.AllDirectories).Order()
+                    .Select(path=>path+":"+Hash(path)).ToArray();
+                boundary="OLD_STOP_REUSE_REJECTED";bool rejected=false;
+                try{using var unexpected=MaintenanceRuntimeHandoff.ReopenAsync(profile,handoff.Operation,deadline.Token).GetAwaiter().GetResult();}
+                catch(IOException refusal) when(refusal.Message.StartsWith("Maintenance child STOP",StringComparison.Ordinal)){rejected=true;}
+                if(!rejected||!Directory.GetFiles(activation,"*",SearchOption.AllDirectories).Order().Select(path=>path+":"+Hash(path)).SequenceEqual(evidenceBefore)
+                    ||!sources.Select(Hash).SequenceEqual(before)||modelHash!=(File.Exists(modelSelection)?Hash(modelSelection):null))throw new IOException();
+                using var released=new FileStream(Path.Combine(profile.Root,"model-state",".lock"),FileMode.Open,FileAccess.ReadWrite,FileShare.None);
+                if(released.Length!=0)throw new IOException();
+                reopening=new{resumedPid,interruptedPid,secondRow,completedSession="00000001",interruptedSession="00000002",
+                    laterRowsPreserved=true,oldStopReuseRejected=rejected,failedReopenEvidenceUnchanged=true,modelExecutionBlocked=true,
+                    sessionCredentialsRenewed=true,previousCredentialRejected=true};
+            }
             Console.WriteLine(JsonSerializer.Serialize(new{passed=true,profile=id,operation=handoff.Operation,runtimePid,
                 port=handoff.Endpoint.Port,configuration=handoff.ConfigurationVersion,backends=handoff.BackendPids,
                 laterRow=row,sourceUnchanged=true,verifiedStopped=handoff.VerifiedStopped,interrupted=interrupt,ordinaryStartupEnabled=false,
                 modelExecutionBlocked=true,modelStateUnchanged=true,syntheticSelectionPresent=modelHash is not null,
-                pendingModelRejected,restartBlockers=handoff.RestartBlockers}));return 0;
+                pendingModelRejected,restartBlockers=handoff.RestartBlockers,reopening}));return 0;
         }
         catch(Exception failure)
         {

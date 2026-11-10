@@ -23,11 +23,12 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     private readonly FileStream runtimeLock, modelLock;
     private readonly List<Process> children = new();
     private Process? runtime;
-    private string operation = "", challenge = "", configuration = "", binding = "", modelState = "";
+    private string operation = "", challenge = "", configuration = "", binding = "", modelState = "", session = "initial";
     private bool modelTransferred;
     private bool disposed, finished, finishAttempted;
     internal Uri Endpoint { get; private set; } = null!;
     internal string Operation => operation;
+    internal string Session => session;
     internal int RuntimePid => runtime?.Id ?? 0;
     internal string ConfigurationVersion => configuration;
     internal long[] BackendPids { get; private set; } = Array.Empty<long>();
@@ -38,8 +39,15 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
             RuntimeProcessJob job,FileStream runtimeLock,FileStream modelLock)
     {this.profile=profile;this.sources=sources;this.job=job;this.runtimeLock=runtimeLock;this.modelLock=modelLock;}
 
-    internal static async Task<MaintenanceRuntimeHandoff> StartAsync(Mmf3AcceptanceLaunch profile,
-            byte[] configuration,CancellationToken cancellation)
+    internal static Task<MaintenanceRuntimeHandoff> StartAsync(Mmf3AcceptanceLaunch profile,
+            byte[] configuration,CancellationToken cancellation)=>OpenAsync(profile,configuration,null,cancellation);
+
+    // Restricted maintenance reopen only. No external model authority or ordinary-start bypass.
+    internal static Task<MaintenanceRuntimeHandoff> ReopenAsync(Mmf3AcceptanceLaunch profile,
+            string operation,CancellationToken cancellation)=>OpenAsync(profile,null,operation,cancellation);
+
+    private static async Task<MaintenanceRuntimeHandoff> OpenAsync(Mmf3AcceptanceLaunch profile,
+            byte[]? configuration,string? priorOperation,CancellationToken cancellation)
     {
         profile.Validate();Mmf3ProfileNative.Verify(profile);
         TrustedDevelopmentRuntimeSources? sources=null;RuntimeProcessJob? job=null;
@@ -51,18 +59,21 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
             modelLock=new FileStream(Path.Combine(profile.Root,"model-state",".lock"),FileMode.Open,FileAccess.Read,FileShare.Read);
             if(runtimeLock.Length!=0||modelLock.Length!=0)throw Stop();
             result=new(profile,sources,job,runtimeLock,modelLock);
-            await result.StartCore(configuration,cancellation).ConfigureAwait(false);return result;
+            if(priorOperation is null)await result.StartCore(configuration??throw Stop(),cancellation).ConfigureAwait(false);
+            else{Hex(priorOperation,32);result.operation=priorOperation;await result.ReopenCore(cancellation).ConfigureAwait(false);}
+            return result;
         }
         catch
         {
             if(result is not null)result.Dispose();else{modelLock?.Dispose();runtimeLock?.Dispose();job?.Dispose();sources?.Dispose();}
             throw;
         }
-        finally{System.Security.Cryptography.CryptographicOperations.ZeroMemory(configuration);}
+        finally{if(configuration is not null)System.Security.Cryptography.CryptographicOperations.ZeroMemory(configuration);}
     }
-    private Process Launch(bool owner,bool inspection=false)
+    private Process Launch(bool owner,bool inspection=false,bool restart=false)
     {
-        RequireNative();var info=sources.StartInfo(profile,maintenanceOwner:owner,maintenanceRuntime:!owner&&!inspection,maintenanceInspection:inspection);
+        RequireNative();var info=sources.StartInfo(profile,maintenanceOwner:owner,maintenanceRuntime:!owner&&!inspection&&!restart,
+            maintenanceInspection:inspection,maintenanceRestart:restart);
         var child=Process.Start(info)??throw Stop();children.Add(child);_=child.SafeHandle;job.Assign(child);
         using var parent=Process.GetCurrentProcess();if(child.SessionId!=parent.SessionId)throw Stop();return child;
     }
@@ -93,11 +104,37 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         challenge=Text(hello,"challenge");Hex(challenge,64);
         await Write(source,new{action="HANDOFF",operation,pid=runtime.Id,challenge},token).ConfigureAwait(false);
         var offered=await Read(source,token).ConfigureAwait(false);Stage(offered,"OFFERED");Match(offered);
+        await TakeOver(source,token).ConfigureAwait(false);
+    }
+    private async Task ReopenCore(CancellationToken cancellation)
+    {
+        using var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancellation);deadline.CancelAfter(TimeSpan.FromSeconds(120));
+        var token=deadline.Token;var source=Launch(false,restart:true);
+        var hello=await Read(source,token).ConfigureAwait(false);Stage(hello,"RESTART_HELLO");
+        if(hello.GetProperty("pid").GetInt64()!=source.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
+        long handle=ProfileRecoveryCoordinator.DuplicateExclusion(runtimeLock,source);
+        await Write(source,new{action="PREPARE_RESTART",operation,handle},token).ConfigureAwait(false);
+        var prepared=await Read(source,token).ConfigureAwait(false);Stage(prepared,"RESTART_PREPARED");
+        session=Text(prepared,"session");
+        if(!Regex.IsMatch(session,"\\A[0-9]{8}\\z")||Text(prepared,"operation")!=operation
+            ||prepared.GetProperty("pid").GetInt64()!=source.Id||source.HasExited)throw Stop();
+        // Durable successor intent already exists, consuming the preceding safe stop before launch.
+        runtime=Launch(false);hello=await Read(runtime,token).ConfigureAwait(false);Stage(hello,"HELLO");
+        if(hello.GetProperty("pid").GetInt64()!=runtime.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
+        challenge=Text(hello,"challenge");Hex(challenge,64);
+        await Write(source,new{action="BIND_RESTART",operation,session,pid=runtime.Id,challenge},token).ConfigureAwait(false);
+        var offered=await Read(source,token).ConfigureAwait(false);Stage(offered,"OFFERED");Match(offered);
+        if(Text(offered,"session")!=session)throw Stop();
+        await TakeOver(source,token).ConfigureAwait(false);
+    }
+    private async Task TakeOver(Process source,CancellationToken token)
+    {
+        if(runtime is null)throw Stop();
         RequireNative();if(source.HasExited||runtime.HasExited)throw Stop();
         long runtimeHandle=ProfileRecoveryCoordinator.DuplicateExclusion(runtimeLock,runtime);
-        await Write(runtime,new{action="ACCEPT",operation,handle=runtimeHandle},token).ConfigureAwait(false);
+        await Write(runtime,new{action="ACCEPT",operation,session,handle=runtimeHandle},token).ConfigureAwait(false);
         var pinned=await Read(runtime,token).ConfigureAwait(false);Stage(pinned,"PINNED");Match(pinned);
-        if(pinned.GetProperty("pid").GetInt64()!=runtime.Id)throw Stop();
+        if(pinned.GetProperty("pid").GetInt64()!=runtime.Id||Text(pinned,"session")!=session)throw Stop();
         configuration=Text(pinned,"configuration");Hex(configuration,64);binding=pinned.GetProperty("binding").GetRawText();
         modelState=Text(pinned,"modelState");Hex(modelState,64);
 
@@ -130,14 +167,15 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         var hello=await Read(inspector,deadline.Token).ConfigureAwait(false);Stage(hello,"INSPECTION_HELLO");
         if(hello.GetProperty("pid").GetInt64()!=inspector.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
         long handle=ProfileRecoveryCoordinator.DuplicateExclusion(runtimeLock,inspector);
-        await Write(inspector,new{action="INSPECT_STOPPED",operation,handle},deadline.Token).ConfigureAwait(false);
+        await Write(inspector,new{action="INSPECT_STOPPED",operation,session,handle,runtimePid=runtime.Id,challenge},deadline.Token).ConfigureAwait(false);
         var observed=await Read(inspector,deadline.Token).ConfigureAwait(false);Stage(observed,"STOPPED_HISTORY_TARGET_BOUND");Match(observed);
         if(observed.GetProperty("pid").GetInt64()!=inspector.Id||observed.GetProperty("pastRuntimePid").GetInt64()!=runtime.Id
             ||Text(observed,"configuration")!=configuration||observed.GetProperty("binding").GetRawText()!=binding
             ||Text(observed,"modelState")!=modelState||!observed.GetProperty("sourceAndBackupVerified").GetBoolean()
-            ||observed.GetProperty("ordinaryStartupAuthorized").GetBoolean())throw Stop();
+            ||observed.GetProperty("ordinaryStartupAuthorized").GetBoolean()||Text(observed,"session")!=session
+            ||!observed.GetProperty("nativeExitObserved").GetBoolean())throw Stop();
         var blockers=observed.GetProperty("restartBlockers").EnumerateArray().Select(v=>v.GetString()??throw Stop()).ToArray();
-        if(!blockers.SequenceEqual(new[]{"NATIVE_RESTART_LIFECYCLE_REQUIRED","EXTERNAL_MODEL_EXECUTION_UNPROVEN",
+        if(!blockers.SequenceEqual(new[]{"ORDINARY_NATIVE_RESTART_REQUIRED","EXTERNAL_MODEL_EXECUTION_UNPROVEN",
                 "UNREGISTERED_WRITERS_UNPROVEN","USER_CONFIRMATION_REQUIRED"}))throw Stop();
         await RequireExited(inspector,deadline.Token).ConfigureAwait(false);RestartBlockers=blockers;finished=true;
     }
@@ -145,7 +183,7 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     {
         Stage(reply,stage);Match(reply);
         if(runtime is null||reply.GetProperty("pid").GetInt64()!=runtime.Id||Text(reply,"configuration")!=configuration
-            ||reply.GetProperty("binding").GetRawText()!=binding||Text(reply,"modelState")!=modelState)throw Stop();
+            ||reply.GetProperty("binding").GetRawText()!=binding||Text(reply,"modelState")!=modelState||Text(reply,"session")!=session)throw Stop();
     }
     private void Match(JsonElement value){if(Text(value,"operation")!=operation||Text(value,"challenge")!=challenge)throw Stop();}
     private static string Text(JsonElement value,string name)=>value.GetProperty(name).GetString()??throw Stop();

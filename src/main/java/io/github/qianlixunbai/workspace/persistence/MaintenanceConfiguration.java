@@ -142,7 +142,7 @@ public final class MaintenanceConfiguration {
      * It is never constructed from a request digest, old success flag or process metadata. */
     static final class ActivationConfiguration implements AutoCloseable,ConfigurationProof {
         final Path root;final Prepared prepared;final SqliteSourceLease.FilePin actual,attempt;
-        java.sql.Connection target;private boolean closed;
+        java.sql.Connection target;private boolean closed,currentBindingOnly;
         private ActivationConfiguration(Path root,Prepared prepared,SqliteSourceLease.FilePin actual,
                                         SqliteSourceLease.FilePin attempt,java.sql.Connection target){
             this.root=root;this.prepared=prepared;this.actual=actual;this.attempt=attempt;this.target=target;
@@ -167,6 +167,7 @@ public final class MaintenanceConfiguration {
                 target=stoppedInspection ? MaintenanceTarget.holdCurrentBinding(dataSource(prepared.plain),prepared.intent.target)
                         : MaintenanceTarget.holdVerified(dataSource(prepared.plain),prepared.intent.target);
                 var result=new ActivationConfiguration(root,prepared,actual,attempt,target);
+                result.currentBindingOnly=stoppedInspection;
                 result.requireConfiguration(root);return result;
             }catch(Exception failure){
                 if(target!=null)try{target.close();}catch(Exception ignored){}
@@ -183,7 +184,7 @@ public final class MaintenanceConfiguration {
             if(!actual.digest().equals(prepared.intent.after))throw stopped();
         }
         void releaseBootstrapTarget()throws IOException {
-            try{MaintenanceTarget.verifyHeld(target,expected());target.close();target=null;}
+            try{if(currentBindingOnly)MaintenanceTarget.verifyCurrentHeld(target,expected());else MaintenanceTarget.verifyHeld(target,expected());target.close();target=null;}
             catch(Exception failure){throw stopped();}
         }
         public void close(){if(closed)return;closed=true;

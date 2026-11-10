@@ -89,7 +89,7 @@ public final class MaintenanceTarget {
                             ? " IN ACCESS SHARE MODE" : " IN SHARE MODE"));
             }
             if(importedContent)verifyHeld(db,expected);
-            else if(!matches(db,expected.binding()))throw new SQLException();
+            else verifyCurrentHeld(db,expected);
             return db;
         }catch(Exception failure) {
             if(db!=null)try{db.close();}catch(SQLException ignored){}
@@ -101,5 +101,15 @@ public final class MaintenanceTarget {
         if(db.isClosed()||db.getAutoCommit()||!matches(db,expected.binding())
                 ||!SqliteWorkspaceMigration.matchesCommitted(db,expected.workspace())
                 ||!io.github.qianlixunbai.workspace.knowledge.SqliteKnowledgeMigration.matchesCommitted(db,expected.knowledge()))throw new SQLException();
+    }
+    static void verifyCurrentHeld(Connection db,SqliteCombinedMigration.Expected expected)throws Exception {
+        if(db.isClosed()||db.getAutoCommit()||!matches(db,expected.binding()))throw new SQLException();
+        // Import receipts stay immutable; later business rows are deliberately not re-hashed.
+        try(var s=db.createStatement();var r=s.executeQuery("SELECT source_digest FROM workspace.sqlite_import WHERE singleton=1")){
+            if(!r.next()||!expected.workspace().contentDigest().equals(r.getString(1))||r.next())throw new SQLException();
+        }
+        try(var s=db.createStatement();var r=s.executeQuery("SELECT content_digest FROM workspace.knowledge_sqlite_import WHERE singleton=1")){
+            if(!r.next()||!expected.knowledge().contentDigest().equals(r.getString(1))||r.next())throw new SQLException();
+        }
     }
 }

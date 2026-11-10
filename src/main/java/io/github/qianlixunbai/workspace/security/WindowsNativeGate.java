@@ -132,11 +132,11 @@ public final class WindowsNativeGate {
     }
 
     public static synchronized io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime receiveMaintenanceRuntime(
-            long handle,String operation,String challenge)throws IOException {
+            long handle,String operation,String session,String challenge)throws IOException {
         if(maintenanceRuntimeAttempted||maintenanceAttempted||runtimeLease!=null)throw new IOException("Maintenance Runtime STOP");
         maintenanceRuntimeAttempted=true;
         var exclusion=receiveMaintenanceExclusion(handle);
-        maintenanceRuntime=io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.accept(exclusion,operation,challenge);
+        maintenanceRuntime=io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.accept(exclusion,operation,session,challenge);
         return maintenanceRuntime;
     }
     public static io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime maintenanceRuntime(){return maintenanceRuntime;}

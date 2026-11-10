@@ -21,6 +21,7 @@ public static partial class RuntimeLifecycleProbe
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         if(args is ["--maintenance-runtime-handoff",var maintenanceProfile])return RunMaintenanceRuntimeHandoff(maintenanceProfile);
         if(args is ["--maintenance-runtime-interrupt",var interruptedProfile])return RunMaintenanceRuntimeHandoff(interruptedProfile,interrupt:true);
+        if(args is ["--maintenance-runtime-reopen",var reopenProfile])return RunMaintenanceRuntimeHandoff(reopenProfile,reopen:true);
         if (args is ["--legacy-rule-fixture", var ruleRoot, var action]) return LegacyBoundaryTests.RunRuleFixture(ruleRoot, action);
         if (args is ["--legacy-model-fixture", var modelRoot, var mode]) return LegacyBoundaryTests.RunModelFixture(modelRoot, mode);
         if (args is ["--x1-selection-fixture"]) return RunX1SelectionFixture();
