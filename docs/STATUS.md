@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [记忆及对话回查准确原文](engineering/MEMORY-SOURCE-REVIEW-REPORT.md)已完成，产品 `f3df1da`：用户从记忆编辑／预览或版本一致的对话记忆引用主动读取正文出处中的准确资料、版本和范围，比较原文并阅读上下文；保留草稿，缺失不回退，出处文字不变成受信绑定。两项新合成流程通过，类型检查修正后通过，原失败保留，上一轮两项检查未重跑。未打包或进行 EXE／WebView 验收，旧包不含此增量；原 model-state 拒绝／取证提案保持停止和待确认，真实模型恢复及整体维护仍 BLOCKED / productionGo=false。
+
 2026-11-10 [model-state 拒绝分支审计](engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)逐项核对类型、非 Windows fileKey 和 Java owner 条件；基于 Windows 专用准入与官方 provider 实现排除了“Windows 正常空 fileKey 导致拒绝”的解释，仍缺当时的类型／SID 比较值，未证实根因、未重试。独立完成[原文摘录到记忆](engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)，产品 `41cb53a`：准确版本的用户选区与出处进入草稿，经审阅／编辑后明确保存。两项新合成场景及类型检查通过，旧组未重跑；本轮未构建新包，旧 import-continuity 包不包含此增量。完整 EXE／WebView、真实模型恢复与整体维护仍 BLOCKED / productionGo=false，main／用户文档／旧包保留，未推送。
 
 2026-11-10 第三项[Knowledge 导入连续性](engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)已完成，产品 `9daf2c1`：受理后读取失败保留回执，只查原请求继续查看；当前筛选／页码与会话之外的迟到结果不能覆盖列表，末页并发清空会退回有效页。两项针对性场景及类型检查通过，10 个旧场景未选中，未重跑前两项会话验证。独立 `PersonalAiWorkspace-import-continuity-20261110.zip` 构建／来源校验通过，包含本会话三项修复，Job 0、共享锁释放。main、六文档及五个旧包哈希不变，未推送。原 model-state 拒绝未重试，根因未证实；完整新包 EXE／WebView、真实模型恢复和整体维护仍 BLOCKED / productionGo=false。

@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [Memory 来源回查](../engineering/MEMORY-SOURCE-REVIEW-REPORT.md)：共享 React 只读组件解析单一可编辑出处，用户点击后经既有 get／preview 核对文档身份、版本存在及完整范围，再比较文字与分页阅读上下文。编辑器、只读预览和版本一致的 Conversation Memory 共用此能力。出处不进入持久化关联合同，原 USER／ASSISTANT／KNOWLEDGE 草稿语义、MANUAL 保存、revision、会话／请求身份及显式上下文选择不变；无 Native／Runtime／schema／权限变更。
+
 2026-11-10 [原文摘录进入记忆草稿](../engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)：React 将完全位于当前已验证 Knowledge 预览中的 DOM 选区核对为原文切片，绝对偏移与源版本随出处文字进入现有 Memory 草稿接收器。KNOWLEDGE 仅是临时编辑来源角色；保存复用原有 MANUAL 创建，不增加持久引用／自动选择／模型生成或协议。独立[状态目录分支审计](../engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)补齐两套身份链及 Windows provider 依据，但没有更改 Native／Java 校验或取得原拒绝的重试权限。
 
 2026-11-10 [Knowledge 导入连续性](../engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)：React 在详情读取成功前保留导入原请求回执，恢复入口仅调用既有 importState／get／list；状态查询 continuation 绑定原会话。所有列表读取统一使用当前视图 ref、请求序号、会话代次与页面可用性核对，筛选／页码改变即失效旧结果，列表失败与受理成功分别显示。回执未解决前阻止覆盖它的新导入；无持久回执、新 Runtime API／schema、自动重发或权限变更。
