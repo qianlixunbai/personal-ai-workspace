@@ -41,4 +41,22 @@
 
 本轮不是通用大文档搜索、语义检索、OCR 或全库历史搜索。超过既有读取上限的资料保留分页阅读；本地 DOM 流程通过不等于完整 EXE／真实 WebView／PostgreSQL 桌面新功能验收。没有重新执行已通过的 r2 生命周期观察或旧模型 guard 检查。
 
-实际产品代码发生变化，因此交付使用新的独立包名，构建结果在本报告后续补齐；旧有效包 `PersonalAiWorkspace-integrated-development-20261110-r2.zip` 保留。真实模型恢复和完整维护仍 **BLOCKED / productionGo=false**；本地退出或取消不能证明远端执行结束。
+产品实现已提交为 **`1cd8c42b5cab9b2404ce4dddf9d04e78d9850574`**。基线 `6cd368d` 保持在祖先链，回滚可单独 revert 此功能提交。最后的类型修正后，完整构建再次通过 TypeScript、Vite 资产生成和 Desktop publish；未重新运行完整 EXE。
+
+实际产品代码发生变化，因此生成[独立开发 ZIP](../../artifacts/PersonalAiWorkspace-source-find-20261110.zip)及[解压目录 EXE](../../artifacts/PersonalAiWorkspace-source-find-20261110/PersonalAiWorkspace.Desktop.exe)，未替换既有安装、默认入口或旧包。包中的源版本是 `1cd8c42`，后续报告提交不改变产品字节。
+
+| 项目 | 结果 |
+| --- | --- |
+| ZIP | `PersonalAiWorkspace-source-find-20261110.zip`，384,744,768 bytes |
+| ZIP SHA-256 | `1842F37F9FB44D3BB7E376F46F0E09ED2436FD7805D50345BB5F3EAD750A2FD5` |
+| Runtime JAR SHA-256 | `CBFA0818F1163BC8C398D9BE63BA99A857F63397D75BF7C62A5124870354FBE4` |
+| Desktop DLL SHA-256 | `9D72D8751ED5E82F57D40FF831F8D8AB0BA3DED47B67C33A3BD86EDFD7A77445` |
+| 构建／归档 | 194 个 Java 源文件、567 个 class、248 个沿用资源／依赖条目；全部 JAR 条目可读取，无旧应用 class 残留 |
+| 分发校验 | 933 个载荷、934 个 ZIP 条目、420 项实际程序集内嵌来源 pin；构建前后产品源码摘要一致 |
+| 资源收尾 | `build-cleanup.json`：20:12:08Z 清理前 Job 0，锁与 Job 已释放，failure=null |
+
+复用原 `scripts/verification/package-integrated-development.ps1`，以有效 r2 包为离线依赖／资源基线；产品 Java、React 和 Desktop 全部重新构建。保留既有 Java 75 项 `ExtendedOpenOption` 等警告和 Vite >500 kB chunk 提示，无编译失败。证据为同目录 `delivery-result.json`、`runtime-content-audit.json`、`product-sources.json`、`frontend.log`、`desktop.log`、`build-cleanup.json`。没有修改打包脚本或新建测试框架。
+
+最终复核：main 仍为 `f5266bf`；六份用户文档 SHA-256 和旧 r2 ZIP SHA-256 与入场相同。原有效包保留其已完成的真实 EXE 验收，新包只声明本次源码、合成前端流程与打包验证，不继承新功能的完整桌面验收。
+
+真实模型恢复和完整维护仍 **BLOCKED / productionGo=false**；本地退出或取消不能证明远端执行结束。下一次若需要扩大本功能验收，应只在全新合成资料上核对新包的实际“选择旧版本 → 查找 → 原文高亮”操作，不重复已完成的 r2 生命周期观察，也不把增加同类 guard 当作功能开发。本轮没有被拒或结果不确定的动作；没有后台任务继续运行。
