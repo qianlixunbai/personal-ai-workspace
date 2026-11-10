@@ -45,4 +45,22 @@ The client now requires exact submitted type/title/content in create/update ackn
 
 After this correction the three focused checks passed, 3/3, with zero build warnings/errors. They cover valid create/update, mismatch of each submitted field/revision, a lifecycle revision jump, native draft preservation/no replay/explicit reload, and the pending-write close behavior. No larger suite or actual persistence loop was run. Logs/TRX are in `.verification/memory-write-receipt-20261110/`. One intervening attempt reported `HEAVY_LOCK_BUSY` and ran no build/check; static review continued before retry. Final held lifecycle PID 28160 released the Session 1 mutex at 07:44:43 UTC. No Profile, browser, actual service/database, JVM or model was started.
 
-Three real tasks are complete. Final delivery closure will repackage these two newly committed Memory corrections into a separately named bundle, retaining both the original accepted bundle and module 1 bundle. This is packaging verification only; it must not be represented as another complete EXE acceptance.
+## Final delivery and handoff
+
+Module 3 product commit is `eeeaeb440bcf11a54d59fd86715d81c97420f125`. All three tasks are complete. Final packaging closure rebuilt this clean committed product into [PersonalAiWorkspace-native-memory-guarded-20261110.zip](../../artifacts/PersonalAiWorkspace-native-memory-guarded-20261110.zip), also available as a [complete unpacked EXE](../../artifacts/PersonalAiWorkspace-native-memory-guarded-20261110/PersonalAiWorkspace.Desktop.exe). Both the earlier accepted bundle and the new module 1 bundle remain preserved.
+
+| Final delivery evidence | Result |
+| --- | --- |
+| ZIP bytes | 384,673,905 |
+| ZIP SHA-256 | `F5634EAA06CB4E6D33369EA99C29B475BA492B4D4594836C7F38971E12B6AE9C` |
+| Desktop DLL SHA-256 | `601F10C7C1D622056F0B2D2F69FE0E2CAAD6EB7EC28B4AE9A204BD566EB12082` |
+| Actual source | `eeeaeb4`; tracked product source clean throughout packaging |
+| Complete payload and actual embedded sources | 933 files verified after ZIP extraction/relocation; actual product assembly source probe PASS |
+| Reused Runtime/frontend | Every byte matches the prior accepted package; Runtime JAR hash unchanged |
+| Changed payload from original accepted package | Core DLL, Desktop DLL, Desktop EXE, README only |
+
+Final evidence is `.verification/native-memory-guarded-delivery-20261110/{Build.ps1,publish.log,embedded-sources.log,result.json,lock.json,final-state-before-docs.json}`. The publish has no warnings/errors in its log. The shared mutex was held only for the full build/package/probe lifecycle, PID 34000, and released at 07:46:19 UTC. No product EXE, Profile, browser, Runtime service, database or model was started in this round. Port 18765 was not listening at final inspection; no unknown process was terminated or inspected through a previously refused route. No KAG port or other repository was touched. Six user documents still match their baseline; main stays `f5266bf4383f52a2293b0fe4bfe1964af958e64a`; no push.
+
+This is **Development-only / unsigned, packaging verification only**, with the precise new close/receipt checks above. The earlier full EXE save/reopen acceptance remains evidence for `cff8015`. Normal WebView2 pages, no-argument default entry, maintenance/migration, PG desktop, cross-machine and formal release remain unaccepted. WebView2 root cause is still unknown; EFS/private ACL observations are not a diagnosis, and the earlier native experiment's three Job-cleaned descendants must not be reported as natural exits. The historical forbidden Crashpad path and denied extra process-metadata reads were not revisited. No new action was denied or left pending in this round.
+
+Stop this round here. A concrete next independent source finding is `MainWorkspaceWindow.OpenAssistant`: its catch overwrites the original browser failure text, unlike the Memory fallback's separate status; it also lacks that route's pending/closed guards. This is a static finding awaiting one focused reproduction, not a newly accepted runtime fault. Resolve it only if the next session confirms the user impact; do not repeat the same controller timeout, real Memory persistence loop, or broaden a security-condition experiment. Any browser security/location comparison still needs an exact independently authorized action/target/risk, and must preserve the stated restrictions.
