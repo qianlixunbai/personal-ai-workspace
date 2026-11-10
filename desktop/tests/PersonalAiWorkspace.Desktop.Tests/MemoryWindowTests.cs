@@ -128,7 +128,8 @@ public sealed class MemoryWindowTests
                 int page = int.Parse(query["page"]), limit = int.Parse(query["limit"]);
                 return Response(Page(filtered.Skip(page * limit).Take(limit).Select(Json).ToArray(), filtered.Length, page, limit));
             }
-            if (request.Method == HttpMethod.Get) return Response(Json(Items[Guid.Parse(path.Split('/')[5])]));
+            if (request.Method == HttpMethod.Get) return Items.TryGetValue(Guid.Parse(path.Split('/')[5]), out var found)
+                ? Response(Json(found)) : Response(Error("MEMORY_NOT_FOUND"), HttpStatusCode.NotFound);
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct)); var root = body.RootElement;
             if (path == "/api/v1/memory/items")
             {
@@ -230,6 +231,17 @@ public sealed class MemoryWindowTests
             await window.SaveAsync(); Assert.Equal(3, store.Mutations);
             await window.ReloadAsync();
             Assert.False(window.Dirty); Assert.Equal(submitted, window.ContentBox.Text);
+
+            window.ContentBox.Text += " uncertain edit";
+            store.LoseNextWriteResponse = true; await window.SaveAsync();
+            store.Items.Remove(created.Id); // A later missing read cannot resolve the earlier write.
+            await window.ReviewItemAsync(created);
+            window.RecoverDraftAsNew(); await window.SaveAsync();
+            Assert.Equal(4, store.Mutations); Assert.Empty(store.Items);
+            Assert.Contains("操作结果待确认", window.MetadataText.Text);
+            Assert.Equal(Visibility.Collapsed, window.RecoverDraftButton.Visibility);
+            Assert.Contains(created.Id.ToString("D"), window.MetadataText.Text);
+            Assert.True(window.Dirty);
         }
         finally { approve = true; window.TryClose(); }
     });
@@ -381,19 +393,39 @@ public sealed class MemoryWindowTests
     });
 
     [Fact]
-    public Task NotFoundKeepsPrivateEditsDisablesMutationAndArchiveKeepsUnsavedEditor() => StaAsync(async () =>
+    public Task MissingRecordDraftCanBeExplicitlySavedAsNewWithoutRevivingDeletedRecord() => StaAsync(async () =>
     {
         var store = new Store(); var original = store.Add(); using var runtime = store.Client();
-        var window = new MemoryWindow(runtime, _ => true);
+        bool approve = true;
+        var window = new MemoryWindow(runtime, _ => approve);
         await window.RefreshAsync(); await window.SelectItemAsync(original);
-        window.ContentBox.Text += " local"; string edits = window.ContentBox.Text;
+        window.EditorType.SelectedIndex = 0;
+        window.TitleBox.Text = "  Synthetic 草稿 🧭  ";
+        window.ContentBox.Text += "\r\n local 草稿 🧭  "; string edits = window.ContentBox.Text;
+        string title = window.TitleBox.Text;
+        window.RecoverDraftAsNew(); Assert.Contains(original.Id.ToString("D"), window.MetadataText.Text);
         await window.ChangeStatusAsync(); Assert.True(window.Dirty); Assert.True(edits == window.ContentBox.Text, "Archive lost edits.");
         store.Items.Remove(original.Id); await window.SaveAsync();
         Assert.False(window.SaveButton.IsEnabled); Assert.False(window.LifecycleButton.IsEnabled); Assert.False(window.DeleteButton.IsEnabled);
         Assert.True(edits == window.ContentBox.Text, "Not found lost edits.");
-        Assert.Equal(ErrorText.For(DesktopError.MemoryNotFound), window.StatusText.Text); Safe(window.StatusText.Text);
+        Assert.Contains("原记录当前不存在", window.StatusText.Text); Safe(window.StatusText.Text);
         int mutations = store.Mutations; await window.SaveAsync(); await window.ChangeStatusAsync(); await window.DeleteAsync();
-        Assert.Equal(mutations, store.Mutations); window.NewItem(); Assert.Empty(window.ContentBox.Text); Assert.True(window.TryClose());
+        Assert.Equal(mutations, store.Mutations);
+        Assert.True(window.RecoverDraftButton.IsEnabled);
+        approve = false; window.RecoverDraftButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Contains(original.Id.ToString("D"), window.MetadataText.Text); Assert.Equal(edits, window.ContentBox.Text);
+        approve = true; window.RecoverDraftButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(title, window.TitleBox.Text); Assert.Equal(edits, window.ContentBox.Text);
+        Assert.Equal(0, window.EditorType.SelectedIndex); Assert.True(window.Dirty);
+        Assert.Equal(mutations, store.Mutations); Assert.Empty(store.Items);
+        Assert.Contains("尚未保存", window.StatusText.Text); Assert.True(window.SaveButton.IsEnabled);
+        Assert.Empty(window.ReviewContent.Text);
+        await window.SaveAsync();
+        var recovered = Assert.Single(store.Items.Values);
+        Assert.NotEqual(original.Id, recovered.Id); Assert.False(store.Items.ContainsKey(original.Id));
+        Assert.Equal(1, recovered.Revision); Assert.Equal(MemoryStatus.ACTIVE, recovered.Status);
+        Assert.Equal(MemoryType.PREFERENCE, recovered.Type); Assert.Equal(title, recovered.Title); Assert.Equal(edits, recovered.Content);
+        Assert.Equal(mutations + 1, store.Mutations); Assert.False(window.Dirty); Assert.True(window.TryClose());
     });
 
 

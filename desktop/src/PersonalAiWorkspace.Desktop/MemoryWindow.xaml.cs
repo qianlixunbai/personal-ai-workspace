@@ -11,11 +11,12 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop;
 
-internal enum MemoryConfirmation { Discard, Reload, Delete, AdoptReview, ContinueReview }
+internal enum MemoryConfirmation { Discard, Reload, Delete, AdoptReview, ContinueReview, RecoverDraft }
 
 public partial class MemoryWindow : Window
 {
     private const string UnknownOutcomeMessage = "操作结果待确认。不会自动重试。请刷新列表核对，再重新加载；新建结果不明时请先检查是否已存在。";
+    private const string MissingDraftMessage = "原记录当前不存在。草稿仍保留在右侧，可选择“保留草稿，另存为新记忆”，再点击 Save 创建新记录。原记录不会恢复。";
     private readonly RuntimeClient runtime;
     private readonly Func<MemoryConfirmation, bool> confirm;
     private readonly CancellationTokenSource lifetime = new();
@@ -51,6 +52,7 @@ public partial class MemoryWindow : Window
         MemoryConfirmation.Delete => "删除此 Memory？\n它将不再出现在后续 Memory 读取和搜索中。\n这不保证磁盘取证级擦除。未保存的修改也将丢弃。",
         MemoryConfirmation.AdoptReview => "保留右侧草稿，改为修订左侧已核对的这条记忆？\n此操作不会保存；之后点击 Save 才会更新它，不会另建一条。",
         MemoryConfirmation.ContinueReview => "保留右侧草稿，以左侧已核对的最新版本继续编辑？\n请先将需要保留的内容合并到草稿。之后点击 Save 将用草稿更新这条记忆，此时不会写入。",
+        MemoryConfirmation.RecoverDraft => "保留当前类型、标题和正文，改为新记忆草稿？\n此操作不会写入。之后点击 Save 将创建新的记录，不会恢复或覆盖原记录。",
         _ => "丢弃未保存的修改？"
     }, "Memory", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
@@ -73,6 +75,8 @@ public partial class MemoryWindow : Window
         DuplicateMatches.IsEnabled = available;
         ReviewDuplicateButton.IsEnabled = available && DuplicateMatches.SelectedItem is MemoryItem;
         SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty && validDraft;
+        RecoverDraftButton.Visibility = loaded is not null && missing && !outcomeUnknown ? Visibility.Visible : Visibility.Collapsed;
+        RecoverDraftButton.IsEnabled = available && loaded is not null && missing && !outcomeUnknown;
         DraftValidationText.Text = $"标题 {TitleBox.Text.EnumerateRunes().Count()} / 160 字符 · 正文 {ContentBox.Text.Length} / 2000 UTF-16 单位（{Encoding.UTF8.GetByteCount(ContentBox.Text)} / 8192 UTF-8 字节）";
         if (Dirty && !validDraft) DraftValidationText.Text += "\n暂不能保存：标题和正文均须填写有效文字，且不能超过上限。请修改草稿；内容不会自动截断。";
         LifecycleButton.IsEnabled = DeleteButton.IsEnabled = available && loaded is not null && !stale && !missing && !outcomeUnknown;
@@ -117,6 +121,7 @@ public partial class MemoryWindow : Window
             if (affectsLoaded && error.Error == DesktopError.MemoryRevisionConflict) stale = true;
             if (affectsLoaded && error.Error == DesktopError.MemoryNotFound) missing = true;
             StatusText.Text = ErrorText.For(error.Error) + (outcomeUnknown ? "\n" + UnknownOutcomeMessage : "");
+            if (missing && loaded is not null && !outcomeUnknown) StatusText.Text += "\n" + MissingDraftMessage;
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!closed) StatusText.Text = ErrorText.For(DesktopError.InternalError); }
@@ -154,7 +159,7 @@ public partial class MemoryWindow : Window
         ReviewTarget.ItemsSource = null;
         await FetchListAsync();
         if (!closed) StatusText.Text = outcomeUnknown ? UnknownOutcomeMessage : stale ? ErrorText.For(DesktopError.MemoryRevisionConflict)
-            : missing ? ErrorText.For(DesktopError.MemoryNotFound) : "Memory 列表已刷新。";
+            : missing ? MissingDraftMessage : "Memory 列表已刷新。";
     }, affectsLoaded: false);
     internal async Task SelectItemAsync(MemoryItem item)
     {
@@ -172,6 +177,14 @@ public partial class MemoryWindow : Window
     {
         if (busy || closed || Dirty && !confirm(MemoryConfirmation.Discard)) return;
         LoadEditor(null); SelectLoaded(); StatusText.Text = "New · 点击 Save 才会创建 Memory。";
+    }
+    internal void RecoverDraftAsNew()
+    {
+        if (busy || closed || loaded is null || !missing || outcomeUnknown || !confirm(MemoryConfirmation.RecoverDraft)) return;
+        // Only detach the confirmed missing target. Do not write, reuse its ID, or reset the editor text.
+        loaded = null; stale = missing = false;
+        ClearReview(); ClearDuplicates(); SelectLoaded(); UpdateControls();
+        StatusText.Text = "已保留为新记忆草稿，尚未保存。请检查内容，再点击 Save 创建新记录；原记录不会恢复。";
     }
     internal Task SaveAsync()
     {
@@ -352,6 +365,7 @@ public partial class MemoryWindow : Window
     }
     private void EditorTypeChanged(object sender, SelectionChangedEventArgs e) { if (!rendering) UpdateControls(); }
     private void New(object sender, RoutedEventArgs e) => NewItem();
+    private void RecoverDraft(object sender, RoutedEventArgs e) => RecoverDraftAsNew();
     private async void Save(object sender, RoutedEventArgs e) => await SaveAsync();
     private async void Lifecycle(object sender, RoutedEventArgs e) => await ChangeStatusAsync();
     private async void Delete(object sender, RoutedEventArgs e) => await DeleteAsync();
