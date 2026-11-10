@@ -122,3 +122,48 @@ Before repair, `.verification/memory-source-admission-repair-20261110/baseline-2
 That evidence directory also retains `first-failure.json`, `reviewed-manifest-validation.json`, `focused-build.log`, `embedded-after.json`, `binaries-after.json` and a read-only exact-resource/pin inspection script. No Profile preparation or desktop launch was repeated for this repair. No frontend/runtime/native-helper rebuild, package generation, model/JVM, port-query retry, ACL change or trust-check bypass occurred. Only this report is a tracked-file change.
 
 A future preparation/30-second startup requires a newly coordinated window and must use these repaired binaries. The changed embedded manifest is the material new condition; the previous attempt did not reach Profile creation. Stop again if admission fails. If admitted, collect the already specified failure details and lifetime markers once; do not automatically run extra desktop attempts. The old WebView2 crash, real Memory save/reopen and final same-version bundle acceptance remain unresolved.
+
+## 2026-11-10: corrected-input startup result and preserved first failure
+
+One coordinated run from source baseline `94627d7857c2e62f57f0bbcd52264a77dffe21bd` used the repaired fixture. Preparation succeeded once, producing synthetic Profile `41b9c947f7e3402cac5c4105edd2b3f3`. A post-check initially derived LocalAppData from the PowerShell environment (`C:\Users\28421\AppData\Local`) rather than the product's token/handle binding; it incorrectly reported the new folder missing. Preparation was not repeated. The exact new Profile under `C:\Users\CodexSandboxOffline\AppData\Local\PersonalAIWorkspace.Development\Profiles` was then confirmed, with an empty `webview2-profile` before startup. This correction did not alter product binding, ACLs or any existing Profile.
+
+The single `--memory-draft-host 41b9c947f7e3402cac5c4105edd2b3f3 startup` ran with default permissions and SDK 1.0.4258.31 / runtime 157.0.4341.42. Unified UTC timestamps establish:
+
+| UTC on 2026-11-10 | Observation |
+| --- | --- |
+| 01:47:20.9168613 | Controller callback succeeded, owned browser PID 444. |
+| 01:47:20.9189934 | GPU failure: Reason=Crashed, ExitCode=-1073741790 / `0xC0000022`. |
+| 01:47:20.9200113 | Main renderer failure: Reason=LaunchFailed, ExitCode=49 / `0x00000031`. |
+| 01:47:20.9206115 | PROFILE_CLEAR_START, after those notifications. |
+| 01:47:20.9219850 | FALLBACK_START; later GPU notifications follow. |
+| 01:47:21.2843359 | Browser ProcessFailed: Reason=Unexpected, ExitCode=-2147483645 / `0x80000003`. |
+| 01:47:21.3015649 | Environment BrowserProcessExited: PID 444, exit kind Failed. |
+| 01:47:50.5029794 | STARTUP_TIMEOUT at host 30049 ms. |
+| 01:47:50.5030688 | First explicit CONTROL_DISPOSE_START, after the failed browser exit. |
+| 01:47:50.6141810 | Fixture HOST_SHUTDOWN_START; close-time clear subsequently failed, then disposal/teardown completed. |
+
+Descriptions and FailureSourceModulePath basenames were empty; there is no identified denied file/module/object. Thirty dispatcher heartbeats continued on matching STA UI/HWND thread 14872. The thread desktop remained CodexSandboxDesktop and input desktop Default. The fixture returned exit 10, no READY, no Java PID, zero model calls, selectionWriterUsed=false and no Memory bridge writes. The Memory save/close/reopen flow was not reached.
+
+The [Microsoft status-code reference](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-samr/7440cfac-6052-4925-84e4-c32e417de300) identifies `0xC0000022` as STATUS_ACCESS_DENIED. [Chromium's current upstream sandbox ResultCode enum](https://github.com/chromium/chromium/blob/main/sandbox/win/src/sandbox_types.h) defines 49 as SBOX_ERROR_CANNOT_CREATE_RESTRICTED_TOKEN. That is a relevant process-launch hypothesis, not proof of the exact Edge 157 implementation or which access check failed. The renderer's API-provided LaunchFailed reason is directly observed. These data do not identify a defective GPU driver, damaged repository ACL, or a needed antivirus/AppLocker change. No such settings were inspected or changed.
+
+The environment exit was explicitly Failed before application disposal, so normal timeout shutdown does not explain it. [Microsoft's event guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/process-related-events) distinguishes environment exit from per-control ProcessFailed and warns that some GPU failures can recover automatically. The existing fallback's strict handling remains unchanged; a renderer failed to launch and the browser also failed in this run. AllProfile did not reach its completion stage, so no cleanup success is claimed.
+
+Cleanup read only the two IDs owned by this run: host 25536 and browser root 444 were both absent after exit. A complete descendant list was not enumerated. No unrelated process was stopped; no JVM/model/service was started. Port 18765 remains UNKNOWN from the earlier failed query and was not re-queried by another mechanism. The exclusive runtime window was released to KAG. The synthetic Profile and diagnostics are retained for forensics, with no real Profile or selected-profile preference write.
+
+Evidence: `.verification/memory-webview2-corrected-startup-20261110/` contains `profile-prepare.log`, `owned-profile.json`, `startup.log`, `startup-summary.json`, and `command-result.json`. The synthetic Profile's `evidence/memory-draft/startup-result.json` and `startup-failure.json` record the actual failed outcome. No raw dump or log was uploaded.
+
+### Small application fix supported by this run
+
+The production handler had already diagnosed BROWSER_PROCESS_FAILED at host 467 ms, but left StartupFailureCode unset. The outer wait later assigned STARTUP_TIMEOUT, so consumers only received the later wait failure. During pending initial readiness, the handler now records BROWSER_PROCESS_FAILED with null-coalescing assignment; the outer exception path also uses null-coalescing assignment. A subsequent timeout still emits its own timed diagnostic. Failures after initial readiness do not become startup codes, and the existing fallback still fails closed.
+
+This change does not cancel a browser launch, navigate, retry/recover a process, bypass profile clearing or declare readiness. The 30-second host limit, 3-second close limit, AllProfile calls and late-completion guards remain intact. An observer can now stop waiting when an already-known failure is published and request the existing bounded close path. The change corrects reporting; it does not remedy the native process-access/launch failure.
+
+One incremental no-restore build with the reviewed `test-sources.json` and FrontendSkipBuild passed in 5.77 seconds, zero warnings/errors. It completed before the next KAG-only build/test window instruction. Log: `.verification/memory-startup-first-failure-20261110/focused-build.log`. No further startup, browser, test suite, frontend rebuild or package was run to validate this change; live behavior remains unverified. The pre-change rollback is `.verification/memory-startup-first-failure-20261110/baseline-94627d7.bundle`, exact HEAD and complete history verified, SHA256 `F7B20CE34D157D1F5F7F2D4D46E7F168BE93CF3755FCFC9746E3AFABDA0E8B69`. All six protected user documents matched their preserved hashes before the edit.
+
+### Different next action requiring explicit execution-mode coordination
+
+Do not repeat the same default-sandbox startup. A bounded comparison through the supported single-call approval mechanism is now a concrete candidate: use the same reviewed fixture executable, first `--prepare-profile`, then read the returned new Profile's native binding, then `--memory-draft-host <that-new-ID> startup`, with separate narrow approvals and the same 30-second limit. Paths must come from product/native binding, not PowerShell environment assumptions. No JVM or Memory write is needed for this comparison. The hypothesis is that the current caller token/desktop context prevents Chromium child startup; a different context is not assumed to succeed and is not a product fix by itself.
+
+This would request sandbox-outside execution, not Windows administrator elevation. It changes the caller's file/desktop access and therefore requires explicit authorization for these exact operations plus a resource window; earlier Git approvals do not authorize it. The new Profile must belong to that execution identity, remain isolated, and retain normal private creation/binding checks. Do not reuse the sandbox account's Profile, weaken Chromium sandbox/GPU/integrity policies, switch the session to Full access, change ACLs/settings, or run the full application with real selection preferences. No such execution-mode request or operation has been made in this stage.
+
+If that comparison is not authorized, the existing owned crash evidence can instead be reviewed with an explicitly scoped symbol/debugger plan; no debugger or symbol download is currently authorized or installed by this task. The exact denied operation/object and a verified runtime-specific mapping of renderer exit 49 remain unknown. Real Memory persistence and same-final-commit distribution acceptance remain blocked on a working supported desktop context.

@@ -92,7 +92,8 @@ internal sealed class WorkspaceWebViewHost
         {
             if (closing) return;
             string code = error is TimeoutException ? "STARTUP_TIMEOUT" : "INITIALIZATION_FAILED";
-            StartupFailureCode = code;
+            // A later wait boundary must not replace an already observed startup failure.
+            StartupFailureCode ??= code;
             Diagnose(code, error.HResult);
             Fail($"工作区启动失败（{code} / {StartupStage}）。请关闭后重新打开；若从打包工具中启动，请在普通 Windows 桌面中双击开发客户端。原生 Assistant 可继续使用。");
             // EnsureCoreWebView2Async has no cancellation API. Dispose its control so a late
@@ -166,6 +167,7 @@ internal sealed class WorkspaceWebViewHost
             core.ProcessFailed += (_, _) =>
             {
                 if (closing || failed) return;
+                if (!ready.Task.IsCompleted) StartupFailureCode ??= "BROWSER_PROCESS_FAILED";
                 Diagnose("BROWSER_PROCESS_FAILED");
                 Fail("工作区浏览器进程已停止。原生功能仍可使用，请关闭后重新打开工作区。");
             };
