@@ -1,5 +1,7 @@
 # 离线迁移、退出观察与开发包交接
 
+最新接续（2026-11-10）：在下述离线导入之后，原交付组件的实际设置入口已完成新合成 Profile 的连接检查、取消/确认保存、DPAPI 配置绑定、明确重启切换 PostgreSQL，以及独立应用宿主重开。真实网页/Bridge/原生窗口/Java helper/Store 均使用包内原始组件，非无参数产品 EXE 验收。临时数据库与凭据已清理，Job 收尾 2 个自有成员、锁释放；生产与旧包未变，无重打包。详见 [配置切换验收及完整接续](DATABASE-CUTOVER-ENTRY-ACCEPTANCE.md)。完整维护入口仍缺受信来源停写证明、共同两域事务/回执和可恢复配置激活，设计决定见 [入口审查](MAINTENANCE-CUTOVER-ENTRY-REVIEW.md)；下文历史边界按原时点保留，不再把已完成的配置切换列作未知。
+
 后续更新（2026-11-10）：已用本页交付包的原始 Runtime 完成独立 PostgreSQL 的两条真实离线导入 API 验收，生产文件和旧包未改。成功提交、实际中途失败回滚、源/备份保全、重复拒绝及 Store 重开通过；完整维护产品入口、后端切换和默认入口仍未验收。报告复制失败与仅文本导出恢复分别保留，详见 [后续真实导入报告](OFFLINE-POSTGRESQL-IMPORT-ACCEPTANCE.md)。下文仍保留本页原交接时点的结论。
 
 2026-11-10。仓库仅 `D:\IDEA\Daima\personal-ai-workspace`，开发分支 `codex/knowledge-version-compare`，本轮起点 `e62a04015b6c6899a335d7ade25ae90a4f36477b`。未发现仓库或已检查祖先目录中的 AGENTS.md，仓库也没有 `.agents` 目录。读取 STATUS、正常网页验收、相关存储/维护实现后推进，不接触同项目 Finance OS 或独立 KAG。

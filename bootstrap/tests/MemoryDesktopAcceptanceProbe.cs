@@ -32,6 +32,7 @@ internal static partial class MemoryDesktopAcceptanceProbe
     {
         if (args.Length == 3 && args[0] == "--native-memory-prepare") return PrepareNativeMemory(args[1], args[2]);
         if (args.Length == 4 && args[0] == "--native-memory-run") return RunNativeMemory(args[1], args[2], args[3]);
+        if (args.Length == 3 && args[0] == "--database-cutover") return RunDatabaseCutover(args[1], args[2]);
         if (args.Length == 5 && args[4] == "knowledge-recovery") return RunKnowledgeRecovery(args);
         if (args.Length != 4 && (args.Length is not (5 or 6) || args[4] is not ("web-knowledge" or "conversation-search" or "conversation-export"))) return 2;
         if (args.Length == 6 && args[4] != "conversation-export") return 2;

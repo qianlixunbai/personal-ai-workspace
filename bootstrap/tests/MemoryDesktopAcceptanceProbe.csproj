@@ -14,6 +14,13 @@
     <Compile Include="MemoryDesktopAcceptanceProbe.ConversationSearch.cs" />
     <Compile Include="MemoryDesktopAcceptanceProbe.ConversationExport.cs" />
     <Compile Include="MemoryDesktopAcceptanceProbe.NativeMemory.cs" />
-    <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
+    <Compile Include="MemoryDesktopAcceptanceProbe.DatabaseCutover.cs" />
+    <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" Condition="'$(PackagedDesktopRoot)' == ''" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PackagedDesktopRoot)' != ''">
+    <Reference Include="PersonalAiWorkspace.Desktop" HintPath="$(PackagedDesktopRoot)/PersonalAiWorkspace.Desktop.dll" />
+    <Reference Include="PersonalAiWorkspace.Core" HintPath="$(PackagedDesktopRoot)/PersonalAiWorkspace.Core.dll" />
+    <Reference Include="Microsoft.Web.WebView2.Core" HintPath="$(PackagedDesktopRoot)/Microsoft.Web.WebView2.Core.dll" />
+    <Reference Include="Microsoft.Web.WebView2.Wpf" HintPath="$(PackagedDesktopRoot)/Microsoft.Web.WebView2.Wpf.dll" />
   </ItemGroup>
 </Project>

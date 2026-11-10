@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 实际数据库设置切换与独立重开已通过：原交付包的 AssistantApp/React/Bridge/原生窗口/Java helper，在新合成 Profile 和独立 PostgreSQL 17.11 中完成检查、取消保存、确认 DPAPI 保存、明确重启与独立宿主重开；两次实际 PostgreSQL Store 读回同一记忆和知识原文，旧令牌失效，切换区间源库字节相同。验收宿主承载真实组件，不是无参数产品 EXE 或物理输入验收。数据库正常停止、临时密码/配置移除，最终 2 个自有子进程由 Job 收尾、锁释放；生产代码/旧包未变，无重打包。完整维护入口仍受来源停写证明、两域事务及配置激活协调缺口阻塞，已给出可维护产品方案，未绕过准入。[完整结果、失败历史、清理及接续](engineering/DATABASE-CUTOVER-ENTRY-ACCEPTANCE.md)；[入口设计审查](engineering/MAINTENANCE-CUTOVER-ENTRY-REVIEW.md)。
+
 2026-11-10 已补齐真实 PostgreSQL 离线导入：使用交付包原始 Runtime、全新合成 Profile 和独立 PostgreSQL 17.11，Workspace v3 与 Knowledge v1 两条文件迁移 API 均通过长源/备份路径、实际目标约束失败回滚、成功提交逐列读回、重复拒绝、备份/源保全及 Store 重开。JVM 退出 0；报告复制因加密属性失败导致包装退出 1，随后仅导出既有合成文本，哈希相同，未重跑迁移或改 EFS。自有数据库正常停止，Job 清理前 0、锁释放。无生产代码或包变更、不推送；完整用户维护入口/后端切换、默认入口与正式发布仍未验收。[证据、历史失败与明确范围](engineering/OFFLINE-POSTGRESQL-IMPORT-ACCEPTANCE.md)。
 
 2026-11-10 迁移修复统一开发包已交付：`artifacts/PersonalAiWorkspace-migration-long-path-20261110.zip`，构建来源 `31b877616779dfa5c8e2e80c6a319e7b4b29958f`，933 payload / 934 ZIP 条目逐项核对，420 内嵌来源 pin 与实际文件一致；Runtime 与 Desktop 重建，前端/Java/helper 不变。旧包全部保留，main 与六份用户文档不变，不推送。新包完整 EXE 未重跑；退出观察来自旧验收程序，默认入口、成功维护迁移和正式发布仍未通过。构建 Job 清理前 2 个成员由 Job 收尾，锁已释放；断连恢复先只读核实，无重复动作或未定结果。[完整 SHA、证据、权限边界和下一会话交接](engineering/MIGRATION-AND-EXIT-DELIVERY-HANDOFF.md)。
