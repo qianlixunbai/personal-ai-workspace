@@ -20,4 +20,12 @@
 
 两个新测试通过：受控上传未结束时 close 不返回，上传返回后取消并删除临时文件；Store 锁阻塞的实际排队任务全部取消清理；真实 5 秒超时及关闭线程中断后，即使上传后来退出，重复 close 仍失败。仅编译一个修改产品源文件及新测试，不重跑旧场景。`build-result.json`、`result.json` 为 passed；build/run cleanup 均为 Job 0、锁释放、failure=null；临时 token 已删除。
 
-模块二和三尚在开发时，不把本模块的验证扩展为索引、原生退出或维护接线已完成。main、六份用户文档和旧包保持原基线，不推送、不重新打包。
+## 模块二：派生索引
+
+`KnowledgeLexicalIndex` 关闭同时停止重建准入和 corpus callback，等待实际重建执行器以及已经进入的搜索/状态/重建调用。搜索使用独立连接且最后还会读取 Store，因此仅等待后台 executor 不够。关闭后状态读取直接返回 UNAVAILABLE，不再访问已关闭 Store；search/rebuild 被拒绝。受限构造仍不创建索引目录、不注册 callback 或启动 worker。
+
+超时、中断和候选文件清理错误会保留失败；后来线程退出或再次 close 不能提供成功证明。PostgreSQL 重建在提交前检查关闭/中断；本轮没有执行 PostgreSQL，不能将 SQLite 结果替代其事务验收。
+
+必要验证 `.verification/knowledge-index-shutdown-20261110/`：沿用相同资源包装，新建另一合成 Profile，实际 Native Gate、KnowledgeStore、SQLite 索引构建与搜索。两个新测试通过：Store 锁延迟重建和已进入搜索时关闭确实等待，结束后 staging 无候选、Store 已关闭仍能读 UNAVAILABLE；真实 5 秒超时/中断不能被迟到搜索退出改判；受限构造没有索引目录。只编译修改索引类及新测试，不重跑导入和旧测试集。build/run cleanup 为 Job 0、锁释放、failure=null；临时 token 已删除。
+
+原生退出/维护接线另行验证；上述两项不代表完整应用退出已验收。main、六份用户文档和旧包保持原基线，不推送、不重新打包。

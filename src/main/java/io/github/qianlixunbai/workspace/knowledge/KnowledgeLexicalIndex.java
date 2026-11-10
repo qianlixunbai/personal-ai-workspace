@@ -23,6 +23,9 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
     private final ThreadPoolExecutor executor=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1),r->{var t=new Thread(r,"knowledge-index");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
     private final AtomicBoolean running=new AtomicBoolean(),rerun=new AtomicBoolean();
     private final Object publication=new Object();
+    private final Object lifecycle=new Object(),closeLock=new Object();
+    private int users;
+    private boolean shutdownFailed,drained;
     private volatile boolean closed;
     private volatile String state="STALE",publishedFingerprint,sqliteVersion;
     private volatile ErrorCode failure;
@@ -45,7 +48,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
     KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks){this(store,maxBytes,maxChunks,true);}
     private KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks,boolean enabled){
         this.store=store;this.maxBytes=maxBytes;this.maxChunks=maxChunks;
-        if(!enabled){directory=null;staging=null;database=null;closed=true;state="UNAVAILABLE";executor.shutdownNow();return;}
+        if(!enabled){directory=null;staging=null;database=null;closed=true;state="UNAVAILABLE";executor.shutdown();drained=executor.isTerminated();return;}
         directory=store.postgresql()?null:store.root().resolve("index");staging=directory==null?null:directory.resolve("staging");database=directory==null?null:directory.resolve("lexical.db");
         store.onCorpusChanged(this::invalidate);
         try {
@@ -84,15 +87,25 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         }catch(NoSuchAlgorithmException e){throw new IllegalStateException();}
     }
     private static void frame(MessageDigest digest,String text){byte[] bytes=text.getBytes(StandardCharsets.UTF_8);digest.update(ByteBuffer.allocate(8).putLong(bytes.length).array());digest.update(bytes);}
-    private void invalidate(){state="STALE";requestRebuild();}
+    private void invalidate(){synchronized(lifecycle){if(closed)return;state="STALE";requestRebuild();}}
+    private boolean beginUse(){synchronized(lifecycle){if(closed)return false;users++;return true;}}
+    private void endUse(){synchronized(lifecycle){users--;lifecycle.notifyAll();}}
     public Status status() {
-        if(state.equals("READY")&&!Objects.equals(publishedFingerprint,fingerprint(store.searchCorpus(),sqliteVersion)))invalidate();
-        return new Status(state,state.equals("READY")?documentCount:0,state.equals("READY")?chunkCount:0);
+        if(!beginUse())return new Status("UNAVAILABLE",0,0);
+        try{
+            if(state.equals("READY")&&!Objects.equals(publishedFingerprint,fingerprint(store.searchCorpus(),sqliteVersion)))invalidate();
+            return new Status(state,state.equals("READY")?documentCount:0,state.equals("READY")?chunkCount:0);
+        }finally{endUse();}
     }
-    public Status rebuild(){if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);invalidate();return status();}
+    public Status rebuild(){
+        if(!beginUse())throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);
+        try{invalidate();return status();}finally{endUse();}
+    }
     private void requestRebuild() {
-        if(closed)return;rerun.set(true);
-        if(running.compareAndSet(false,true))try{executor.execute(this::run);}catch(RejectedExecutionException ignored){running.set(false);}
+        synchronized(lifecycle){
+            if(closed)return;rerun.set(true);
+            if(running.compareAndSet(false,true))try{executor.execute(this::run);}catch(RejectedExecutionException ignored){running.set(false);}
+        }
     }
     private void run() {
         try{do {
@@ -141,7 +154,10 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
                     Files.move(candidate,database,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
                     PrivateKnowledgeDirectory.protect(database,false);publishedFingerprint=identity;documentCount=refs.size();chunkCount=count[0];failure=null;state="READY";}}
         }catch(SQLException e){throw sqlFailure(e);}
-        finally{if(Files.exists(candidate,LinkOption.NOFOLLOW_LINKS)){PrivateKnowledgeDirectory.regular(candidate);Files.delete(candidate);}}
+        finally{
+            try{if(Files.exists(candidate,LinkOption.NOFOLLOW_LINKS)){PrivateKnowledgeDirectory.regular(candidate);Files.delete(candidate);}}
+            catch(Exception failure){shutdownFailed();throw failure;}
+        }
     }
     private void buildPostgresql()throws Exception {
         synchronized(store){
@@ -150,6 +166,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
                 try{
                     var refs=store.searchCorpus();String identity=fingerprint(refs,sqliteVersion);
                     int count=PostgresqlKnowledgeIndex.build(db,refs,ref->{if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_REBUILD_FAILED);return store.searchSource(ref);},maxChunks,maxBytes);
+                    if(closed||Thread.currentThread().isInterrupted())throw error(ErrorCode.KNOWLEDGE_INDEX_REBUILD_FAILED);
                     exec(db,"COMMIT");
                     synchronized(publication){publishedFingerprint=identity;documentCount=refs.size();chunkCount=count;failure=null;state="READY";}
                 }catch(Exception e){try{exec(db,"ROLLBACK");}catch(SQLException ignored){}throw e;}
@@ -183,7 +200,10 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         return search(raw,requestedLimit,null);
     }
     public Results search(String raw,Integer requestedLimit,KnowledgeScope scope) {
-        if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);
+        if(!beginUse())throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);
+        try{return searchAdmitted(raw,requestedLimit,scope);}finally{endUse();}
+    }
+    private Results searchAdmitted(String raw,Integer requestedLimit,KnowledgeScope scope) {
         var query=LexicalAnalyzer.query(raw);int limit=requestedLimit==null?10:requestedLimit;
         if(limit<1||limit>10)throw error(ErrorCode.KNOWLEDGE_SEARCH_INVALID);
         var refs=store.searchCorpus();String current=sqliteVersion==null?null:fingerprint(refs,sqliteVersion);
@@ -221,5 +241,29 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         }catch(WorkspaceException e){if(e.error().code()==ErrorCode.KNOWLEDGE_INDEX_NOT_READY)invalidate();throw e;}
         catch(Exception ignored){invalidate();throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);}
     }
-    public void close(){closed=true;store.onCorpusChanged(()->{});executor.shutdownNow();try{executor.awaitTermination(5,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    private void shutdownFailed(){synchronized(lifecycle){shutdownFailed=true;}}
+    public boolean shutdownComplete(){synchronized(lifecycle){return drained&&!shutdownFailed;}}
+    public void close(){
+        synchronized(closeLock){
+            synchronized(lifecycle){
+                closed=true;state="UNAVAILABLE";rerun.set(false);executor.shutdownNow();
+                if(shutdownFailed)throw new IllegalStateException("Knowledge index did not drain");
+                if(drained)return;
+            }
+            store.onCorpusChanged(()->{});
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+            try{
+                if(!executor.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS))throw new IllegalStateException();
+                synchronized(lifecycle){
+                    while(users!=0){long remaining=deadline-System.nanoTime();if(remaining<=0)throw new IllegalStateException();TimeUnit.NANOSECONDS.timedWait(lifecycle,remaining);}
+                    if(shutdownFailed)throw new IllegalStateException();
+                    drained=true;
+                }
+            }catch(InterruptedException failure){
+                shutdownFailed();Thread.currentThread().interrupt();throw new IllegalStateException("Knowledge index drain interrupted",failure);
+            }catch(RuntimeException failure){
+                shutdownFailed();throw new IllegalStateException("Knowledge index did not drain",failure);
+            }
+        }
+    }
 }
