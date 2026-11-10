@@ -59,3 +59,19 @@ Java 候选 SHA-256：`E2C1601293A15E8805E4BA15C8C976DE80A7D0F7B0D6499F892B7C1F2
 下一步先把这个逐会话协议接入真正的普通原生启动／退出生命周期，并保持对中断和未知结果的阻断；再完成外部模型专属资源 owner 与退出证明。真实 runner 的可执行文件及权重来源、许可／哈希、专用实例、资源预算、输入和外部费用范围需要明确授权，不能由模型状态文件代替。最后再接来源／目标选择、当次最终确认和完整执行入口。
 
 main、六份用户未跟踪文档和旧 ZIP 均已核对基线；真实数据／默认 Profile／数据库和持久凭据未触碰。没有触碰 KAG、18765 端口查询、Docker、私有会话存储或前轮被拒 Profile；没有修改系统安全设置。准备／执行均通过原有非管理员检查，主机执行获准后才运行，不使用管理员进程。没有新的自动审批拒绝或待审批动作。一次只读工具传输断连后已重新确认 Git 现场，没有重复不确定写操作；所有构建／运行均有完成和清理回执。当前上下文没有实际模型／推理强度元数据，因此无法核实本轮是否确为 Astra xhigh，也不推断历史 Sol 用量。
+
+## 本地交付
+
+产品提交 `00cfdf1e77575912383216dcf6f509b35b5fcf1c`，分支 `codex/knowledge-version-compare`；仅提交已完成并通过必要验证的代码／验收报告，没有推送。新包 `artifacts/PersonalAiWorkspace-maintenance-session-reopen-20261110.zip` 及同名目录已经生成。933 个 payload 文件、934 个 ZIP 条目逐一核对，420 条内嵌 Runtime pins 匹配。
+
+| 交付项 | SHA-256 |
+| --- | --- |
+| ZIP | `17C9B64C538217137BEFEA7E0DF7F74CE054CE1B5CD833C5FC0D26225CBCF2FB` |
+| Runtime JAR | `470AF5D7DF30DCBAB5464ECB7AFF8FBF43BBABBED8E19502B683685E00FF9A1E` |
+| Desktop DLL | `F8CF0B7490D2F8B356E20F8137B013273B5B75A637EA1A7DC74FCFAEDAC077B8` |
+
+Runtime 与验收候选相比仅更新 `META-INF/workspace-runtime.properties` 来源标记，其他全部 JAR 条目字节一致。Desktop 从已验收源重新发布并嵌入交付 pins；前端、JDK、NativeBootstrap 沿用，没有重复运行应用矩阵，也没有宣称最终默认 EXE 或 UI 视觉验收。交付仍为 `productionGo=false`。
+
+最终回执位于 r4 的 `delivery-result.json`、`publish-cleanup.json` 和 `final-baseline.json`。打包 guardian 43280 于 `2026-11-10T15:01:27.9094867Z` 记录 Job active 0、Job 关闭、共享锁释放。main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，六份用户文档哈希不变；上一 model-review ZIP 为 `F1056BDDAC78D852B0645AF9E50C6D63E7E85C69DD868AFC9EAB7F68A4C83BFD`，再前 runtime-handoff ZIP 为 `CF7567E167BAD79CD7AF65A883035BB7B08AB3BD11AC20E63884E86FE657CB8C`，均复核未改。产品提交后跟踪文件干净，只剩原六份未跟踪用户文档；这份交付补记单独做文档提交。
+
+本轮没有待审批或未知执行结果。剩余的是普通启动生命周期、外部模型执行所有权及来源／目标最终确认的产品缺口，不是等待放宽系统安全设置。接续不要重跑本轮正常重开／中断流程，除非相关代码变化或有新的具体风险。
