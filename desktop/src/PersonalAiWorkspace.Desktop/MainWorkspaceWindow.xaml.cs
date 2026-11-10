@@ -13,6 +13,7 @@ public partial class MainWorkspaceWindow : Window
     private readonly IWorkspaceNativeActions native;
     private bool shuttingDown;
     private bool closed;
+    private bool openingNativeMemory;
     private readonly Func<bool> confirmDiscard;
     internal bool TryDiscardEditor() => !Host.HasDirtyEditor || confirmDiscard();
     internal WorkspaceWebViewHost Host { get; }
@@ -37,6 +38,7 @@ public partial class MainWorkspaceWindow : Window
             FallbackTitle.Text = "工作区暂时不可用";
             FallbackMessage.Text = message;
             Fallback.Visibility = Visibility.Visible;
+            NativeMemoryFallbackButton.Visibility = Visibility.Visible;
             NativeAssistantButton.Visibility = Visibility.Visible;
             NativeAssistantButton.Focus();
         }, assetFolder, confirmDiscard
@@ -55,6 +57,26 @@ public partial class MainWorkspaceWindow : Window
     {
         try { await native.OpenAsync(NativeWorkspaceEntry.LegacyAssistant, CancellationToken.None); }
         catch (Exception) { FallbackMessage.Text = "原生 Assistant 暂时不可用，请从托盘重试。"; }
+    }
+    private async void OpenNativeMemory(object sender, RoutedEventArgs e)
+    {
+        if (closed || shuttingDown || openingNativeMemory || NativeMemoryFallbackButton.Visibility != Visibility.Visible) return;
+        openingNativeMemory = true;
+        NativeMemoryFallbackButton.IsEnabled = false;
+        NativeMemoryStatus.Text = "";
+        NativeMemoryStatus.Visibility = Visibility.Collapsed;
+        try { await native.OpenAsync(NativeWorkspaceEntry.Memory, CancellationToken.None); }
+        catch (Exception)
+        {
+            // Preserve the WebView failure above; never expose native exception details.
+            NativeMemoryStatus.Text = "原生记忆暂时不可用，请稍后重试或从托盘打开。";
+            NativeMemoryStatus.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            openingNativeMemory = false;
+            NativeMemoryFallbackButton.IsEnabled = true;
+        }
     }
     private void FocusWorkspace(object sender, RoutedEventArgs e) => ReturnFocus();
     private void ZoomIn(object sender, RoutedEventArgs e) => SetZoom(Math.Min(2, Browser.ZoomFactor + .25));

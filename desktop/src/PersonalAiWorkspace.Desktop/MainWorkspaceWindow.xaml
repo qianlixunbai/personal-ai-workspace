@@ -48,6 +48,8 @@
                 <StackPanel VerticalAlignment="Center" MaxWidth="520">
                     <TextBlock x:Name="FallbackTitle" Text="正在打开工作区…" FontSize="26" FontWeight="SemiBold" />
                     <TextBlock x:Name="FallbackMessage" Text="可先打开快速助手，或从托盘使用其他入口。" TextWrapping="Wrap" Margin="0,16,0,24" />
+                    <Button x:Name="NativeMemoryFallbackButton" Content="打开原生记忆" Click="OpenNativeMemory" Visibility="Collapsed" HorizontalAlignment="Left" Padding="16,9" Margin="0,0,0,12" AutomationProperties.Name="打开原生记忆" ToolTip="使用当前工作区的原生记忆窗口；保存和删除仍需明确操作" />
+                    <TextBlock x:Name="NativeMemoryStatus" Visibility="Collapsed" TextWrapping="Wrap" Margin="0,0,0,12" AutomationProperties.LiveSetting="Polite" />
                     <Button Content="打开快速助手" Click="OpenAssistant" HorizontalAlignment="Left" Padding="16,9" />
                 </StackPanel>
             </Border>

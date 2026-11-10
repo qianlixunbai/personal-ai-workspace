@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using PersonalAiWorkspace.Core;
+using PersonalAiWorkspace.Desktop.Bridge;
 using Xunit;
 using static PersonalAiWorkspace.Desktop.Tests.MemoryClientTests;
 
@@ -12,6 +13,68 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class MemoryWindowTests
 {
+    private sealed class FallbackActions : IWorkspaceNativeActions
+    {
+        internal readonly List<NativeWorkspaceEntry> Opened = [];
+        internal readonly TaskCompletionSource Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Reject;
+        internal int StatusReads;
+        public Task<ShellStatus> StatusAsync(CancellationToken cancellation)
+        {
+            StatusReads++;
+            throw new InvalidOperationException("Unexpected bootstrap.");
+        }
+        public Task OpenAsync(NativeWorkspaceEntry entry, CancellationToken cancellation)
+        {
+            Opened.Add(entry);
+            return Reject ? Task.FromException(new InvalidOperationException("private-native-detail")) : Pending.Task;
+        }
+    }
+
+    [Fact]
+    public Task WebViewFailureOffersExistingMemoryRouteWithoutStartingBrowserOrLosingFailure() => StaAsync(async () =>
+    {
+        var native = new FallbackActions();
+        var window = new MainWorkspaceWindow(native);
+        try
+        {
+            var button = (Button)window.FindName("NativeMemoryFallbackButton");
+            var failure = (TextBlock)window.FindName("FallbackMessage");
+            var status = (TextBlock)window.FindName("NativeMemoryStatus");
+            Assert.Equal(Visibility.Collapsed, button.Visibility);
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Empty(native.Opened);
+
+            window.Host.Fail("Synthetic WebView failure");
+            Assert.True(window.FallbackVisible);
+            Assert.Equal(Visibility.Visible, button.Visibility);
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(button.IsEnabled);
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(NativeWorkspaceEntry.Memory, Assert.Single(native.Opened));
+            native.Pending.SetResult();
+            await DrainAsync();
+            Assert.True(button.IsEnabled);
+            Assert.Equal("Synthetic WebView failure", failure.Text);
+            Assert.Equal(Visibility.Collapsed, status.Visibility);
+
+            native.Reject = true;
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await DrainAsync();
+            Assert.Equal(new[] { NativeWorkspaceEntry.Memory, NativeWorkspaceEntry.Memory }, native.Opened);
+            Assert.True(button.IsEnabled);
+            Assert.Equal(Visibility.Visible, status.Visibility);
+            Assert.False(string.IsNullOrWhiteSpace(status.Text));
+            Assert.DoesNotContain("private-native-detail", status.Text);
+            Assert.Equal("Synthetic WebView failure", failure.Text);
+            Assert.False(window.IsLoaded);
+            Assert.Null(window.Host.UserDataFolder);
+            Assert.Equal("NOT_STARTED", window.Host.StartupStage);
+            Assert.Equal(0, native.StatusReads);
+        }
+        finally { window.DisposeImmediately(); }
+    });
+
     private sealed class Store
     {
         internal readonly Dictionary<Guid, MemoryItem> Items = [];
