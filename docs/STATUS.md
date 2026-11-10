@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 第三个独立模块[工作区查找与原文阅读](engineering/WORKSPACE-SEARCH-REPORT.md)完成，产品 `9cb7e31`：同一面板主动查找记忆、历史消息和资料，分组降级、分页并读取准确上下文，普通关闭保留当前草稿。两项新合成场景及一次类型检查通过，原失败夹具和修正证据保留；前两模块／旧组未重跑。main、六文档和六旧包不变，未推送；未生产构建、打包或实际 EXE／WebView 验收，旧包不含本轮三个模块。原 model-state 取证／登记继续停止，完整维护仍 BLOCKED / productionGo=false。
+
 2026-11-10 [记忆及对话回查准确原文](engineering/MEMORY-SOURCE-REVIEW-REPORT.md)已完成，产品 `f3df1da`：用户从记忆编辑／预览或版本一致的对话记忆引用主动读取正文出处中的准确资料、版本和范围，比较原文并阅读上下文；保留草稿，缺失不回退，出处文字不变成受信绑定。两项新合成流程通过，类型检查修正后通过，原失败保留，上一轮两项检查未重跑。未打包或进行 EXE／WebView 验收，旧包不含此增量；原 model-state 拒绝／取证提案保持停止和待确认，真实模型恢复及整体维护仍 BLOCKED / productionGo=false。
 
 2026-11-10 [model-state 拒绝分支审计](engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)逐项核对类型、非 Windows fileKey 和 Java owner 条件；基于 Windows 专用准入与官方 provider 实现排除了“Windows 正常空 fileKey 导致拒绝”的解释，仍缺当时的类型／SID 比较值，未证实根因、未重试。独立完成[原文摘录到记忆](engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)，产品 `41cb53a`：准确版本的用户选区与出处进入草稿，经审阅／编辑后明确保存。两项新合成场景及类型检查通过，旧组未重跑；本轮未构建新包，旧 import-continuity 包不包含此增量。完整 EXE／WebView、真实模型恢复与整体维护仍 BLOCKED / productionGo=false，main／用户文档／旧包保留，未推送。

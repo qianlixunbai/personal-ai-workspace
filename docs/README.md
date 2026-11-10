@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-10：[工作区查找与原文阅读](engineering/WORKSPACE-SEARCH-REPORT.md)交接第三个完整模块 `9cb7e31`：从当前页面跨记忆／对话／资料查找、按需只读上下文并保留草稿；包含新场景检查、失败夹具修正、保护核对和三个模块尚未打包／桌面验收的准确边界。
+
 2026-11-10：[记忆及对话回查资料出处](engineering/MEMORY-SOURCE-REVIEW-REPORT.md)记录从已保存记忆、编辑草稿及对话记忆引用读取准确旧版原文、逐字对照和上下文阅读的完整流程；出处仍为可编辑定位文字，附两项新合成检查、失败修正及未打包／未完成桌面验收的边界。
 
 2026-11-10：[状态目录拒绝分支审计](engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)列明每个条件、历史证据和待确认的只读取证范围，根因未证实、原登记仍停止。[原文摘录到记忆](engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)记录一条独立完成的资料选区、审阅、明确保存流程及两项新合成检查；本轮无新包或 EXE／WebView 验收。

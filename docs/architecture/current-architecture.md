@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [工作区查找](../engineering/WORKSPACE-SEARCH-REPORT.md)：App 的临时 dialog 保持底层页面挂载，显式并行调用 Memory list／Conversation search／Knowledge search，独立呈现各领域结果与失败。只读预览沿用 Memory revision 检查、精确消息身份和资料不可变源版本；面板／会话代次阻断迟到结果及后续读取。无跨领域索引、持久搜索状态、新 Native／Runtime API、schema、模型调用或隐式写入；未完成实际 EXE／WebView 验收。
+
 2026-11-10 [Memory 来源回查](../engineering/MEMORY-SOURCE-REVIEW-REPORT.md)：共享 React 只读组件解析单一可编辑出处，用户点击后经既有 get／preview 核对文档身份、版本存在及完整范围，再比较文字与分页阅读上下文。编辑器、只读预览和版本一致的 Conversation Memory 共用此能力。出处不进入持久化关联合同，原 USER／ASSISTANT／KNOWLEDGE 草稿语义、MANUAL 保存、revision、会话／请求身份及显式上下文选择不变；无 Native／Runtime／schema／权限变更。
 
 2026-11-10 [原文摘录进入记忆草稿](../engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)：React 将完全位于当前已验证 Knowledge 预览中的 DOM 选区核对为原文切片，绝对偏移与源版本随出处文字进入现有 Memory 草稿接收器。KNOWLEDGE 仅是临时编辑来源角色；保存复用原有 MANUAL 创建，不增加持久引用／自动选择／模型生成或协议。独立[状态目录分支审计](../engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)补齐两套身份链及 Windows provider 依据，但没有更改 Native／Java 校验或取得原拒绝的重试权限。

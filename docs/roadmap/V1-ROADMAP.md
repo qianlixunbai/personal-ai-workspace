@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 [工作区查找与原文阅读](../engineering/WORKSPACE-SEARCH-REPORT.md)作为第三个独立核心模块完成，产品 `9cb7e31`。统一入口调用各领域既有查询，分组降级、读取准确消息／版本，在普通查找期间保持当前草稿；不新增模型行为或混合数据仓库。两项新合成场景及类型检查通过，前两模块未重跑，未打包／完整桌面验收。三个实质模块已交接，后续按真实使用缺口或所需确认推进；原取证及登记停止，整体维护 BLOCKED / productionGo=false。
+
 2026-11-10 [记忆／对话 → 准确资料回查](../engineering/MEMORY-SOURCE-REVIEW-REPORT.md)补齐原文摘录保存后的阅读闭环，产品 `f3df1da`。按用户主动操作读取可编辑出处中的 ID／版本／范围，明确区分逐字一致、文字改写、缺失来源及历史 Memory 版本失效；不增加持久关联、自动写入或模型行为。两项新合成场景及最终类型检查通过；未重跑上一轮检查、未打包或验收完整桌面。原阻塞继续待相关证据，整体维护 BLOCKED / productionGo=false。
 
 2026-11-10 优先完成[原状态目录拒绝的分支审计](../engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)，给出 Windows 准入约束、所有条件与最小待确认的只读证据，原动作仍停止；未知现场值没有被假设补全。同时交付一个完整流程[资料原文 → 手动记忆](../engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)，产品 `41cb53a`，只有用户选区和可编辑出处进入草稿，明确保存后沿已有显式选择使用。两项必要合成检查通过，无模型／新包或完整桌面结论；不为三项计数追加小修。下一步聚焦原拒绝证据与实际使用，整体维护继续 BLOCKED / productionGo=false。
