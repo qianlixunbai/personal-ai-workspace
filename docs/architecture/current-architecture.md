@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [来源阅读导航与问题草稿](../engineering/KNOWLEDGE-READING-NAVIGATION-REPORT.md)：React 保留至多 32 处来源位置元数据，返回时重新走既有文档详情／准确版本 Preview，成功才更新导航栈；离页和换会话清空。按行定位复用有界完整版本读取后计算原始 UTF-16 偏移，不建索引或缓存正文。问答表单以最近成功受理／历史读取内容识别后续修改，确认替换并在读取成功后提交界面变化；删除历史不会清掉新草稿。无新 Runtime API、schema、模型调用或权限；原所有者检查／未知请求保护未改。
+
 2026-11-09 [完整会话导出](../engineering/CONVERSATION-EXPORT-REPORT.md)：React 只传当前已授权 conversation ID，Native 全分页读取既有 Runtime 并前后核对元数据／总数，终态原文按纯文本围栏写 Markdown。共享既有私有暂存／无覆盖文件写入器；读取 30 秒、输出 4 MiB，会话结束取消。只有持久历史和记忆引用元数据，无草稿、当前记忆正文、导入、Runtime API 或 schema 增量。
 
 2026-11-09 [PDF 文字层摘录](../engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)：Native 持有受校验的只读文件，经 stdin 交给同包 EXE 的独立 PdfPig worker；Windows Job 限制内存／进程数并负责退出回收，HelperProcess 限时 12 秒。完成有界提取和原生预览确认后，UTF-8 `.pdf.txt` 进入既有 Knowledge。React／Runtime 不取得原 PDF；引用继续定位 TXT 摘录，页标记仅为文件页序号。无 OCR、原 PDF 保存、Runtime API 或 schema 变更；Job 不等同于权限／网络沙箱。
