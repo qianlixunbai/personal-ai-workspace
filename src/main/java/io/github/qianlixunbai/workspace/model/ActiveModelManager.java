@@ -555,6 +555,31 @@ public final class ActiveModelManager implements AutoCloseable {
         private boolean visionTask, visionValidation;
         private OllamaProvider.VisionContext expectedVisionContext;
         private final String generation=cacheEpoch;
+        private Request request;
+        /** An in-memory capability for one immutable HTTP request, never a recovery credential. */
+        public final class Request {
+            private final UUID id = UUID.randomUUID();
+            private final java.net.http.HttpRequest http;
+            private boolean prepared, attempted, exited;
+            private Request(java.net.http.HttpRequest http) { this.http = http; }
+            @Override public String toString() { return "ModelRequest[private]"; }
+        }
+        public Request bindRequest(OllamaProvider transport, java.net.http.HttpRequest http) {
+            synchronized (operations) {
+                synchronized (gate) {
+                    if (transport != provider || http == null || !"POST".equals(http.method())
+                            || !Set.of("/api/chat", "/api/generate").contains(http.uri().getPath())
+                            || released || closed || storeFailed || uncertain || closeRequested
+                            || request != null && !request.exited) throw unavailable();
+                }
+                request = new Request(http);
+                return request;
+            }
+        }
+        private void requireRequest(Request expected) {
+            if (expected == null || request != expected || expected.exited)
+                throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL_REQUEST_BINDING");
+        }
         private Reservation(ExecutionModel model, ModelProfile profile, String promptVersion, boolean candidateSwitch) {
             this.model = model; this.profile = profile; this.promptVersion = promptVersion; this.candidateSwitch = candidateSwitch;
         }
@@ -574,35 +599,18 @@ public final class ActiveModelManager implements AutoCloseable {
                 }
             }
         }
-        public void visionBeforeSend(Runnable liveIdentity) {
-            checkVisionSend();
-            // Durable guard first; the native recheck is outside both owner locks. A rejected
-            // pre-send operation must not manufacture remote uncertainty or clear another guard.
-            prepareSend(false);
-            try {
-                liveIdentity.run();
-                checkVisionSend();
-                synchronized(operations) {
-                    synchronized(gate) { if(released || closed || storeFailed || uncertain) throw unavailable(); }
-                    pendingSend=false; pendingSends--;
-                    if(!sent) outbound++;
-                    sent=true; complete=false;
-                }
-            } catch(RuntimeException | LinkageError rejected) { visionPolicyDrift(); throw rejected; }
-        }
         public void visionPolicyDrift() {synchronized(gate){visionEpoch=null;}}
 
-        /** Provider calls at its final boundary, immediately before sendAsync. */
-        public void beforeSend() {
-            prepareSend(true);
-        }
         /** Trusted checked-transport boundary; preparation alone never means HTTP was attempted. */
-        public void prepareCheckedSend(Runnable liveIdentity) {
+        public void prepareCheckedSend(Request expected, Runnable liveIdentity) {
             if (liveIdentity != null) checkVisionSend();
             synchronized (operations) {
+                requireRequest(expected);
+                if (expected.prepared) throw unavailable();
                 if (checkedTransport || released || closeRequested) throw unavailable();
                 checkedTransport = true; checkedExitRequested = false;
-                prepareSend(false);
+                expected.prepared = true;
+                prepareSend();
             }
             if (liveIdentity != null) {
                 try { liveIdentity.run(); checkVisionSend(); }
@@ -610,8 +618,9 @@ public final class ActiveModelManager implements AutoCloseable {
             }
         }
         /** Called only at the socket output's actual write delegation, never at bind/interception. */
-        public void checkedWrite(Runnable finalCheck, java.io.OutputStream output, byte[] bytes, int offset, int length) throws IOException {
+        public void checkedWrite(Request expected, Runnable finalCheck, java.io.OutputStream output, byte[] bytes, int offset, int length) throws IOException {
             synchronized (operations) {
+                requireRequest(expected);
                 synchronized (gate) {
                     if (!checkedTransport || checkedWriting || checkedExitRequested || closeRequested
                             || released || closed || storeFailed || uncertain) throw unavailable();
@@ -628,7 +637,7 @@ public final class ActiveModelManager implements AutoCloseable {
             finally {
                 synchronized (operations) {
                     checkedWriting = false;
-                    if (checkedExitRequested) providerExited();
+                    if (checkedExitRequested) providerExited(expected);
                 }
             }
         }
@@ -640,8 +649,9 @@ public final class ActiveModelManager implements AutoCloseable {
             }
             if (!sent) outbound++;
             sent = true; complete = false;
+            request.attempted = true;
         }
-        private void prepareSend(boolean markSent) {
+        private void prepareSend() {
             synchronized (operations) {
                 synchronized (gate) {
                     if (released || closed || storeFailed || uncertain) throw unavailable();
@@ -665,22 +675,30 @@ public final class ActiveModelManager implements AutoCloseable {
                     synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
                     throw new WorkspaceException(ErrorCode.MODEL_STATE_UNAVAILABLE, "EXECUTION_GUARD");
                 }
-                if(markSent) markSendAttempt();
-                else { pendingSend=true; pendingSends++; }
+                pendingSend=true; pendingSends++;
             }
         }
         /** Trusted protocol completion is independent of output validation or user task cancellation. */
-        public void trustedCompletion() { synchronized (operations) { complete = true; } }
+        public void trustedCompletion(Request expected) {
+            synchronized (operations) {
+                requireRequest(expected);
+                if (!expected.attempted || !checkedTransport || checkedWriting || checkedExitRequested
+                        || pendingSend || complete || released || closed || storeFailed) throw unavailable();
+                complete = true;
+            }
+        }
         public void admissionFailed(ErrorCode code) {
             synchronized (gate) { ready = false; installed = code == ErrorCode.MODEL_UNAVAILABLE ? Fact.FALSE : Fact.UNKNOWN; error = code; }
         }
-        public void providerExited() {
+        public void providerExited(Request expected) {
             synchronized (operations) {
+                requireRequest(expected);
                 if (checkedTransport) {
                     checkedExitRequested = true;
                     if (checkedWriting) return;
                     checkedTransport = false;
                 }
+                expected.exited = true;
                 reportUncertainty();
                 if (closeRequested) close();
             }

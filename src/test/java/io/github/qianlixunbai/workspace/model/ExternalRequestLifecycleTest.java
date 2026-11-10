@@ -13,6 +13,50 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ExternalRequestLifecycleTest {
     @TempDir Path root;
 
+    @Test void requestCompletionCannotCrossAttempts() throws Exception {
+        var support = new ModelFoundationTest(); support.root = root;
+        Path state = root.resolve("request-bindings");
+        try (var fixture = support.new Fixture();
+             var models = new ActiveModelManager(fixture.profiles, fixture.provider, fixture.properties,
+                 new ModelStateStore(state, support.token(), support.data()));
+             var lease = models.reserve("translate.fast", "ownership-fixture");
+             var other = models.reserve("translate.fast", "ownership-fixture")) {
+            // Production provider creates and consumes a fresh capability on each actual HTTP exchange.
+            assertEquals("OK", fixture.provider.execute(ModelFoundationTest.request(lease), new Cancellation()));
+            assertEquals("OK", fixture.provider.execute(ModelFoundationTest.request(lease), new Cancellation()));
+            var http = java.net.http.HttpRequest.newBuilder(fixture.properties.ollama().baseUrl().resolve("/api/chat"))
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            var first = lease.bindRequest(fixture.provider, http);
+            assertThrows(WorkspaceException.class, () -> lease.trustedCompletion(first));
+            lease.prepareCheckedSend(first, null);
+            assertThrows(WorkspaceException.class, () -> lease.bindRequest(fixture.provider, http));
+            // Controlled write delegation for adversarial callbacks; no claim of a remote execution here.
+            lease.checkedWrite(first, () -> {}, java.io.OutputStream.nullOutputStream(), new byte[]{1}, 0, 1);
+            lease.trustedCompletion(first);
+            assertThrows(WorkspaceException.class, () -> lease.trustedCompletion(first));
+            lease.providerExited(first);
+            var second = lease.bindRequest(fixture.provider, http);
+            var foreign = other.bindRequest(fixture.provider, http);
+            lease.prepareCheckedSend(second, null);
+            lease.checkedWrite(second, () -> {}, java.io.OutputStream.nullOutputStream(), new byte[]{1}, 0, 1);
+            byte[] guard = Files.readAllBytes(state.resolve("execution-guard.json"));
+            assertThrows(WorkspaceException.class, () -> lease.trustedCompletion(first));
+            assertThrows(WorkspaceException.class, () -> lease.trustedCompletion(foreign));
+            assertThrows(WorkspaceException.class, () -> lease.providerExited(first));
+            assertThrows(WorkspaceException.class, () -> lease.checkedWrite(first, () -> {},
+                java.io.OutputStream.nullOutputStream(), new byte[]{1}, 0, 1));
+            lease.providerExited(second); // No terminal response for the second request.
+            assertTrue(models.status().uncertain());
+            assertThrows(WorkspaceException.class, () -> lease.trustedCompletion(second));
+            assertArrayEquals(guard, Files.readAllBytes(state.resolve("execution-guard.json")));
+            other.providerExited(foreign);
+        }
+        try (var restarted = new ModelStateStore(state, support.token(), support.data())) {
+            assertTrue(restarted.unresolved());
+            assertThrows(java.io.IOException.class, restarted::clearGuard);
+        }
+    }
+
     @Test void singleSendAndUncertainLocalExit() throws Exception {
         var support = new ModelFoundationTest(); support.root = root;
         try (var fixture = support.new Fixture()) {

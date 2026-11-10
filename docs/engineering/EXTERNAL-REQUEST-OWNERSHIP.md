@@ -29,4 +29,14 @@
 - `.verification/external-request-transport-20261110/result.json` 为 passed；`token-cleanup.json` 确认临时 token 已删除；`build-cleanup.json`、`run-cleanup.json` 为 Job active 0、共享锁释放、failure=null。
 - 复用原 Job 与 `Local\Dot_KAG_Workspace_HeavyRun` 包装，450 秒外层期限，Java 256 MiB/2 CPU。没有调用真实模型、读取真实凭据、查询旧端口、改变系统策略或重打包。
 
-这不是云提供商验收、专属模型进程树验收或桌面视觉验收。下一项是用逐次请求身份替换当前无参数的完成通知，并把身份写入实际 guard。
+## 已完成：同次请求的完成能力
+
+`ActiveModelManager.Reservation.bindRequest` 为同一个实际 provider、reservation 和不可变 HTTP request 创建一次性内存对象。普通推理、管理探针、视觉推理和卸载的产品入口都捕获这个对象，并将它传至 socket guard、实际 write、协议完成和 finally 退出。旧的无参数发送/完成/退出入口已移除。
+
+未写入、重复完成、已经退出、另一 reservation、前一次请求的能力均不能完成当前请求；先前已完成且退出后才能创建下一次请求。重建 manager/进程无法从 UUID 或磁盘文件重新构造此能力。它证明本地 transport 的关联，不证明共享 Ollama/远端服务归属。
+
+针对性验证 `ExternalRequestLifecycleTest.requestCompletionCannotCrossAttempts`：经实际 Native Gate 新建合成 Profile；真实 provider 在同一 lease 连续完成两次合成 HTTP 请求；随后用受控 write delegation 检查前述拒绝分支，第二次未完成的尝试退出后 guard 保留，实际 store 重开仍 unresolved。受控回调检查没有被记作真实远端执行。既有 socket-boundary 测试按新签名同步并编译，没有重跑旧场景或完整测试集。
+
+证据 `.verification/external-request-binding-20261110/{result.json,token-cleanup.json,build-cleanup.json,run-cleanup.json}`：passed、临时 token 清理、Job 0、锁释放、failure=null。没有外部模型/付费 API、系统设置改动或重新打包。
+
+这不是云提供商验收、专属模型进程树验收或桌面视觉验收。下一项是将本次请求身份绑定到实际持久化 guard。

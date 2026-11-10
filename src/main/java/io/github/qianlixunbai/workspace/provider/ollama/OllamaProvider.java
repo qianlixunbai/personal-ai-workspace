@@ -199,8 +199,9 @@ public final class OllamaProvider implements Provider {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(payload)).build();
         // Policy is verified at the last application boundary before model egress.
         policy.verify(p, this, execution.privacyMode());
+        var ownedRequest = reservation.bindRequest(this, request);
         try {
-            HttpResponse<byte[]> response = exchange(request, requestBudget, cancellation, new SendBoundary(reservation, image==null ? null : () -> {
+            HttpResponse<byte[]> response = exchange(request, requestBudget, cancellation, new SendBoundary(reservation, ownedRequest, image==null ? null : () -> {
                     String identity=reservation.model().model()+"/"+reservation.model().runner()+"/"+reservation.model().digest();
                     VisionContext live=visionTrust.liveContext(identity,cancellation);
                     var cached=verifyVisionBudget(reservation.model(),execution.input());
@@ -236,7 +237,7 @@ public final class OllamaProvider implements Provider {
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "RESPONSE");
             }
             // A complete trusted operation may have unusable content; those are distinct facts.
-            reservation.trustedCompletion();
+            reservation.trustedCompletion(ownedRequest);
             if(image!=null) {
                 var evidence=verifyVisionBudget(reservation.model(),execution.input()).evidence();
                 if(body.path("eval_count").asLong(0)>1024 || body.path("prompt_eval_count").asLong(0)>
@@ -250,7 +251,7 @@ public final class OllamaProvider implements Provider {
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "RESPONSE");
             cancellation.check();
             return content.asString();
-        } finally { reservation.providerExited(); }
+        } finally { reservation.providerExited(ownedRequest); }
     }
 
     public ProviderReadiness readiness(ModelProfile profile) {
@@ -382,8 +383,9 @@ public final class OllamaProvider implements Provider {
         var request = HttpRequest.newBuilder(base.resolve("/api/generate")).timeout(settings.requestTimeout())
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(
                         json.writeValueAsBytes(Map.of("model", requestModel, "runner", lease.model().runner(), "stream", false, "keep_alive", 0)))).build();
+        var ownedRequest = lease.bindRequest(this, request);
         try {
-            var response = exchange(request, settings.requestTimeout(), cancellation, new SendBoundary(lease, null));
+            var response = exchange(request, settings.requestTimeout(), cancellation, new SendBoundary(lease, ownedRequest, null));
             checkStatus(response); JsonNode body = parse(response.body()); OllamaModelAdmission.noRemote(body);
             if (body.size() != 5 || !body.path("model").isString() || !requestModel.equals(body.path("model").asString())
                     || !body.path("created_at").isString() || !body.path("response").isString() || !body.path("response").asString().isEmpty()
@@ -391,8 +393,8 @@ public final class OllamaProvider implements Provider {
                 throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RELEASE");
             try { java.time.OffsetDateTime.parse(body.path("created_at").asString()); }
             catch (java.time.format.DateTimeParseException invalid) { throw new WorkspaceException(ErrorCode.PROVIDER_RESPONSE_INVALID, "MODEL_RELEASE"); }
-            lease.trustedCompletion();
-        } finally { lease.providerExited(); }
+            lease.trustedCompletion(ownedRequest);
+        } finally { lease.providerExited(ownedRequest); }
     }
     private JsonNode metadata(String path, byte[] payload, Cancellation cancellation) {
         var builder = HttpRequest.newBuilder(base.resolve(path)).timeout(settings.healthTimeout());
@@ -406,11 +408,10 @@ public final class OllamaProvider implements Provider {
     private HttpResponse<byte[]> exchange(HttpRequest request, Duration timeout, Cancellation cancellation) {
         return exchange(request, timeout, cancellation, null);
     }
-    private record SendBoundary(io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease, Runnable liveIdentity) {
-        void prepare(boolean checked) {
-            if (checked) lease.prepareCheckedSend(liveIdentity);
-            else if (liveIdentity == null) lease.beforeSend();
-            else lease.visionBeforeSend(liveIdentity);
+    private record SendBoundary(io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease,
+                                io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation.Request request, Runnable liveIdentity) {
+        void prepare() {
+            lease.prepareCheckedSend(request, liveIdentity);
         }
     }
     private HttpResponse<byte[]> exchange(HttpRequest request, Duration timeout, Cancellation cancellation, SendBoundary boundary) {
@@ -528,16 +529,18 @@ public final class OllamaProvider implements Provider {
     static final class CheckedOutput extends OutputStream {
         private final OutputStream raw;
         private final io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease;
+        private final io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation.Request request;
         private final Runnable finalCheck;
-        CheckedOutput(OutputStream raw,io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease,Runnable finalCheck) {
-            this.raw=raw;this.lease=lease;this.finalCheck=finalCheck;
+        CheckedOutput(OutputStream raw,io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation lease,
+                      io.github.qianlixunbai.workspace.model.ActiveModelManager.Reservation.Request request,Runnable finalCheck) {
+            this.raw=raw;this.lease=lease;this.request=request;this.finalCheck=finalCheck;
         }
         public void write(int value) throws IOException { write(new byte[]{(byte)value},0,1); }
         public void write(byte[] bytes,int offset,int length) throws IOException {
             Objects.checkFromIndexSize(offset,length,bytes.length);
             if(length==0)return;
             if(lease==null){finalCheck.run();raw.write(bytes,offset,length);}
-            else lease.checkedWrite(finalCheck,raw,bytes,offset,length);
+            else lease.checkedWrite(request,finalCheck,raw,bytes,offset,length);
         }
         public void flush() throws IOException { raw.flush(); }
         public void close() throws IOException { raw.close(); }
@@ -569,7 +572,7 @@ public final class OllamaProvider implements Provider {
                     || host.getPort()!=base.getPort() || host.getAddress()!=null) throw new IOException();
             connected=true; socket=new Socket(Proxy.NO_PROXY) {
                 @Override public OutputStream getOutputStream() throws IOException {
-                    return new CheckedOutput(super.getOutputStream(),boundary==null?null:boundary.lease(),() -> {
+                    return new CheckedOutput(super.getOutputStream(),boundary==null?null:boundary.lease(),boundary==null?null:boundary.request(),() -> {
                         try { check(); if (socket.isClosed()) throw new SocketException("Closed checked socket"); }
                         catch (IOException failure) { throw new UncheckedIOException(failure); }
                     });
@@ -584,7 +587,7 @@ public final class OllamaProvider implements Provider {
             check();
             connection.bind(socket);
             check();
-            if (boundary != null) boundary.prepare(true);
+            if (boundary != null) boundary.prepare();
             check();
         }
         public void upgrade(org.apache.hc.client5.http.io.ManagedHttpClientConnection connection, org.apache.hc.core5.http.HttpHost host,

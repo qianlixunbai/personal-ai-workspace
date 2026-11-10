@@ -106,7 +106,7 @@ class OllamaProviderTest {
             deny.set(true);var execution=execution();
             assertThrows(WorkspaceException.class,()->checked.execute(execution,new Cancellation()));
             assertEquals(5,reads.get());assertEquals(0,chatCalls.get());assertEquals(3,closes.get());
-            org.mockito.Mockito.verify(execution.reservation(),org.mockito.Mockito.never()).beforeSend();
+            org.mockito.Mockito.verify(execution.reservation(),org.mockito.Mockito.never()).prepareCheckedSend(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
         } finally {checked.close();}
     }
 
@@ -134,8 +134,11 @@ class OllamaProviderTest {
             org.mockito.ArgumentMatchers.anyInt(),org.mockito.ArgumentMatchers.any(Cancellation.class)))
             .thenReturn(new OllamaProvider.LocalModelEvidence("test-model:latest","ggml","a".repeat(64),8192,false));
         org.mockito.Mockito.when(transport.execute(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
-            .thenAnswer(call->{Provider.ProviderExecution request=call.getArgument(0);request.reservation().beforeSend();
-                request.reservation().trustedCompletion();request.reservation().providerExited();return "OK";});
+            .thenAnswer(call->{Provider.ProviderExecution execution=call.getArgument(0);var lease=execution.reservation();
+                var request=lease.bindRequest(transport,fixtureRequest());
+                lease.prepareCheckedSend(request,null);
+                lease.checkedWrite(request,()->{},java.io.OutputStream.nullOutputStream(),new byte[]{1},0,1);
+                lease.trustedCompletion(request);lease.providerExited(request);return "OK";});
         var settings=TestSettings.settings(URI.create("http://127.0.0.1:1"));
         var worker=Executors.newSingleThreadExecutor();
         try(var models=new ActiveModelManager(new ProfileResolver(settings),transport,settings,store);
@@ -146,18 +149,19 @@ class OllamaProviderTest {
                     peer.setSoTimeout(2000);var cancel=new Cancellation();var delegates=new AtomicInteger();
                     cancel.attach(()->{try{socket.close();}catch(java.io.IOException ignored){}});
                     guardHook.set(duringGuard?cancel::cancel:()->{});
-                    lease.prepareCheckedSend(null);
+                    var request=lease.bindRequest(transport,fixtureRequest());
+                    lease.prepareCheckedSend(request,null);
                     assertTrue(armed.get());assertFalse(models.status().uncertain());
                     if(!duringGuard)cancel.cancel();
                     var raw=socket.isClosed()?java.io.OutputStream.nullOutputStream():socket.getOutputStream();
                     var output=new OllamaProvider.CheckedOutput(new java.io.OutputStream(){
                         public void write(int value)throws java.io.IOException{delegates.incrementAndGet();raw.write(value);}
                         public void write(byte[] b,int off,int len)throws java.io.IOException{delegates.incrementAndGet();raw.write(b,off,len);}
-                    },lease,cancel::check);
+                    },lease,request,cancel::check);
                     assertThrows(WorkspaceException.class,()->output.write("POST /fixture HTTP/1.1\r\n".getBytes(StandardCharsets.US_ASCII)));
                     assertEquals(0,delegates.get());assertEquals(-1,peer.getInputStream().read()); // Actual peer received zero bytes.
                     lease.close();assertEquals(1,models.status().reserved()); // Exit must still own the prepared guard.
-                    lease.providerExited();assertFalse(armed.get());assertFalse(models.status().uncertain());
+                    lease.providerExited(request);assertFalse(armed.get());assertFalse(models.status().uncertain());
                     assertEquals(0,models.status().reserved());
                 }
             }
@@ -166,6 +170,7 @@ class OllamaProviderTest {
                     var peer=listener.accept()){
                 peer.setSoTimeout(2000);var entered=new CountDownLatch(1);var finish=new CountDownLatch(1);var delegates=new AtomicInteger();
                 var raw=socket.getOutputStream();
+                var request=lease.bindRequest(transport,fixtureRequest());
                 var output=new OllamaProvider.CheckedOutput(new java.io.OutputStream(){
                     public void write(int value)throws java.io.IOException{write(new byte[]{(byte)value},0,1);}
                     public void write(byte[] bytes,int offset,int length)throws java.io.IOException{
@@ -174,12 +179,12 @@ class OllamaProviderTest {
                         catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new java.io.IOException(interrupted);}
                         throw new java.io.IOException("failure after possible partial send");
                     }
-                },lease,()->{});
-                lease.prepareCheckedSend(null);
+                },lease,request,()->{});
+                lease.prepareCheckedSend(request,null);
                 var writing=worker.submit(()->assertThrows(java.io.IOException.class,()->output.write(new byte[]{'P','O','S','T'})));
                 try{
                     assertTrue(entered.await(5,TimeUnit.SECONDS));
-                    lease.close();lease.providerExited(); // Concurrent cleanup cannot release a live write/guard.
+                    lease.close();lease.providerExited(request); // Concurrent cleanup cannot release a live write/guard.
                     assertEquals(1,models.status().reserved());assertTrue(armed.get());
                 }finally{finish.countDown();}
                 writing.get(5,TimeUnit.SECONDS);
@@ -198,8 +203,8 @@ class OllamaProviderTest {
         chat.set(completed);
         var accepted = execution();
         assertEquals("你好", provider.execute(accepted, new Cancellation()));
-        org.mockito.Mockito.verify(accepted.reservation()).trustedCompletion();
-        org.mockito.Mockito.verify(accepted.reservation()).providerExited();
+        org.mockito.Mockito.verify(accepted.reservation()).trustedCompletion(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(accepted.reservation()).providerExited(org.mockito.ArgumentMatchers.any());
         for (String invalid : java.util.List.of(
                 completed.replace("\"prompt_eval_cached_count\":12", "\"prompt_eval_cached_count\":null"),
                 completed.replace("\"prompt_eval_cached_count\":12", "\"prompt_eval_cached_count\":-1"),
@@ -211,9 +216,13 @@ class OllamaProviderTest {
             chat.set(invalid);
             var rejected = execution();
             assertThrows(WorkspaceException.class, () -> provider.execute(rejected, new Cancellation()));
-            org.mockito.Mockito.verify(rejected.reservation(), org.mockito.Mockito.never()).trustedCompletion();
-            org.mockito.Mockito.verify(rejected.reservation()).providerExited();
+            org.mockito.Mockito.verify(rejected.reservation(), org.mockito.Mockito.never()).trustedCompletion(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.verify(rejected.reservation()).providerExited(org.mockito.ArgumentMatchers.any());
         }
+    }
+    private static java.net.http.HttpRequest fixtureRequest() {
+        return java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:1/api/chat"))
+            .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
     }
     @Test void installedDefaultMetadataRequiresStableSupportedVersionAndPositiveLocalSource() throws Exception {
         var json = JsonMapper.builder().build();
