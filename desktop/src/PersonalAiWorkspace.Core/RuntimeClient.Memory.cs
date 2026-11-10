@@ -79,7 +79,9 @@ public sealed partial class RuntimeClient
             (response, document) =>
             {
                 var item = ParseMemory(document.RootElement, null);
-                if (response.Headers.Location?.OriginalString != MemoryPath(item.Id) || item.Status != MemoryStatus.ACTIVE) throw Invalid();
+                if (response.Headers.Location?.OriginalString != MemoryPath(item.Id) || item.Status != MemoryStatus.ACTIVE
+                    || item.Revision != 1) throw Invalid();
+                RequireSubmittedMemory(item, input.Type, input.Title, input.Content);
             });
         return ParseMemory(body.RootElement, null);
     }
@@ -89,7 +91,9 @@ public sealed partial class RuntimeClient
         using var body = await SendMemoryAsync(HttpMethod.Put, MemoryPath(id),
             new { expectedRevision = input.ExpectedRevision, type = input.Type.ToString(), title = input.Title, content = input.Content },
             HttpStatusCode.OK, cancellationToken);
-        return ChangedMemory(body.RootElement, id, input.ExpectedRevision, null);
+        var item = ChangedMemory(body.RootElement, id, input.ExpectedRevision, null);
+        RequireSubmittedMemory(item, input.Type, input.Title, input.Content);
+        return item;
     }
     public Task<MemoryItem> ArchiveMemoryAsync(Guid id, long expectedRevision, CancellationToken cancellationToken) =>
         MemoryLifecycleAsync(id, expectedRevision, MemoryStatus.ARCHIVED, cancellationToken);
@@ -140,8 +144,14 @@ public sealed partial class RuntimeClient
     private static MemoryItem ChangedMemory(JsonElement root, Guid id, long revision, MemoryStatus? status)
     {
         var item = ParseMemory(root, id);
-        if (item.Revision <= revision || status.HasValue && item.Status != status.Value) throw Invalid();
+        if (item.Revision - revision != 1 || status.HasValue && item.Status != status.Value) throw Invalid();
         return item;
+    }
+    private static void RequireSubmittedMemory(MemoryItem item, MemoryType type, string title, string content)
+    {
+        // Runtime stores these submitted fields verbatim. A different valid item cannot
+        // acknowledge this draft or clear its pending-write protection.
+        if (item.Type != type || item.Title != title || item.Content != content) throw Invalid();
     }
     private static MemoryItem ParseMemory(JsonElement root, Guid? expectedId)
     {

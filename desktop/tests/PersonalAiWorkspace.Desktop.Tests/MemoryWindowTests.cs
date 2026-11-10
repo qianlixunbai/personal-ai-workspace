@@ -80,6 +80,7 @@ public sealed class MemoryWindowTests
         internal readonly Dictionary<Guid, MemoryItem> Items = [];
         internal int Reads, Mutations;
         internal bool LoseNextWriteResponse;
+        internal bool CorruptNextWriteReceipt;
         internal string? Failure;
         internal TaskCompletionSource<HttpResponseMessage>? Pending;
         internal CancellationToken PendingToken;
@@ -99,6 +100,12 @@ public sealed class MemoryWindowTests
             if (!LoseNextWriteResponse) return;
             LoseNextWriteResponse = false;
             throw new HttpRequestException(PrivateContent);
+        }
+        private string Receipt(MemoryItem item)
+        {
+            if (!CorruptNextWriteReceipt) return Json(item);
+            CorruptNextWriteReceipt = false;
+            return Json(item with { Content = "synthetic-unrelated-body" });
         }
         internal RuntimeClient Client() => new(new Handler(async (request, ct) =>
         {
@@ -129,7 +136,7 @@ public sealed class MemoryWindowTests
                     Title = root.GetProperty("title").GetString()!, Content = root.GetProperty("content").GetString()! };
                 Items[added.Id] = added;
                 AfterWrite();
-                var response = Response(Json(added), HttpStatusCode.Created);
+                var response = Response(Receipt(added), HttpStatusCode.Created);
                 response.Headers.Location = new Uri($"/api/v1/memory/items/{added.Id:D}", UriKind.Relative); return response;
             }
             var id = Guid.Parse(path.Split('/')[5]);
@@ -141,7 +148,7 @@ public sealed class MemoryWindowTests
             if (request.Method == HttpMethod.Put) updated = updated with
             { Type = Enum.Parse<MemoryType>(root.GetProperty("type").GetString()!), Title = root.GetProperty("title").GetString()!, Content = root.GetProperty("content").GetString()! };
             else updated = updated with { Status = path.EndsWith("/archive", StringComparison.Ordinal) ? MemoryStatus.ARCHIVED : MemoryStatus.ACTIVE };
-            Items[id] = updated; AfterWrite(); return Response(Json(updated));
+            Items[id] = updated; AfterWrite(); return Response(Receipt(updated));
         }), () => Token);
     }
 
@@ -206,6 +213,17 @@ public sealed class MemoryWindowTests
             Assert.False(window.Dirty);
             Assert.DoesNotContain("操作结果待确认", window.MetadataText.Text);
             Assert.Equal(store.Items[created.Id].Content, window.ContentBox.Text);
+
+            window.ContentBox.Text += " next draft";
+            string submitted = window.ContentBox.Text;
+            store.CorruptNextWriteReceipt = true;
+            await window.SaveAsync(); // Store applied the write; its reply describes unrelated content.
+            Assert.True(window.Dirty); Assert.Equal(submitted, window.ContentBox.Text);
+            Assert.Contains("操作结果待确认", window.StatusText.Text);
+            Assert.False(window.SaveButton.IsEnabled);
+            await window.SaveAsync(); Assert.Equal(3, store.Mutations);
+            await window.ReloadAsync();
+            Assert.False(window.Dirty); Assert.Equal(submitted, window.ContentBox.Text);
         }
         finally { approve = true; window.TryClose(); }
     });

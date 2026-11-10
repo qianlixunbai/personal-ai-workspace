@@ -137,5 +137,36 @@ public sealed class MemoryClientTests
         Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => wrongId.GetMemoryAsync(Id, default))).Error);
         using var deleteBody = Client(PrivateContent, HttpStatusCode.NoContent);
         Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => deleteBody.DeleteMemoryAsync(Id, 1, default))).Error);
+        using var skippedRevision = Client(Item(revision: 3, status: "ARCHIVED"));
+        Assert.Equal(DesktopError.InvalidResponse, (await Assert.ThrowsAsync<DesktopException>(() => skippedRevision.ArchiveMemoryAsync(Id, 1, default))).Error);
+
+        // A well-formed item from another draft is not a receipt for this submitted write.
+        foreach (bool create in new[] { true, false })
+        {
+            string receipt = Item(revision: create ? 1 : 2);
+            using var valid = new RuntimeClient(new Handler((_, _) =>
+            {
+                var response = Response(receipt, create ? HttpStatusCode.Created : HttpStatusCode.OK);
+                response.Headers.Location = new Uri($"/api/v1/memory/items/{Id:D}", UriKind.Relative);
+                return Task.FromResult(response);
+            }), () => Token);
+            async Task<MemoryItem> Write(RuntimeClient target) => create
+                ? await target.CreateMemoryAsync(new(MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent), default)
+                : await target.UpdateMemoryAsync(Id, new(1, MemoryType.PROJECT_NOTE, PrivateTitle, PrivateContent), default);
+            Assert.Equal(PrivateContent, (await Write(valid)).Content);
+            foreach (string malformed in new[] { receipt.Replace(PrivateTitle, "another-title"),
+                receipt.Replace(PrivateContent, "another-body"), receipt.Replace("PROJECT_NOTE", "PREFERENCE"),
+                Item(revision: create ? 2 : 3) })
+            {
+                using var mismatch = new RuntimeClient(new Handler((_, _) =>
+                {
+                    var response = Response(malformed, create ? HttpStatusCode.Created : HttpStatusCode.OK);
+                    response.Headers.Location = new Uri($"/api/v1/memory/items/{Id:D}", UriKind.Relative);
+                    return Task.FromResult(response);
+                }), () => Token);
+                var invalidReceipt = await Assert.ThrowsAsync<DesktopException>(() => Write(mismatch));
+                Assert.Equal(DesktopError.InvalidResponse, invalidReceipt.Error); Safe(invalidReceipt.ToString());
+            }
+        }
     }
 }
