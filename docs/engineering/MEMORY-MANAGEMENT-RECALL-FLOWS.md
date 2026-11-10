@@ -27,3 +27,27 @@ Necessary checks: two affected .NET Bridge checks passed, 2/2, with zero build w
 Evidence: `.verification/memory-management-recall-web-20261110/{CheckBridge.ps1,CheckWeb.ps1,CheckWebRetry.ps1,build.log,typecheck.log,test.log,test-retry.log,bridge-run.log,web-run.log,web-retry-run.log}`. The first failed frontend log is retained. A trailing shell log-display command used the task's changed working directory and returned a missing-path error after the successful retry; exact-path read of `web-retry-run.log` confirms PASS and mutex release, so no test was repeated for that display error. No service/browser/model/database was started.
 
 The initial ordinary native `git add`/commit attempt could not create `.git/index.lock` because the sandbox makes `.git` read-only. Read-only status confirmed nothing staged/committed and no lock. The normal narrowly scoped escalation then committed the five native-module files successfully; this was a filesystem sandbox boundary, not an auto-review rejection. No denied private directory was retried and no access policy changed.
+
+## Combined delivery and handoff
+
+Web management is committed as `0d7955a7e3d4608e1d7520d1845842ab24276a69`. Both completed management flows are included in one new [development ZIP](../../artifacts/PersonalAiWorkspace-memory-management-recall-20261110.zip), with [unpacked EXE](../../artifacts/PersonalAiWorkspace-memory-management-recall-20261110/PersonalAiWorkspace.Desktop.exe). No third feature was invented to fill a module quota. Existing explicit citation selection, archive/restore and deletion already have implementations and historical evidence; future work should follow a demonstrated user problem or an actual delivery blocker.
+
+| Delivery evidence | Result |
+| --- | --- |
+| Product commit | `0d7955a7e3d4608e1d7520d1845842ab24276a69` |
+| ZIP | 384,688,473 bytes; SHA-256 `1227D4A789741CF61DB03A87E53D3D4A0E7463F542F65D4432BC47293CFFEED4` |
+| Payload | 933 files; extracted to a relocated path; actual embedded-source probe `DEVELOPMENT_PACKAGE_SOURCES_PASS` |
+| Desktop DLL | SHA-256 `0753F9C0E3634866E98FFF8D7F33C63FD40C724EB2E07A10EBFB02127926115C` |
+| Runtime | Unchanged JAR SHA-256 `BC8F0CC35D2F9321AF848F7FFDFE271DB07B770CF1878454F07A8FD0C0D12625` |
+| Build | Frontend typecheck/production build and desktop self-contained publish passed; existing frontend >500 kB chunk warning remains |
+| Previous packages | Accepted native-entry ZIP and immediately previous draft-recovery ZIP hashes unchanged; no old bundle overwritten |
+| User material | main remains `f5266bf4383f52a2293b0fe4bfe1964af958e64a`; all six user-document hashes unchanged; no push |
+| Resources | Build/publish/package/probe ran synchronously under Session 1 shared mutex; PID 11456 released at 08:44:38 UTC; mutex available at 08:45:56 UTC |
+
+Evidence: `.verification/memory-management-recall-delivery-20261110/{Build.ps1,README.txt,run.log,frontend-build.log,publish.log,embedded-sources.log,result.json,lock.json,final-state.json}`. Packaging exited 0. No product EXE, browser, Profile, Runtime service, model or database was started. The two .NET/frontend targeted runs above and packaging have completed; no owned running service needs cleanup.
+
+The final exact `Get-NetTCPConnection -LocalPort 18765 -State Listen` inspection produced a non-ObjectNotFound error, so port 18765 is **UNKNOWN**, not claimed closed. The error detail was not persisted; its precise cause is unknown. This observation is stopped and was not retried through another command or escalation. It does not imply a service was started in this round. No inspection of KAG port 18895 or additional process metadata occurred. The earlier non-escalated Git write denial was resolved; there is no pending approval, denied outstanding mutation or uncertain write/commit.
+
+Continue in a fresh conversation in the same project. Read this report and STATUS before choosing work. The main remaining delivery blocker is still normal WebView2 controller startup. Prior WPF and native-API comparisons timed out; EFS/private permissions are observations, not established causes. Without a new discriminating, authorized safe experiment, do not rerun them, modify security settings or read refused targets. The new package has packaging plus synthetic control/Bridge evidence only. Physical UI/IME/minimum-size acceptance of the new controls, normal WebView2/default no-argument entry, maintenance/migration and formal release are still open. Historical full EXE -> natural failure page -> native Save -> tray exit -> independent reopen belongs to `cff8015`; do not rerun that accepted loop merely to accumulate checks. No whole-database zero-write claim is valid.
+
+Preserve the shared-lock lifecycle, synthetic-data-only scope, six documents, old packages, main and local-only commits. The only new observation needing accurate carry-forward is the stopped port-read uncertainty above; it is not permission to probe another route. No additional code work is left uncommitted by this handoff.
