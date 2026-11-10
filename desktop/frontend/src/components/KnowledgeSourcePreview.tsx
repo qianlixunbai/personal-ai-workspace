@@ -4,12 +4,13 @@ import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { HighlightedText } from './HighlightedText'
 import { unicode } from '../bridge/memory'
 
-export type KnowledgeSourceTarget = Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'> & { kind: 'citation' | 'search' | 'find' | 'line' }
+export type KnowledgeSourceTarget = Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'> & { kind: 'citation' | 'search' | 'find' | 'line' | 'excerpt' }
 
-export function KnowledgeSourcePreview({ preview, target, currentRevision, disabled, hasPrevious, navigate, saveExcerpt }: {
+export function KnowledgeSourcePreview({ preview, target, currentRevision, disabled, hasPrevious, navigate, saveExcerpt, excerptPurpose = 'memory' }: {
   preview: KnowledgePreview; target: KnowledgeSourceTarget | null; currentRevision: string | null
   disabled: boolean; hasPrevious: boolean; navigate: (offset: number, history?: 'push' | 'back' | 'before') => Promise<void>
   saveExcerpt?: ((start: number, end: number) => void) | undefined
+  excerptPurpose?: 'memory' | 'conversation'
 }) {
   const text = useRef<HTMLPreElement>(null)
   const rangeId = useId()
@@ -20,7 +21,7 @@ export function KnowledgeSourcePreview({ preview, target, currentRevision, disab
   const end = source ? Math.min(source.endOffset, preview.offset + preview.text.length) - preview.offset : 0
   const ranges = start < end ? [{ start, end }] : []
   const sectionStart = preview.locators[0]?.startOffset
-  const label = source?.kind === 'citation' ? '引用' : source?.kind === 'find' ? '查找命中' : source?.kind === 'line' ? '行号定位' : '检索命中'
+  const label = source?.kind === 'citation' ? '引用' : source?.kind === 'find' ? '查找命中' : source?.kind === 'line' ? '行号定位' : source?.kind === 'excerpt' ? '所选原文' : '检索命中'
   useEffect(() => { text.current?.focus(); if (text.current) text.current.scrollTop = 0 }, [preview])
   useEffect(() => {
     setSelection(null)
@@ -42,11 +43,13 @@ export function KnowledgeSourcePreview({ preview, target, currentRevision, disab
   return <section aria-label="纯文本预览">
     <p className="knowledge-location">源版本 {preview.sourceRevision}{currentRevision && currentRevision !== preview.sourceRevision ? ` · 当前可用版本为 ${currentRevision}，此处仍显示所选旧版本` : ''} · 文本偏移 {preview.offset}–{preview.offset + preview.text.length}</p>
     <p className="knowledge-location">{preview.locators.map(l => `${l.type} · 行 ${l.startLine}–${l.endLine}${l.heading ? ` · ${l.heading}` : ''}`).join('')}</p>
-    {source && <p className="hint" id={rangeId}>{label}范围：行 {source.startLine}–{source.endLine}，文本偏移 {source.startOffset}–{source.endOffset}。{ranges.length ? `高亮为本页与${label}范围重合的原文，其余为上下文。` : `本页为上下文，未包含${label}范围。`}</p>}
+    {source && <p className="hint" id={rangeId}>{label}范围：{source.kind !== 'excerpt' && <>行 {source.startLine}–{source.endLine}，</>}文本偏移 {source.startOffset}–{source.endOffset}。{ranges.length ? `高亮为本页与${label}范围重合的原文，其余为上下文。` : `本页为上下文，未包含${label}范围。`}</p>}
     <pre ref={text} tabIndex={0} aria-describedby={source ? rangeId : undefined}><HighlightedText text={preview.text} ranges={ranges} /></pre>
     {saveExcerpt && <div>
-      <button disabled={!excerpt} onMouseDown={event => event.preventDefault()} onClick={() => { if (excerpt) saveExcerpt(excerpt.start, excerpt.end) }}>将选中原文整理为记忆草稿</button>
-      <p className="hint">{excerpt ? `已选中原文，文本偏移 ${preview.offset + excerpt.start}–${preview.offset + excerpt.end}。` : '先在本页原文中选择需要保留的文字。'}草稿包含所选原文、资料名称和源版本；需审阅并明确保存，之后仍须主动选择记忆才会用于问答。</p>
+      <button disabled={!excerpt} onMouseDown={event => event.preventDefault()} onClick={() => { if (excerpt) saveExcerpt(excerpt.start, excerpt.end) }}>{excerptPurpose === 'conversation' ? '将选中原文加入会话参考' : '将选中原文整理为记忆草稿'}</button>
+      <p className="hint">{excerpt ? `已选中原文，文本偏移 ${preview.offset + excerpt.start}–${preview.offset + excerpt.end}。` : '先在本页原文中选择需要保留的文字。'}{excerptPurpose === 'conversation'
+        ? '先加入待审阅的参考内容，确认插入草稿后仍需你手动发送。'
+        : '草稿包含所选原文、资料名称和源版本；需审阅并明确保存，之后仍须主动选择记忆才会用于问答。'}</p>
     </div>}
     <div className="pagination">
       <button disabled={disabled || preview.offset === 0} onClick={() => { void navigate(preview.offset, 'before') }}>阅读前文</button>

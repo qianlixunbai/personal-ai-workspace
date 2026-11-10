@@ -12,7 +12,9 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 // Mounted only by an explicit preview click. One preview is retained by the parent;
 // closing, refreshing, filtering or leaving unmounts it and ignores a late response.
-export function MemoryPreview({ bridge, metadata, query, idPrefix = 'memory-preview' }: { bridge: WorkspaceClient; metadata: MemoryMetadata; query: string; idPrefix?: string }) {
+export function MemoryPreview({ bridge, metadata, query, idPrefix = 'memory-preview', prepare }: {
+  bridge: WorkspaceClient; metadata: MemoryMetadata; query: string; idPrefix?: string; prepare?: ((item: MemoryItem) => void) | undefined
+}) {
   const [item, setItem] = useState<MemoryItem | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -35,6 +37,7 @@ export function MemoryPreview({ bridge, metadata, query, idPrefix = 'memory-prev
     {error && <p role="alert" className="error">{error}</p>}
     {item && <><h3 dir="auto"><Highlight text={item.title} query={query} /></h3>
       <pre dir="auto" tabIndex={0} aria-label="预览正文"><Highlight text={item.content} query={query} /></pre>
+      {prepare && <button onClick={() => prepare({ ...item })}>加入会话参考</button>}
       <MemorySourceReview bridge={bridge} content={item.content} /></>}
   </section>
 }

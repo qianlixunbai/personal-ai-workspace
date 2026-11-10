@@ -8,15 +8,19 @@ import type { KnowledgeSearchHit, KnowledgeSearchResult } from '../bridge/knowle
 import { HighlightedText } from './HighlightedText'
 import { MemoryPreview } from './MemoryPreview'
 import { searchReadError, WorkspaceConversationReader, WorkspaceKnowledgeReader } from './WorkspaceSearchReaders'
+import { messageWithReferences, referenceKey, referenceLocation, referenceText, referenceTitle, verifyReferences } from './conversationReferences'
+import type { ContextPreparation, ConversationReference } from './conversationReferences'
 
 type Group<T> = { data: T | null; busy: boolean; error: string }
 const empty = <T,>(): Group<T> => ({ data: null, busy: false, error: '' })
 type Search = { query: string; memory: MemoryStatus; conversations: ConversationSearchScope }
-type Selection = { kind: 'memory'; item: MemoryMetadata } | { kind: 'conversation'; hit: ConversationSearchHit } | { kind: 'knowledge'; hit: KnowledgeSearchHit }
+type Selection = { kind: 'memory'; item: MemoryMetadata } | { kind: 'conversation'; hit: ConversationSearchHit } | { kind: 'knowledge'; hit: KnowledgeSearchHit; excerpt?: boolean }
 
-// This view only reads existing domain APIs. The underlying pages remain mounted;
-// neither current editor state nor selected model context is changed by a result.
-export function WorkspaceSearchDialog({ bridge, close }: { bridge: WorkspaceClient; close: () => void }) {
+// Reading a result never changes the underlying editors. An optional conversation
+// preparation flow stages text locally and requires a separate insertion action.
+export function WorkspaceSearchDialog({ bridge, close, preparation }: {
+  bridge: WorkspaceClient; close: () => void; preparation?: ContextPreparation
+}) {
   const dialog = useRef<HTMLDialogElement>(null), input = useRef<HTMLInputElement>(null)
   const readerFocus = useRef<HTMLButtonElement>(null), resultFocus = useRef<HTMLButtonElement | null>(null)
   const closeRef = useRef(close); closeRef.current = close
@@ -28,16 +32,53 @@ export function WorkspaceSearchDialog({ bridge, close }: { bridge: WorkspaceClie
   const [knowledge, setKnowledge] = useState<Group<KnowledgeSearchResult>>(empty)
   const [memoryPage, setMemoryPage] = useState(0), [conversationPage, setConversationPage] = useState(0)
   const [selection, setSelection] = useState<Selection | null>(null)
-  const busy = memories.busy || conversations.busy || knowledge.busy
+  const [references, setReferences] = useState<ConversationReference[]>([])
+  const referencesRef = useRef(references)
+  const [readerVersion, setReaderVersion] = useState(0)
+  const [preparing, setPreparing] = useState(false), [preparationError, setPreparationError] = useState('')
+  const [preparationNotice, setPreparationNotice] = useState('')
+  const preparationLock = useRef(false), preparationGeneration = useRef(0)
+  const preparationRef = useRef(preparation); preparationRef.current = preparation
+  const message = messageWithReferences(preparation?.draft ?? '', references)
+  const messageBytes = new TextEncoder().encode(message).length
+  const tooLong = message.length > 3000 || messageBytes > 5632
+  const busy = memories.busy || conversations.busy || knowledge.busy || preparing
   const valid = isConversationSearchQuery(query)
   useEffect(() => { if (selection) readerFocus.current?.focus() }, [selection])
-  const choose = (value: Selection, button: HTMLButtonElement) => { resultFocus.current = button; setSelection(value) }
+  const choose = (value: Selection, button: HTMLButtonElement) => { resultFocus.current = button; setReaderVersion(value => value + 1); setSelection(value) }
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null, element = dialog.current
     element?.showModal(); input.current?.focus()
-    const unsubscribe = bridge.onSession(() => { generation.current++; closeRef.current() })
-    return () => { generation.current++; unsubscribe(); element?.close(); if (previous?.isConnected) previous.focus() }
+    const unsubscribe = bridge.onSession(() => { generation.current++; preparationGeneration.current++; closeRef.current() })
+    return () => { generation.current++; preparationGeneration.current++; unsubscribe(); element?.close(); if (previous?.isConnected) previous.focus() }
   }, [bridge])
+  const addReference = (reference: ConversationReference) => {
+    if (!preparation || preparationLock.current) return
+    setPreparationError('')
+    if (referencesRef.current.some(item => referenceKey(item) === referenceKey(reference))) { setPreparationNotice('这段参考已在准备列表中。'); return }
+    if (referencesRef.current.length >= 4) { setPreparationError('一次最多准备 4 段参考，请先移除不需要的内容。'); return }
+    referencesRef.current = [...referencesRef.current, reference]
+    setReferences(referencesRef.current); setPreparationNotice('已加入待审阅参考，尚未改变会话草稿。')
+  }
+  const insertReferences = async () => {
+    if (!preparation || preparationLock.current || !references.length || tooLong) return
+    const token = ++preparationGeneration.current, target = preparation, deadline = Date.now() + 30_000
+    const current = () => token === preparationGeneration.current && preparationRef.current?.conversationId === target.conversationId
+      && preparationRef.current?.draft === target.draft
+    const check = () => {
+      if (!current()) throw new Error('当前会话或草稿已变化，请重新准备参考。')
+      if (Date.now() > deadline) throw new Error('核对来源超时，草稿未改变。请主动重试。')
+    }
+    preparationLock.current = true; setPreparing(true); setPreparationError(''); setPreparationNotice('正在重新核对所选来源…')
+    try {
+      await verifyReferences(bridge, references, check)
+      check()
+      if (!preparationRef.current!.apply(message)) throw new Error('当前会话或草稿已变化，未插入参考。请关闭后重新准备。')
+      closeRef.current()
+    } catch (problem) {
+      if (token === preparationGeneration.current) { setPreparationError(problem instanceof Error ? problem.message : '来源暂时无法核对，草稿未改变。'); setPreparationNotice('') }
+    } finally { if (token === preparationGeneration.current) { preparationLock.current = false; setPreparing(false) } }
+  }
   const load = async <T,>(request: () => Promise<T>, publish: Dispatch<SetStateAction<Group<T>>>) => {
     const token = generation.current
     pending.current++; publish({ data: null, busy: true, error: '' })
@@ -63,8 +104,8 @@ export function WorkspaceSearchDialog({ bridge, close }: { bridge: WorkspaceClie
   const retry = (action: () => void) => { if (!pending.current) { setSelection(null); action() } }
   return <dialog ref={dialog} className="workspace-search-dialog" aria-labelledby="workspace-search-title"
     onCancel={event => { event.preventDefault(); closeRef.current() }}>
-    <div className="workspace-search-heading"><h2 id="workspace-search-title">查找工作区</h2><button onClick={close}>关闭查找</button></div>
-    <p className="hint">查找已保存的记忆、对话消息和资料。打开结果只读查看，关闭后继续当前草稿。</p>
+    <div className="workspace-search-heading"><h2 id="workspace-search-title">{preparation ? '准备会话参考' : '查找工作区'}</h2><button onClick={close}>{preparation ? '关闭参考准备' : '关闭查找'}</button></div>
+    <p className="hint">{preparation ? '查找并阅读资料或记忆，明确加入参考后预览完整消息。关闭会丢弃尚未插入的选项，原会话草稿保持不变。' : '查找已保存的记忆、对话消息和资料。打开结果只读查看，关闭后继续当前草稿。'}</p>
     <form onSubmit={event => { event.preventDefault(); search() }}>
       <label>工作区关键词<input ref={input} value={query} disabled={busy} aria-describedby="workspace-search-query-hint"
         onChange={event => setQuery(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
@@ -113,11 +154,38 @@ export function WorkspaceSearchDialog({ bridge, close }: { bridge: WorkspaceClie
       </div><div className="workspace-search-reader">
         {!selection && <p className="hint">选择结果，在这里阅读。</p>}
         {selection && <><button ref={readerFocus} onClick={() => { setSelection(null); resultFocus.current?.focus() }}>收起查找预览</button>
-          {selection.kind === 'memory' && <MemoryPreview key={`memory/${selection.item.id}/${selection.item.revision}`} bridge={bridge} metadata={selection.item} query={submitted.query} idPrefix="workspace-memory-preview" />}
+          {selection.kind === 'memory' && <MemoryPreview key={`memory/${readerVersion}/${selection.item.id}/${selection.item.revision}`} bridge={bridge} metadata={selection.item} query={submitted.query} idPrefix="workspace-memory-preview"
+            prepare={preparation && !preparing ? item => addReference({ kind: 'memory', item }) : undefined} />}
           {selection.kind === 'conversation' && <WorkspaceConversationReader key={`conversation/${selection.hit.messageId}`} bridge={bridge} hit={selection.hit} query={submitted.query} />}
-          {selection.kind === 'knowledge' && <WorkspaceKnowledgeReader key={`knowledge/${selection.hit.documentId}/${selection.hit.sourceRevision}/${selection.hit.startOffset}`} bridge={bridge} hit={selection.hit} />}
+          {selection.kind === 'knowledge' && <WorkspaceKnowledgeReader key={`knowledge/${readerVersion}/${selection.hit.documentId}/${selection.hit.sourceRevision}/${selection.hit.startOffset}/${selection.hit.endOffset}`} bridge={bridge} hit={selection.hit} excerpt={selection.excerpt}
+            prepare={preparation && !preparing ? addReference : undefined} />}
         </>}
       </div></div>
     </>}
+    {preparation && <section className="conversation-reference-review" aria-label="待插入的会话参考" aria-busy={preparing}>
+      <h3>准备给：<bdi>{preparation.title}</bdi></h3>
+      <details><summary>目标会话标识</summary><p>{preparation.conversationId}</p></details>
+      <p className="hint">这些文字副本将插入普通会话消息，不会自动保存为记忆，也不改变“选择记忆”中的选项。出处是可编辑的定位线索，不是已验证事实或知识问答引用。历史消息仅供阅读。</p>
+      <ol>{references.map(reference => <li key={referenceKey(reference)}>
+        <h4 dir="auto">{referenceTitle(reference)}</h4><p className="hint">{referenceLocation(reference)}</p>
+        <pre tabIndex={0} dir="auto">{referenceText(reference)}</pre>
+        <div className="operation-actions"><button disabled={preparing} onClick={event => {
+          choose(reference.kind === 'memory' ? { kind: 'memory', item: reference.item } : { kind: 'knowledge', hit: reference.hit, excerpt: true }, event.currentTarget)
+        }}>回查来源</button>
+          <button disabled={preparing} onClick={() => {
+            referencesRef.current = referencesRef.current.filter(item => referenceKey(item) !== referenceKey(reference))
+            setReferences(referencesRef.current); setPreparationError(''); setPreparationNotice('已移除参考，原草稿保持不变。')
+          }}>移除参考</button></div>
+      </li>)}</ol>
+      {!references.length && <p>尚未加入参考。打开记忆正文，或在资料原文中选取需要的文字。</p>}
+      {references.length > 0 && <><h4>插入后的完整消息</h4><pre tabIndex={0} dir="auto" aria-label="完整消息预览">{message}</pre>
+        <p className="hint">{message.length} / 3000 UTF-16 · {messageBytes} / 5632 UTF-8 字节。另行选择的记忆和按预算纳入的历史不包含在此预览内；发送时仍会检查全部输入是否超限。</p>
+        {tooLong && <p role="alert" className="error">完整消息超过输入限制，请移除参考，或关闭后缩短原草稿再重新准备。内容不会截断。</p>}
+      </>}
+      <button className="primary" disabled={busy || !references.length || tooLong} onClick={() => { void insertReferences() }}>核对来源并插入草稿</button>
+      <p className="hint">插入后仍可编辑，只有点击会话的“发送”才提交。插入的文字不会随来源更新或删除而自动改变。</p>
+      {preparationError && <p role="alert" className="error">{preparationError}</p>}
+      {preparationNotice && <p role="status">{preparationNotice}</p>}
+    </section>}
   </dialog>
 }

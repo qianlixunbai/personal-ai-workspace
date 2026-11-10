@@ -16,6 +16,9 @@
 .workspace-search-snippet { white-space: pre-wrap; line-height: 1.6; }
 .workspace-search-reader { min-width: 0; }
 .workspace-search-reader pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+.conversation-reference-review { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; overflow-wrap: anywhere; }
+.conversation-reference-review pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+.conversation-reference-review li { margin-bottom: 20px; }
 @media (max-width: 759px) {
   .workspace-search-layout { display: block; }
   .workspace-search-dialog { padding: 16px; }

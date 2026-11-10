@@ -5,6 +5,7 @@ import type { KnowledgeDetail, KnowledgePreview } from '../bridge/knowledge'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { KnowledgeSourcePreview } from './KnowledgeSourcePreview'
 import { HighlightedText } from './HighlightedText'
+import type { ConversationReference } from './conversationReferences'
 
 export const searchReadError = (problem: unknown) => problem instanceof BridgeError ? problem.message : '读取暂时不可用，请重试。'
 
@@ -40,7 +41,9 @@ export function WorkspaceConversationReader({ bridge, hit, query }: { bridge: Wo
   </section>
 }
 
-export function WorkspaceKnowledgeReader({ bridge, hit }: { bridge: WorkspaceClient; hit: KnowledgeSearchHit }) {
+export function WorkspaceKnowledgeReader({ bridge, hit, prepare, excerpt = false }: {
+  bridge: WorkspaceClient; hit: KnowledgeSearchHit; prepare?: ((reference: ConversationReference) => void) | undefined; excerpt?: boolean | undefined
+}) {
   const [detail, setDetail] = useState<KnowledgeDetail | null>(null)
   const [preview, setPreview] = useState<KnowledgePreview | null>(null)
   const [previous, setPrevious] = useState<number[]>([])
@@ -81,8 +84,16 @@ export function WorkspaceKnowledgeReader({ bridge, hit }: { bridge: WorkspaceCli
     {error && <p role="alert" className="error">{error}</p>}
     {detail && preview && <><h3 dir="auto">{detail.document.title}</h3>
       {detail.document.status === 'ARCHIVED' && <p className="hint">这份资料现已归档。</p>}
-      <KnowledgeSourcePreview preview={preview} target={{ ...hit, kind: 'search' }} currentRevision={detail.document.currentReadyRevision}
-        disabled={busy} hasPrevious={previous.length > 0} navigate={navigate} />
+      <KnowledgeSourcePreview preview={preview} target={{ ...hit, kind: excerpt ? 'excerpt' : 'search' }} currentRevision={detail.document.currentReadyRevision}
+        disabled={busy} hasPrevious={previous.length > 0} navigate={navigate} excerptPurpose="conversation"
+        saveExcerpt={prepare ? (start, end) => {
+          if (lock.current) return
+          const startOffset = preview.offset + start, endOffset = preview.offset + end
+          prepare({ kind: 'knowledge', source: { documentId: preview.documentId, sourceRevision: preview.sourceRevision,
+            title: detail.document.title, startOffset, endOffset, excerpt: preview.text.slice(start, end) },
+            hit: { ...hit, title: detail.document.title, startOffset, endOffset,
+              startLine: preview.locators[0]?.startLine ?? hit.startLine, endLine: preview.locators.at(-1)?.endLine ?? hit.endLine } })
+        } : undefined} />
     </>}
   </section>
 }

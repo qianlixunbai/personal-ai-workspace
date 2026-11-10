@@ -7,6 +7,7 @@ import { ConversationMemoryPreview } from '../components/ConversationMemoryPrevi
 import { ConversationSearch } from '../components/ConversationSearch'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { AnswerContent } from '../components/AnswerContent'
+import { WorkspaceSearchDialog } from '../components/WorkspaceSearchDialog'
 import type { ConversationSearchHit } from '../bridge/conversations'
 
 const failureText: Record<FailureCode, string> = {
@@ -27,6 +28,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [admission, setAdmission] = useState<ConversationAdmission | null>(null)
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
+  const [preparation, setPreparation] = useState<{ conversationId: string; title: string; draft: string; generation: number } | null>(null)
   const [memories, setMemories] = useState<SelectedMemory[]>([])
   const [retainMemories, setRetainMemories] = useState(false)
   const [previewTurn, setPreviewTurn] = useState<string | null>(null)
@@ -60,6 +62,8 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const cancelDelete = useRef<HTMLButtonElement>(null)
   const deleteButton = useRef<HTMLButtonElement>(null)
   const sendAllowed = enabled && !busy && !historyLoading && !pending && !pollingError && !stale && detail?.conversation.status === 'ACTIVE'
+  const preparationCurrent = useRef({ draft, allowed: false })
+  preparationCurrent.current = { draft, allowed: !!sendAllowed && visible && !transition }
   const bytes = new TextEncoder().encode(draft).length
   const invalid = !draft.trim() || draft.length > 3000 || bytes > 5632
   const validTurn = /^[1-9][0-9]{0,3}$/.test(turnNumber.trim()) && Number(turnNumber) <= (detail?.totalTurns ?? 0)
@@ -197,7 +201,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
     setAdmission(null); actionLock.current = false; setBusy(false); setNotice(''); setTransition(null)
-    setPreviewTurn(null)
+    setPreviewTurn(null); setPreparation(null)
     historyFocus.current = null; setTurnNumber('')
     const reset = () => {
       generation.current++; listGeneration.current++; selectedRef.current = null; detailRef.current = null
@@ -206,7 +210,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
       setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
-      setTitle(null); setDeleting(false); setTransition(null); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
+      setTitle(null); setDeleting(false); setTransition(null); setPreparation(null); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
       composing.current = false
       if (visible && bridge.ready) void loadList('ACTIVE', 0)
     }
@@ -214,6 +218,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
   useEffect(() => { if (!enabled || !visible) { setPreviewTurn(null); setTransition(null) } }, [enabled, visible])
+  useEffect(() => { setPreparation(null) }, [enabled, visible, selected])
   useEffect(() => {
     if ((enabled && visible) || !retainMemories) return
     // Leaving the active page revokes continued use, including an in-flight
@@ -404,6 +409,10 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
         <p id="conversation-input-help" className="hint">Enter 换行 · Ctrl+Enter 发送 · {draft.length} / 3000 字符</p>
         {draft.trim() && invalid && <p role="alert" className="error">内容过长，请缩短后再发送。原文不会被截断。</p>}
         <div className="conversation-composer-toolbar">
+        <button disabled={!sendAllowed || !visible} onClick={() => {
+          if (selectedRef.current && preparationCurrent.current.allowed && !actionLock.current)
+            setPreparation({ conversationId: selectedRef.current, title: detail.conversation.title, draft, generation: generation.current })
+        }}>准备会话参考…</button>
         <div className="memory-choice"><button disabled={!enabled || historyLoading || pollingError || busy || !!pending || detail.conversation.status !== 'ACTIVE'} onClick={() => { void run(async (id, token) => {
           const choice = await bridge.selectConversationMemories(id)
           if (token === generation.current && choice.changed) { setMemories(choice.selectedMemoryRefs); setRetainMemories(false); setStale(false) }
@@ -432,6 +441,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       </>}
       {error && <p className="error" role="alert">{error}</p>}<p role="status">{notice}</p>
     </section>
+    {preparation && enabled && visible && selected === preparation.conversationId && <WorkspaceSearchDialog bridge={bridge}
+      close={() => setPreparation(null)} preparation={{ ...preparation, apply: message => {
+        if (generation.current !== preparation.generation || selectedRef.current !== preparation.conversationId
+          || detailRef.current?.conversation.id !== preparation.conversationId || actionLock.current
+          || !preparationCurrent.current.allowed || preparationCurrent.current.draft !== preparation.draft) return false
+        setDraft(message); setPreparation(null); setNotice('参考已插入会话草稿，尚未发送。你可以继续编辑后手动发送。')
+        return true
+      } }} />}
     <dialog ref={deleteDialog} className="conversation-delete" aria-labelledby="conversation-delete-title" onCancel={event => { event.preventDefault(); if (!busy) setDeleting(false) }}>
       <h2 id="conversation-delete-title">永久删除会话</h2><p><bdi>{detail?.conversation.title}</bdi></p><p>删除后无法从当前 Workspace 恢复。</p>
       {(draft.length > 0 || unsavedTitle) && <p>未发送的消息和未保存的会话标题也将丢弃。</p>}
