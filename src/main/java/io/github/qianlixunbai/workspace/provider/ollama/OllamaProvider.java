@@ -32,6 +32,8 @@ public final class OllamaProvider implements Provider {
     private final SessionFactory sessions;
     private final ThreadLocal<OllamaVisionEnvironment.ServiceSession> session = new ThreadLocal<>();
     private final ScheduledExecutorService transportTimer;
+    private final Set<CheckedOperator> transports = ConcurrentHashMap.newKeySet();
+    private volatile boolean closed;
     public interface VisionTrust {
         void verifyIdentity(int port, JsonNode show, Cancellation cancellation);
         VisionContext currentContext(String identity);
@@ -74,8 +76,8 @@ public final class OllamaProvider implements Provider {
         base = isolated == null ? URI.create("http://127.0.0.1:" + uri.getPort()) : isolated.endpoint();
         sessions = isolated == null ? fixtureSessions : (endpoint, cancellation, deadline) ->
             OllamaVisionEnvironment.openSession(isolated, cancellation, deadline);
-        transportTimer = sessions == null ? null : Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "isolated-transport-deadline"); thread.setDaemon(true); return thread;
+        transportTimer = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "model-transport-deadline"); thread.setDaemon(true); return thread;
         });
         this.visionTrust = visionTrust == null ? new NativeVisionTrust() : visionTrust;
         client = sessions != null ? null : HttpClient.newBuilder().connectTimeout(settings.connectTimeout())
@@ -122,7 +124,12 @@ public final class OllamaProvider implements Provider {
     public Set<Capability> capabilities() { return Set.of(Capability.TEXT_GENERATION, Capability.STRUCTURED_OUTPUT); }
 
     @PreDestroy
-    public void close() { if (client != null) client.shutdownNow(); if (transportTimer != null) transportTimer.shutdownNow(); }
+    public void close() {
+        closed = true;
+        for (var transport : transports) transport.abort();
+        if (client != null) client.shutdownNow();
+        transportTimer.shutdownNow();
+    }
 
     public String execute(ProviderExecution execution, Cancellation cancellation) {
         return executeChat(execution, cancellation, null);
@@ -408,11 +415,14 @@ public final class OllamaProvider implements Provider {
     }
     private HttpResponse<byte[]> exchange(HttpRequest request, Duration timeout, Cancellation cancellation, SendBoundary boundary) {
         cancellation.check();
+        if (closed) throw new WorkspaceException(ErrorCode.PROVIDER_UNAVAILABLE, "PROVIDER_CLOSED");
         if (sessions != null) {
             if (session.get() == null) return inSession(cancellation, () -> exchange(request, timeout, cancellation, boundary));
             return checkedExchange(request, timeout, cancellation, boundary);
         }
-        if (boundary != null) boundary.prepare(false);
+        // Every inference/unload owns one socket with automatic retries and redirects disabled.
+        // A normal loopback connection does not grant ownership of the listening service.
+        if (boundary != null) return checkedExchange(request, timeout, cancellation, boundary);
         CompletableFuture<HttpResponse<byte[]>> future = client.sendAsync(request,
                 ignored -> new LimitedBodySubscriber(settings.maxResponseBytes()));
         try {
@@ -452,9 +462,12 @@ public final class OllamaProvider implements Provider {
             .build();
         org.apache.hc.core5.http.ClassicHttpResponse response = null;
         var expired = new java.util.concurrent.atomic.AtomicBoolean();
-        var timer = transportTimer.schedule(() -> { expired.set(true); operator.abort(); manager.close(org.apache.hc.core5.io.CloseMode.IMMEDIATE); },
-            timeout.toNanos(), TimeUnit.NANOSECONDS);
+        ScheduledFuture<?> timer = null;
+        transports.add(operator);
         try {
+            operator.check();
+            timer = transportTimer.schedule(() -> { expired.set(true); operator.abort(); manager.close(org.apache.hc.core5.io.CloseMode.IMMEDIATE); },
+                timeout.toNanos(), TimeUnit.NANOSECONDS);
             if (!request.uri().getScheme().equals("http") || !request.uri().getHost().equals(base.getHost())
                     || request.uri().getPort() != base.getPort() || request.uri().getQuery() != null) throw new IOException();
             var wire = new org.apache.hc.client5.http.classic.methods.HttpUriRequestBase(request.method(), request.uri());
@@ -487,18 +500,21 @@ public final class OllamaProvider implements Provider {
                 if ((long) body.size() + n > settings.maxResponseBytes()) throw new IOException();
                 body.write(buffer, 0, n);
             }
-            operator.check(); held.verifyConnected(operator.socket, cancellation, deadline);
+            operator.check();
+            if (held != null) held.verifyConnected(operator.socket, cancellation, deadline);
             return new CheckedResponse(request, response.getCode(), body.toByteArray());
         } catch (WorkspaceException rejected) { throw rejected; }
         catch (Exception failure) {
             cancellation.check();
             if (expired.get() || System.nanoTime() >= deadline || failure instanceof SocketTimeoutException)
                 throw new WorkspaceException(ErrorCode.TASK_TIMEOUT,"PROVIDER");
-            throw new WorkspaceException(ErrorCode.PROVIDER_UNAVAILABLE,"ISOLATED_TRANSPORT");
+            throw new WorkspaceException(ErrorCode.PROVIDER_UNAVAILABLE,"MODEL_TRANSPORT");
         } finally {
-            timer.cancel(false); operator.abort(); manager.close(org.apache.hc.core5.io.CloseMode.IMMEDIATE);
+            if (timer != null) timer.cancel(false);
+            operator.abort(); manager.close(org.apache.hc.core5.io.CloseMode.IMMEDIATE);
             if (response != null) try { response.close(); } catch (IOException ignored) {}
             apache.close(org.apache.hc.core5.io.CloseMode.IMMEDIATE); cancellation.detach();
+            transports.remove(operator);
         }
     }
     private record CheckedResponse(HttpRequest request, int statusCode, byte[] body) implements HttpResponse<byte[]> {
@@ -538,6 +554,7 @@ public final class OllamaProvider implements Provider {
         }
         void check() throws IOException {
             cancellation.check();
+            if (closed) throw new IOException("Provider closed");
             if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) throw new SocketTimeoutException();
         }
         int remainingMillis() throws IOException {
@@ -562,7 +579,8 @@ public final class OllamaProvider implements Provider {
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{127,0,0,1}),base.getPort()),
                 Math.min(remainingMillis(), (int)Math.max(1,Math.min(Integer.MAX_VALUE,settings.connectTimeout().toMillis()))));
             socket.setSoTimeout(remainingMillis());
-            held.verifyConnected(socket,cancellation,deadline); // Must finish before bind or any HTTP bytes.
+            // Only an isolated session can attest to the service; ordinary loopback is unowned.
+            if (held != null) held.verifyConnected(socket,cancellation,deadline);
             check();
             connection.bind(socket);
             check();
