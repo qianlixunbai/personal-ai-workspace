@@ -47,6 +47,21 @@ KnowledgeAnswerHistory 原先直接拼接普通 SQLite URL。将 Memory 已有�
 
 ## 边界与接续
 
-原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮尚未打包或运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。维护用 SQLite→PostgreSQL 迁移连接仍有普通文件 URL，未修改或执行，不能扩展为所有维护路径的长路径验收。
+原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮没有运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。维护用 SQLite→PostgreSQL 迁移连接仍有普通文件 URL，未修改或执行，不能扩展为所有维护路径的长路径验收。
 
 所有构建及验证复用 Session 1 `Local\Dot_KAG_Workspace_HeavyRun` 短运行包装，覆盖同步子进程退出后 finally 释放；未遗弃、未强杀，未访问未知 18765 或 KAG 18895。未启动常驻服务。Git、编辑和报告不持锁。main 保持 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`；六份用户文档不修改、不暂存；仅本地可回滚提交，不推送。
+
+## 最终本地交付与交接
+
+三个独立产品提交：历史库/共用 URL `9fee49061dbe3cffe76755bea350909a7c17248b`；源库/索引 `baeaead`；Conversation `9498a8d929d5f8bbcaf1fc8ac6a5c737479f69eb`。基线及三个提交均保留，可逐项回滚代码；不以回滚代码覆盖数据库。
+
+- [新版开发 ZIP](../../artifacts/PersonalAiWorkspace-sqlite-long-path-20261110.zip)，384,671,820 字节，933 个产品文件；[本机解压入口](../../artifacts/PersonalAiWorkspace-sqlite-long-path-20261110/PersonalAiWorkspace.Desktop.exe)。产品来源 `9498a8d929d5f8bbcaf1fc8ac6a5c737479f69eb`，Development-only / unsigned，不上传或远程发布。
+- ZIP SHA-256 `68331FAC03E055284800DBC4B4F5F46BA386EC746F39A37A3AA8FEA927C26A8C`；Runtime JAR `BC8F0CC35D2F9321AF848F7FFDFE271DB07B770CF1878454F07A8FD0C0D12625`；Desktop DLL `6510A338BCFB9E68D684899753CDD6B7CE73F507D91E6956F9636CCF35987C37`。
+- 沿用已审查 Java 和现有打包流程，本地包装只增加离线 Maven、跳过测试编译/执行和 `dotnet publish --no-restore`。完整 Java 产品构建、Runtime JAR audit、TypeScript/前端构建和自包含 Desktop 发布通过；没有下载新依赖、重跑测试套件或更换 helper/JDK/JNA。Java 内部 API 与前端大 chunk 既有警告保留，无性能/安全审计结论。
+- 实际 ZIP 解压至含中文与空格的新目录，933 文件全部校验通过。六个改动类及其内部类共 24 个 JAR 条目与实际 Maven 输出逐字节匹配；包内真实 `TrustedDevelopmentRuntimeSources.Open()` 返回 `DEVELOPMENT_PACKAGE_SOURCES_PASS`，然后再次确认产品文件未变。没有重复前轮完整篡改矩阵，也没有重跑已通过的存储样本。
+- 交付证据：`delivery-build.log`、`delivery-package-result.json`、`delivery-runtime-classes.json`、`delivery-sources.log`。构建包装 PID 17464，05:51:17–05:51:43 UTC；包验证 PID 27220，05:52:32–05:52:36 UTC；finally 正常释放。13 个实际存储探针进程均按 PID 加创建时间核对退出；`final-process-state.json` 保存收尾，PID 复用不视为自有进程，不终止它们。
+- 六份用户文档逐个哈希相同，见 `user-documents-final.json`。旧最终 Memory ZIP 哈希仍为 `32518BBC44E9F2BB9E5ED063D62CC50ECAF4E6BFE2DD3D2429593CB55B3C1B2D`；main 未变。包的 `sourceDirty=true` 仅来自这六份未跟踪用户文档，产品源码构建前已提交且受跟踪工作区/索引干净。
+
+本会话已完成三个真实存储模块，按约定轮换。下一会话先核对实际 HEAD 与本报告，不重复已通过的 native Memory 或长路径保存场景。新包完整 EXE 启动、WebView2 失败页原生入口和 WebView2 保存/重开仍未验收；只能基于新证据决定下一项，不把本次存储通过当成浏览器修复。维护迁移普通 URL 是静态候选，需另行隔离复现后再处理。`WindowsPrivateAcl.verifySqliteSidecar` 目前未列出 history sidecar 名称，而历史构造器会调用它，也是独立静态候选；本轮未放宽该校验、未进行崩溃恢复实验。
+
+没有自动审批拒绝、待审批、结果不明的写入或提交。起始文件名发现碰到旧验证目录的访问拒绝后未重试该范围、未改权限；后续使用报告明确指向的文件与本轮自有目录。所有原始失败日志与合成样本保留，未删除用户数据库、未修改系统策略，也未触碰其他仓库。
