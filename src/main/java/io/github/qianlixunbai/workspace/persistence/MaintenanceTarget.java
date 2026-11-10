@@ -66,6 +66,13 @@ public final class MaintenanceTarget {
     /** Retain table-level write exclusion while local configuration is prepared/published.
      * New connections perform the complete content check; this never imports or alters data. */
     static Connection holdVerified(DataSource target, SqliteCombinedMigration.Expected expected) throws IOException {
+        return hold(target,expected,true);
+    }
+    /** Inspection after a writable Runtime session must preserve later business data. */
+    static Connection holdCurrentBinding(DataSource target,SqliteCombinedMigration.Expected expected)throws IOException {
+        return hold(target,expected,false);
+    }
+    private static Connection hold(DataSource target,SqliteCombinedMigration.Expected expected,boolean importedContent)throws IOException {
         Connection db=null;
         try {
             if(expected==null || expected.binding()==null) throw new SQLException();
@@ -81,7 +88,8 @@ public final class MaintenanceTarget {
                     s.execute("LOCK TABLE workspace."+table+(List.of("maintenance_import","sqlite_import","knowledge_sqlite_import").contains(table)
                             ? " IN ACCESS SHARE MODE" : " IN SHARE MODE"));
             }
-            verifyHeld(db,expected);
+            if(importedContent)verifyHeld(db,expected);
+            else if(!matches(db,expected.binding()))throw new SQLException();
             return db;
         }catch(Exception failure) {
             if(db!=null)try{db.close();}catch(SQLException ignored){}

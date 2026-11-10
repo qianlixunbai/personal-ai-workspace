@@ -29,12 +29,12 @@ internal sealed partial class ProfileRecoveryWindow : Window
     private bool inspecting;
     internal string? ActivationRequestId { get; private set; }
 
-    private ProfileRecoveryWindow(string title, string text)
+    private ProfileRecoveryWindow(string title, string text, string? scopeText = null)
     {
         Title = title; Width = 660; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Content = body;
-        body.Children.Add(new TextBlock { Text = Scope, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
+        body.Children.Add(new TextBlock { Text = scopeText ?? Scope, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
         status = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
         body.Children.Add(status);
         close = AddButton("关闭", () => Close()); close.IsCancel = true;
@@ -62,12 +62,15 @@ internal sealed partial class ProfileRecoveryWindow : Window
         var window = new ProfileRecoveryWindow("Personal AI Workspace · 备份与恢复维护", "正在核对原生互斥、Runtime 退出登记和模型状态文件名；尚不读取数据库配置或连接数据库…");
         window.AddButton("创建备份（条件未满足）", () => { }).IsEnabled = false;
         window.AddButton("从备份恢复（来源授权未开放）", () => { }).IsEnabled = false;
+        ProfileRecoveryCoordinator.SourceReadiness? latest = null;
+        var migration = window.AddButton("审阅维护迁移范围与条件", () => { if(latest is not null) ShowMigrationReview(latest); });
+        migration.IsEnabled=false;
         Button? binding = null;
         binding = window.AddButton("核对来源连接（需单独授权）", async () =>
         {
             binding!.IsEnabled = false;
             window.inspecting = true; window.close.IsEnabled = false;
-            try { window.status.Text = Describe(await coordinator.RequestSourceBindingInspectionAsync()); }
+            try { latest=await coordinator.RequestSourceBindingInspectionAsync();window.status.Text = Describe(latest); }
             catch (Exception)
             {
                 window.status.Text = "BLOCKED（SOURCE_BINDING_UNCONFIRMED）\n本次连接核对结果未确认；不会自动重试，也未获得备份或恢复授权。\n" + RunningGuidance;
@@ -84,6 +87,7 @@ internal sealed partial class ProfileRecoveryWindow : Window
             try
             {
                 var result = await coordinator.InspectSourceReadinessAsync();
+                latest=result;migration.IsEnabled=true;
                 window.status.Text = Describe(result);
                 binding.IsEnabled = result.Native.ModelState == "NO_GUARD_FILE_OBSERVED";
             }

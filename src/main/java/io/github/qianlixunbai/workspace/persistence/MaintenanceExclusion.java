@@ -20,6 +20,7 @@ public final class MaintenanceExclusion implements AutoCloseable {
     private FileChannel model;
     private String runtimeIdentity,modelIdentity,modelDirectoryIdentity;
     private boolean closed;
+    private MaintenanceModelState runtimeModel;
 
     private MaintenanceExclusion(Path root,long handle){
         this.root=root;runtimeFile=root.resolve("evidence/runtime-admission.lock");
@@ -70,12 +71,32 @@ public final class MaintenanceExclusion implements AutoCloseable {
     }
 
     void requireHandles(Path expectedRoot) throws IOException {
-        if(closed||!root.equals(expectedRoot)||model==null||!model.isOpen()||model.size()!=0
+        if(closed||!root.equals(expectedRoot)||model==null||(!model.isOpen()&&runtimeModel==null)
+            ||model.isOpen()&&model.size()!=0
             ||!runtimeIdentity.equals(identity(transferred,runtimeFile,false,true))
             ||!runtimeIdentity.equals(identity(runtimePin,runtimeFile,false,true))
             ||!modelDirectoryIdentity.equals(identity(modelPin,modelDirectory,true,false))
             ||!modelIdentity.equals(TrustedDatabaseConfiguration.Identity.read(modelFile,false))
             ||!Kernel32.INSTANCE.FlushFileBuffers(transferred))throw stopped();
+        if(runtimeModel!=null)runtimeModel.requireWriter();
+    }
+
+    /** Only the admitted Runtime invokes this while the exclusive runtime handle is retained.
+     * The parent/source readers have already left. A racing writer makes acquisition fail;
+     * no retry, lock replacement, weakened sharing mode or ordinary-start fallback exists. */
+    io.github.qianlixunbai.workspace.model.ModelStateStore takeModelWriter(MaintenanceModelState snapshot)throws IOException {
+        requireHeld(root);snapshot.requireSnapshot();model.close();
+        io.github.qianlixunbai.workspace.model.ModelStateStore store=null;
+        try {
+            store=new io.github.qianlixunbai.workspace.model.ModelStateStore(modelDirectory,root.resolve("credentials/client-token"),root.resolve("data"));
+            snapshot.attach(store);runtimeModel=snapshot;requireHeld(root);return store;
+        }catch(Exception failure){if(store!=null)try{store.close();}catch(Exception ignored){}throw stopped();}
+    }
+    void retainStoppedModel()throws IOException {
+        if(closed||runtimeModel==null)throw stopped();runtimeModel.requireClosed();
+        model=FileChannel.open(modelFile,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS,
+                ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE);
+        runtimeModel=null;requireHeld(root);
     }
 
     private static HANDLE openMetadata(Path path,boolean directory) throws IOException {

@@ -23,7 +23,8 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     private readonly FileStream runtimeLock, modelLock;
     private readonly List<Process> children = new();
     private Process? runtime;
-    private string operation = "", challenge = "", configuration = "", binding = "";
+    private string operation = "", challenge = "", configuration = "", binding = "", modelState = "";
+    private bool modelTransferred;
     private bool disposed, finished, finishAttempted;
     internal Uri Endpoint { get; private set; } = null!;
     internal string Operation => operation;
@@ -31,6 +32,7 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     internal string ConfigurationVersion => configuration;
     internal long[] BackendPids { get; private set; } = Array.Empty<long>();
     internal bool VerifiedStopped => finished;
+    internal string[] RestartBlockers { get; private set; } = ["STOPPED_INSPECTION_REQUIRED"];
 
     private MaintenanceRuntimeHandoff(Mmf3AcceptanceLaunch profile,TrustedDevelopmentRuntimeSources sources,
             RuntimeProcessJob job,FileStream runtimeLock,FileStream modelLock)
@@ -67,10 +69,10 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     private void RequireNative()
     {
         ObjectDisposedException.ThrowIf(disposed,this);profile.Validate();Mmf3ProfileNative.Verify(profile);
-        if(!runtimeLock.CanWrite||runtimeLock.Length!=0||modelLock.Length!=0)throw Stop();
+        if(!runtimeLock.CanWrite||runtimeLock.Length!=0||!modelTransferred&&modelLock.Length!=0)throw Stop();
         _=PersonalAiWorkspace.WindowsSecurity.SyntheticRecoveryPublication.FileIdentity(runtimeLock.SafeFileHandle,
             Path.Combine(profile.Root,"evidence","runtime-admission.lock"),false);
-        _=PersonalAiWorkspace.WindowsSecurity.SyntheticRecoveryPublication.FileIdentity(modelLock.SafeFileHandle,
+        if(!modelTransferred)_=PersonalAiWorkspace.WindowsSecurity.SyntheticRecoveryPublication.FileIdentity(modelLock.SafeFileHandle,
             Path.Combine(profile.Root,"model-state",".lock"),false);
     }
     private async Task StartCore(byte[] configurationBytes,CancellationToken cancellation)
@@ -97,12 +99,16 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         var pinned=await Read(runtime,token).ConfigureAwait(false);Stage(pinned,"PINNED");Match(pinned);
         if(pinned.GetProperty("pid").GetInt64()!=runtime.Id)throw Stop();
         configuration=Text(pinned,"configuration");Hex(configuration,64);binding=pinned.GetProperty("binding").GetRawText();
+        modelState=Text(pinned,"modelState");Hex(modelState,64);
 
         // New child has overlapping kernel/source/configuration/target protection BEFORE any
         // source release. Observe this exact source Process exiting; no record can substitute.
         await Write(source,new{action="RELEASE",operation,challenge},token).ConfigureAwait(false);
         var released=await Read(source,token).ConfigureAwait(false);Stage(released,"RELEASED");Match(released);
         await RequireExited(source,token).ConfigureAwait(false);RequireNative();if(runtime.HasExited)throw Stop();
+        // Child still owns the model reader and immutable state pins. The runtime exclusion
+        // remains exclusive while the child replaces its reader with the real store writer.
+        modelTransferred=true;modelLock.Dispose();
         await Write(runtime,new{action="INITIALIZE",operation,challenge},token).ConfigureAwait(false);
         var verified=await Read(runtime,token).ConfigureAwait(false);RuntimeReply(verified,"VERIFIED");
         BackendPids=verified.GetProperty("backends").EnumerateArray().Select(v=>v.GetInt64()).ToArray();
@@ -128,14 +134,18 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         var observed=await Read(inspector,deadline.Token).ConfigureAwait(false);Stage(observed,"STOPPED_HISTORY_TARGET_BOUND");Match(observed);
         if(observed.GetProperty("pid").GetInt64()!=inspector.Id||observed.GetProperty("pastRuntimePid").GetInt64()!=runtime.Id
             ||Text(observed,"configuration")!=configuration||observed.GetProperty("binding").GetRawText()!=binding
+            ||Text(observed,"modelState")!=modelState||!observed.GetProperty("sourceAndBackupVerified").GetBoolean()
             ||observed.GetProperty("ordinaryStartupAuthorized").GetBoolean())throw Stop();
-        await RequireExited(inspector,deadline.Token).ConfigureAwait(false);finished=true;
+        var blockers=observed.GetProperty("restartBlockers").EnumerateArray().Select(v=>v.GetString()??throw Stop()).ToArray();
+        if(!blockers.SequenceEqual(new[]{"NATIVE_RESTART_LIFECYCLE_REQUIRED","EXTERNAL_MODEL_EXECUTION_UNPROVEN",
+                "UNREGISTERED_WRITERS_UNPROVEN","USER_CONFIRMATION_REQUIRED"}))throw Stop();
+        await RequireExited(inspector,deadline.Token).ConfigureAwait(false);RestartBlockers=blockers;finished=true;
     }
     private void RuntimeReply(JsonElement reply,string stage)
     {
         Stage(reply,stage);Match(reply);
         if(runtime is null||reply.GetProperty("pid").GetInt64()!=runtime.Id||Text(reply,"configuration")!=configuration
-            ||reply.GetProperty("binding").GetRawText()!=binding)throw Stop();
+            ||reply.GetProperty("binding").GetRawText()!=binding||Text(reply,"modelState")!=modelState)throw Stop();
     }
     private void Match(JsonElement value){if(Text(value,"operation")!=operation||Text(value,"challenge")!=challenge)throw Stop();}
     private static string Text(JsonElement value,string name)=>value.GetProperty(name).GetString()??throw Stop();

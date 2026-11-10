@@ -25,8 +25,23 @@ public static partial class RuntimeLifecycleProbe
                 .Concat(Directory.GetFiles(Path.Combine(profile.Root,"data","knowledge","sources"),"*.source",SearchOption.AllDirectories)).ToArray();
             string Hash(string path)=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
             var before=sources.Select(Hash).ToArray();
+            string modelSelection=Path.Combine(profile.Root,"model-state","active-model.json");
+            string? modelHash=File.Exists(modelSelection)?Hash(modelSelection):null;
             boundary="NATIVE_HANDOFF";
             using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(150));
+            bool pendingModelRejected=false;
+            if(modelHash is not null){
+                boundary="PENDING_MODEL_PREFLIGHT";
+                string guard=Path.Combine(profile.Root,"model-state","execution-guard.pending");
+                byte[] marker=Encoding.UTF8.GetBytes("synthetic unresolved execution");
+                using(var file=new FileStream(guard,FileMode.CreateNew,FileAccess.Write,FileShare.None)){file.Write(marker);file.Flush(true);}
+                try{using var unexpected=MaintenanceRuntimeHandoff.StartAsync(profile,configuration.ToArray(),deadline.Token).GetAwaiter().GetResult();}
+                catch(IOException rejected) when(rejected.Message.StartsWith("Maintenance child STOP",StringComparison.Ordinal)) {pendingModelRejected=true;}
+                if(!pendingModelRejected||Directory.Exists(Path.Combine(profile.Root,"evidence","sqlite-maintenance"))
+                    ||File.Exists(Path.Combine(profile.Root,"data","database.dpapi"))||!File.ReadAllBytes(guard).SequenceEqual(marker))throw new IOException();
+                File.Delete(guard); // Fixture removes only the exact synthetic marker it created.
+            }
+            boundary="NATIVE_HANDOFF";
             using var handoff=MaintenanceRuntimeHandoff.StartAsync(profile,configuration,deadline.Token).GetAwaiter().GetResult();
             boundary="LIVE_HTTP_BACKEND";
             using var http=new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=false}){BaseAddress=handoff.Endpoint,Timeout=TimeSpan.FromSeconds(20)};
@@ -51,6 +66,8 @@ public static partial class RuntimeLifecycleProbe
             if(read.StatusCode!=HttpStatusCode.OK)throw new IOException();
             using(var body=JsonDocument.Parse(read.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()))
                 if(body.RootElement.GetProperty("content").GetString()!="Preserve later Runtime data")throw new IOException();
+            using var modelRequest=http.GetAsync("/api/v1/models").GetAwaiter().GetResult();
+            if(modelRequest.StatusCode!=HttpStatusCode.ServiceUnavailable)throw new IOException();
             int runtimePid=handoff.RuntimePid;
             boundary=interrupt?"OWNED_SESSION_INTERRUPTION":"SAFE_FINISH";
             if(interrupt){
@@ -59,11 +76,18 @@ public static partial class RuntimeLifecycleProbe
                     .Select(Path.GetFileName).Order().ToArray();
                 if(!records.SequenceEqual(new[]{"00-pinned.dpapi","01-initializing.dpapi","02-verified.dpapi","intent.dpapi"}))throw new IOException();
             }else handoff.FinishAsync(deadline.Token).GetAwaiter().GetResult();
-            if(handoff.VerifiedStopped==interrupt||!sources.Select(Hash).SequenceEqual(before))throw new IOException();
+            if(interrupt){
+                using var released=new FileStream(Path.Combine(profile.Root,"model-state",".lock"),FileMode.Open,FileAccess.ReadWrite,FileShare.None);
+                if(released.Length!=0)throw new IOException(); // Actual writer handle released; no file mutation.
+            }
+            if(handoff.VerifiedStopped==interrupt||!sources.Select(Hash).SequenceEqual(before)
+                ||modelHash!=(File.Exists(modelSelection)?Hash(modelSelection):null))throw new IOException();
             if(Hash(Path.Combine(profile.Root,"data","database.dpapi")).ToLowerInvariant()!=handoff.ConfigurationVersion)throw new IOException();
             Console.WriteLine(JsonSerializer.Serialize(new{passed=true,profile=id,operation=handoff.Operation,runtimePid,
                 port=handoff.Endpoint.Port,configuration=handoff.ConfigurationVersion,backends=handoff.BackendPids,
-                laterRow=row,sourceUnchanged=true,verifiedStopped=handoff.VerifiedStopped,interrupted=interrupt,ordinaryStartupEnabled=false}));return 0;
+                laterRow=row,sourceUnchanged=true,verifiedStopped=handoff.VerifiedStopped,interrupted=interrupt,ordinaryStartupEnabled=false,
+                modelExecutionBlocked=true,modelStateUnchanged=true,syntheticSelectionPresent=modelHash is not null,
+                pendingModelRejected,restartBlockers=handoff.RestartBlockers}));return 0;
         }
         catch(Exception failure)
         {

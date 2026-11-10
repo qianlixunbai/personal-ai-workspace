@@ -14,7 +14,9 @@ public class ModelConfiguration {
                                         @Value("${workspace.model-state-directory}") Path root,
                                         @Value("${workspace.data-directory}") Path data) {
         ModelStateStore store;
-        try { store = new ModelStateStore(root, properties.security().tokenFile(), data); }
+        var maintenance=io.github.qianlixunbai.workspace.security.WindowsNativeGate.maintenanceRuntime();
+        try { store = maintenance==null ? new ModelStateStore(root, properties.security().tokenFile(), data)
+                : maintenance.claimModelStore(root); }
         catch (IOException | RuntimeException rejected) { store = null; }
         // Model state faults close AI admission while healthy domain data APIs remain available.
         return new ActiveModelManager(profiles, provider, properties, store);

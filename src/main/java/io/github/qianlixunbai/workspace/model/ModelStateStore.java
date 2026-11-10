@@ -126,6 +126,13 @@ public final class ModelStateStore implements AutoCloseable {
     public synchronized Selection selection() throws IOException { checkSelection(); return selection; }
     public synchronized boolean unresolved() { return unresolved; }
 
+    /** Checks this actual writer, without discovering/loading a model or changing selection. */
+    public synchronized void requireMaintenanceOwnership(Path expectedRoot) throws IOException {
+        if (!root.equals(expectedRoot) || unresolved) throw new IOException("Model ownership unavailable");
+        checkSelection(); validationRequired();
+    }
+    public synchronized boolean maintenanceClosed() { return closed && !channel.isOpen() && !lock.isValid(); }
+
     public synchronized ValidationRequired validationRequired() throws IOException {
         checkSelection();
         Path marker = root.resolve("validation-required.json");

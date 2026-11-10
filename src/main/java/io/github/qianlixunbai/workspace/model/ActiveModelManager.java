@@ -520,6 +520,8 @@ public final class ActiveModelManager implements AutoCloseable {
     }
     private int count(Phase phase) { return (int) leases.stream().filter(l -> l.phase == phase).count(); }
     private void checkGate() {
+        if (io.github.qianlixunbai.workspace.security.WindowsNativeGate.maintenanceRuntime()!=null)
+            throw new WorkspaceException(ErrorCode.MODEL_UNAVAILABLE, "MAINTENANCE_MODEL_EXECUTION_DISABLED");
         if (uncertain) throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL");
         if (closed || storeFailed || configuredModel == null) throw unavailable();
         if (switching) throw new WorkspaceException(ErrorCode.MODEL_SWITCH_CONFLICT, "MODEL");
@@ -732,6 +734,17 @@ public final class ActiveModelManager implements AutoCloseable {
         synchronized (operations) {
             synchronized (gate) { closed = true; ready = false; }
             if (store != null) store.close();
+        }
+    }
+    /** A state-owner proof, deliberately without provider discovery, preload or readiness. */
+    public void requireMaintenanceQuiescent(ModelStateStore expected) throws IOException {
+        synchronized (operations) {
+            synchronized (gate) {
+                if (store!=expected || store==null || storeFailed || closed || uncertain || switching
+                        || !leases.isEmpty() || outbound!=0 || pendingSends!=0 || active!=null || ready)
+                    throw new IOException("Maintenance model execution is not quiescent");
+            }
+            store.selection(); store.validationRequired();
         }
     }
 }

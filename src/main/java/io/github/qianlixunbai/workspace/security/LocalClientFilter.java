@@ -32,6 +32,13 @@ final class LocalClientFilter extends OncePerRequestFilter {
         }
         String origin = request.getHeader("Origin"), path = request.getServletPath(), method = request.getMethod();
         String authorization = request.getHeader("Authorization");
+        // This maintenance session transfers local state ownership only. AI/provider routes
+        // require a separate, explicit model activation protocol and remain unavailable.
+        if(WindowsNativeGate.maintenanceRuntime()!=null && !(path.equals("/api/v1/storage/status")&&method.equals("GET")
+                || path.equals("/api/v1/memory/items")&&List.of("GET","POST").contains(method)
+                || path.matches("/api/v1/memory/items/[a-f0-9-]{36}")&&method.equals("GET"))){
+            reject(response,503,ErrorCode.MODEL_UNAVAILABLE);return;
+        }
         boolean exchange = path.equals("/api/v1/security/pairings/exchange");
         ClientIdentity identity;
         if (origin == null && authorization != null && authorization.startsWith("Bearer br1.")) {

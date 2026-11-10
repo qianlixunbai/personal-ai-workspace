@@ -148,6 +148,12 @@ public final class MaintenanceConfiguration {
             this.root=root;this.prepared=prepared;this.actual=actual;this.attempt=attempt;this.target=target;
         }
         static ActivationConfiguration open(Path root,String operation)throws IOException {
+            return open(root,operation,false);
+        }
+        static ActivationConfiguration inspectStopped(Path root,String operation)throws IOException {
+            return open(root,operation,true);
+        }
+        private static ActivationConfiguration open(Path root,String operation,boolean stoppedInspection)throws IOException {
             Prepared prepared=null;SqliteSourceLease.FilePin actual=null,attempt=null;java.sql.Connection target=null;
             try {
                 prepared=MaintenanceConfiguration.open(root,operation);
@@ -158,7 +164,8 @@ public final class MaintenanceConfiguration {
                 try{plain=Crypt32Util.cryptUnprotectData(encrypted,entropy(root,operation),1,null);
                     if(!prepared.intent.equals(JSON.readValue(plain,Intent.class)))throw stopped();}
                 finally{Arrays.fill(encrypted,(byte)0);if(plain!=null)Arrays.fill(plain,(byte)0);}
-                target=MaintenanceTarget.holdVerified(dataSource(prepared.plain),prepared.intent.target);
+                target=stoppedInspection ? MaintenanceTarget.holdCurrentBinding(dataSource(prepared.plain),prepared.intent.target)
+                        : MaintenanceTarget.holdVerified(dataSource(prepared.plain),prepared.intent.target);
                 var result=new ActivationConfiguration(root,prepared,actual,attempt,target);
                 result.requireConfiguration(root);return result;
             }catch(Exception failure){

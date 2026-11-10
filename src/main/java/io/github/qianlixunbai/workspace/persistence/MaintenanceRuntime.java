@@ -26,13 +26,15 @@ public final class MaintenanceRuntime implements AutoCloseable {
     private static final JsonMapper JSON=JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private record Intent(int version,String kind,String profile,String rootIdentity,String operation,long runtimePid,
-                          String challenge,String configuration,SqliteCombinedMigration.Expected expected){}
+                          String challenge,String configuration,SqliteCombinedMigration.Expected expected,String modelState){}
     private record Event(int version,String kind,String operation,long runtimePid,String challenge,String configuration,
                          String previous,String stage,List<Long> backends){}
     private final MaintenanceExclusion exclusion;private final Path root,dir;private final Intent intent;
     private final List<AutoCloseable> pins=new ArrayList<>();
     private MaintenanceConfiguration.ActivationConfiguration configuration;
     private SqliteMaintenanceOwner.RuntimeSource source;private BoundDataSource dataSource;
+    private MaintenanceModelState modelState;private io.github.qianlixunbai.workspace.model.ModelStateStore modelStore;
+    private boolean modelClaimed;
     private volatile String state="PINNING";private volatile boolean serving;
     private boolean closed;private String previous;private int sequence;
     private MaintenanceRuntime(MaintenanceExclusion exclusion,Path root,String operation,Intent intent){
@@ -44,9 +46,10 @@ public final class MaintenanceRuntime implements AutoCloseable {
         if(pid<=0||pid==ProcessHandle.current().pid()||challenge==null||!challenge.matches("[a-f0-9]{64}"))throw stopped();
         Path registry=root.resolve("evidence/sqlite-activation"),dir=registry.resolve(operation);
         WindowsPrivateAcl.directory(registry);SqliteSourceLease.absent(dir);WindowsPrivateAcl.directory(dir);
-        try(var registryPin=new SqliteSourceLease.DirectoryPin(registry);var directoryPin=new SqliteSourceLease.DirectoryPin(dir)){
+        try(var registryPin=new SqliteSourceLease.DirectoryPin(registry);var directoryPin=new SqliteSourceLease.DirectoryPin(dir);
+                var model=new MaintenanceModelState(root)){
             var intent=new Intent(1,"MAINTENANCE_RUNTIME_INTENT",root.getFileName().toString(),
-                    TrustedDatabaseConfiguration.Identity.read(root,true),operation,pid,challenge,configuration,owner.configurationTarget());
+                    TrustedDatabaseConfiguration.Identity.read(root,true),operation,pid,challenge,configuration,owner.configurationTarget(),model.digest());
             owner.requireHeld();writeRecord(dir.resolve("intent.dpapi"),intent,root,operation);
             owner.requireHeld();registryPin.verify();directoryPin.verify();
         }
@@ -72,6 +75,8 @@ public final class MaintenanceRuntime implements AutoCloseable {
             runtime.configuration=MaintenanceConfiguration.ActivationConfiguration.open(root,operation);
             if(!runtime.configuration.expected().equals(intent.expected)||!runtime.configuration.digest().equals(intent.configuration))throw stopped();
             runtime.source=SqliteMaintenanceOwner.retainRuntimeSource(exclusion,operation,runtime.configuration);
+            runtime.modelState=new MaintenanceModelState(root);
+            if(!runtime.modelState.digest().equals(intent.modelState))throw stopped();
             runtime.requireOwned();runtime.append("PINNED",List.of());runtime.state="PINNED";return runtime;
         }catch(Exception failure){if(runtime!=null)runtime.close();throw stopped();}
         finally{for(int i=pins.size()-1;i>=0;i--)try{pins.get(i).close();}catch(Exception ignored){}}
@@ -90,6 +95,16 @@ public final class MaintenanceRuntime implements AutoCloseable {
         if(!state.equals("PINNED"))throw stopped();requireOwned();
         // This cannot succeed while the source child still owns its exclusive owner.lock.
         source.takeOwnerLock();append("INITIALIZING",List.of());state="INITIALIZING";
+        modelStore=exclusion.takeModelWriter(modelState);
+    }
+
+    public synchronized io.github.qianlixunbai.workspace.model.ModelStateStore claimModelStore(Path directory)throws IOException {
+        if(!state.equals("INITIALIZING")||modelClaimed||modelStore==null||!root.resolve("model-state").equals(directory))throw stopped();
+        requireOwned();modelState.requireWriter();modelClaimed=true;return modelStore;
+    }
+    private void verifyModel(ConfigurableApplicationContext context)throws IOException {
+        if(!modelClaimed)throw stopped();modelState.requireWriter();
+        context.getBean(io.github.qianlixunbai.workspace.model.ActiveModelManager.class).requireMaintenanceQuiescent(modelStore);
     }
 
     public synchronized DataSource bindDataSource(DataSource actual)throws IOException {
@@ -127,6 +142,7 @@ public final class MaintenanceRuntime implements AutoCloseable {
     private List<Long> verifyStarted(ConfigurableApplicationContext context)throws IOException {
         synchronized(this){if(!state.equals("INITIALIZING")||!context.isActive()||dataSource==null)throw stopped();requireOwned();}
         var backends=storeBackends(context);
+        verifyModel(context);
         try(var proof=MaintenanceTarget.holdVerified(dataSource.delegate,intent.expected)){
             requireOwned();MaintenanceTarget.verifyHeld(proof,intent.expected);append("VERIFIED",backends);state="VERIFIED";return backends;
         }catch(Exception failure){throw stopped();}
@@ -134,8 +150,10 @@ public final class MaintenanceRuntime implements AutoCloseable {
     private void finish(ConfigurableApplicationContext context)throws IOException {
         synchronized(this){if(!state.equals("VERIFIED"))throw stopped();requireOwned();serving=false;}
         var backends=storeBackends(context);
+        verifyModel(context);
         synchronized(this){append("STOPPING",backends);state="STOPPING";}
         context.close(); // Normal Runtime destruction, including Knowledge workers and actual store connections.
+        modelState.requireClosed();exclusion.retainStoppedModel();
         synchronized(this){
             if(context.isActive()||dataSource==null||dataSource.hasOpenConnections())throw stopped();requireOwned();
             // Later Runtime data is preserved. Finishing checks identity/configuration, not the old
@@ -211,6 +229,8 @@ public final class MaintenanceRuntime implements AutoCloseable {
     @Override public synchronized void close(){
         if(closed)return;serving=false;closed=true;
         if(source!=null)source.close();if(configuration!=null)configuration.close();
+        if(modelStore!=null)try{modelStore.close();}catch(Exception ignored){}
+        if(modelState!=null)modelState.close();
         for(int i=pins.size()-1;i>=0;i--)try{pins.get(i).close();}catch(Exception ignored){}
         try{exclusion.close();}catch(IOException ignored){}
     }
@@ -232,7 +252,7 @@ public final class MaintenanceRuntime implements AutoCloseable {
         if(!action.equals(frame.get("action"))||!operation.equals(frame.get("operation"))||!challenge.equals(frame.get("challenge")))throw stopped();
     }
     private Map<String,Object> response(String stage){return Map.of("stage",stage,"operation",intent.operation,"challenge",intent.challenge,
-            "pid",ProcessHandle.current().pid(),"configuration",intent.configuration,"binding",intent.expected.binding());}
+            "pid",ProcessHandle.current().pid(),"configuration",intent.configuration,"binding",intent.expected.binding(),"modelState",intent.modelState);}
 
     /** Real product entry; no alternate classpath, fake backend or privileged environment flag. */
     public static int runRuntime(String[] args,InputStream rawInput,PrintStream rawOutput){
@@ -284,7 +304,9 @@ public final class MaintenanceRuntime implements AutoCloseable {
                 target.setUser((String)config.getProperty("workspace.persistence.postgresql.username"));target.setPassword((String)config.getProperty("workspace.persistence.postgresql.password"));
                 target.setCurrentSchema("workspace,pg_catalog");target.setConnectTimeout(3);target.setSocketTimeout(30);
                 String operation,challenge;
-                try(var owner=SqliteMaintenanceOwner.begin(exclusion)){
+                try(var model=new MaintenanceModelState(WindowsNativeGate.maintenanceProfileRoot(exclusion));
+                        var owner=SqliteMaintenanceOwner.begin(exclusion)){
+                    model.requireSnapshot();
                     owner.createBackup();owner.importTarget(target);owner.prepareConfiguration(plain);Arrays.fill(plain,(byte)0);
                     owner.publishConfiguration();operation=owner.operationId();owner.requireHeld();
                     reply(output,Map.of("stage","PUBLISHED","operation",operation,"pid",ProcessHandle.current().pid()));
@@ -323,7 +345,8 @@ public final class MaintenanceRuntime implements AutoCloseable {
                         ||!root.getFileName().toString().equals(intent.profile)||!TrustedDatabaseConfiguration.Identity.read(root,true).equals(intent.rootIdentity)
                         ||intent.runtimePid<=0||intent.challenge==null||!intent.challenge.matches("[a-f0-9]{64}")
                         ||intent.configuration==null||!intent.configuration.matches("[a-f0-9]{64}")||intent.expected==null
-                        ||intent.expected.binding()==null||!operation.equals(intent.expected.binding().operation()))throw stopped();
+                        ||intent.expected.binding()==null||!operation.equals(intent.expected.binding().operation())
+                        ||intent.modelState==null||!intent.modelState.matches("[a-f0-9]{64}"))throw stopped();
                 String previous=intentPin.digest();var names=new HashSet<String>();names.add("intent.dpapi");int sequence=0;
                 for(String stage:List.of("PINNED","INITIALIZING","VERIFIED","STOPPING","VERIFIED_STOPPED")){
                     String name=String.format(Locale.ROOT,"%02d-%s.dpapi",sequence,stage.toLowerCase(Locale.ROOT));names.add(name);
@@ -336,11 +359,24 @@ public final class MaintenanceRuntime implements AutoCloseable {
                     previous=pin.digest();sequence++;
                 }
                 try(var entries=Files.list(dir)){if(!entries.map(p->p.getFileName().toString()).collect(java.util.stream.Collectors.toSet()).equals(names))throw stopped();}
-                if(!MaintenanceConfiguration.inspectPublishedBinding(root,operation,intent.configuration,intent.expected.binding()))throw stopped();
+                // A complete session file alone is insufficient. Re-pin the protected publication,
+                // original source/backup/journal and current target, without reverting later data.
+                for(String registry:List.of("sqlite-configuration","sqlite-activation")){
+                    Path path=root.resolve("evidence").resolve(registry);pins.add(new SqliteSourceLease.DirectoryPin(path));
+                    try(var entries=Files.list(path)){if(!entries.map(p->p.getFileName().toString()).collect(java.util.stream.Collectors.toSet()).equals(Set.of(operation)))throw stopped();}
+                }
+                var published=MaintenanceConfiguration.ActivationConfiguration.inspectStopped(root,operation);pins.add(published);
+                if(!published.digest().equals(intent.configuration)||!published.expected().equals(intent.expected))throw stopped();
+                var source=SqliteMaintenanceOwner.retainRuntimeSource(exclusion,operation,published);pins.add(source);source.takeOwnerLock();
+                var model=new MaintenanceModelState(root);pins.add(model);if(!model.digest().equals(intent.modelState))throw stopped();
                 exclusion.requireHeld(root);for(var pin:pins)if(pin instanceof SqliteSourceLease.FilePin file)file.verify();
-                reply(output,Map.of("stage","STOPPED_HISTORY_TARGET_BOUND","operation",operation,"challenge",intent.challenge,
+                var review=new HashMap<String,Object>(Map.of("stage","STOPPED_HISTORY_TARGET_BOUND","operation",operation,"challenge",intent.challenge,
                         "configuration",intent.configuration,"binding",intent.expected.binding(),"pid",ProcessHandle.current().pid(),
-                        "pastRuntimePid",intent.runtimePid,"ordinaryStartupAuthorized",false));return 0;
+                        "pastRuntimePid",intent.runtimePid,"ordinaryStartupAuthorized",false));
+                review.put("modelState",intent.modelState);review.put("sourceAndBackupVerified",true);
+                review.put("restartBlockers",List.of("NATIVE_RESTART_LIFECYCLE_REQUIRED","EXTERNAL_MODEL_EXECUTION_UNPROVEN",
+                        "UNREGISTERED_WRITERS_UNPROVEN","USER_CONFIRMATION_REQUIRED"));
+                reply(output,review);return 0;
             }
         }catch(Exception|LinkageError failure){try{reply(output,failureFrame("STOPPED_INSPECTION",failure));}catch(Exception ignored){}return 10;}
         finally{for(int i=pins.size()-1;i>=0;i--)try{pins.get(i).close();}catch(Exception ignored){}}
