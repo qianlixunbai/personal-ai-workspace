@@ -30,6 +30,7 @@ public final class SqliteSourceLease implements AutoCloseable {
     private final List<DirectoryPin> directories = new ArrayList<>();
     private final Map<Path, FilePin> files = new LinkedHashMap<>();
     private final Fingerprint fingerprint;
+    private MaintenanceConfiguration.Publication publication;
     private boolean closed;
 
     /** Only an actual NativeGate-consumed exclusion can select the canonical source. No path,
@@ -92,9 +93,18 @@ public final class SqliteSourceLease implements AutoCloseable {
     }
 
     private void requireSqliteSource() throws IOException {
-        absent(data.resolve("database.dpapi"));
+        if(publication==null)absent(data.resolve("database.dpapi"));
+        else publication.requireConfiguration(root);
         for (String name : List.of("memory.db", "knowledge/knowledge.db"))
             for (String suffix : List.of("-journal", "-wal", "-shm")) absent(data.resolve(name + suffix));
+    }
+
+    /** Only the same live owner's verified publication may change the absent-config invariant.
+     * The source files stay pinned; neither a digest supplied by a caller nor a saved intent
+     * can manufacture this state. The owner retains and closes the publication capability. */
+    synchronized void retainPublication(MaintenanceConfiguration.Publication published)throws IOException {
+        if(closed||publication!=null||published==null)throw stopped();
+        published.requireHeld(root);publication=published;requireHeld();
     }
 
     /** The maintenance journal supplies its freshly reserved, private directory. No source write,
@@ -140,6 +150,7 @@ public final class SqliteSourceLease implements AutoCloseable {
     }
 
     Path root() { return root; }
+    boolean hasPublication() { return publication!=null; }
     static Connection readOnly(Path path) throws SQLException {
         var config = new SQLiteConfig(); config.setReadOnly(true); config.setBusyTimeout(1000);
         // Ordinary SQLite locking/change detection stays enabled; never assert immutable=1.

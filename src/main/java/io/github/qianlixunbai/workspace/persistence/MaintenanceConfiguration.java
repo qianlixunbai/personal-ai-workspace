@@ -52,30 +52,77 @@ public final class MaintenanceConfiguration {
     }
 
     static String publish(Path root,String operation,SqliteCombinedMigration.Expected expected,Held held) throws IOException {
-        try(var prepared=open(root,operation)) {
+        try(var publication=holdPublication(root,operation,expected)) { return publication.publish(held); }
+    }
+
+    /** Retained by the live source owner BEFORE attempting publication. Failure retains this
+     * object's handles until explicit owner close; it never grants Runtime admission. */
+    static Publication holdPublication(Path root,String operation,SqliteCombinedMigration.Expected expected)throws IOException {
+        var publication=new Publication(root,operation,expected);
+        try{publication.open();return publication;}catch(Exception failure){publication.close();throw stopped();}
+    }
+
+    static final class Publication implements AutoCloseable {
+        private final Path root;private final String operation;private final SqliteCombinedMigration.Expected expected;
+        private Prepared prepared;private FileChannel gate;private String gateIdentity;
+        private java.sql.Connection target;private SqliteSourceLease.FilePin configuration;
+        private boolean attempted,published,closed;
+        Publication(Path root,String operation,SqliteCombinedMigration.Expected expected){this.root=root;this.operation=operation;this.expected=expected;}
+        private void open()throws IOException {
+            prepared=MaintenanceConfiguration.open(root,operation);
             if(!prepared.intent.target.equals(expected))throw stopped();
-            // The lock is for this configuration protocol, never a substitute for the source owner.
             Path lock=prepared.dir.resolve("publication.lock");
             try{WindowsPrivateAcl.createFile(lock);}catch(FileAlreadyExistsException existing){WindowsPrivateAcl.verify(lock,false);}
-            try(var gate=FileChannel.open(lock,StandardOpenOption.READ,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS,
-                    ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE)) {
-                if(gate.size()!=0)throw stopped();
-                Path config=root.resolve("data/database.dpapi");
+            gateIdentity=TrustedDatabaseConfiguration.Identity.read(lock,false);
+            gate=FileChannel.open(lock,StandardOpenOption.READ,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS,
+                    ExtendedOpenOption.NOSHARE_WRITE,ExtendedOpenOption.NOSHARE_DELETE);
+            verifyGate();
+        }
+        String publish(Held held)throws IOException {
+            if(closed||attempted)throw stopped();attempted=true;
+            try {
+                verifyGate();Path config=root.resolve("data/database.dpapi");
                 if(exists(config))return observe(config,prepared);
                 if(exists(prepared.dir.resolve("attempt.dpapi")))return "PUBLICATION_UNCONFIRMED";
-                held.check();
-                try(var target=MaintenanceTarget.holdVerified(dataSource(prepared.plain),expected)) {
-                    held.check();prepared.verify();MaintenanceTarget.verifyHeld(target,expected);SqliteSourceLease.absent(config);
-                    protectedRecord(prepared.dir.resolve("attempt.dpapi"),JSON.writeValueAsBytes(prepared.intent),root,operation);
-                    // No REPLACE_EXISTING, rename-over-existing, deletion or rollback is possible here.
-                    held.check();prepared.verify();MaintenanceTarget.verifyHeld(target,expected);writeNew(config,prepared.encrypted);
-                    MaintenanceTarget.verifyHeld(target,expected);
-                    String state=observe(config,prepared);
-                    if(!state.equals("RECORDED_CONFIGURATION_PRESENT_ACTIVATION_BLOCKED"))throw stopped();
-                    return state;
-                }
+                held.check();target=MaintenanceTarget.holdVerified(dataSource(prepared.plain),expected);
+                held.check();prepared.verify();MaintenanceTarget.verifyHeld(target,expected);SqliteSourceLease.absent(config);
+                protectedRecord(prepared.dir.resolve("attempt.dpapi"),JSON.writeValueAsBytes(prepared.intent),root,operation);
+                held.check();prepared.verify();MaintenanceTarget.verifyHeld(target,expected);writeNew(config,prepared.encrypted);
+                // Keep the exact published file and target transaction, rather than retaining only
+                // a success string after closing both. A partial/uncertain write is never retried.
+                configuration=new SqliteSourceLease.FilePin(config);
+                published=true;requireHeld(root);
+                return "RECORDED_CONFIGURATION_PRESENT_ACTIVATION_BLOCKED";
+            }catch(Exception failure){throw stopped();}
+            finally{
+                // Retaining ownership must not retain the temporary decrypted configuration.
+                // Subsequent checks use pinned files, the ciphertext digest and the live connection.
+                if(prepared.plain!=null)Arrays.fill(prepared.plain,(byte)0);
+                if(prepared.encrypted!=null)Arrays.fill(prepared.encrypted,(byte)0);
             }
-        }catch(Exception failure){throw stopped();}
+        }
+        private void verifyGate()throws IOException {
+            if(closed||gate==null||!gate.isOpen()||gate.size()!=0
+                    ||!gateIdentity.equals(TrustedDatabaseConfiguration.Identity.read(prepared.dir.resolve("publication.lock"),false)))throw stopped();
+            prepared.verify();
+        }
+        void requireConfiguration(Path expectedRoot)throws IOException {
+            if(!root.equals(expectedRoot)||!published||configuration==null)throw stopped();
+            verifyGate();configuration.verify();
+            if(!configuration.digest().equals(prepared.intent.after))throw stopped();
+        }
+        void requireHeld(Path expectedRoot)throws IOException {
+            requireConfiguration(expectedRoot);
+            try{MaintenanceTarget.verifyHeld(target,expected);}catch(Exception failure){throw stopped();}
+        }
+        public void close(){
+            if(closed)return;closed=true;
+            // Closing is suspension, not successful activation. All durable records remain fenced.
+            if(target!=null)try{target.close();}catch(Exception ignored){}
+            if(configuration!=null)try{configuration.close();}catch(IOException ignored){}
+            if(gate!=null)try{gate.close();}catch(IOException ignored){}
+            if(prepared!=null)prepared.close();
+        }
     }
 
     /** Fresh Gate/exclusion, protected intent and unchanged source/backup/target are all needed.

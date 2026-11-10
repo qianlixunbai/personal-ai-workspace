@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 配置发布后的活所有权模块已通过真实合成验证：直接 owner 发布后继续持有来源、备份、发布配置和原目标 SHARE 锁连接；失效拒绝后保留资源到显式关闭，关闭保留操作记录和普通启动 fence。最终候选验证了跨进程文件／目标 SQL 写入阻断、失效后的保留及关闭后后来数据保全；临时库正常停止、凭据清理、子进程正常退出、Job 0、共享锁释放。正常 KnowledgeStore 初始化会执行恢复写入，与维护 SHARE 锁冲突；原生父子移交、分阶段 Runtime 启动、真实后端验收及安全完成仍未实现，完整维护迁移继续 BLOCKED，没有用旧回执或固定 READY 开放入口。[实际边界、限定验收与接续约束](engineering/MAINTENANCE-PUBLICATION-OWNERSHIP-ACCEPTANCE.md)。
+
 2026-11-10 维护绑定／配置层已统一交付：产品提交 `ccfffa2d463957713fd2bf081f785c4059307038`，新包 `artifacts/PersonalAiWorkspace-maintenance-binding-config-20261110.zip`（SHA-256 `0EAC0591CB9751D756638BF97E373C41B31948B9258550E2EB27B0127B259827`）。933 payload／934 ZIP 条目／420 内嵌 pins 全部通过，交付 Runtime 仅更新最终验收候选的来源标记；publish Job 0／锁释放。原生所有权激活移交及启动后的真实权威核对仍缺失，配置发布与 fence 必须一起保留，不能称完整维护迁移已开通。旧包、用户文档、main 和真实数据不变，无推送。[完整 SHA、资源收尾和接续缺口](engineering/MAINTENANCE-BINDING-CONFIGURATION-ACCEPTANCE.md)。
 
 2026-11-10 已补齐维护目标的持久绑定、受保护配置意图／有限恢复写入，以及未完成维护的普通启动阻断。新合成验收通过 PostgreSQL 重启后身份重读、新进程完成配置发布、后来目标数据拒绝并保全、后来配置保留、已尝试后缺席配置不重建、普通启动仍拒绝；没有重放导入。三个 Java 子进程正常退出，临时库正常停止，凭据清理，Job 0／共享锁释放。原生激活所有权移交仍未实现，BLOCKED／未注册写入者保护不变，完整维护迁移未开通。main、六份用户文档、真实数据和旧包保留，不推送。[最终候选、历史失败、精确验收范围与接续](engineering/MAINTENANCE-BINDING-CONFIGURATION-ACCEPTANCE.md)。

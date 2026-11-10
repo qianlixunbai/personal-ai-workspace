@@ -16,8 +16,8 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.*;
 
-/** Offline source/backup/import owner, deliberately stopping before native activation.
- * No record is an authorization token; recovery is observational and never restores configuration.
+/** Offline source/backup/import/publication owner, deliberately stopping before native activation.
+ * No record is an authorization token; closing suspends ownership and keeps durable startup fencing.
  * Every attempted write is preceded by a durable, CurrentUser-protected stage. */
 public final class SqliteMaintenanceOwner implements AutoCloseable {
     public enum Stage { SOURCE_FROZEN, BACKUP_READY, TARGET_PREPARED, COMMIT_ATTEMPTED,
@@ -37,6 +37,8 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
     private String backupDigest;
     private FileChannel ownerLock;
     private String ownerLockIdentity;
+    private MaintenanceConfiguration.Publication publication;
+    private boolean publicationAttempted,publicationFailed;
 
     /** Called only after the native user's source/target choice. This API itself grants no such
      * choice: it consumes the real Gate-owned exclusion and only handles that fixed source. */
@@ -83,11 +85,18 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
         MaintenanceConfiguration.prepare(this,configuration);
     }
 
-    /** Last action of this owner: publication retains source handles but ends further use.
-     * Ordinary Runtime remains fenced until a native activation protocol is implemented. */
+    /** Publish once and retain source, backup, configuration and the verified target transaction.
+     * requireHeld remains meaningful after publication. A failure poisons further use, but all
+     * acquired handles stay owned until close. Neither success nor close authorizes activation. */
     public synchronized String publishConfiguration() throws IOException {
         Path root=configurationRoot(); var expected=configurationTarget();
-        return MaintenanceConfiguration.publish(root,operation,expected,this::requireHeld);
+        if(publicationAttempted)throw stopped();publicationAttempted=true;
+        try {
+            publication=MaintenanceConfiguration.holdPublication(root,operation,expected);
+            String result=publication.publish(this::requireHeld);
+            // Existing matching bytes alone are observational, never this owner's live publication.
+            source.retainPublication(publication);requireHeld();return result;
+        }catch(Exception failure){publicationFailed=true;throw stopped();}
     }
 
     public synchronized void createBackup() throws IOException {
@@ -130,13 +139,16 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
     }
 
     public synchronized void requireHeld() throws IOException {
-        if (closed) throw stopped();
+        if (closed||publicationFailed) throw stopped();
         source.requireHeld();
         requireOwnerLock(); requireJournalNames();
         for (var pin : directories) pin.verify();
         for (var pin : records) pin.verify();
         for (var pin : backupFiles) pin.verify();
         if (backupDigest != null && !backupDigest.equals(backupDigest(source.fingerprint(), backupFiles))) throw stopped();
+        // During publish the absent-source invariant still applies; after the transition both
+        // the exact published configuration and the original live target transaction must survive.
+        if(publication!=null&&source.hasPublication())publication.requireHeld(source.root());
     }
 
     private void pinBackup(SqliteSourceLease.Fingerprint fingerprint) throws IOException {
@@ -303,6 +315,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
         for (var pin : backupFiles) try { pin.close(); } catch (IOException ignored) {}
         for (int i = directories.size() - 1; i >= 0; i--) directories.get(i).close();
         source.close(); // The caller still owns its independent NativeGate exclusion.
+        if(publication!=null)publication.close();
         if (ownerLock != null) try { ownerLock.close(); } catch (IOException ignored) {}
     }
     private static IOException stopped() { return new IOException("Maintenance observation incomplete; preserve source, backup and configuration; no replay or activation"); }
