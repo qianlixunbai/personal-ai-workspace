@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 原生 Memory 写入中关闭保护：旧行为已用现有 STA 检查复现，会关闭窗口并取消保存请求；现保存／归档／恢复／删除操作结束前保留窗口并提示等待结果，托盘退出／切换已有关闭判断自然承接。两项受影响检查 2/2 通过，增量编译零警告错误；列表读取仍可关闭取消，结果不明的防重复写入保留。没有启动真实 EXE、数据库、浏览器或模型；已交付 `2bface5` 包暂未包含本项源码修复。[报告](engineering/DESKTOP-FALLBACK-DELIVERY-REPORT.md)。
+
 2026-11-10 新开发包已交付两项 WebView2 失败后的生命周期／缩放修复：产品源 `2bface5`，`artifacts/PersonalAiWorkspace-webview-lifecycle-fixed-20261110.zip`。仅重编译桌面端，933 个文件、实际 ZIP 解压及嵌入来源核对通过；Runtime／前端字节不变，旧验收包保留。本次没有重跑 EXE、原生记忆保存或浏览器启动；正常 WebView2 根因与未验收边界不变。接着处理已确认的原生记忆保存中关闭会取消请求的问题。[交付与后续报告](engineering/DESKTOP-FALLBACK-DELIVERY-REPORT.md)。
 
 2026-11-10 第三模块修复失败页缩放异常：已复现启动失败后点击“放大”访问已释放 Browser 抛出 `ObjectDisposedException`；现缩放控件仅在浏览器就绪时启用，失败/关闭时禁用，并拦截排队中的点击。原生记忆入口及原始错误提示保留。复用一项 STA 检查，修复前失败、修复后 1/1 通过，编译无警告/错误；没有新增浏览器启动、Profile、Runtime 或模型调用。三模块完成，下一会话优先把两项真实修复交付到新开发包；现有 `cff8015` 包未更新、WebView2 根因仍未知。[证据与明确打包接续](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。

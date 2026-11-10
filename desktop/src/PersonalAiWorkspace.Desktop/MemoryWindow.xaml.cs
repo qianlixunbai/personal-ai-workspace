@@ -22,7 +22,7 @@ public partial class MemoryWindow : Window
     private MemoryItem? loaded;
     private MemoryPage? results;
     private MemoryQuery view = new();
-    private bool busy, closed, rendering, initialized, stale, missing, outcomeUnknown;
+    private bool busy, writing, closed, rendering, initialized, stale, missing, outcomeUnknown;
     internal bool Dirty => initialized && (TitleBox.Text != (loaded?.Title ?? "")
         || ContentBox.Text != (loaded?.Content ?? "") || SelectedType != (loaded?.Type ?? MemoryType.PROJECT_NOTE));
     internal bool Stale => stale;
@@ -90,7 +90,7 @@ public partial class MemoryWindow : Window
     private async Task RunAsync(Func<Task> operation, bool affectsLoaded = true, bool mutation = false)
     {
         if (busy || closed) return;
-        busy = true; UpdateControls(); StatusText.Text = "正在处理 Memory…";
+        busy = true; writing = mutation; UpdateControls(); StatusText.Text = "正在处理 Memory…";
         try { await operation(); }
         catch (DesktopException error)
         {
@@ -103,7 +103,7 @@ public partial class MemoryWindow : Window
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!closed) StatusText.Text = ErrorText.For(DesktopError.InternalError); }
-        finally { if (!closed) { busy = false; UpdateControls(); } }
+        finally { writing = false; if (!closed) { busy = false; UpdateControls(); } }
     }
     private async Task FetchListAsync()
     {
@@ -240,7 +240,17 @@ public partial class MemoryWindow : Window
     private void OpenBackup(object sender, RoutedEventArgs e)
     { if (!busy && !closed) new MemoryBackupWindow(runtime) { Owner = this }.ShowDialog(); }
     private void WindowClosing(object? sender, CancelEventArgs e)
-    { if (Dirty && !confirm(MemoryConfirmation.Discard)) e.Cancel = true; }
+    {
+        // Closing cancels the lifetime token. A dispatched write needs its bounded result first,
+        // including lifecycle/delete writes that have no dirty draft to trigger confirmation.
+        if (writing)
+        {
+            e.Cancel = true;
+            StatusText.Text = "Memory 写入操作尚未结束，请等待结果后再关闭。";
+            return;
+        }
+        if (Dirty && !confirm(MemoryConfirmation.Discard)) e.Cancel = true;
+    }
     private void WindowClosed(object? sender, EventArgs e)
     {
         closed = true; lifetime.Cancel(); rendering = true;

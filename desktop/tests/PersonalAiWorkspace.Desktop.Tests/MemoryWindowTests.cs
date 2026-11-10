@@ -265,7 +265,7 @@ public sealed class MemoryWindowTests
 
 
     [Fact]
-    public Task BusySerializesOperationsCloseCancelsAndLateResponsesCannotRepopulateUi() => StaAsync(async () =>
+    public Task BusyWriteRetainsWindowUntilReceiptAndReadCloseStillCancels() => StaAsync(async () =>
     {
         var store = new Store(); using var runtime = store.Client(); var window = new MemoryWindow(runtime, _ => true);
         window.TitleBox.Text = PrivateTitle; window.ContentBox.Text = PrivateContent; window.SearchBox.Text = PrivateTitle;
@@ -275,10 +275,32 @@ public sealed class MemoryWindowTests
         Assert.False(window.StatusFilter.IsEnabled); Assert.False(window.TypeFilter.IsEnabled); Assert.False(window.MemoryList.IsEnabled);
         Assert.True(window.ContentBox.IsReadOnly); await window.SaveAsync(); await window.RefreshAsync(); window.NewItem();
         Assert.Equal(1, store.Mutations); Assert.Equal(0, store.Reads);
-        Assert.True(window.TryClose()); Assert.True(store.PendingToken.IsCancellationRequested); AssertCleared(window);
-        var response = Response(Item(), HttpStatusCode.Created); response.Headers.Location = new Uri($"/api/v1/memory/items/{Id:D}", UriKind.Relative);
-        store.Pending.SetResult(response); await pending; AssertCleared(window);
-        await window.SaveAsync(); await window.RefreshAsync(); Assert.Equal(1, store.Mutations);
+        try
+        {
+            Assert.False(window.TryClose()); Assert.False(store.PendingToken.IsCancellationRequested);
+            Assert.Contains("等待结果", window.StatusText.Text);
+            Assert.True(window.Dirty); Assert.Equal(PrivateContent, window.ContentBox.Text);
+            var receipt = store.Pending; store.Pending = null;
+            var response = Response(Item(), HttpStatusCode.Created); response.Headers.Location = new Uri($"/api/v1/memory/items/{Id:D}", UriKind.Relative);
+            receipt.SetResult(response); await pending;
+            Assert.False(window.Dirty); Assert.Contains("已保存", window.StatusText.Text);
+
+            // Lifecycle writes have no dirty draft; they must still retain the pending result.
+            store.Pending = new(); pending = window.ChangeStatusAsync();
+            Assert.False(window.TryClose()); Assert.False(store.PendingToken.IsCancellationRequested);
+            receipt = store.Pending; store.Pending = null;
+            receipt.SetException(new HttpRequestException(PrivateContent)); await pending;
+            Assert.Contains("操作结果待确认", window.StatusText.Text);
+            Assert.False(window.LifecycleButton.IsEnabled);
+            Assert.True(window.TryClose()); AssertCleared(window);
+            await window.SaveAsync(); await window.RefreshAsync(); Assert.Equal(2, store.Mutations);
+        }
+        finally
+        {
+            store.Pending?.TrySetException(new HttpRequestException("Synthetic fixture cleanup"));
+            await pending;
+            window.TryClose();
+        }
     });
 
     [Fact]
