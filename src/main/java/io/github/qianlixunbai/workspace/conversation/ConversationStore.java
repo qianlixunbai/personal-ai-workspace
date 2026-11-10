@@ -3,6 +3,7 @@ package io.github.qianlixunbai.workspace.conversation;
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.persistence.WorkspaceSchema;
 import io.github.qianlixunbai.workspace.persistence.PostgresqlWorkspace;
+import io.github.qianlixunbai.workspace.persistence.SqliteFileUrl;
 import javax.sql.DataSource;
 import io.github.qianlixunbai.workspace.memory.MemoryReference;
 import java.nio.file.Path;
@@ -25,7 +26,7 @@ public final class ConversationStore implements AutoCloseable {
     /** Location must come from the already initialized, private Workspace SQLite infrastructure. */
     public ConversationStore(Path databaseFile) {
         try {
-            db = DriverManager.getConnection("jdbc:sqlite:" + databaseFile);
+            db = DriverManager.getConnection(SqliteFileUrl.forFile(databaseFile));
             execute("PRAGMA foreign_keys=ON"); execute("PRAGMA busy_timeout=3000");
             if (scalar("PRAGMA foreign_keys") != 1 || scalar("PRAGMA user_version") != WorkspaceSchema.VERSION)
                 throw new SQLException();

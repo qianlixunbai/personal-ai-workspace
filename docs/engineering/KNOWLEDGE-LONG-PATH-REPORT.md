@@ -37,8 +37,16 @@ KnowledgeAnswerHistory 原先直接拼接普通 SQLite URL。将 Memory 已有�
 
 保存 PID 32476；最终独立重开 PID 15564；均正常退出 0。`knowledge-save.log`、`corrected-knowledge-reopen.log`、各进程与清理收据、两份 `knowledge-*-receipt.json` 保存结果。初次重开在短路径收据比较处失败：JSON `valueToTree` 的 LongNode 与解析收据的 IntNode 不同；修正工具为双方均经过 JSON 文本解析后，仅读取既存样本重新核对通过，未重放导入。原 `knowledge-reopen-errors.log` 保留。这是验证工具修正，未改变产品数据。
 
+## 接续模块：Conversation 共用数据库
+
+源库/索引修复已保存于 `baeaead`。接着在新合成目录确认：Memory 可初始化 1,074 字符的 `memory.db`，旧 ConversationStore 打开同一文件却返回 `CONVERSATION_STORAGE_UNAVAILABLE`（`conversation-baseline.log`）。只将该连接改为共用 URL；位置仍由已验证 Memory 实例提供，不增加迁移、schema 或准入逻辑。
+
+236 字符普通路径和 1,074 字符长路径各创建一条合成记忆、一段会话与一轮成功的用户/助手消息；从另一个 JVM 读回完整 ID、时间、原文、终态、轮次和 Memory 收据。Conversation 与 Memory 实际访问同一文件，无模型调用。保存完成 PID 23596，独立重开 PID 13196，退出 0；`conversation-complete-save.log`、`conversation-reopen.log` 及对应进程/清理收据保留。
+
+首轮工具误用页面上限 20，Conversation 现有上限为 10；已保存普通路径后在读取详情时被 `CONVERSATION_INVALID` 正确拒绝。修正工具参数后只核对该单条已有记录并补收据，不重复写入，再完成未执行的长路径及独立重开。原 `conversation-save-errors.log`、失败进程收据保留，产品分页限制未更改。
+
 ## 边界与接续
 
-原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮尚未打包或运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。Conversation 仍有普通文件连接，下一步仅按实证缺口处理。
+原 262 字符失败样本、前轮原生 Memory 成功样本、所有旧包保留。本轮尚未打包或运行完整 EXE；WebView2、失败页入口、PG、恢复/迁移、跨机器和正式发布均不属于本次通过范围。维护用 SQLite→PostgreSQL 迁移连接仍有普通文件 URL，未修改或执行，不能扩展为所有维护路径的长路径验收。
 
 所有构建及验证复用 Session 1 `Local\Dot_KAG_Workspace_HeavyRun` 短运行包装，覆盖同步子进程退出后 finally 释放；未遗弃、未强杀，未访问未知 18765 或 KAG 18895。未启动常驻服务。Git、编辑和报告不持锁。main 保持 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`；六份用户文档不修改、不暂存；仅本地可回滚提交，不推送。

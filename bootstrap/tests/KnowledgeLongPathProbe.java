@@ -1,4 +1,5 @@
 import io.github.qianlixunbai.workspace.common.*;
+import io.github.qianlixunbai.workspace.conversation.ConversationStore;
 import io.github.qianlixunbai.workspace.knowledge.*;
 import io.github.qianlixunbai.workspace.memory.*;
 import io.github.qianlixunbai.workspace.model.ModelProfile;
@@ -19,9 +20,11 @@ public final class KnowledgeLongPathProbe {
     private static final String QUESTION = "Synthetic only: 长路径 # %23 & 😀";
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 2 || !Set.of("baseline", "save", "complete-save", "reopen", "catalog-baseline", "index-baseline", "knowledge-save", "knowledge-reopen").contains(args[0])) throw new IllegalArgumentException();
+        if (args.length != 2 || !Set.of("baseline", "save", "complete-save", "reopen", "catalog-baseline", "index-baseline", "knowledge-save", "knowledge-reopen",
+                "conversation-baseline", "conversation-save", "conversation-complete-save", "conversation-reopen").contains(args[0])) throw new IllegalArgumentException();
         Path root = WindowsNativeGate.profileRoot(), evidence = Path.of(args[1]);
         String phase = args[0];
+        if (phase.startsWith("conversation-")) { conversations(root, evidence, phase); return; }
         if (phase.startsWith("knowledge-") || phase.endsWith("-baseline")) { knowledge(root, evidence, phase); return; }
         if (phase.equals("baseline")) {
             Path data = data(root, "baseline", true);
@@ -79,6 +82,49 @@ public final class KnowledgeLongPathProbe {
             }
         }
         System.out.println("MEMORY_SHARED_URL_" + phase.toUpperCase(Locale.ROOT) + "_PASS pid=" + ProcessHandle.current().pid());
+    }
+    private static void conversations(Path root, Path evidence, String phase) throws Exception {
+        Path token = root.resolve("credentials/client-token");
+        if (phase.equals("conversation-baseline")) {
+            Path data = data(root, phase, true); check(!Files.exists(data));
+            try (var memory = new MemoryStore(data, token)) {
+                try (var conversations = new ConversationStore(memory.databaseFile())) { throw new AssertionError("Old conversations unexpectedly opened"); }
+                catch (WorkspaceException expected) { check(expected.error().code() == ErrorCode.CONVERSATION_STORAGE_UNAVAILABLE); }
+                check(memory.list(MemoryItem.Status.ACTIVE, null, null, 0, 20).total() == 0);
+                System.out.println("BASELINE_CONVERSATION_FAILED_WITH_VALID_MEMORY length=" + memory.databaseFile().toString().length());
+            }
+            return;
+        }
+        for (String name : List.of("short", "long")) {
+            Path data = data(root, "conversation-" + name, name.equals("long"));
+            Path receipt = evidence.resolve("conversation-" + name + "-receipt.json");
+            boolean completing = phase.equals("conversation-complete-save");
+            boolean write = phase.equals("conversation-save") || (completing && name.equals("long"));
+            if (write) check(!Files.exists(data) && !Files.exists(receipt));
+            try (var memory = new MemoryStore(data, token); var conversations = new ConversationStore(memory.databaseFile())) {
+                UUID id;
+                if (write) {
+                    memory.create(MemoryItem.Type.PREFERENCE, "Synthetic only", QUESTION);
+                    id = conversations.create("Synthetic 长路径 😀").id();
+                    var turn = conversations.createTurnWithUserMessage(id, QUESTION);
+                    conversations.completeTurnWithAssistantMessage(id, turn.id(), "Synthetic persisted response 中文😀");
+                } else if (completing) {
+                    check(!Files.exists(receipt) && conversations.list(null, 0, 10).total() == 1);
+                    id = conversations.list(null, 0, 10).items().getFirst().id();
+                } else id = UUID.fromString(JSON.readTree(Files.readString(receipt)).get("conversationId").asString());
+                var detail = conversations.detail(id, 0, 10);
+                check(conversations.list(null, 0, 10).total() == 1 && detail.totalTurns() == 1);
+                check(detail.turns().getFirst().userMessage().content().equals(QUESTION));
+                check(detail.turns().getFirst().assistantMessage().content().equals("Synthetic persisted response 中文😀"));
+                var items = memory.list(MemoryItem.Status.ACTIVE, null, null, 0, 20);
+                check(items.total() == 1 && items.items().getFirst().content().equals(QUESTION));
+                var snapshot = Map.of("conversationId", id.toString(), "detail", detail, "memory", items);
+                if (write || completing) Files.writeString(receipt, JSON.writeValueAsString(snapshot), StandardOpenOption.CREATE_NEW);
+                else check(JSON.readTree(Files.readString(receipt)).equals(JSON.readTree(JSON.writeValueAsString(snapshot))));
+                System.out.println(phase.toUpperCase(Locale.ROOT) + "_PASS case=" + name + " length=" + memory.databaseFile().toString().length()
+                        + " pid=" + ProcessHandle.current().pid());
+            }
+        }
     }
     private static void knowledge(Path root, Path evidence, String phase) throws Exception {
         Path token = root.resolve("credentials/client-token");
