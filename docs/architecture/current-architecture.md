@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [Knowledge 导入连续性](../engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)：React 在详情读取成功前保留导入原请求回执，恢复入口仅调用既有 importState／get／list；状态查询 continuation 绑定原会话。所有列表读取统一使用当前视图 ref、请求序号、会话代次与页面可用性核对，筛选／页码改变即失效旧结果，列表失败与受理成功分别显示。回执未解决前阻止覆盖它的新导入；无持久回执、新 Runtime API／schema、自动重发或权限变更。
+
 2026-11-10 [会话编辑连续性](../engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)：React 将列表／搜索／新建／筛选的草稿确认集中在会话页，先经既有详情 API 读取目标及最新页、核对命中，再提交视图切换；失败保留原工作，成功仍撤销显式记忆范围。原生 ConversationWindow 同样先读取再同时更新选择／详情，刷新绑定原 ID，不自动把草稿带入其他会话。无新 Runtime API、schema、依赖、自动保存或重放。模型状态所有者规则未变，新增[只读身份来源分析](../engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)与桌面验收分别记账。
 
 2026-11-10 [来源阅读导航与问题草稿](../engineering/KNOWLEDGE-READING-NAVIGATION-REPORT.md)：React 保留至多 32 处来源位置元数据，返回时重新走既有文档详情／准确版本 Preview，成功才更新导航栈；离页和换会话清空。按行定位复用有界完整版本读取后计算原始 UTF-16 偏移，不建索引或缓存正文。问答表单以最近成功受理／历史读取内容识别后续修改，确认替换并在读取成功后提交界面变化；删除历史不会清掉新草稿。无新 Runtime API、schema、模型调用或权限；原所有者检查／未知请求保护未改。

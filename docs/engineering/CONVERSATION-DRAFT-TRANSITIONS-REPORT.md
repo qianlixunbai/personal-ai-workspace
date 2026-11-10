@@ -55,3 +55,5 @@
 原 model-state 校验拒绝保持独立。新增[身份来源只读核对](MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)说明 Java 环境用户名与原生有效令牌的区别，以及为什么仍不足以证明原故障根因。没有重试原动作、换 Profile／身份、改 ACL 或弱化检查。**本轮新包完整 EXE／WebView 未验收，真实模型恢复与整体维护仍 BLOCKED / productionGo=false。** 未读取真实凭据、迁移真实数据库、查询旧拒绝端口／进程或调用真实／付费模型；未推送。
 
 本轮至此完成两个真实编辑流程及一项独立只读诊断，没有追加第三个小功能。交接不应重新运行本批已通过场景或复制合成 Profile 重试 model-state；下一步应依据原拒绝的新相关证据，或明确的真实产品缺口选择工作。执行接口没有切换／核验当前模型、thinking 或 service tier 的能力，不能声称已经验证所请求的运行档位。
+
+同会话后续接续：基线 `66c4a57` 后按委派继续核实，完成第三个实质模块[Knowledge 导入后的读取与列表连续性](KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)，产品 `9daf2c1`。新 `import-continuity` 包包含三项修复，本报告的旧包和验证证据保留；没有重跑本批前端／Native 检查。最新交付和精确剩余边界见该接续报告。

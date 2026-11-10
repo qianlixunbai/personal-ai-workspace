@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 第三项[Knowledge 导入连续性](engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)已完成，产品 `9daf2c1`：受理后读取失败保留回执，只查原请求继续查看；当前筛选／页码与会话之外的迟到结果不能覆盖列表，末页并发清空会退回有效页。两项针对性场景及类型检查通过，10 个旧场景未选中，未重跑前两项会话验证。独立 `PersonalAiWorkspace-import-continuity-20261110.zip` 构建／来源校验通过，包含本会话三项修复，Job 0、共享锁释放。main、六文档及五个旧包哈希不变，未推送。原 model-state 拒绝未重试，根因未证实；完整新包 EXE／WebView、真实模型恢复和整体维护仍 BLOCKED / productionGo=false。
+
 2026-11-10 [会话草稿与上下文保护](engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)完成两个实际使用修复：网页切换／新建／筛选先保护消息和标题，目标失败保留原编辑内容；原生窗口不再把旧草稿带入另一会话，刷新保持当前身份。产品 `bcd9f87`／`f061213`，6 项受影响前端场景及 1 项 Native 综合场景通过，类型／构建与新 `conversation-drafts` 包来源校验通过；原始夹具失败保留，未重跑旧测试组。新增[所有者身份来源核对](engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)确认上游 JDK 默认用户名可来自 `USERNAME`，原生检查使用有效令牌 SID，仍缺原失败时取值，不构成重试或放宽检查依据。完整新包 EXE／WebView 未验收，维护仍 BLOCKED / productionGo=false；main、用户文档及旧包保留，未推送。
 
 2026-11-10 [来源回查、行号定位与问答草稿保护](engineering/KNOWLEDGE-READING-NAVIGATION-REPORT.md)已提交为 `370c313`：跨文档／版本返回会重新读取准确来源，行号定位绑定所选版本，历史替换和删除保留未提交问题。只选新增 3 项综合场景及类型检查通过，旧组未重跑。独立包 `PersonalAiWorkspace-reading-navigation-20261110.zip` 构建和来源／归档校验通过，Job 0、锁释放，旧包与用户文档未变。桌面模型状态目录拒绝仍保留，本轮仅核对检查顺序及两种身份来源，未重试／弱化检查；新流程完整 EXE／WebView 未验收，完整维护仍 BLOCKED / productionGo=false。
