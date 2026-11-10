@@ -33,6 +33,9 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     internal string ConfigurationVersion => configuration;
     internal long[] BackendPids { get; private set; } = Array.Empty<long>();
     internal bool VerifiedStopped => finished;
+    internal Process RuntimeProcess => runtime??throw Stop();
+    internal string JarSha256 => sources.JarSha256;
+    internal bool OwnedJobEmpty => job.ActiveProcessCount==0;
     internal string[] RestartBlockers { get; private set; } = ["STOPPED_INSPECTION_REQUIRED"];
 
     private MaintenanceRuntimeHandoff(Mmf3AcceptanceLaunch profile,TrustedDevelopmentRuntimeSources sources,
@@ -46,8 +49,11 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
     internal static Task<MaintenanceRuntimeHandoff> ReopenAsync(Mmf3AcceptanceLaunch profile,
             string operation,CancellationToken cancellation)=>OpenAsync(profile,null,operation,cancellation);
 
+    internal static Task<MaintenanceRuntimeHandoff> OpenWorkspaceAsync(Mmf3AcceptanceLaunch profile,
+            string operation,CancellationToken cancellation)=>OpenAsync(profile,null,operation,cancellation,reviewRestart:true);
+
     private static async Task<MaintenanceRuntimeHandoff> OpenAsync(Mmf3AcceptanceLaunch profile,
-            byte[]? configuration,string? priorOperation,CancellationToken cancellation)
+            byte[]? configuration,string? priorOperation,CancellationToken cancellation,bool reviewRestart=false)
     {
         profile.Validate();Mmf3ProfileNative.Verify(profile);
         TrustedDevelopmentRuntimeSources? sources=null;RuntimeProcessJob? job=null;
@@ -60,7 +66,7 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
             if(runtimeLock.Length!=0||modelLock.Length!=0)throw Stop();
             result=new(profile,sources,job,runtimeLock,modelLock);
             if(priorOperation is null)await result.StartCore(configuration??throw Stop(),cancellation).ConfigureAwait(false);
-            else{Hex(priorOperation,32);result.operation=priorOperation;await result.ReopenCore(cancellation).ConfigureAwait(false);}
+            else{Hex(priorOperation,32);result.operation=priorOperation;await result.ReopenCore(cancellation,reviewRestart).ConfigureAwait(false);}
             return result;
         }
         catch
@@ -118,14 +124,27 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         var offered=await Read(source,token).ConfigureAwait(false);Stage(offered,"OFFERED");Match(offered);
         await TakeOver(source,token).ConfigureAwait(false);
     }
-    private async Task ReopenCore(CancellationToken cancellation)
+    private async Task ReopenCore(CancellationToken cancellation,bool reviewRestart)
     {
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancellation);deadline.CancelAfter(TimeSpan.FromSeconds(120));
         var token=deadline.Token;var source=Launch(false,restart:true);
         var hello=await Read(source,token).ConfigureAwait(false);Stage(hello,"RESTART_HELLO");
         if(hello.GetProperty("pid").GetInt64()!=source.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
         long handle=ProfileRecoveryCoordinator.DuplicateExclusion(runtimeLock,source);
-        await Write(source,new{action="PREPARE_RESTART",operation,handle},token).ConfigureAwait(false);
+        await Write(source,new{action=reviewRestart?"REVIEW_RESTART":"PREPARE_RESTART",operation,handle},token).ConfigureAwait(false);
+        if(reviewRestart){
+            var preparedReview=await Read(source,token).ConfigureAwait(false);Stage(preparedReview,"RESTART_REVIEW");
+            if(preparedReview.GetProperty("pid").GetInt64()!=source.Id||Text(preparedReview,"operation")!=operation||source.HasExited)throw Stop();
+            var review=MaintenanceResumeConfirmation.Read(Text(preparedReview,"review"),Text(preparedReview,"digest"),profile.RunId,operation);
+            bool confirmed=await review.RequestAsync(token).ConfigureAwait(false);
+            RequireNative();if(source.HasExited)throw Stop();
+            await Write(source,new{action=confirmed?"CONFIRM_RESTART":"CANCEL_RESTART",operation,digest=review.Digest},token).ConfigureAwait(false);
+            if(!confirmed){
+                var cancelled=await Read(source,token).ConfigureAwait(false);Stage(cancelled,"RESTART_CANCELLED");
+                if(Text(cancelled,"operation")!=operation||Text(cancelled,"digest")!=review.Digest)throw Stop();
+                await RequireExited(source,token).ConfigureAwait(false);throw new OperationCanceledException("Workspace opening cancelled.");
+            }
+        }
         var prepared=await Read(source,token).ConfigureAwait(false);Stage(prepared,"RESTART_PREPARED");
         session=Text(prepared,"session");
         if(!Regex.IsMatch(session,"\\A[0-9]{8}\\z")||Text(prepared,"operation")!=operation

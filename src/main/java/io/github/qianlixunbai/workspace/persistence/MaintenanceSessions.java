@@ -145,6 +145,48 @@ public final class MaintenanceSessions implements AutoCloseable {
         public void close(){if(model!=null)model.close();if(source!=null)source.close();configuration.close();}
     }
 
+    /** A fresh, live review for the normal desktop entry. It permits only another
+     * model-disabled session, never an ordinary Java fence bypass or model execution. */
+    private record ResumeReview(int version,String kind,String profile,String operation,String predecessor,
+            String previousExit,String nonce,String configuration,String modelState,
+            MaintenanceTarget.Binding binding,String database,String role,String address,int port,
+            String scope,boolean modelExecutionAllowed){}
+    private static void reviewRestart(DataInputStream input,DataOutputStream output,MaintenanceSessions history,
+            Current current,MaintenanceExclusion exclusion,Path root)throws Exception {
+        long started=System.nanoTime();
+        current.require(exclusion,root);history.verifyPins();
+        var target=current.configuration.target;
+        MaintenanceTarget.verifyCurrentHeld(target,current.configuration.expected());
+        ResumeReview review;
+        try(var query=target.createStatement();var row=query.executeQuery(
+                "SELECT current_database(),current_user,host(inet_server_addr()),inet_server_port()")){
+            if(!row.next())throw stopped();
+            review=new ResumeReview(1,"LIVE_WORKSPACE_RESUME",root.getFileName().toString(),history.operation,
+                    history.session,history.exitDigest,HexFormat.of().formatHex(new java.security.SecureRandom().generateSeed(32)),
+                    history.intent.configuration(),history.intent.modelState(),current.configuration.expected().binding(),
+                    row.getString(1),row.getString(2),row.getString(3),row.getInt(4),"MODEL_DISABLED_WORKSPACE_SESSION",false);
+            if(row.next()||!"127.0.0.1".equals(review.address())||review.port()<1||review.port()>65535)throw stopped();
+        }
+        String json=new tools.jackson.databind.json.JsonMapper().writeValueAsString(review);
+        String digest=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(json.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        reply(output,Map.of("stage","RESTART_REVIEW","pid",ProcessHandle.current().pid(),
+                "operation",history.operation,"review",json,"digest",digest));
+        var decision=readFrame(input,Set.of("action","operation","digest"));
+        if(!history.operation.equals(decision.get("operation"))||!digest.equals(decision.get("digest")))throw stopped();
+        if("CANCEL_RESTART".equals(decision.get("action"))){
+            reply(output,Map.of("stage","RESTART_CANCELLED","operation",history.operation,"digest",digest));
+            throw new ResumeCancelled();
+        }
+        if(!"CONFIRM_RESTART".equals(decision.get("action"))
+                ||System.nanoTime()-started>java.time.Duration.ofSeconds(120).toNanos())throw stopped();
+        // The exact live connection and all source/configuration/model pins still exist.
+        // Only after this check may prepare() consume the predecessor's native stop receipt.
+        history.verifyPins();current.require(exclusion,root);
+        MaintenanceTarget.verifyCurrentHeld(target,current.configuration.expected());
+    }
+    private static final class ResumeCancelled extends Exception {}
+
     public static int runOwner(String[] args,InputStream rawInput,PrintStream rawOutput){
         var input=new DataInputStream(rawInput);var output=new DataOutputStream(rawOutput);
         System.setOut(new PrintStream(OutputStream.nullOutputStream()));System.setErr(System.out);
@@ -152,11 +194,13 @@ public final class MaintenanceSessions implements AutoCloseable {
             WindowsNativeGate.admit();reply(output,Map.of("stage","RESTART_HELLO","pid",ProcessHandle.current().pid(),
                     "profile",System.getProperty("workspace.native.development-profile","")));
             var request=readFrame(input,Set.of("action","operation","handle"));
-            if(!"PREPARE_RESTART".equals(request.get("action")))throw stopped();String operation=(String)request.get("operation");
+            boolean review="REVIEW_RESTART".equals(request.get("action"));
+            if(!review&&!"PREPARE_RESTART".equals(request.get("action")))throw stopped();String operation=(String)request.get("operation");
             try(var exclusion=WindowsNativeGate.receiveMaintenanceExclusion((Long)request.get("handle"))){
                 WindowsNativeGate.requireMaintenanceArguments(args,exclusion);Path root=WindowsNativeGate.maintenanceProfileRoot(exclusion);
                 String following,challenge;
                 try(var history=open(root,operation,End.OBSERVED);var current=new Current(exclusion,root,operation,history.intent)){
+                    if(review)reviewRestart(input,output,history,current,exclusion,root);
                     following=history.prepare();
                     reply(output,Map.of("stage","RESTART_PREPARED","operation",operation,"session",following,"pid",ProcessHandle.current().pid()));
                     var bind=readFrame(input,Set.of("action","operation","session","pid","challenge"));
@@ -173,6 +217,7 @@ public final class MaintenanceSessions implements AutoCloseable {
                 }
                 reply(output,Map.of("stage","RELEASED","operation",operation,"session",following,"challenge",challenge));return 0;
             }
-        }catch(Exception|LinkageError failure){try{reply(output,failureFrame("RESTART_OWNER",failure));}catch(Exception ignored){}return 10;}
+        }catch(ResumeCancelled cancelled){return 0;}
+        catch(Exception|LinkageError failure){try{reply(output,failureFrame("RESTART_OWNER",failure));}catch(Exception ignored){}return 10;}
     }
 }

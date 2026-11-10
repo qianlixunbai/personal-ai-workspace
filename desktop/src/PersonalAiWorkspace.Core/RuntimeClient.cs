@@ -12,13 +12,14 @@ public sealed partial class RuntimeClient : IDisposable
     private const int MaximumResponse = 1024 * 1024;
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     private bool ownedEndpointRequired;
-    private Uri? ownedEndpoint;
-    internal Uri? OwnedDevelopmentEndpoint => Volatile.Read(ref ownedEndpoint);
+    private sealed record DevelopmentEndpoint(Uri Address, bool StorageCredential);
+    private DevelopmentEndpoint? ownedEndpoint;
+    internal Uri? OwnedDevelopmentEndpoint => Volatile.Read(ref ownedEndpoint)?.Address;
     internal void UseOwnedDevelopmentEndpoint() { ownedEndpointRequired = true; Volatile.Write(ref ownedEndpoint, null); }
-    internal void BindOwnedDevelopmentEndpoint(int port)
+    internal void BindOwnedDevelopmentEndpoint(int port, bool storageCredential = false)
     {
         if (!ownedEndpointRequired || port is < 1 or > 65535 or 18765) throw new InvalidOperationException();
-        Volatile.Write(ref ownedEndpoint, new Uri("http://127.0.0.1:" + port));
+        Volatile.Write(ref ownedEndpoint, new DevelopmentEndpoint(new Uri("http://127.0.0.1:" + port), storageCredential));
     }
     internal void ClearOwnedDevelopmentEndpoint() => Volatile.Write(ref ownedEndpoint, null);
 #endif
@@ -52,6 +53,20 @@ public sealed partial class RuntimeClient : IDisposable
 
     public async Task CheckCredentialAsync(CancellationToken cancellationToken)
     {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        var generation = Volatile.Read(ref ownedEndpoint);
+        if (generation is { StorageCredential: true })
+        {
+            // The admitted model-disabled session authenticates against its real storage
+            // route. Provider readiness remains blocked and cannot run as a login side effect.
+            var status = await GetStorageStatusAsync(cancellationToken);
+            if (!ReferenceEquals(generation, Volatile.Read(ref ownedEndpoint)))
+                throw new DesktopException(DesktopError.RuntimeUnavailable);
+            if (status.Backend != "POSTGRESQL" || status.ConfigurationTrust != "TRUSTED_LOCAL"
+                || status.Connection != "CONNECTED" || status.ErrorCode != "NONE") throw Invalid();
+            return;
+        }
+#endif
         using var body = await SendAsync(HttpMethod.Get, "/api/v1/providers/readiness", null, true, HttpStatusCode.OK, cancellationToken);
         var root = body.RootElement;
         if (String(root, "provider") != "ollama" || String(root, "profile") != "translate.fast"
@@ -112,9 +127,9 @@ public sealed partial class RuntimeClient : IDisposable
         Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse, TimeSpan? requestTimeout = null)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
-        Uri? generation = Volatile.Read(ref ownedEndpoint);
+        var generation = Volatile.Read(ref ownedEndpoint);
         if (ownedEndpointRequired && generation is null) throw new DesktopException(DesktopError.RuntimeUnavailable);
-        using var request = new HttpRequestMessage(method, generation is null ? new Uri(path, UriKind.Relative) : new Uri(generation, path));
+        using var request = new HttpRequestMessage(method, generation is null ? new Uri(path, UriKind.Relative) : new Uri(generation.Address, path));
 #else
         using var request = new HttpRequestMessage(method, path);
 #endif

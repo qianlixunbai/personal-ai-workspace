@@ -133,7 +133,7 @@ internal sealed partial class DevelopmentRuntimeOwner : IDisposable
     }
     private async Task RunAsync(CancellationToken applicationLifetime)
     {
-        if (profile.RecoveryActivation is null) { await RunOwnedAsync(applicationLifetime).ConfigureAwait(false); return; }
+        if (profile.RecoveryActivation is null) { await RunWorkspaceAsync(applicationLifetime).ConfigureAwait(false); return; }
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(applicationLifetime, stop.Token);
         TrustedDevelopmentRuntimeSources? sources = null;
         RuntimeProcessJob? job = null;

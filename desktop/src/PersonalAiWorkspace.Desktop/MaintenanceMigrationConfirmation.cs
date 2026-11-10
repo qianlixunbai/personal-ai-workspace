@@ -58,7 +58,7 @@ internal sealed class MaintenanceMigrationConfirmation
         string summary="来源工作区："+profile+"\n目标：127.0.0.1:"+port+" / "+database+"\n应用角色："+role+
             "\n\n迁移记忆、对话和知识文档。先创建并核对备份，保留原 SQLite 与知识原文；Finance 不包含在内。"+
             "\n目标业务表已核对为空，并在本次确认期间持有写入排他事务。若来源、目标或当前会话改变，确认作废。"+
-            "\n模型保持关闭，不接管旧模型任务。迁移后只接入受限维护会话；日常启动仍未开放。"+
+            "\n模型保持关闭，不接管旧模型任务。迁移后接入受限数据会话；之后从桌面打开时需要重新核对并确认。"+
             "\n\n确认后开始备份和导入；取消不创建迁移登记、不导入数据、不发布配置。";
         string details="本次核对摘要："+digest+"\n来源文件摘要："+Text(root,"sourceDigest")+
             "\n目标集群："+Text(binding,"systemIdentifier")+"；数据库 OID："+binding.GetProperty("databaseOid").GetInt64()+
