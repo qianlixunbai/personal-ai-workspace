@@ -49,4 +49,24 @@
 
 **尚不能执行的具体动作：原生维护入口对真实 Profile 的完整停写迁移、配置发布／恢复。** `ProfileRecoveryCoordinator.SourceProducer` 仍为 BLOCKED / UNREGISTERED_WRITERS_UNPROVEN，`MaintenanceExclusion` 仍不授予来源权限；本轮没有改变该合同。组合 API 没有自动生产入口。需继续在受信 native owner 内落实来源冻结／完整备份至激活的整个时段、可恢复的受保护阶段记录及稳定集群绑定，再接用户明确确认。这是产品设计／实现阻塞，不是新的系统权限拒绝，不需要放宽 ACL、沙箱或账户组来“解锁”。
 
-默认入口、个人恢复、跨机器和正式发布保持未验收。本轮只有一个完整的两域协调模块，不把构建或日志观察凑成三项产品功能。main、六份用户文档、旧开发包保留，不推送；本地提交和新开发包的最终证据在后续交付段记录。
+默认入口、个人恢复、跨机器和正式发布保持未验收。本轮只有一个完整的两域协调模块，不把构建或日志观察凑成三项产品功能。main、六份用户文档、旧开发包保留，不推送。
+
+## 本地提交与统一开发包
+
+生产实现、限定验收程序和本报告的模块提交：`12b2d880fbab3ecfab655671b8d157ab7cc6d485`。
+
+新包：`artifacts/PersonalAiWorkspace-combined-migration-20261110.zip`，同名解压目录保留。来源为上述提交；仅开发交付，`productionGo=false`，没有执行正式发布或推送。
+
+| 交付证据 | 值 |
+| --- | --- |
+| ZIP SHA-256 | `E2CC57B4F90A957F2DF48EC38335FDFBE51541BF804B97842CE894E503018849` |
+| 交付 Runtime SHA-256 | `867A4C07FDD66E43DC5728BF3DFD79074D823C172C5BE25F68061EA8F230D9CB` |
+| 交付 Desktop DLL SHA-256 | `98048A60F05A9A3057FCFE94BD9802DBB1190FEE080B7AF89CBF733E0000A87C` |
+| payload／ZIP 条目／内嵌来源 pin | 933／934／420，逐项实字节校验通过 |
+| 真实合成 Profile | `883dc5967f554aab95cab14aaded9f1b` |
+| 临时 PostgreSQL | loopback 58322，system identifier `7706502905913082900`，已正常停止 |
+| 原 main | `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，未变 |
+
+交付 Runtime 与实际验收候选仅 `META-INF/workspace-runtime.properties` 的构建来源标记不同；其余每个 JAR 条目的解压字节均逐项比较一致。刷新来源标记后 Runtime 审计再次通过。Desktop 使用现有本地缓存 `--no-restore` 重建并嵌入新 Runtime pin，前端、JDK、NativeBootstrap 不变。相对上一包仅 Core DLL、Desktop DLL、Desktop EXE 和 Runtime JAR 四个 payload 文件变化，其余 929 个文件字节不变。没有重跑完整 EXE 或数据库矩阵。
+
+交付 guardian `36616` 于 `2026-11-10T11:32:05.1649749Z` 收尾，Job 成员 0，锁已释放。`delivery-result.json`、`publish-cleanup.json` 和 `final-state.json` 位于本轮证据目录。旧迁移 ZIP／正常网页 ZIP 的哈希与交接一致；六份原有未跟踪用户文档哈希完全相同。后续只需继续来源维护 owner 与受保护恢复记录，不应重跑已通过矩阵或将本组合 primitive 直接暴露成迁移按钮。
