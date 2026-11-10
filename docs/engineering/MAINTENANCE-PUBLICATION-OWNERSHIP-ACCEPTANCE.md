@@ -63,6 +63,18 @@
 
 ## 本地交付记录
 
-待最终验收回执、产品提交和统一新包完成后补齐。main、六份既有未跟踪用户文档、真实数据／默认 Profile／配置、既有数据库与旧包均保持不动；不推送，不调用模型，不触碰独立 KAG 或 personal-finance-OS。
+产品、限定探针和报告基础版本提交：`6b133f078bda9051ce98d521005d90a5a22637ea`，分支 `codex/knowledge-version-compare`。main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`。没有推送。
+
+新开发包 `artifacts/PersonalAiWorkspace-maintenance-publication-owner-20261110.zip` 及同名解压目录已完成，`productionGo=false`。只更新最终验收候选的构建来源标记，再用本地缓存 `--no-restore` 重建 Desktop 内嵌 Runtime pin；前端、JDK、NativeBootstrap 不重建，没有再运行 EXE 或数据库验收。
+
+| 交付核对 | 值 |
+| --- | --- |
+| ZIP SHA-256 | `6DB6D33DBBF5BE20D630D723AA94A8BBFF20530EB1CEDE4F258BA1CE972EBD5D` |
+| Runtime SHA-256 | `A8376A5BD71735019F2DEDC8A0BA862C7BD0E6E0AE76735313A8A8D2CDDBDB51` |
+| Desktop DLL SHA-256 | `0E766BF61C4F6A3D8BE8B98E14D1CDD3CD0E43A318D4277D3587BADDAF0F0A08` |
+| payload／ZIP 条目／内嵌 pins | 933／934／420，全部实际字节核对通过 |
+| 与验收候选比较 | 只有 META-INF/workspace-runtime.properties 构建来源标记变化，其余 JAR 条目实际字节相同 |
+
+publish guardian `35408` 于 `2026-11-10T13:05:52.8107977Z` 关闭空 Job、释放共享锁，记录在最终证据目录的 `delivery-result.json`／`publish-cleanup.json`。所有已执行动作都有完成回执；没有自动审核拒绝、待审批或结果不明动作。六份既有未跟踪用户文档 SHA 和上一份 binding/config ZIP SHA 与基线一致；真实数据／默认 Profile／配置、既有数据库和其他旧包没有操作。不调用模型，不触碰独立 KAG 或 personal-finance-OS。
 
 本轮未重试 Get-NetTCPConnection／18765、Docker、旧 Crashpad／私有目录／旧进程元数据、原生诊断或 KAG 脚本执行拒绝；未改 EFS、ACL、沙箱、注册表、网络／系统策略或账户组。
