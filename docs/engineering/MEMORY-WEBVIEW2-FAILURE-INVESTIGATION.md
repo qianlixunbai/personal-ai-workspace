@@ -1,5 +1,9 @@
 # Memory desktop WebView2 failure investigation
 
+## 2026-11-10: actual full EXE and normal-web Memory acceptance passed
+
+Following the user's own no-matching-listener result and explicit authorization to proceed through existing application admission, the verified `64b33b2991acb407d6887040ec1fe7ae902b0afb` bundle completed three real EXE/owned-Runtime runs on one newly prepared synthetic Profile. Normal React/Bridge readiness took 12,599 / 12,617 / 12,584 ms; live authentication and SQLite status passed; one explicit web Memory save was read back by an independent EXE with the same ID/content/revision. All three actual tray exits returned desktop exit code 0 and completed browser clear/disposal. Each guardian still had 5 Job members before kill-on-close disposal, so whole-tree natural exit is not claimed. The earlier denied system query was not repeated, and final system port state was not inspected. Full evidence and remaining acceptance boundaries: [normal web EXE report](MEMORY-NORMAL-WEB-EXE-ACCEPTANCE.md). The historical preflight restrictions below do not supersede this later authorization and result.
+
 ## 2026-11-10: corrected authorization boundary; current listener read denied
 
 The parent corrected the preceding handoff interpretation after `605ad838ae86a35047c3d9fa402528ab2128a5e3`: the old unrecorded query error did **not** establish a permission denial or prohibit an independent current-state check. The extra requirement that the user personally confirm exclusive port use was agent-added and is withdrawn. Existing continuous-development authorization covers an ordinary read-only check and, once isolation is established, the new synthetic full-EXE/Runtime run with normal precise tool approval. The previous section is retained as historical evidence, not the current authorization rule.
