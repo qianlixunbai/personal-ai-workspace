@@ -92,7 +92,7 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
   const readyLabel = !s ? '尚未确认' : s.ready ? snapshot?.catalog && !snapshot.error && !s.error ? '本次报告 Ready' : '已有验证记录；本次可用性待确认' : '尚未就绪'
   const nextStep = !enabled ? '先在连接与存储中刷新 Runtime 状态。Runtime 未确认可访问并通过原生认证时，Ollama 与模型状态未知。'
     : !s ? '点击只读刷新模型；失败后请显式再查，不会自动重试或重放任务。'
-    : s.uncertain ? '先核对外部服务及原执行完成事实，再使用既有高级恢复流程；只读刷新不会清除 guard。'
+    : s.uncertain ? '原执行缺少可核验的结束证明，恢复暂不可用。可只读刷新状态；重启或人工确认不能解除阻断。'
     : snapshot?.error || s.error || s.installed === 'UNKNOWN' ? '核对外部 Ollama、模型来源与开发说明，再只读刷新；无法据此断言 Ollama 未启动。'
     : s.installed === 'FALSE' ? '当前配置模型未确认安装；在外部 Ollama 核对已安装模型，再刷新并在此选择受支持模型。'
     : s.switching ? '等待本次切换结束后显式刷新，不重复提交。'
@@ -133,10 +133,10 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
     <div className="card-heading">
       <button className="secondary" disabled={disabled || !configured || !idle || s?.uncertain} onClick={() => { if (configured) void mutate('VALIDATE', configured.handle) }}>确认原选择的验证加载</button>
       <button className="secondary" disabled={disabled} onClick={() => { void inspect(true) }}>核对外部恢复（只读）</button>
-      <button className="secondary" disabled={disabled || !configured || !idle || !s?.uncertain} onClick={() => { if (configured) void mutate('RECOVER', configured.handle) }}>确认外部完成事实并恢复 guard</button>
+      <button className="secondary" disabled title="缺少原执行的所有权与结束证明">恢复暂不可用</button>
     </div>
     <p className="hint">普通切换不会主动释放旧模型。加载仍可能触发 Ollama 自动驱逐旧模型或其他客户端驻留模型；失败不自动恢复旧显存状态。每次操作均须原生确认。</p>
-    <p className="hint">恢复前须自行协调共享客户端，确认原请求完成或原服务及 runner 已结束；本地 lease 未退出时保持 STOP。Workspace 不停止或重启外部进程，清除 guard 不证明 Text Ready，不重放原任务。</p>
+    <p className="hint">恢复需要原执行的所有权与结束证明。当前外部 Ollama 路径尚不能提供这项证明，因此保留未知执行记录并暂停恢复；人工勾选、模型驻留列表和本地任务数不能替代它。</p>
     <p className="hint">只支持已安装且通过审核的本地 metadata 子集；外部 local-only 配置未验证。Provider 声明 Vision 不表示 Workspace 支持图片处理。</p>
     </details>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status">{message}</p>}

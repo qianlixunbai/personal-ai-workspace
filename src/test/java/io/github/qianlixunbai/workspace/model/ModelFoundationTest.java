@@ -385,16 +385,16 @@ class ModelFoundationTest {
                 code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(stale));
                 assertTrue(Files.exists(state().resolve("execution-guard.json")));
                 int probes = f.probes.get(); f.digest.set(NEXT);
-                code(ErrorCode.MODEL_IDENTITY_CHANGED, () -> restarted.manage(recovery));
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(recovery));
                 assertTrue(Files.exists(state().resolve("execution-guard.json"))); f.digest.set(DIGEST);
-                restarted.manage(recovery);
-                assertFalse(restarted.status().uncertain()); assertFalse(restarted.status().ready());
-                assertNotEquals(recovery.recoveryGeneration(), restarted.status().recoveryGeneration());
-                assertFalse(Files.exists(state().resolve("execution-guard.json"))); assertEquals(probes, f.probes.get());
-                code(ErrorCode.MODEL_UNAVAILABLE, () -> restarted.reserve("translate.fast", "translate-v1"));
-                assertEquals(probes, f.probes.get()); // Recovery is metadata-only; fresh native validation is still required.
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(recovery));
+                assertTrue(restarted.status().uncertain()); assertFalse(restarted.status().ready());
+                assertEquals(recovery.recoveryGeneration(), restarted.status().recoveryGeneration());
+                assertTrue(Files.exists(state().resolve("execution-guard.json"))); assertEquals(probes, f.probes.get());
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.reserve("translate.fast", "translate-v1"));
+                assertEquals(probes, f.probes.get());
                 f.malformed.set(false);
-                restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false)); assertTrue(restarted.status().ready());
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false)));
             }
             f.tagsOverride.set("{\"models\":[{}]}");
             code(ErrorCode.PROVIDER_RESPONSE_INVALID, () -> f.provider.catalog(8192, new Cancellation()));
@@ -403,7 +403,7 @@ class ModelFoundationTest {
             code(ErrorCode.MODEL_CATALOG_LIMIT_EXCEEDED, () -> f.provider.catalog(8192, new Cancellation()));
         }
     }
-    @Test void confirmedGuardRecoveryFollowedByRestartStillRequiresNativeValidation() throws Exception {
+    @Test void manualRecoveryCannotClearUnknownExternalExecutionAcrossRestart() throws Exception {
         try (var f = new Fixture()) {
             try (var manager = f.manager()) {
                 manager.switchInternal(0, MODEL, DIGEST);
@@ -413,31 +413,24 @@ class ModelFoundationTest {
                 }
                 assertTrue(manager.status().uncertain());
             }
+            byte[] guard = Files.readAllBytes(state().resolve("execution-guard.json"));
             try (var recovered = f.manager()) {
-                recovered.manage(intent(recovered, ActiveModelManager.Action.RECOVER, MODEL, true));
-                assertFalse(recovered.status().uncertain()); assertFalse(recovered.status().ready());
-                assertFalse(Files.exists(state().resolve("execution-guard.json")));
-                assertTrue(Files.exists(state().resolve("validation-required.json")));
+                var recovery = intent(recovered, ActiveModelManager.Action.RECOVER, MODEL, true);
+                f.provider.close(); // Recovery must not even need a metadata exchange.
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> recovered.manage(recovery));
+                assertTrue(recovered.status().uncertain()); assertFalse(recovered.status().ready());
+                assertArrayEquals(guard, Files.readAllBytes(state().resolve("execution-guard.json")));
+                assertFalse(Files.exists(state().resolve("validation-required.json")));
             }
             f.malformed.set(false); int before = f.probes.get();
             try (var restarted = f.manager()) {
                 assertFalse(restarted.status().ready());
-                // ADR-015 §8.1: recovery never grants a later automatic validation load, including restart.
-                code(ErrorCode.MODEL_UNAVAILABLE, () -> {
+                code(ErrorCode.MODEL_EXECUTION_UNCERTAIN, () -> {
                     try (var lease = restarted.reserve("translate.fast", "translate-v1")) { }
                 });
                 assertEquals(before, f.probes.get());
-                restarted.manage(intent(restarted, ActiveModelManager.Action.VALIDATE, MODEL, false));
-                assertFalse(Files.exists(state().resolve("validation-required.json")));
-                assertFalse(Files.exists(state().resolve("execution-guard.json")));
-                try (var lease = restarted.reserve("translate.fast", "translate-v1")) {
-                    assertEquals(1, lease.model().revision());
-                }
-            }
-            before = f.probes.get();
-            try (var normal = f.manager(); var lease = normal.reserve("translate.fast", "translate-v1")) {
-                assertEquals(1, lease.model().revision());
-                assertEquals(before + 1, f.probes.get()); // Normally validated durable selection retains approved bootstrap.
+                assertTrue(restarted.status().uncertain());
+                assertArrayEquals(guard, Files.readAllBytes(state().resolve("execution-guard.json")));
             }
         }
     }
@@ -491,7 +484,9 @@ class ModelFoundationTest {
             assertEquals(0, f.probes.get());
         }
         Files.delete(state().resolve("execution-guard.pending"));
-        try (var writer = store()) { writer.recoverGuard(); }
+        try (var writer = store()) { assertThrows(java.io.IOException.class, writer::recoverGuard); }
+        // Remove only this test's synthetic guard to exercise independent marker corruption.
+        Files.delete(state().resolve("execution-guard.json"));
         Path marker = state().resolve("validation-required.json");
         String valid = Files.readString(marker);
         try (var f = new Fixture(); var legacy = f.manager()) {

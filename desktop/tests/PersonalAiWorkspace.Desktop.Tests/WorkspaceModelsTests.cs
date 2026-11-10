@@ -108,10 +108,20 @@ public sealed class WorkspaceModelsTests
         Assert.True(f.Dialog.Token.IsCancellationRequested); Assert.Contains("CANCELLED", Assert.Single(f.Sent));
         f.Dialog.Choice.SetResult(true); Assert.Equal(0, f.Posts);
     }
+    [Fact] public async Task UnknownExecutionRecoveryCannotAskForConsentOrPost()
+    {
+        using var f = new Fixture(); await f.Inspect();
+        await f.Receive("models.mutate", new { action = "RECOVER", handle = Handle,
+            expectedSelectionRevision = 0, recoveryGeneration = Generation });
+        Assert.Contains("ModelExecutionUncertain", Assert.Single(f.Sent));
+        Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
+    }
     [Fact] public Task OwnedModelWindowHasDefaultFocusedCancelExactDigestWarningAndSeparateExternalConsent() => Sta(() => {
         var host = new Window { Width = 200, Height = 100, ShowInTaskbar = false }; host.Show();
         try {
-            foreach (var action in new[] { ModelAction.SWITCH, ModelAction.RELEASE, ModelAction.RECOVER }) {
+            Assert.Throws<DesktopException>(() => new ModelConfirmationWindow(host,
+                new(ModelAction.RECOVER, Handle, "a:latest", "ggml", Digest, 0, null, null, null, Generation, true)));
+            foreach (var action in new[] { ModelAction.SWITCH, ModelAction.RELEASE }) {
                 var intent = new ModelIntent(action, Handle, "a:latest", "ggml", Digest, 0, null, null, null, action == ModelAction.RECOVER ? Generation : null, action != ModelAction.SWITCH);
                 var dialog = new ModelConfirmationWindow(host, intent);
                 _ = dialog.Dispatcher.BeginInvoke(new Action(() => {

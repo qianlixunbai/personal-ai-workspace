@@ -374,6 +374,11 @@ public final class ActiveModelManager implements AutoCloseable {
 
     /** All mutations enter the same gate as reservations. Native confirmation is owned by Desktop. */
     public ManagementStatus manage(Intent intent) {
+        // A checkbox, catalog identity and an empty local lease set cannot prove that a
+        // previous HTTP request or external runner ended. No provider currently supplies
+        // a live, request-bound recovery capability; preserve the durable guard.
+        if (intent.action() == Action.RECOVER)
+            throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "EXTERNAL_EXECUTION_PROOF_REQUIRED");
         synchronized(gate) { visionEpoch=null; visionIntent=null; }
         if (intent.action() == Action.SWITCH || intent.action() == Action.RELEASE_OLD_THEN_SWITCH || intent.action() == Action.VALIDATE) {
             selectionOperation(intent.expectedSelectionRevision(), intent.candidateModel(), intent.candidateDigest(), intent);
@@ -395,22 +400,7 @@ public final class ActiveModelManager implements AutoCloseable {
                             if (selected) { ready = false; recoveryLoadRequiresConfirmation = true; loaded = Fact.UNKNOWN; }
                         }
                     }
-                } else {
-                    synchronized (operations) {
-                        // Keep the logical switch gate closed across metadata validation and private guard IO.
-                        synchronized (gate) { validateRecovery(intent); }
-                        budget.cancellation.check();
-                        store.requireValidation(revision, intent.candidateModel(), intent.candidateDigest());
-                        store.recoverGuard();
-                        synchronized (gate) {
-                            uncertain = false; ready = false; recoveryLoadRequiresConfirmation = true;
-                            cacheEpoch = newCacheEpoch(); recoveryGeneration = UUID.randomUUID().toString(); error = null;
-                        }
-                    }
                 }
-            } catch (IOException failure) {
-                synchronized (gate) { uncertain = true; ready = false; error = ErrorCode.MODEL_EXECUTION_UNCERTAIN; }
-                throw new WorkspaceException(ErrorCode.MODEL_EXECUTION_UNCERTAIN, "MODEL_RECOVERY");
             } finally { synchronized (gate) { switching = false; } }
         }
         synchronized (gate) {

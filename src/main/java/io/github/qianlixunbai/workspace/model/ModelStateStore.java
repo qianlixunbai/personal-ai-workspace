@@ -227,17 +227,9 @@ public final class ModelStateStore implements AutoCloseable {
         guardKey = null;
     }
 
-    /** Explicit native recovery only. Startup guard remains unresolved until this action succeeds. */
+    /** Historical guards have no request/owner binding. Native consent cannot recover them. */
     synchronized void recoverGuard() throws IOException {
-        checkSelection();
-        if (!unresolved || exists(root.resolve("execution-guard.pending"))) throw new IOException("Unrecoverable execution guard");
-        Path guard = root.resolve("execution-guard.json");
-        parseGuard(read(guard, 128));
-        Object observed = verify(guard, false);
-        if (guardKey != null && !Objects.equals(guardKey, observed)) throw new IOException("Execution guard identity changed");
-        if (guardPin == null) guardPin = pin(guard);
-        guardKey = observed;
-        clearGuard();
+        throw new IOException("External execution ownership and completion are unproven; preserve guard");
     }
 
     private void atomicWrite(String targetName, String pendingName, byte[] bytes, int limit, boolean selectionWrite) throws IOException {

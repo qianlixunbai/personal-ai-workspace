@@ -25,6 +25,7 @@ internal sealed class ModelConfirmationWindow : Window
     internal const string EvictionWarning = "加载新模型可能触发 Ollama 自动驱逐旧模型或其他客户端正在驻留的模型。即使 Workspace 未主动释放旧模型，也无法保证旧模型继续驻留。切换失败不会自动恢复旧模型的显存状态。";
     internal ModelConfirmationWindow(Window owner, ModelIntent intent)
     {
+        if (intent.Action == ModelAction.RECOVER) throw new DesktopException(DesktopError.ModelExecutionUncertain);
         Owner = owner; Title = "Model exact-intent confirmation / 模型操作确认";
         Width = 700; SizeToContent = SizeToContent.Height; MaxHeight = 800; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
@@ -33,17 +34,13 @@ internal sealed class ModelConfirmationWindow : Window
         panel.Children.Add(Field("候选 / 目标：" + intent.CandidateModel + "\nRunner：" + intent.CandidateRunner + "\nChild Manifest SHA-256：" + intent.CandidateDigest));
         panel.Children.Add(Field("旧 Active：" + (intent.ExpectedActiveModel ?? "明确无 Active") + "\n旧 runner：" + (intent.ExpectedActiveRunner ?? "无") + "\n旧 digest：" + (intent.ExpectedActiveDigest ?? "无")
             + "\nExpected selection revision：" + intent.ExpectedSelectionRevision + (intent.RecoveryGeneration is null ? "" : "\nRecovery generation：" + intent.RecoveryGeneration)));
-        panel.Children.Add(new TextBlock { Text = intent.Action == ModelAction.RECOVER
-            ? "仅清除当前 guard；不会加载模型或重放原任务。原请求完成或原服务/runner 已结束是你接受的信任假设，Workspace 无法独立证明。\n本地执行尚未退出时必须保持 STOP。"
-            : intent.Action == ModelAction.RELEASE ? "仅释放上述单个模型，不改变 durable selection；不以 /api/ps 证明其他客户端空闲。" : EvictionWarning,
+        panel.Children.Add(new TextBlock { Text = intent.Action == ModelAction.RELEASE ? "仅释放上述单个模型，不改变 durable selection；不以 /api/ps 证明其他客户端空闲。" : EvictionWarning,
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 12) });
         if (intent.Action == ModelAction.RELEASE_OLD_THEN_SWITCH)
             panel.Children.Add(new TextBlock { Text = "额外授权：仅一次释放上述旧 Active identity/digest，再加载候选。失败保留旧 durable selection，不保证旧 residency。", TextWrapping = TextWrapping.Wrap });
         CheckBox? external = null;
         if (intent.ExternalConfirmed) {
-            external = new CheckBox { Content = new TextBlock { Text = intent.Action == ModelAction.RECOVER
-                ? "已协调共享客户端，确认原请求完成或原服务/runner 已结束；接受 Workspace 无法独立证明该外部事实。"
-                : "已协调共享 Ollama 客户端，确认可释放指定单模型；接受外部空闲是用户确认的信任假设。", TextWrapping = TextWrapping.Wrap }, Margin = new Thickness(0, 12, 0, 12) };
+            external = new CheckBox { Content = new TextBlock { Text = "已协调共享 Ollama 客户端，确认可释放指定单模型；接受外部空闲是用户确认的信任假设。", TextWrapping = TextWrapping.Wrap }, Margin = new Thickness(0, 12, 0, 12) };
             panel.Children.Add(external);
         }
         panel.Children.Add(new TextBlock { Text = "60 秒内有效；取消、Escape 或关闭窗口均拒绝本次操作。", TextWrapping = TextWrapping.Wrap });

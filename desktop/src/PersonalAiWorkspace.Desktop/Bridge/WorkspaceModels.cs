@@ -59,6 +59,9 @@ internal sealed class WorkspaceModels(RuntimeClient runtime, IModelConfirmation 
             var candidate = snapshot.Catalog.Models.SingleOrDefault(x => x.Handle == handle) ?? throw new DesktopException(DesktopError.ModelCatalogStale);
             if (!Enum.TryParse<ModelAction>(action, out var kind) || !Enum.IsDefined(kind) || kind.ToString() != action)
                 throw new DesktopException(DesktopError.InvalidRequest);
+            // There is no live provider-owner completion capability behind this command.
+            // Never display a confirmation which could turn an unknown request into proof.
+            if (kind == ModelAction.RECOVER) throw new DesktopException(DesktopError.ModelExecutionUncertain);
             if (kind == ModelAction.RECOVER ? generation != snapshot.Status.RecoveryGeneration || !snapshot.Status.Uncertain : generation is not null)
                 throw new DesktopException(DesktopError.ModelExecutionUncertain);
             if (kind is ModelAction.RECOVER or ModelAction.VALIDATE && (candidate.Model != snapshot.Status.ConfiguredModel
