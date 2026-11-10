@@ -7,6 +7,7 @@ import { SettingsPage } from '../pages/SettingsPage'
 import { MemoryPage } from '../pages/MemoryPage'
 import type { MemoryDraftReceiver, MemoryLeaveGuard } from '../pages/MemoryPage'
 import { emptyMemory } from '../bridge/memory'
+import type { MemoryDraftSource } from '../bridge/memory'
 import { OperationPage } from '../pages/OperationPage'
 import { ConversationsPage } from '../pages/ConversationsPage'
 import { FinancePage } from '../pages/FinancePage'
@@ -35,7 +36,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   }
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
   const registerDraft = useCallback((receive: MemoryDraftReceiver) => { receiveMemoryDraft.current = receive; return () => { receiveMemoryDraft.current = () => false } }, [])
-  const draftFromSource = (content: string, role: 'USER' | 'ASSISTANT') => {
+  const draftFromSource = (content: string, role: MemoryDraftSource) => {
     const token = generation.current
     if (!receiveMemoryDraft.current({ ...emptyMemory(), content }, () => {
       if (token === generation.current) navigate('memory')

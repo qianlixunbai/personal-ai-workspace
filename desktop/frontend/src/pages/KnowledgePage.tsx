@@ -12,11 +12,12 @@ import { KnowledgeSourceFind } from '../components/KnowledgeSourceFind'
 import type { SourceMatch } from '../components/knowledgeSourceMatches'
 import { KnowledgeSourceLine } from '../components/KnowledgeSourceLine'
 import { readSourceText } from '../components/knowledgeSourceText'
+import { unicode } from '../bridge/memory'
 
 type ReadingPosition = { documentId: string; revision: string; offset: number; target: KnowledgeSourceTarget | null; offsets: number[] }
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
-export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'ASSISTANT') => void }) {
+export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'ASSISTANT' | 'KNOWLEDGE') => void }) {
   const [status, setStatus] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE'), [page, setPage] = useState(0)
   const [list, setList] = useState<KnowledgeList | null>(null), [detail, setDetail] = useState<KnowledgeDetail | null>(null)
   const [preview, setPreview] = useState<KnowledgePreview | null>(null), [revision, setRevision] = useState('')
@@ -32,6 +33,13 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const [corpusEpoch, setCorpusEpoch] = useState(0)
   const document = detail?.document
   const processing = document?.processingState === 'PENDING' || document?.processingState === 'PARSING'
+  const draftExcerpt = (start: number, end: number) => {
+    if (!enabled || !visible || busy || stale || !preview || !document || preview.documentId !== document.documentId
+      || preview.sourceRevision !== revision || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > preview.text.length) return
+    const content = preview.text.slice(start, end)
+    if (!content.trim() || !unicode(content)) return
+    onMemoryDraft?.(`${content}\n\n出处：${document.title}\n资料 ID：${preview.documentId}\n源版本：${preview.sourceRevision}；文本偏移：${preview.offset + start}–${preview.offset + end}（不含结束位置）`, 'KNOWLEDGE')
+  }
   const position = (): ReadingPosition | null => preview ? { documentId: preview.documentId, revision: preview.sourceRevision, offset: preview.offset, target: sourceTarget, offsets: [...offsets.current] } : null
   const remember = () => {
     const current = position()
@@ -246,7 +254,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           {stale && <p role="alert">请刷新详情确认当前状态后再修改；不会自动重试。</p>}
           <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { remember(); selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
             <button disabled={!enabled || busy || !revision} onClick={() => { void showPreview(0, 'reset') }}>预览源文本</button></div>
-          {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible} hasPrevious={offsets.current.length > 0} navigate={showPreview} />}
+          {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible || stale} hasPrevious={offsets.current.length > 0} navigate={showPreview} saveExcerpt={onMemoryDraft ? draftExcerpt : undefined} />}
           {revision && visible && <KnowledgeSourceLine key={`line/${document.documentId}/${revision}`} disabled={!enabled || busy} open={openLine} />}
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />

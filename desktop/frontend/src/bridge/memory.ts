@@ -10,6 +10,8 @@ export interface MemoryItem extends MemoryMetadata { content: string }
 export interface MemoryList { items: MemoryMetadata[]; total: number; page: number; limit: 20 }
 export interface MemoryRelated { items: MemoryMetadata[]; total: number; limit: 20 }
 export interface MemoryDraft { type: MemoryType; title: string; content: string }
+// Ephemeral editor provenance only; persisted Memory remains explicitly saved MANUAL content.
+export type MemoryDraftSource = 'USER' | 'ASSISTANT' | 'KNOWLEDGE'
 export interface MemoryQuery { query: string; status: MemoryStatus; type: MemoryType | null; page: number }
 export const emptyMemory = (): MemoryDraft => ({ type: 'PROJECT_NOTE', title: '', content: '' })
 export const isRevision = (value: unknown): value is string => typeof value === 'string' && /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n

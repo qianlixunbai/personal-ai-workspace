@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import { emptyMemory, validContent, validDraft, validQuery } from '../bridge/memory'
-import type { MemoryDraft, MemoryItem, MemoryList, MemoryMetadata, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
+import type { MemoryDraft, MemoryDraftSource, MemoryItem, MemoryList, MemoryMetadata, MemoryQuery, MemoryStatus, MemoryType } from '../bridge/memory'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { MemoryPreview } from '../components/MemoryPreview'
 import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
 import { MemoryDraftDuplicateCheck } from '../components/MemoryDraftDuplicateCheck'
-import type { MemorySourceRole } from '../components/memoryCandidate'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
-export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void, role: MemorySourceRole) => boolean
+export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void, role: MemoryDraftSource) => boolean
 const message = (problem: unknown) => problem instanceof BridgeError ? problem.message : 'Memory 暂时不可用，请显式刷新或重新加载。'
 type Confirmation = { title: string; text: string; confirmText: string; action: () => void } | null
 export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDraft, openBackup }: {
@@ -26,7 +25,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
-  const [fromConversation, setFromConversation] = useState<MemorySourceRole | null>(null)
+  const [fromSource, setFromSource] = useState<MemoryDraftSource | null>(null)
   const [candidateEpoch, setCandidateEpoch] = useState(0)
   const [revisionReview, setRevisionReview] = useState<{ draft: MemoryDraft; target: MemoryItem | null } | null>(null)
   const [currentReview, setCurrentReview] = useState<MemoryItem | null>(null)
@@ -63,7 +62,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     setCandidateEpoch(value => value + 1)
     setPreviewId(null)
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
-    setStale(false); setMissing(false); setUnknown(false); setError(''); setFromConversation(null)
+    setStale(false); setMissing(false); setUnknown(false); setError(''); setFromSource(null)
   }
   useEffect(() => {
     if (!bridge.ready || dirty === signalledDirty.current) return
@@ -90,7 +89,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     const token = generation.current
     requestDiscard(() => {
       if (token !== generation.current) return
-      loadEditor(null); setDraft(incoming); setFromConversation(role); setNotice(''); focusNext.current = 'editor'
+      loadEditor(null); setDraft(incoming); setFromSource(role); setNotice(''); focusNext.current = 'editor'
       accepted()
     })
     return true
@@ -182,7 +181,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     }, false, false)
   }
   const beginRevision = () => {
-    if (!enabled || !visible || actionLock.current || confirmation || loaded || fromConversation || blocked || !validDraft(draft)) return
+    if (!enabled || !visible || actionLock.current || confirmation || loaded || fromSource || blocked || !validDraft(draft)) return
     revisionGeneration.current++; setPreviewId(null); setError(''); setNotice('')
     setRevisionReview({ draft: { ...draft }, target: null })
     if (queryRef.current.status !== 'ACTIVE') void refresh({ ...queryRef.current, status: 'ACTIVE', page: 0 })
@@ -302,10 +301,11 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>}
       </section>
       <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : revisionReview ? '修订已有记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled || !!revisionReview} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
-        {fromConversation && <p className="hint">已从来源填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。来源角色仅用于本次草稿审阅；保存后标记为由你确认保存（MANUAL），不保留原会话、问答或引用关联。</p>}
-        {fromConversation && !loaded && <MemoryCandidatePanel key={candidateEpoch} bridge={bridge} enabled={enabled && visible && !busy && !confirmation && !blocked} draft={draft} role={fromConversation}
-          apply={candidate => { if (blocked || actionLock.current) return; loadEditor(null); setDraft(candidate); setNotice('已采用模型候选，尚未保存。请检查内容后点击保存。' + (fromConversation === 'ASSISTANT' ? '来源为助手回复，未经核实。' : '')); editor.current?.focus() }} />}
-        {!loaded && !fromConversation && !revisionReview && <div className="operation-actions">
+        {fromSource === 'KNOWLEDGE' ? <p className="hint">已填入你选中的资料原文和出处，尚未保存。请填写标题、核对并编辑内容，再点击保存。出处是可编辑的文字记录，保存后不会自动同步资料更新，也不建立可回查的引用关联；此内容仍需你核实。</p>
+          : fromSource && <p className="hint">已从来源填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。来源角色仅用于本次草稿审阅；保存后标记为由你确认保存（MANUAL），不保留原会话、问答或引用关联。</p>}
+        {fromSource && fromSource !== 'KNOWLEDGE' && !loaded && <MemoryCandidatePanel key={candidateEpoch} bridge={bridge} enabled={enabled && visible && !busy && !confirmation && !blocked} draft={draft} role={fromSource}
+          apply={candidate => { if (blocked || actionLock.current) return; loadEditor(null); setDraft(candidate); setNotice('已采用模型候选，尚未保存。请检查内容后点击保存。' + (fromSource === 'ASSISTANT' ? '来源为助手回复，未经核实。' : '')); editor.current?.focus() }} />}
+        {!loaded && !fromSource && !revisionReview && <div className="operation-actions">
           <button disabled={disabled || blocked || listLoading || !validDraft(draft)} onClick={beginRevision}>用此草稿修订已有记忆</button>
         </div>}
         {revisionReview && <section className="memory-revision-review" aria-label="修订目标审核">
@@ -337,7 +337,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
             <p className="hint">{[...draft.title].length} / 160 字符</p></div></div>
         <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled || !!revisionReview} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
         <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
-        {fromConversation && !validContent(draft.content) && <p role="alert" className="error">来源原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
+        {fromSource && !validContent(draft.content) && <p role="alert" className="error">来源原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
         {!loaded && !revisionReview && validContent(draft.content) && <MemoryDraftDuplicateCheck key={`draft-duplicates-${candidateEpoch}`} bridge={bridge}
           enabled={enabled && visible && !busy && !confirmation && !blocked} content={draft.content}
           openMemory={id => requestDiscard(() => get(id))} />}
