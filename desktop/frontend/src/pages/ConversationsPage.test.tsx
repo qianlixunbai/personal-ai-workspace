@@ -17,6 +17,8 @@ class Service extends Port {
   answerText: string | null = null
   exportOutcome: 'SAVED' | 'CANCELLED' = 'SAVED'
   error: string | null = null
+  getError: string | null = null
+  createError: string | null = null
   holdGet = false
   holdSend = false
   holdMemory = false
@@ -45,6 +47,7 @@ class Service extends Port {
         const page = Number(payload.page)
         result = { items: Array.from({ length: Math.min(10, Math.max(0, this.total - page * 10)) }, (_, i) => ({ ...item, id: uuid(page * 10 + i + 1), status: payload.status, title: `Synthetic conversation ${page * 10 + i + 1}` })), total: this.total, page, limit: 10 }
       } else if (method === 'conversations.get') {
+        if (this.getError) { this.reply(index, undefined, { ok: false, error: { code: this.getError, message: `Safe ${this.getError}` } }); return }
         const detail = history(this.turns, Number(payload.page), this.state)
         if (this.answerText) for (const turn of detail.turns) if (turn.assistantMessage) turn.assistantMessage.content = this.answerText
         result = { ...detail, conversation: { ...item, id: payload.conversationId } }
@@ -59,9 +62,12 @@ class Service extends Port {
       else if (method === 'conversations.send') {
         if (this.error) { this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: this.error, message: `Safe ${this.error}` } }); return }
         this.turns++; this.state = 'PENDING'; result = { accepted: true, conversationId: payload.conversationId, turnId: uuid(this.turns + 100), admittedSequences: this.admittedSequences, memoryCount: (payload.selectedMemoryRefs as unknown[]).length }
-      } else if (method === 'conversations.create') { this.turns = 0; result = item }
-      else if (method === 'conversations.rename') { this.title = String(payload.title); result = { ...item, title: this.title } }
-      else if (method === 'conversations.archive' || method === 'conversations.unarchive') { this.lifecycle = method === 'conversations.archive' ? 'ARCHIVED' : 'ACTIVE'; result = { ...item, status: this.lifecycle } }
+      } else if (method === 'conversations.create') {
+        if (this.createError) { this.reply(index, undefined, { ok: false, error: { code: this.createError, message: `Safe ${this.createError}` } }); return }
+        this.turns = 0; result = { ...item, id: uuid(++this.total) }
+      }
+      else if (method === 'conversations.rename') { this.title = String(payload.title); result = { ...item, id: payload.conversationId, title: this.title } }
+      else if (method === 'conversations.archive' || method === 'conversations.unarchive') { this.lifecycle = method === 'conversations.archive' ? 'ARCHIVED' : 'ACTIVE'; result = { ...item, id: payload.conversationId, status: this.lifecycle } }
       else if (method === 'conversations.delete') { this.total = 0; result = { deleted: true } }
       else if (method === 'conversations.cancelPending') { this.state = 'CANCELLED'; result = { requested: true } }
       this.reply(index, result)
@@ -269,6 +275,7 @@ it('jumps directly to a durable turn, returns to latest, preserves the draft and
   const scrolls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
   await click('Synthetic conversation 2 2026/10/4')
   port.holdGet = false
+  await click('清空草稿并打开')
   await act(async () => { port.reply(late, history(1000, 1)) })
   await screen.findByLabelText('会话消息')
   expect((screen.getByLabelText('跳转到轮次') as HTMLInputElement).value).toBe('')
@@ -345,6 +352,7 @@ it('continuous memory stops on changed selection, stale, unknown, switch, sessio
   expect(port.sent.filter(x => x.method === 'conversations.send')).toHaveLength(2)
   expect(port.sent.some(x => x.method === 'conversations.clearMemories')).toBe(true)
   port.error = null; await selectAndRetain(); await click('Synthetic conversation 2 2026/10/4')
+  await click('清空草稿并打开')
   expect(screen.queryByRole('checkbox')).toBeNull()
   await selectAndRetain(); await act(async () => { port.session(uuid(909)) }); await screen.findByLabelText('会话消息')
   expect(screen.queryByRole('checkbox')).toBeNull()
@@ -399,11 +407,83 @@ it('stale retains metadata, requires Review or Clear and native picker Cancel pr
   expect(screen.getByRole('button', { name: '发送' }).hasAttribute('disabled')).toBe(true)
   await click('清除记忆'); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy()
 })
-it('switch discards draft/Memory and clears both host scopes without cancelling execution', async () => {
+it('protects conversation drafts across list, creation and status transitions, then clears scopes only after confirmation', async () => {
   const { port, input } = await setup({ total: 2 }); await click('选择记忆…'); fireEvent.change(input, { target: { value: 'Synthetic A draft' } })
-  await click('Synthetic conversation 2 2026/10/4'); expect((screen.getByLabelText('会话消息') as HTMLTextAreaElement).value).toBe(''); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy()
+  await click('重命名'); fireEvent.change(screen.getByLabelText(/会话标题/), { target: { value: 'Uncommitted title' } })
+  const before = port.sent.length
+  await click('Synthetic conversation 1 2026/10/4')
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(port.sent).toHaveLength(before)
+  expect((screen.getByRole('button', { name: '重命名' }) as HTMLButtonElement).disabled).toBe(true)
+  for (const name of ['Synthetic conversation 2 2026/10/4', '新建对话']) {
+    await click(name); expect(document.activeElement?.textContent).toBe('取消'); await click('取消')
+    expect(input.value).toBe('Synthetic A draft'); expect((screen.getByLabelText(/会话标题/) as HTMLInputElement).value).toBe('Uncommitted title')
+    expect(screen.getByText(memory.title)).toBeTruthy(); expect(port.sent).toHaveLength(before)
+  }
+  fireEvent.click(screen.getByRole('tab', { name: '已归档' })); await click('取消')
+  fireEvent.keyDown(screen.getByRole('tab', { name: '使用中' }), { key: 'ArrowRight' }); await click('取消')
+  expect(port.sent).toHaveLength(before); expect(screen.getByRole('tab', { name: '使用中' }).getAttribute('aria-selected')).toBe('true')
+  fireEvent.change(input, { target: { value: '' } }); await click('Synthetic conversation 2 2026/10/4')
+  expect(screen.getByRole('dialog', { name: '打开其他会话？' })).toBeTruthy(); await click('取消')
+  fireEvent.change(input, { target: { value: 'Synthetic A draft' } })
+  await click('Synthetic conversation 2 2026/10/4'); await click('清空草稿并打开')
+  expect((screen.getByLabelText('会话消息') as HTMLTextAreaElement).value).toBe(''); expect(screen.getByText('仅使用你本次选择的记忆')).toBeTruthy()
+  expect(screen.queryByLabelText(/会话标题/)).toBeNull()
   expect(port.sent.some(x => x.method === 'conversations.cancelPending')).toBe(false)
   expect(port.sent.filter(x => x.method === 'conversations.clearMemories').slice(-2).map(x => x.payload)).toEqual([{ conversationId: uuid(1) }, { conversationId: uuid(2) }])
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'before new' } })
+  await click('新建对话'); await click('清空草稿并打开')
+  expect((screen.getByLabelText('会话消息') as HTMLTextAreaElement).value).toBe('')
+  expect(port.sent.filter(x => x.method === 'conversations.create')).toHaveLength(1)
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'before filter' } })
+  fireEvent.keyDown(screen.getByRole('tab', { name: '使用中' }), { key: 'ArrowRight' }); await click('清空草稿并打开')
+  expect(screen.queryByLabelText('会话消息')).toBeNull()
+  expect(screen.getByRole('tab', { name: '已归档' }).getAttribute('aria-selected')).toBe('true')
+  expect(port.sent.some(x => x.method === 'conversations.send')).toBe(false)
+})
+it('keeps the current work on failed destination reads, missing search hits and uncertain creation, and ignores late session replies', async () => {
+  const { port, input } = await setup({ total: 2, turns: 23 })
+  fireEvent.change(input, { target: { value: '原会话草稿\n😀' } }); await click('选择记忆…')
+  await click('重命名'); fireEvent.change(screen.getByLabelText(/会话标题/), { target: { value: 'title draft' } })
+  const clearCount = port.sent.filter(x => x.method === 'conversations.clearMemories').length
+  // Fail the latest-page read after destination page zero succeeds.
+  port.holdGet = true
+  await click('Synthetic conversation 2 2026/10/4'); await click('清空草稿并打开')
+  expect(input.readOnly).toBe(true); expect((screen.getByLabelText(/会话标题/) as HTMLInputElement).disabled).toBe(true)
+  const first = port.sent.length - 1
+  await act(async () => { port.reply(first, { ...history(23, 0), conversation: { ...conversation, id: uuid(2) } }) })
+  const last = port.sent.length - 1
+  expect(port.sent[last]?.payload).toEqual({ conversationId: uuid(2), page: 2 })
+  await act(async () => { port.reply(last, undefined, { ok: false, error: { code: 'RuntimeUnavailable', message: 'Safe unavailable' } }) })
+  expect(input.value).toBe('原会话草稿\n😀'); expect(screen.getByText(memory.title)).toBeTruthy()
+  expect((screen.getByLabelText(/会话标题/) as HTMLInputElement).value).toBe('title draft')
+  expect(screen.getByRole('button', { name: 'Synthetic conversation 1 2026/10/4' }).getAttribute('aria-pressed')).toBe('true')
+  expect(port.sent.filter(x => x.method === 'conversations.clearMemories')).toHaveLength(clearCount)
+  port.holdGet = false; port.createError = 'OutcomeUnknown'
+  await click('新建对话'); await click('清空草稿并打开')
+  expect(input.value).toBe('原会话草稿\n😀'); expect(port.sent.filter(x => x.method === 'conversations.create')).toHaveLength(1)
+  // Even a created conversation does not consume the draft when its read fails.
+  port.createError = null; port.getError = 'RuntimeUnavailable'
+  await click('新建对话'); await click('清空草稿并打开')
+  expect(screen.getByText(/新会话已创建，但未能打开/)).toBeTruthy(); expect(input.value).toBe('原会话草稿\n😀')
+  expect(port.sent.filter(x => x.method === 'conversations.create')).toHaveLength(2)
+  port.getError = null; port.searchId = uuid(2); port.searchSequence = 11; port.turns = 1
+  fireEvent.click(screen.getByText('查找历史消息')); fireEvent.change(screen.getByLabelText('原文关键词'), { target: { value: '旧消息' } })
+  await click('查找消息'); await click('Synthetic conversation · 第 11 轮 · 你'); await click('清空草稿并打开')
+  expect(screen.getByText(/该匹配消息已不可用/)).toBeTruthy(); expect(input.value).toBe('原会话草稿\n😀')
+  expect(port.sent.filter(x => x.method === 'conversations.clearMemories')).toHaveLength(clearCount)
+  // A modal and an in-flight switch must both be invalidated by session rotation.
+  await click('Synthetic conversation 2 2026/10/4')
+  await act(async () => { port.session(uuid(909)) })
+  expect(screen.queryByRole('dialog')).toBeNull(); await screen.findByLabelText('会话消息')
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'second session draft' } })
+  port.holdGet = true; await click('Synthetic conversation 2 2026/10/4'); await click('清空草稿并打开')
+  const late = port.sent.length - 1
+  port.holdGet = false; await act(async () => { port.session(uuid(910)) }); await screen.findByLabelText('会话消息')
+  fireEvent.change(screen.getByLabelText('会话消息'), { target: { value: 'third session draft' } })
+  await act(async () => { port.reply(late, { ...history(1), conversation: { ...conversation, id: uuid(2) } }) })
+  expect((screen.getByLabelText('会话消息') as HTMLTextAreaElement).value).toBe('third session draft')
+  expect(screen.getByRole('button', { name: 'Synthetic conversation 1 2026/10/4' }).getAttribute('aria-pressed')).toBe('true')
+  expect(port.sent.some(x => ['conversations.send', 'conversations.cancelPending', 'conversations.rename'].includes(String(x.method)))).toBe(false)
 })
 it('creates and manually renames, archive blocks send, unarchive keeps same identity and Delete needs explicit safe modal confirmation', async () => {
   const { port } = await setup(); await click('新建对话'); await click('重命名')

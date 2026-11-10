@@ -5,6 +5,7 @@ import { isTitle } from '../bridge/conversations'
 import type { ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, FailureCode } from '../bridge/conversations'
 import { ConversationMemoryPreview } from '../components/ConversationMemoryPreview'
 import { ConversationSearch } from '../components/ConversationSearch'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { AnswerContent } from '../components/AnswerContent'
 import type { ConversationSearchHit } from '../bridge/conversations'
 
@@ -39,6 +40,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [pollingError, setPollingError] = useState(false)
+  const [transition, setTransition] = useState<{ action: () => void; generation: number } | null>(null)
   const generation = useRef(0)
   const listGeneration = useRef(0)
   const detailQueue = useRef<Promise<void>>(Promise.resolve())
@@ -61,6 +63,12 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   const bytes = new TextEncoder().encode(draft).length
   const invalid = !draft.trim() || draft.length > 3000 || bytes > 5632
   const validTurn = /^[1-9][0-9]{0,3}$/.test(turnNumber.trim()) && Number(turnNumber) <= (detail?.totalTurns ?? 0)
+  const unsavedTitle = title !== null && title !== detail?.conversation.title
+  const requestTransition = (action: () => void) => {
+    if (!enabled || !visible || actionLock.current || transition) return
+    if (draft.length || unsavedTitle) setTransition({ action, generation: generation.current })
+    else action()
+  }
   const saveMemoryDraft = (messageId: string) => {
     if (!enabled || !visible || actionLock.current || historyLoading) return
     const turn = detailRef.current?.turns.find(item => item.status !== 'PENDING'
@@ -126,27 +134,57 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     detailQueue.current = result.catch(() => {})
     return result
   }
-  const chooseConversation = async (id: string | null) => {
+  const chooseConversation = async (id: string | null, hit?: ConversationSearchHit): Promise<boolean> => {
     const old = selectedRef.current
+    if (id !== null && id === old) return true
     const token = ++generation.current
-    selectedRef.current = id; detailRef.current = null; actionLock.current = false; composing.current = false
-    historyFocus.current = null; setTurnNumber('')
-    setPreviewTurn(null)
-    setSelected(id); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
-    setTitle(null); setDeleting(false); setBusy(false); setError(''); setNotice(''); setPollingError(false); setHistoryLoading(!!id)
+    actionLock.current = true; setBusy(true); setHistoryLoading(!!id); setError(''); setNotice('')
     try {
-      if (old) await bridge.clearConversationMemories(old)
-      if (id) await bridge.clearConversationMemories(id)
-    } catch (problem) { if (token === generation.current) setError(safeText(problem)) }
-    if (token !== generation.current) return
-    if (id) await loadDetail(id)
+      // Stage the destination before discarding any local work. A missing source,
+      // failed latest-page read or stale search hit leaves the current editor intact.
+      let next = id ? await bridge.getConversation(id, hit ? Math.floor((hit.sequence - 1) / 10) : 0) : null
+      if (token !== generation.current) return false
+      const last = next ? Math.max(0, Math.ceil(next.totalTurns / 10) - 1) : 0
+      const latest = next && next.page !== last ? await bridge.getConversation(id!, last) : next
+      if (token !== generation.current) return false
+      if (hit && !next?.turns.some(turn => turn.turnId === hit.turnId && turn.sequence === hit.sequence
+        && [turn.userMessage.messageId, turn.assistantMessage?.messageId].includes(hit.messageId))) {
+        setError('该匹配消息已不可用，请重新查找。当前草稿已保留。'); return false
+      }
+      if (!hit) next = latest
+      else if (next && latest) next = { ...next, conversation: latest.conversation, totalTurns: latest.totalTurns }
+      try {
+        if (old) await bridge.clearConversationMemories(old)
+        if (token !== generation.current) return false
+        if (id) await bridge.clearConversationMemories(id)
+        if (token !== generation.current) return false
+      } catch (problem) {
+        // Some scopes may already be cleared. Do not show them as reusable selections.
+        if (token === generation.current) { setMemories([]); setRetainMemories(false); setStale(false) }
+        throw problem
+      }
+      selectedRef.current = id; detailRef.current = next; composing.current = false
+      historyFocus.current = hit && id ? { conversationId: id, sequence: hit.sequence, generation: token } : null
+      setTurnNumber(hit ? String(hit.sequence) : ''); setPreviewTurn(null)
+      setSelected(id); setDetail(next); setAdmission(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
+      const pendingTurn = latest?.turns.find(turn => turn.status === 'PENDING')
+      setPending(pendingTurn ? { turnId: pendingTurn.turnId, canCancel: pendingTurn.canCancel } : null)
+      setTitle(null); setDeleting(false); setPollingError(false)
+      if (hit) setNotice(`已定位到第 ${hit.sequence} 轮。`)
+      return true
+    } catch (problem) {
+      if (token === generation.current) setError(safeText(problem) + ' 当前会话和草稿已保留。')
+      return false
+    } finally {
+      if (token === generation.current) { actionLock.current = false; setBusy(false); setHistoryLoading(false) }
+    }
   }
   const openSearchResult = async (hit: ConversationSearchHit) => {
     if (!enabled || !visible || busy || historyLoading) return
     const id = hit.conversation.id
-    let token = generation.current
+    const token = generation.current
     if (selectedRef.current !== id) {
-      const opening = chooseConversation(id); token = generation.current; await opening
+      requestTransition(() => { void chooseConversation(id, hit) }); return
     }
     if (token !== generation.current || selectedRef.current !== id || detailRef.current?.conversation.id !== id) return
     await loadDetail(id, Math.floor((hit.sequence - 1) / 10), false, hit.sequence)
@@ -158,7 +196,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   }
   useEffect(() => {
     // Admission is only a receipt in this view, never reconstructed from durable history.
-    setAdmission(null); actionLock.current = false; setBusy(false); setNotice('')
+    setAdmission(null); actionLock.current = false; setBusy(false); setNotice(''); setTransition(null)
     setPreviewTurn(null)
     historyFocus.current = null; setTurnNumber('')
     const reset = () => {
@@ -168,14 +206,14 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
       actionLock.current = false; setStatus('ACTIVE'); setPages({ ACTIVE: 0, ARCHIVED: 0 }); setList(null)
       discover.current = true
       setSelected(null); setDetail(null); setAdmission(null); setPending(null); setDraft(''); setMemories([]); setRetainMemories(false); setStale(false)
-      setTitle(null); setDeleting(false); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
+      setTitle(null); setDeleting(false); setTransition(null); setBusy(false); setHistoryLoading(false); setError(''); setNotice(''); setPollingError(false)
       composing.current = false
       if (visible && bridge.ready) void loadList('ACTIVE', 0)
     }
     const unsubscribe = bridge.onSession(reset)
     return () => { generation.current++; listGeneration.current++; unsubscribe() }
   }, [bridge, visible])
-  useEffect(() => { if (!enabled || !visible) setPreviewTurn(null) }, [enabled, visible])
+  useEffect(() => { if (!enabled || !visible) { setPreviewTurn(null); setTransition(null) } }, [enabled, visible])
   useEffect(() => {
     if ((enabled && visible) || !retainMemories) return
     // Leaving the active page revokes continued use, including an in-flight
@@ -194,7 +232,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
   }, [detail, visible])
   useEffect(() => { if (enabled && visible) { void loadList(); if (selectedRef.current) void loadDetail(selectedRef.current) } }, [enabled, visible, status, pages[status]])
   useEffect(() => {
-    if (!visible || !pending || !selected || pollingError) return
+    if (!visible || busy || !pending || !selected || pollingError) return
     let disposed = false
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
@@ -203,7 +241,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     }
     timer = setTimeout(() => { void poll() }, 550)
     return () => { disposed = true; clearTimeout(timer) }
-  }, [visible, selected, pending?.turnId, pollingError])
+  }, [visible, busy, selected, pending?.turnId, pollingError])
   useEffect(() => {
     if (deleting && deleteDialog.current && !deleteDialog.current.open) { deleteDialog.current.showModal(); cancelDelete.current?.focus() }
     else if (!deleting && deleteDialog.current?.open) { deleteDialog.current.close(); deleteButton.current?.focus() }
@@ -249,38 +287,55 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     try {
       const created = await bridge.createConversation()
       if (token !== generation.current) return
-      setStatus('ACTIVE'); setPages(previous => ({ ...previous, ACTIVE: 0 }))
-      await chooseConversation(created.id); await loadList('ACTIVE', 0); editor.current?.focus()
+      const opening = chooseConversation(created.id), openingGeneration = generation.current
+      const opened = await opening
+      if (openingGeneration !== generation.current) return
+      if (opened) {
+        setStatus('ACTIVE'); setPages(previous => ({ ...previous, ACTIVE: 0 }))
+        await loadList('ACTIVE', 0); editor.current?.focus()
+      } else { setNotice('新会话已创建，但未能打开。当前草稿已保留；可刷新列表后打开，无需再次新建。'); await loadList() }
     } catch (problem) { if (token === generation.current) setError(safeText(problem)) }
-    finally { actionLock.current = false; setBusy(false) }
+    finally { if (token === generation.current) { actionLock.current = false; setBusy(false) } }
+  }
+  const changeStatus = (filter: ConversationStatus) => {
+    if (filter === status) return
+    requestTransition(() => { void (async () => {
+      if (await chooseConversation(null)) {
+        setStatus(filter); setList(null); document.getElementById(`conversation-tab-${filter}`)?.focus()
+      }
+    })() })
   }
   return <div className="conversations-layout">
     <section className="card conversation-list" aria-labelledby="conversation-list-title">
-      <div className="card-heading"><h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => { void create() }}>新建对话</button></div>
-      <ConversationSearch bridge={bridge} enabled={enabled && !busy && !historyLoading} visible={visible} selected={selected} hasDraft={draft.length > 0} onOpen={openSearchResult} />
+      <div className="card-heading"><h2 id="conversation-list-title">会话列表</h2><button ref={newButton} className="primary" disabled={!enabled || busy} onClick={() => requestTransition(() => { void create() })}>新建对话</button></div>
+      <ConversationSearch bridge={bridge} enabled={enabled && !busy && !historyLoading} visible={visible} onOpen={openSearchResult} />
       <div className="conversation-tabs" role="tablist" aria-label="会话状态">{(['ACTIVE', 'ARCHIVED'] as const).map(filter => <button key={filter} role="tab" aria-selected={status === filter}
         id={`conversation-tab-${filter}`} aria-controls="conversation-list-panel" disabled={busy} onClick={() => {
-          setStatus(filter); setList(null); void chooseConversation(null)
+          changeStatus(filter)
         }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          const other = filter === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE'; setStatus(other); setList(null); void chooseConversation(null); document.getElementById(`conversation-tab-${other}`)?.focus()
+          event.preventDefault(); changeStatus(filter === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE')
         } }} tabIndex={status === filter ? 0 : -1}>{filter === 'ACTIVE' ? '使用中' : '已归档'}</button>)}</div>
       <div id="conversation-list-panel" role="tabpanel" aria-labelledby={`conversation-tab-${status}`} aria-busy={listLoading}>
         {listLoading && <p>正在加载列表…</p>}
         <ul>{list?.items.map(item => <li key={item.id}><button className="conversation-select" aria-pressed={item.id === selected} disabled={busy}
-          onClick={() => { void chooseConversation(item.id) }}><bdi>{item.title}</bdi>{' '}<span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button></li>)}</ul>
+          onClick={() => { if (item.id !== selectedRef.current) requestTransition(() => { void chooseConversation(item.id) }) }}><bdi>{item.title}</bdi>{' '}<span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button></li>)}</ul>
         {list?.total === 0 && <p>还没有对话。点击「新建对话」，开始连续交流。</p>}
       </div>
       <div className="pagination"><button disabled={!enabled || busy || listLoading || pages[status] === 0} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] - 1 }))}>上一页</button>
         <span>{pages[status] + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 10))}</span>
         <button disabled={!enabled || busy || listLoading || !list || (pages[status] + 1) * 10 >= list.total} onClick={() => setPages(previous => ({ ...previous, [status]: previous[status] + 1 }))}>下一页</button></div>
     </section>
+    {transition && <ConfirmationDialog title="打开其他会话？" confirmText="清空草稿并打开" cancel={() => setTransition(null)} confirm={() => {
+      const choice = transition; setTransition(null)
+      if (enabled && visible && choice.generation === generation.current && !actionLock.current) choice.action()
+    }}><p>继续将清空未发送的消息和未保存的会话标题。取消可保留草稿并继续编辑；读取目标失败时也会保留。</p></ConfirmationDialog>}
     <section className="card conversation-detail" aria-labelledby="conversation-detail-title" aria-busy={historyLoading}>
       <div className="card-heading"><h2 id="conversation-detail-title"><bdi>{detail?.conversation.title ?? '选择或新建会话'}</bdi></h2>
         <button disabled={!enabled || busy} onClick={() => { setError(''); void loadList(); if (selected) void loadDetail(selected) }}>刷新</button></div>
       {!detail && <p className="empty-state">从左侧选择对话，或新建一个对话。记忆由你明确选择，可选择在当前会话连续使用。</p>}
       {detail && <>
         <div className="conversation-actions"><span>{detail.conversation.status === 'ACTIVE' ? '使用中' : '已归档'}</span>
-          <button disabled={busy} onClick={() => setTitle(detail.conversation.title)}>重命名</button>
+          <button disabled={busy || title !== null} onClick={() => setTitle(detail.conversation.title)}>重命名</button>
           <button disabled={!enabled || busy || historyLoading || !!pending} onClick={() => { void run(async (id, token) => {
             const result = await bridge.exportConversation(id)
             if (token === generation.current) setNotice(result.outcome === 'SAVED' ? '已导出完整会话笔记。' : '已取消导出。')
@@ -297,7 +352,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
         {title !== null && <form className="conversation-rename" onSubmit={event => { event.preventDefault(); if (!isTitle(title)) return; void run(async (id, token) => {
           await bridge.renameConversation(id, title); if (token !== generation.current) return
           setTitle(null); await loadDetail(id, detail.page); await loadList()
-        }) }}><label htmlFor="conversation-title">会话标题（最多 160 个 Unicode 字符）</label><input ref={renameInput} id="conversation-title" autoComplete="off" value={title} onChange={event => setTitle(event.target.value)} />
+        }) }}><label htmlFor="conversation-title">会话标题（最多 160 个 Unicode 字符）</label><input ref={renameInput} id="conversation-title" autoComplete="off" value={title} disabled={busy} onChange={event => setTitle(event.target.value)} />
           <button type="submit" disabled={busy || !isTitle(title)}>保存标题</button><button type="button" disabled={busy} onClick={() => { setTitle(null); editor.current?.focus() }}>取消重命名</button></form>}
         <div className="pagination"><button disabled={busy || historyLoading || detail.page === 0} onClick={() => { void loadDetail(detail.conversation.id, detail.page - 1) }}>更早</button>
           <span>第 {detail.page + 1} 页 / {Math.max(1, Math.ceil(detail.totalTurns / 10))} · {detail.totalTurns} 轮</span>
@@ -379,6 +434,7 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
     </section>
     <dialog ref={deleteDialog} className="conversation-delete" aria-labelledby="conversation-delete-title" onCancel={event => { event.preventDefault(); if (!busy) setDeleting(false) }}>
       <h2 id="conversation-delete-title">永久删除会话</h2><p><bdi>{detail?.conversation.title}</bdi></p><p>删除后无法从当前 Workspace 恢复。</p>
+      {(draft.length > 0 || unsavedTitle) && <p>未发送的消息和未保存的会话标题也将丢弃。</p>}
       <button ref={cancelDelete} disabled={busy} onClick={() => setDeleting(false)}>取消</button>
       <button className="destructive" disabled={busy} onClick={() => { void run(async (id, token) => {
         await bridge.deleteConversation(id); if (token !== generation.current) return

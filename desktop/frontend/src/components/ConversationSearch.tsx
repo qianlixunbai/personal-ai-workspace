@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WorkspaceClient } from '../bridge/client'
 import { isConversationSearchQuery, type ConversationSearchHit, type ConversationSearchPage, type ConversationSearchScope } from '../bridge/conversations'
-import { ConfirmationDialog } from './ConfirmationDialog'
 
-export function ConversationSearch({ bridge, enabled, visible, selected, hasDraft, onOpen }: {
-  bridge: WorkspaceClient; enabled: boolean; visible: boolean; selected: string | null; hasDraft: boolean
+export function ConversationSearch({ bridge, enabled, visible, onOpen }: {
+  bridge: WorkspaceClient; enabled: boolean; visible: boolean
   onOpen: (hit: ConversationSearchHit) => Promise<void>
 }) {
   const [query, setQuery] = useState(''), [scope, setScope] = useState<ConversationSearchScope>('ALL')
   const [result, setResult] = useState<ConversationSearchPage | null>(null), [busy, setBusy] = useState(false)
-  const [error, setError] = useState(''), [confirm, setConfirm] = useState<ConversationSearchHit | null>(null)
+  const [error, setError] = useState('')
   const generation = useRef(0), lock = useRef(false)
-  const clear = () => { generation.current++; lock.current = false; setResult(null); setBusy(false); setError(''); setConfirm(null) }
+  const clear = () => { generation.current++; lock.current = false; setResult(null); setBusy(false); setError('') }
   useEffect(() => {
     clear(); setQuery(''); setScope('ALL')
     const unsubscribe = bridge.onSession(() => { clear(); setQuery(''); setScope('ALL') })
@@ -26,7 +25,7 @@ export function ConversationSearch({ bridge, enabled, visible, selected, hasDraf
   }
   const open = async (hit: ConversationSearchHit) => {
     if (!enabled || !visible || lock.current) return
-    const epoch = generation.current; lock.current = true; setBusy(true); setError(''); setConfirm(null)
+    const epoch = generation.current; lock.current = true; setBusy(true); setError('')
     try { await onOpen(hit) }
     catch (problem) { if (epoch === generation.current) setError(problem instanceof Error ? problem.message : '无法打开原会话，请重新查找。') }
     finally { if (epoch === generation.current) { lock.current = false; setBusy(false) } }
@@ -47,7 +46,7 @@ export function ConversationSearch({ bridge, enabled, visible, selected, hasDraf
       <p role="status">第 {result.page + 1} 页 · {result.items.length} 条匹配消息</p>
       {result.items.length === 0 && <p>没有匹配消息。可调整关键词或查找范围。</p>}
       <ul>{result.items.map(hit => <li key={hit.messageId}>
-        <button disabled={!enabled || busy} onClick={() => { if (hasDraft && selected !== hit.conversation.id) setConfirm(hit); else void open(hit) }}>
+        <button disabled={!enabled || busy} onClick={() => { void open(hit) }}>
           <bdi>{hit.conversation.title}</bdi> · 第 {hit.sequence} 轮 · {hit.role === 'USER' ? '你' : '助手'}{hit.conversation.status === 'ARCHIVED' ? ' · 已归档' : ''}
         </button>
         <pre dir="auto">{hit.before ? '…' : ''}{hit.snippet.slice(0, hit.matchStart)}<mark>{hit.snippet.slice(hit.matchStart, hit.matchEnd)}</mark>{hit.snippet.slice(hit.matchEnd)}{hit.after ? '…' : ''}</pre>
@@ -55,8 +54,5 @@ export function ConversationSearch({ bridge, enabled, visible, selected, hasDraf
       <div className="pagination"><button disabled={!enabled || busy || result.page === 0} onClick={() => { void search(result.page - 1) }}>上一页匹配</button>
         <button disabled={!enabled || busy || !result.hasMore || result.page >= 199999} onClick={() => { void search(result.page + 1) }}>下一页匹配</button></div>
     </div>}
-    {confirm && <ConfirmationDialog title="打开其他会话？" confirmText="清空草稿并打开" cancel={() => setConfirm(null)} confirm={() => { void open(confirm) }}>
-      <p>当前未发送的消息将被清空。取消可保留草稿并继续编辑。</p>
-    </ConfirmationDialog>}
   </details>
 }
