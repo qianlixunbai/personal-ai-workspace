@@ -24,6 +24,7 @@ internal sealed class WorkspaceWebViewHost
     private ulong navigation;
     private bool closing;
     private bool failed;
+    private bool controlDisposed;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Stopwatch elapsed = new();
@@ -99,9 +100,7 @@ internal sealed class WorkspaceWebViewHost
             Fail($"工作区启动失败（{code} / {StartupStage}）。请关闭后重新打开；若从打包工具中启动，请在普通 Windows 桌面中双击开发客户端。原生 Assistant 可继续使用。");
             // EnsureCoreWebView2Async has no cancellation API. Dispose its control so a late
             // completion cannot navigate or revive a failed window; observe the task above.
-            Diagnose("CONTROL_DISPOSE_START");
-            view.Dispose();
-            Diagnose("CONTROL_DISPOSE_COMPLETED");
+            DisposeControl();
         }
 
         async Task InitializeCoreAsync()
@@ -291,7 +290,14 @@ internal sealed class WorkspaceWebViewHost
         closing = true; lifetime.Cancel(); ready.TrySetCanceled(); bridge?.Dispose();
         try
         {
-            if (view.CoreWebView2 is not null)
+            // A startup timeout already disposes the control. Even its CoreWebView2
+            // getter then throws; closing must not turn that into a new clear failure.
+            if (controlDisposed)
+            {
+                CleanupPassed = false;
+                Diagnose("CLOSE_CLEAR_UNAVAILABLE_DISPOSED");
+            }
+            else if (view.CoreWebView2 is not null)
             {
                 Diagnose("CLOSE_CLEAR_START");
                 await view.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile).WaitAsync(TimeSpan.FromSeconds(3));
@@ -302,9 +308,7 @@ internal sealed class WorkspaceWebViewHost
         catch (Exception error) { CleanupPassed = false; Diagnose("CLOSE_CLEAR_FAILED", error.HResult); }
         finally
         {
-            Diagnose("CONTROL_DISPOSE_START");
-            view.Dispose();
-            Diagnose("CONTROL_DISPOSE_COMPLETED");
+            DisposeControl();
             CloseDiagnostics();
         }
     }
@@ -312,10 +316,17 @@ internal sealed class WorkspaceWebViewHost
     {
         Diagnose("HOST_DISPOSE_IMMEDIATELY");
         if (!closing) { closing = true; lifetime.Cancel(); ready.TrySetCanceled(); bridge?.Dispose(); }
+        DisposeControl();
+        CloseDiagnostics();
+    }
+    private void DisposeControl()
+    {
+        if (controlDisposed) return;
+        // Set before Dispose: it can deliver a pending initialization callback.
+        controlDisposed = true;
         Diagnose("CONTROL_DISPOSE_START");
         view.Dispose();
         Diagnose("CONTROL_DISPOSE_COMPLETED");
-        CloseDiagnostics();
     }
     private void CloseDiagnostics()
     {

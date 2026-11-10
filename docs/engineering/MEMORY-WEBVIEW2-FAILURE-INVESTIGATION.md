@@ -1,5 +1,17 @@
 # Memory desktop WebView2 failure investigation
 
+## 2026-11-10: close after startup disposal
+
+Follow-up baseline `eb9ff6d`: the two actual EXE logs in `.verification/memory-exe-entry-20261110/{save,reopen}-stdout.log` both contain `CONTROL_DISPOSE_COMPLETED` after `STARTUP_TIMEOUT / CONTROLLER_START`. Later close emits `CLOSE_CLEAR_FAILED` with `0x80131622` before any `CLOSE_CLEAR_START`. The source reads the disposed WPF control's `CoreWebView2` getter in that interval. This is a secondary application lifetime error, not evidence that a clear request caused the earlier controller timeout.
+
+`WorkspaceWebViewHost` now owns an idempotent control-disposal path and skips the disposed getter on close. It records `CLOSE_CLEAR_UNAVAILABLE_DISPOSED` and leaves `CleanupPassed=false`; no browser-data cleanup is claimed. The normal live-control clear, 30-second startup bound, 3-second close bound, InPrivate requirement and security checks are unchanged.
+
+One focused STA check triggers missing-asset failure **before creating a Profile or browser**, then closes and disposes the real WPF control. It verifies one disposal, no extra clear error, no false cleanup success and no Profile creation. Incremental build passed with zero warnings/errors; the single check passed. Logs/TRX and the released Session 1 heavy-lock receipt are in `.verification/webview-lifecycle-20261110/`. This is lifecycle validation, not a new WebView startup or a normal-page acceptance. Existing packages remain unchanged.
+
+Official [EnsureCoreWebView2Async documentation](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.wpf.webview2.ensurecorewebview2async?view=webview2-dotnet-1.0.4258.31) and upstream [issue 2506](https://github.com/MicrosoftEdge/WebView2Feedback/issues/2506) were reviewed. The latter reports a superficially similar hang and multiple hypotheses; it does not establish this machine's cause or justify reinstalling/altering system configuration. The earlier approved-context trace already shows a visible, loaded WPF control, matching STA HWND thread and continuing heartbeats. There is no evidence here for blindly moving the call to another dispatcher or increasing the timeout.
+
+Read limitation: an exact-path listing of the previous synthetic Profile's `webview2-profile/EBWebView/Crashpad/reports` returned OS access denied. No dump contents were obtained and that range was not retried or bypassed. The initial filename discovery also encountered previously restricted unrelated `.verification` subdirectories; those were not inspected or retried. These are filesystem refusals, not an automatic approval-review rejection. Work continued from already saved workspace evidence.
+
 2026-11-09. Source baseline `d772c9a65d60d98458c9c1e3fef40d4de90ba197`, branch `codex/knowledge-version-compare`. This stage reads existing synthetic evidence and adds bounded application diagnostics. It neither fixes the native browser failure nor passes Memory desktop acceptance.
 
 ## Finding
