@@ -522,6 +522,11 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
     }
     private string HealthIdentity(string text)
     {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if (acceptance is not null && acceptance.RecoveryActivation is null)
+            return Mmf3AcceptanceLaunch.Label + " · " + text.Replace("http://127.0.0.1:8765",
+                runtime.OwnedDevelopmentEndpoint?.AbsoluteUri.TrimEnd('/') ?? "本次原生连接", StringComparison.Ordinal);
+#endif
 #if MMF3_ACCEPTANCE && DEBUG
         if (acceptance is not null) return Mmf3AcceptanceLaunch.Label + " · " + text.Replace("8765", "18765", StringComparison.Ordinal);
 #endif
@@ -678,9 +683,12 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         captureCancellation?.Cancel();
         operation?.RequestCancel();
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(5000));
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        Task runtimeStop = runtimeOwner?.StopAsync() ?? Task.CompletedTask;
+#endif
         lifetime.Cancel();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
-        if (runtimeOwner is not null) await runtimeOwner.StopAsync();
+        await runtimeStop;
 #endif
         if (activeCapture is not null) await Task.WhenAny(activeCapture, Task.Delay(3000));
         if (activeOperation is not null) await Task.WhenAny(activeOperation, Task.Delay(2500));

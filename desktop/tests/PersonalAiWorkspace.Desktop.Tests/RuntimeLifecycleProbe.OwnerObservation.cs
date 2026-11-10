@@ -193,6 +193,7 @@ public static partial class RuntimeLifecycleProbe
             try { job.Assign(child); }
             catch { job.Dispose(); child.Kill(); child.Dispose(); throw; }
             Set("child", child); Set("state", "READY");
+            client.BindOwnedDevelopmentEndpoint(49153); // Injected HTTP handler only; no socket is opened.
             Set("running", MonitorAsync(child, job, Stop.Token));
         }
 

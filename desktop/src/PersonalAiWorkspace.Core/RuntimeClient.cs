@@ -10,6 +10,18 @@ public sealed partial class RuntimeClient : IDisposable
     private readonly HttpClient http;
     private readonly Func<string?> credential;
     private const int MaximumResponse = 1024 * 1024;
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+    private bool ownedEndpointRequired;
+    private Uri? ownedEndpoint;
+    internal Uri? OwnedDevelopmentEndpoint => Volatile.Read(ref ownedEndpoint);
+    internal void UseOwnedDevelopmentEndpoint() { ownedEndpointRequired = true; Volatile.Write(ref ownedEndpoint, null); }
+    internal void BindOwnedDevelopmentEndpoint(int port)
+    {
+        if (!ownedEndpointRequired || port is < 1 or > 65535 or 18765) throw new InvalidOperationException();
+        Volatile.Write(ref ownedEndpoint, new Uri("http://127.0.0.1:" + port));
+    }
+    internal void ClearOwnedDevelopmentEndpoint() => Volatile.Write(ref ownedEndpoint, null);
+#endif
 
     public RuntimeClient(Func<string?> credential) : this(new HttpClientHandler
     {
@@ -99,7 +111,13 @@ public sealed partial class RuntimeClient : IDisposable
         Func<JsonElement, DesktopError>? errorMap = null,
         Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse, TimeSpan? requestTimeout = null)
     {
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        Uri? generation = Volatile.Read(ref ownedEndpoint);
+        if (ownedEndpointRequired && generation is null) throw new DesktopException(DesktopError.RuntimeUnavailable);
+        using var request = new HttpRequestMessage(method, generation is null ? new Uri(path, UriKind.Relative) : new Uri(generation, path));
+#else
         using var request = new HttpRequestMessage(method, path);
+#endif
         // Actuator defaults to a vendor media type unless the client negotiates JSON.
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (authenticate)
@@ -109,6 +127,11 @@ public sealed partial class RuntimeClient : IDisposable
             if (!CredentialFormat.Valid(token)) throw new DesktopException(DesktopError.CredentialInvalid);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
+#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        // A credential from a replacement child cannot be sent to the preceding child's port.
+        if (ownedEndpointRequired && !ReferenceEquals(generation, Volatile.Read(ref ownedEndpoint)))
+            throw new DesktopException(DesktopError.RuntimeUnavailable);
+#endif
         if (payload is not null)
         {
             request.Content = new ByteArrayContent(payload);

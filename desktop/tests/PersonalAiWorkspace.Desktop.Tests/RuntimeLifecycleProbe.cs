@@ -19,6 +19,8 @@ public static partial class RuntimeLifecycleProbe
     {
         if (args is ["--x1-execution-lifecycle-fixture"]) return RunX1ExecutionLifecycleFixture();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if(args is ["--ordinary-native-lifecycle",var ordinaryId,var ordinaryMode,var ordinaryReceipt])
+            return RunOrdinaryNativeLifecycle(ordinaryId,ordinaryMode,ordinaryReceipt);
         if(args is ["--maintenance-runtime-handoff",var maintenanceProfile])return RunMaintenanceRuntimeHandoff(maintenanceProfile);
         if(args is ["--maintenance-runtime-interrupt",var interruptedProfile])return RunMaintenanceRuntimeHandoff(interruptedProfile,interrupt:true);
         if(args is ["--maintenance-runtime-reopen",var reopenProfile])return RunMaintenanceRuntimeHandoff(reopenProfile,reopen:true);

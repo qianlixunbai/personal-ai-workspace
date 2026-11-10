@@ -21,6 +21,8 @@ internal sealed partial class ProfileRecoveryCoordinator
         string JarSha256, int DesktopPid, long DesktopStartUtcTicks, int DesktopSessionId,
         int RuntimePid, long RuntimeStartUtcTicks, int RuntimeSessionId,
         int? ExitCode, long? ExitUtcTicks, string? ExitKind);
+    private sealed record RuntimeLifecycleObservation(int Version, string Kind, string ProfileId, string AttemptId,
+        int RuntimePid, string Challenge, int Port);
 
     internal sealed class RuntimeRegistrationIncomplete(string profileId, string attemptId, Exception cause)
         : IOException("Runtime ownership registration requires inspection.", cause)
@@ -36,14 +38,17 @@ internal sealed partial class ProfileRecoveryCoordinator
         private RuntimeObservation observation;
         private Process? child;
         private bool disposed;
+        private RuntimeLifecycleObservation? lifecycle;
+        private bool closeRequested;
+        internal string AttemptId => observation.AttemptId;
 
-        private RuntimeAttempt(ProfileRecoveryCoordinator journal, string profileId, string jarSha256)
+        private RuntimeAttempt(ProfileRecoveryCoordinator journal, string profileId, string jarSha256, bool ownedLifecycle)
         {
             this.journal = journal;
             RequireHex(profileId, 32); RequireHex(jarSha256, 64);
             using var desktop = Process.GetCurrentProcess();
             string attempt = Guid.NewGuid().ToString("N");
-            observation = new(1, "START_INTENT", profileId, attempt, jarSha256, desktop.Id,
+            observation = new(ownedLifecycle ? 2 : 1, "START_INTENT", profileId, attempt, jarSha256, desktop.Id,
                 desktop.StartTime.ToUniversalTime().Ticks, desktop.SessionId, 0, 0, 0, null, null, null);
             directory = Path.Combine(journal.applicationRoot, "Recovery", "runtimes", profileId, attempt);
             try
@@ -61,7 +66,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             catch (Exception failure) { throw new RuntimeRegistrationIncomplete(profileId, attempt, failure); }
         }
 
-        internal static RuntimeAttempt Begin(Mmf3AcceptanceLaunch profile, string jarSha256)
+        internal static RuntimeAttempt Begin(Mmf3AcceptanceLaunch profile, string jarSha256, bool ownedLifecycle = false)
         {
             // Called by the already admitted native owner before Process.Start. No second mutex
             // acquisition on the worker thread, and no caller-supplied product filesystem root.
@@ -72,7 +77,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             {
                 journal.held.Add(Mmf3ProfileState.Pin(profile.RunId));
                 profile.Validate();
-                return new RuntimeAttempt(journal, profile.RunId, jarSha256);
+                return new RuntimeAttempt(journal, profile.RunId, jarSha256, ownedLifecycle);
             }
             catch { journal.Dispose(); throw; }
         }
@@ -92,6 +97,47 @@ internal sealed partial class ProfileRecoveryCoordinator
                 || started.RuntimeSessionId != started.DesktopSessionId) throw Stop();
             Publish("started", started);
             observation = started;
+        }
+
+        internal void RecordReady(NativeRuntimeSession session)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (observation.Version != 2 || observation.State != "STARTED" || lifecycle is not null
+                || child is null || !session.Owns(child) || session.Attempt != observation.AttemptId || child.HasExited) throw Stop();
+            var receipt = new RuntimeLifecycleObservation(1, "NATIVE_RUNTIME_READY", observation.ProfileId,
+                observation.AttemptId, child.Id, session.Challenge, session.Port);
+            PublishLifecycle("ready", receipt); lifecycle = receipt;
+        }
+
+        internal void RecordStopRequested(NativeRuntimeSession session)
+        {
+            RequireSession(session);
+            if (closeRequested || child!.HasExited) throw Stop();
+            PublishLifecycle("stop-request", lifecycle! with { Kind = "NATIVE_CLOSE_REQUESTED" });
+            closeRequested = true;
+        }
+
+        internal void ObserveGracefulExit(NativeRuntimeSession session)
+        {
+            RequireSession(session);
+            if (!closeRequested || !session.Closed || !ObserveKernelExit(0) || child!.ExitCode != 0) throw Stop();
+            var exited = observation with { State = "EXIT_OBSERVED", ExitCode = 0,
+                ExitUtcTicks = child.ExitTime.ToUniversalTime().Ticks, ExitKind = "CONTEXT_CLOSED_NATIVE_EXIT" };
+            Publish("exited", exited); observation = exited;
+        }
+
+        private void RequireSession(NativeRuntimeSession session)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (observation.Version != 2 || observation.State != "STARTED" || child is null || !session.Owns(child)
+                || lifecycle is null || session.Attempt != lifecycle.AttemptId || session.Challenge != lifecycle.Challenge
+                || session.Port != lifecycle.Port) throw Stop();
+        }
+        private void PublishLifecycle(string name, RuntimeLifecycleObservation value)
+        {
+            byte[] entropy = RuntimeEntropy(value.ProfileId, value.AttemptId, name);
+            PublishRecord(directory, name, entropy, value);
+            if (ReadRecord<RuntimeLifecycleObservation>(Path.Combine(directory, name + ".dpapi"), entropy) != value) throw Stop();
         }
 
         internal void ObserveExitBeforeOwnerCleanup(bool ownerStopRequested)
@@ -220,7 +266,7 @@ internal sealed partial class ProfileRecoveryCoordinator
     // Counts describe only the registered direct children. Even a complete history does not
     // cover legacy/manual writers or prove a provider finished an outstanding model request.
     internal sealed record RuntimeHistoryInspection(string State, int? RegisteredAttempts,
-        int? ObservedExitedChildren, int? OwnerCleanupObserved, string[] Issues);
+        int? ObservedExitedChildren, int? OwnerCleanupObserved, string[] Issues, int NativeContextClosed = 0);
 
     private RuntimeHistoryInspection InspectRuntimeHistory(string profileId)
     {
@@ -242,7 +288,7 @@ internal sealed partial class ProfileRecoveryCoordinator
         string[] attempts = Directory.EnumerateFileSystemEntries(profile).Take(4097).ToArray();
         // Missing/empty history is UNKNOWN, not "never ran". No latest-file shortcut over old gaps.
         if (attempts.Length is < 1 or > 4096) throw Stop();
-        int exitedCount = 0, cleanupCount = 0;
+        int exitedCount = 0, cleanupCount = 0, nativeClosedCount = 0;
         var issues = new SortedSet<string>(StringComparer.Ordinal);
         foreach (string directory in attempts)
         {
@@ -251,8 +297,8 @@ internal sealed partial class ProfileRecoveryCoordinator
             using var pin = WindowsProfileSecurity.HoldDirectories(directory);
             using var user = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
             WindowsProfileSecurity.ValidatePrivate(pin.Handles[^1], user.User!, directory: true);
-            string[] files = Directory.EnumerateFileSystemEntries(directory).Take(5).Select(Path.GetFileName).ToArray()!;
-            string layout = string.Join(",", files.Order(StringComparer.Ordinal));
+            string[] files = Directory.EnumerateFileSystemEntries(directory).Take(8).Select(Path.GetFileName).ToArray()!;
+            string layout = string.Join(",", files.Where(name => name is not ("ready.dpapi" or "stop-request.dpapi")).Order(StringComparer.Ordinal));
             if (layout is not ("intent.dpapi" or "intent.dpapi,started.dpapi" or "exited.dpapi,intent.dpapi,started.dpapi"
                 or "cleanup-intent.dpapi,intent.dpapi,started.dpapi" or "cleanup-intent.dpapi,cleanup.dpapi,intent.dpapi,started.dpapi")) throw Stop();
             // Keep every event pinned while comparing the chain. Never reopen a PID from disk.
@@ -267,26 +313,50 @@ internal sealed partial class ProfileRecoveryCoordinator
             {
                 var intent = Read("intent");
                 RequireHex(intent.JarSha256, 64);
-                if (intent.Version != 1 || intent.State != "START_INTENT" || intent.ProfileId != profileId || intent.AttemptId != attempt
+                if (intent.Version is not (1 or 2) || intent.State != "START_INTENT" || intent.ProfileId != profileId || intent.AttemptId != attempt
                     || intent.DesktopPid <= 0 || intent.DesktopStartUtcTicks <= 0 || intent.DesktopSessionId < 0
                     || intent.RuntimePid != 0 || intent.RuntimeStartUtcTicks != 0 || intent.RuntimeSessionId != 0
                     || intent.ExitCode is not null || intent.ExitUtcTicks is not null || intent.ExitKind is not null) throw Stop();
-                if (!files.Contains("started.dpapi")) { issues.Add("START_OUTCOME_UNCONFIRMED"); continue; }
+                if (intent.Version == 1 && files.Any(name => name is "ready.dpapi" or "stop-request.dpapi")) throw Stop();
+                if (files.Contains("stop-request.dpapi") && !files.Contains("ready.dpapi")) throw Stop();
+                if (!files.Contains("started.dpapi")) {
+                    if (files.Contains("ready.dpapi")) throw Stop();
+                    issues.Add("START_OUTCOME_UNCONFIRMED"); continue;
+                }
                 var started = Read("started");
                 if (started.RuntimePid <= 0 || started.RuntimeStartUtcTicks <= 0 || started.RuntimeSessionId != intent.DesktopSessionId
                     || started != (intent with { State = "STARTED", RuntimePid = started.RuntimePid,
                         RuntimeStartUtcTicks = started.RuntimeStartUtcTicks, RuntimeSessionId = started.RuntimeSessionId })) throw Stop();
+                RuntimeLifecycleObservation? ready = null;
+                if (files.Contains("ready.dpapi"))
+                {
+                    RuntimeLifecycleObservation ReadLifecycle(string name)
+                    {
+                        var file = OpenRecord(Path.Combine(directory, name + ".dpapi")); records.Add(file);
+                        return ReadRecord<RuntimeLifecycleObservation>(file, RuntimeEntropy(profileId, attempt, name));
+                    }
+                    ready = ReadLifecycle("ready"); RequireHex(ready.Challenge, 64);
+                    if (ready.Version != 1 || ready.Kind != "NATIVE_RUNTIME_READY" || ready.ProfileId != profileId
+                        || ready.AttemptId != attempt || ready.RuntimePid != started.RuntimePid || ready.Port is < 1 or > 65535 or 18765) throw Stop();
+                    if (files.Contains("stop-request.dpapi") && ReadLifecycle("stop-request") != (ready with { Kind = "NATIVE_CLOSE_REQUESTED" })) throw Stop();
+                }
                 if (files.Contains("exited.dpapi"))
                 {
                     var exited = Read("exited");
                     if (exited.ExitCode is null || exited.ExitUtcTicks is null || exited.ExitUtcTicks < started.RuntimeStartUtcTicks
                         || exited.ExitUtcTicks > DateTime.MaxValue.Ticks
-                        || exited.ExitKind is not ("EXIT_BEFORE_OWNER_CLEANUP" or "OWNER_STOP_REQUESTED")
+                        || exited.ExitKind is not ("EXIT_BEFORE_OWNER_CLEANUP" or "OWNER_STOP_REQUESTED" or "CONTEXT_CLOSED_NATIVE_EXIT")
                         || exited != (started with { State = "EXIT_OBSERVED", ExitCode = exited.ExitCode,
                             ExitUtcTicks = exited.ExitUtcTicks, ExitKind = exited.ExitKind })) throw Stop();
+                    if (exited.ExitKind == "CONTEXT_CLOSED_NATIVE_EXIT")
+                    {
+                        if (intent.Version != 2 || ready is null || !files.Contains("stop-request.dpapi") || exited.ExitCode != 0) throw Stop();
+                        nativeClosedCount++; exitedCount++;
+                    }
+                    else if (intent.Version == 2) issues.Add("NATIVE_CLOSE_UNCONFIRMED");
                     if (exited.ExitKind == "OWNER_STOP_REQUESTED") issues.Add("OWNER_STOP_REQUESTED");
                     if (exited.ExitCode != 0) issues.Add("CHILD_EXIT_FAILED");
-                    if (exited.ExitKind == "EXIT_BEFORE_OWNER_CLEANUP" && exited.ExitCode == 0) exitedCount++;
+                    if (intent.Version == 1 && exited.ExitKind == "EXIT_BEFORE_OWNER_CLEANUP" && exited.ExitCode == 0) exitedCount++;
                 }
                 else if (files.Contains("cleanup-intent.dpapi"))
                 {
@@ -306,7 +376,7 @@ internal sealed partial class ProfileRecoveryCoordinator
             finally { foreach (var file in records) file.Dispose(); }
         }
         return new(issues.Count == 0 ? "EXIT_OBSERVATIONS_COMPLETE" : "RUNTIME_HISTORY_UNRESOLVED",
-            attempts.Length, exitedCount, cleanupCount, issues.ToArray());
+            attempts.Length, exitedCount, cleanupCount, issues.ToArray(), nativeClosedCount);
     }
 
     private static byte[] RuntimeEntropy(string profileId, string attempt, string name) =>

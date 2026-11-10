@@ -78,10 +78,12 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
     }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     internal ProcessStartInfo StartInfo(Mmf3AcceptanceLaunch profile, bool databaseSetup = false, bool financeSetup = false,
-        bool recoveryInspection = false, bool maintenanceOwner = false, bool maintenanceRuntime = false, bool maintenanceInspection = false, bool maintenanceRestart = false)
+        bool recoveryInspection = false, bool maintenanceOwner = false, bool maintenanceRuntime = false, bool maintenanceInspection = false, bool maintenanceRestart = false,
+        bool ownedLifecycle = false)
     {
         if ((databaseSetup ? 1 : 0) + (financeSetup ? 1 : 0) + (recoveryInspection ? 1 : 0)
-            + (maintenanceOwner ? 1 : 0) + (maintenanceRuntime ? 1 : 0) + (maintenanceInspection ? 1 : 0) + (maintenanceRestart ? 1 : 0) > 1) throw new IOException();
+            + (maintenanceOwner ? 1 : 0) + (maintenanceRuntime ? 1 : 0) + (maintenanceInspection ? 1 : 0) + (maintenanceRestart ? 1 : 0)
+            + (ownedLifecycle ? 1 : 0) > 1) throw new IOException();
         profile.Validate(); Mmf3ProfileNative.Verify(profile);
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
         {
@@ -92,14 +94,14 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         }
         var start = new ProcessStartInfo(Java) { UseShellExecute = false, CreateNoWindow = true,
             WorkingDirectory = profile.Root, RedirectStandardOutput = true, RedirectStandardError = true,
-            RedirectStandardInput = databaseSetup || financeSetup || recoveryInspection || maintenanceOwner || maintenanceRuntime || maintenanceInspection || maintenanceRestart || profile.RecoveryActivation is not null };
+            RedirectStandardInput = ownedLifecycle || databaseSetup || financeSetup || recoveryInspection || maintenanceOwner || maintenanceRuntime || maintenanceInspection || maintenanceRestart || profile.RecoveryActivation is not null };
         if(profile.RecoveryActivation is not null)
         {
-            if(databaseSetup||financeSetup||recoveryInspection||maintenanceOwner||maintenanceRuntime||maintenanceInspection||maintenanceRestart)throw new IOException();
+            if(ownedLifecycle||databaseSetup||financeSetup||recoveryInspection||maintenanceOwner||maintenanceRuntime||maintenanceInspection||maintenanceRestart)throw new IOException();
             start.ArgumentList.Add("-Xmx384m");start.ArgumentList.Add("-XX:ActiveProcessorCount=2");
         }
         if (recoveryInspection) { start.ArgumentList.Add("-Xmx256m"); start.ArgumentList.Add("-XX:ActiveProcessorCount=2"); }
-        if(maintenanceOwner||maintenanceRuntime||maintenanceInspection||maintenanceRestart){start.ArgumentList.Add("-Xmx384m");start.ArgumentList.Add("-XX:ActiveProcessorCount=2");}
+        if(ownedLifecycle||maintenanceOwner||maintenanceRuntime||maintenanceInspection||maintenanceRestart){start.ArgumentList.Add("-Xmx384m");start.ArgumentList.Add("-XX:ActiveProcessorCount=2");}
         string native = Path.Combine(profile.Root, "jna-5.17.0-win32-x86-64"), evidence = Path.Combine(profile.Root, "evidence");
         foreach (string option in new[] { "-Dworkspace.native.development-profile=" + profile.RunId,
             "-Dworkspace.native.bootstrap=" + Mmf3ProfileNative.Helper, "-Djna.boot.library.path=" + native,
@@ -112,8 +114,9 @@ internal sealed class TrustedDevelopmentRuntimeSources : IDisposable
         if (maintenanceRuntime) start.ArgumentList.Add("--native-maintenance-runtime-v1");
         if (maintenanceInspection) start.ArgumentList.Add("--native-maintenance-inspect-v1");
         if (maintenanceRestart) start.ArgumentList.Add("--native-maintenance-restart-v1");
+        if (ownedLifecycle) start.ArgumentList.Add("--native-runtime-lifecycle-v1");
         if(profile.RecoveryActivation is not null)start.ArgumentList.Add("--synthetic-recovery-activation-v1");
-        foreach (string option in new[] { "--server.address=127.0.0.1", maintenanceRuntime ? "--server.port=0" : "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
+        foreach (string option in new[] { "--server.address=127.0.0.1", maintenanceRuntime || ownedLifecycle ? "--server.port=0" : "--server.port=18765", "--workspace.security.token-file=" + profile.TokenFile,
             "--workspace.data-directory=" + Path.Combine(profile.Root, "data"), "--workspace.model-state-directory=" + Path.Combine(profile.Root, "model-state") })
             start.ArgumentList.Add(option);
         return start;

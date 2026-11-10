@@ -139,12 +139,14 @@ internal sealed partial class ProfileRecoveryWindow : Window
         if (history.RegisteredAttempts is not int attempts)
             return "直属 Runtime：登记缺失、不可读取或校验失败，历史仍为未知。请保留现有记录。";
         string text = "直属 Runtime：已核对 " + attempts + " 次启动登记；其中 " + history.ObservedExitedChildren +
-            " 次在 owner 收尾前观察到退出码 0，" + history.OwnerCleanupObserved + " 次在 owner 收尾后观察到退出。";
+            " 次在 owner 强制收尾前确认退出码 0（" + history.NativeContextClosed + " 次还确认本次应用正常关闭），"
+            + history.OwnerCleanupObserved + " 次在 owner 收尾后观察到退出。\n这些记录不证明外部模型任务或未登记写入者已停止。";
         foreach (string issue in history.Issues)
             text += "\n• " + (issue switch
             {
                 "START_OUTCOME_UNCONFIRMED" => "有启动意图未登记子进程身份；不能判定启动是否发生。",
                 "CHILD_EXIT_UNOBSERVED" => "有已登记子进程缺少退出观察；本次检查不会按历史 PID 接管进程。",
+                "NATIVE_CLOSE_UNCONFIRMED" => "有原生启动未完成本次应用关闭握手；退出码不能补齐缺失的关闭证明。",
                 "OWNER_STOP_REQUESTED" => "退出前已请求停止，不能据此证明模型或写入已完成。",
                 "CHILD_EXIT_FAILED" => "有子进程以非零退出码结束，需保留失败证据。",
                 "OWNER_CLEANUP_EXIT_UNOBSERVED" => "已记录 owner 收尾意图，但退出结果未知。",

@@ -141,7 +141,8 @@ public final class WindowsNativeGate {
     }
     public static io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime maintenanceRuntime(){return maintenanceRuntime;}
     public static boolean maintenanceRequestsAllowed(){
-        return !maintenanceRuntimeAttempted||maintenanceRuntime!=null&&maintenanceRuntime.requestsAllowed();
+        return io.github.qianlixunbai.workspace.NativeRuntimeLifecycle.requestsAllowed()
+                && (!maintenanceRuntimeAttempted||maintenanceRuntime!=null&&maintenanceRuntime.requestsAllowed());
     }
 
     /** Absence grants no exception. Presence always requires the original real Profile gate first. */
@@ -265,7 +266,8 @@ public final class WindowsNativeGate {
     public static void requireRuntimeArguments(String[] args) throws IOException {
         if (!isWindowsPlatform()) return;
         Path root = profileRoot();
-        requireProfileArguments(args,root,maintenanceRuntimeAttempted?0:18765);
+        requireProfileArguments(args,root,maintenanceRuntimeAttempted
+                ||io.github.qianlixunbai.workspace.NativeRuntimeLifecycle.entered()?0:18765);
     }
 
     public static void requireMaintenanceArguments(String[] args,io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion exclusion) throws IOException {

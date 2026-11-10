@@ -12,7 +12,7 @@ using PersonalAiWorkspace.Desktop.Bridge;
 namespace PersonalAiWorkspace.Desktop;
 
 // Desktop lifetime owns one runtime child. Only native confirmation can restart it.
-internal sealed class DevelopmentRuntimeOwner : IDisposable
+internal sealed partial class DevelopmentRuntimeOwner : IDisposable
 {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
     private readonly Mmf3AcceptanceLaunch profile;
@@ -41,7 +41,8 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
         get { lock (sync) return state == "READY" && child is not null && !child.HasExited ? jarSha256 : null; }
     }
     internal DevelopmentRuntimeOwner(Mmf3AcceptanceLaunch profile, RuntimeClient runtime)
-    { this.profile = profile; this.runtime = runtime; }
+    { this.profile = profile; this.runtime = runtime;
+      if (profile.RecoveryActivation is null) runtime.UseOwnedDevelopmentEndpoint(); }
     internal void Start(CancellationToken applicationLifetime)
     {
         lock (sync)
@@ -132,6 +133,7 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     }
     private async Task RunAsync(CancellationToken applicationLifetime)
     {
+        if (profile.RecoveryActivation is null) { await RunOwnedAsync(applicationLifetime).ConfigureAwait(false); return; }
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(applicationLifetime, stop.Token);
         TrustedDevelopmentRuntimeSources? sources = null;
         RuntimeProcessJob? job = null;
@@ -262,32 +264,29 @@ internal sealed class DevelopmentRuntimeOwner : IDisposable
     }
     internal async Task StopAsync()
     {
-        stop.Cancel(); Task? work; lock (sync) work = running;
+        Task? work; lock (sync) { gracefulStopRequested = true; work = running; }
+        runtime.ClearOwnedDevelopmentEndpoint(); stop.Cancel();
         if (work is not null) await work.ConfigureAwait(false);
     }
     internal async Task RestartAsync(CancellationToken applicationLifetime)
     {
         if(profile.RecoveryActivation is not null)throw new IOException("Recovery activation cannot replay a launch.");
         await StopAsync().ConfigureAwait(false);
-        // Windows can still report the exited child's listener briefly after WaitForExit.
-        // Wait only during an explicit restart; never contact/reuse a listener or stop an unrelated process.
-        var release = Stopwatch.StartNew();
-        while (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == 18765)
-            && release.Elapsed < TimeSpan.FromSeconds(5))
-            await Task.Delay(100, applicationLifetime).ConfigureAwait(false);
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             applicationLifetime.ThrowIfCancellationRequested();
             child?.Dispose(); child = null; jarSha256 = null; running = null;
-            stop.Dispose(); stop = new(); diagnostic = new();
+            stop.Dispose(); stop = new(); diagnostic = new(); gracefulStopRequested = false;
             State("STARTING"); Start(applicationLifetime);
         }
     }
     public void Dispose()
     {
         lock (sync) { if (disposed) return; disposed = true; }
-        StopAsync().GetAwaiter().GetResult();
+        // Emergency disposal remains forced cleanup; it cannot request a graceful receipt.
+        runtime.ClearOwnedDevelopmentEndpoint(); stop.Cancel();
+        running?.GetAwaiter().GetResult();
         lock (sync) child?.Dispose();
         stop.Dispose();
     }

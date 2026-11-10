@@ -107,7 +107,7 @@ public sealed class Mmf3AcceptanceTests
         // authorize a connection. Only this new fixture is changed between observations.
         using ((ProfileRecoveryCoordinator.RuntimeAttempt)typeof(ProfileRecoveryCoordinator.RuntimeAttempt)
             .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null,
-                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string)], null)!.Invoke([NewOwner(), id, new string('a', 64)])) { }
+                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string), typeof(bool)], null)!.Invoke([NewOwner(), id, new string('a', 64), false])) { }
         File.Delete(runtimeLock);
         async Task CheckUnavailable(string expectedState)
         {
@@ -242,7 +242,7 @@ public sealed class Mmf3AcceptanceTests
             .GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(string)], null)!.Invoke([app]);
         ProfileRecoveryCoordinator.RuntimeAttempt Attempt() => (ProfileRecoveryCoordinator.RuntimeAttempt)
             typeof(ProfileRecoveryCoordinator.RuntimeAttempt).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null,
-                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string)], null)!.Invoke([Journal(), id, new string('a', 64)]);
+                [typeof(ProfileRecoveryCoordinator), typeof(string), typeof(string), typeof(bool)], null)!.Invoke([Journal(), id, new string('a', 64), false]);
         ProfileRecoveryCoordinator.MaintenanceInspection Inspect(ProfileRecoveryCoordinator journal)
         {
             try
