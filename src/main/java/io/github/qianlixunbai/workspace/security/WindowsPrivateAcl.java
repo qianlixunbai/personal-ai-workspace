@@ -17,6 +17,49 @@ public final class WindowsPrivateAcl {
 
     public static boolean isWindows() { return System.getProperty("os.name", "").startsWith("Windows"); }
 
+    /** Immutable account boundary for a long-lived writer; never a username or caller-supplied SID. */
+    public static final class OwnerIdentity {
+        private final byte[] sid;
+        // Package-private for the isolated identity contract check; public acquisition is native-only.
+        OwnerIdentity(byte[] sid) throws IOException {
+            if (sid == null || sid.length < 8 || sid[0] != 1 || Byte.toUnsignedInt(sid[1]) > 15
+                    || sid.length != 8 + 4 * Byte.toUnsignedInt(sid[1]))
+                throw new IOException("Windows owner identity unavailable");
+            this.sid = sid.clone();
+        }
+        void requireSame(byte[] actual) throws IOException {
+            if (!Arrays.equals(sid, actual)) throw new IOException("Windows owner identity changed");
+        }
+        @Override public String toString() { return "WindowsOwnerIdentity[private]"; }
+    }
+
+    public static OwnerIdentity bindCurrentOwner() throws IOException {
+        if (!isWindows()) throw new IOException("Windows owner identity unavailable");
+        WindowsNativeGate.admit();
+        try { return new OwnerIdentity(NativeAcl.currentSid().getBytes()); }
+        catch (LinkageError | RuntimeException failure) { throw new IOException("Windows owner identity unavailable"); }
+    }
+
+    public static void directory(Path path, OwnerIdentity owner) throws IOException { operateBound(path, true, true, owner); }
+    public static void createFile(Path path, OwnerIdentity owner) throws IOException { operateBound(path, false, true, owner); }
+    public static void verify(Path path, boolean directory, OwnerIdentity owner) throws IOException {
+        operateBound(path, directory, false, owner);
+    }
+    private static void operateBound(Path path, boolean directory, boolean create, OwnerIdentity owner) throws IOException {
+        if (!isWindows() || owner == null) throw new IOException("Windows owner identity unavailable");
+        WindowsNativeGate.admit();
+        try { NativeAcl.operate(path, directory, create, false, null, owner); }
+        catch (LinkageError | RuntimeException failure) { throw new IOException("Windows private ACL unavailable"); }
+    }
+
+    /** Late owner checkpoint after Java attributes; not a replacement for full path/ACL verification. */
+    public static void verifyOwner(Path path, boolean directory, OwnerIdentity owner) throws IOException {
+        if (!isWindows() || owner == null) throw new IOException("Windows owner identity unavailable");
+        WindowsNativeGate.admit();
+        try { NativeAcl.verifyOwner(path, directory, owner); }
+        catch (LinkageError | RuntimeException failure) { throw new IOException("Windows private owner unavailable"); }
+    }
+
     public static void directory(Path path) throws IOException { operate(path, true, true); }
     public static void createFile(Path path) throws IOException { operate(path, false, true); }
     public static void createPreparedDirectory(PreparedRecoveryTarget target,Path path) throws IOException {
@@ -167,6 +210,10 @@ public final class WindowsPrivateAcl {
             operate(input,directory,create,sidecar,null);
         }
         static void operate(Path input, boolean directory, boolean create, boolean sidecar,Path preparedBoundary) throws IOException {
+            operate(input, directory, create, sidecar, preparedBoundary, null);
+        }
+        static void operate(Path input, boolean directory, boolean create, boolean sidecar, Path preparedBoundary,
+                            OwnerIdentity owner) throws IOException {
             Path path = input.toAbsolutePath().normalize();
             if (path.getFileSystem() != FileSystems.getDefault() || !path.toString().matches("[A-Za-z]:\\\\.*")
                     || path.getParent() == null) throw new IOException("Local Windows object required");
@@ -176,6 +223,7 @@ public final class WindowsPrivateAcl {
                     throw new IOException("Invalid Windows object name");
             }
             PSID user = currentSid();
+            if (owner != null) owner.requireSame(user.getBytes());
             // LIST_DIRECTORY plus no SHARE_DELETE pins opened directories only until this operation returns.
             // File handles below are metadata reads, not a pin for later Java I/O.
             try (Pins pins = new Pins()) {
@@ -220,7 +268,22 @@ public final class WindowsPrivateAcl {
                     else if (sidecar && part.equals(path.getParent())) privateAcl(handle, user, true, false);
                     else verifyAncestor(handle, part, path, user,preparedBoundary);
                 }
+                if (owner != null) owner.requireSame(currentSid().getBytes());
             }
+        }
+
+        private static void verifyOwner(Path path, boolean directory, OwnerIdentity expected) throws IOException {
+            PSID user = currentSid();
+            expected.requireSame(user.getBytes());
+            HANDLE handle = open(path, directory, true);
+            try {
+                PointerByReference owner = new PointerByReference(), sd = new PointerByReference();
+                int error = SECURITY.GetSecurityInfo(handle, 1, 1, owner, null, null, null, sd); // OWNER only
+                if (error != 0) throw new NativeFailure(error);
+                try { requireOwner(user, owner.getValue()); }
+                finally { free(sd.getValue()); }
+                expected.requireSame(currentSid().getBytes());
+            } finally { close(handle); }
         }
 
         private static String nativePath(Path path) { return "\\\\?\\" + path; }
@@ -277,9 +340,7 @@ public final class WindowsPrivateAcl {
                 ShortByReference control = new ShortByReference();
                 if (!DESCRIPTORS.GetSecurityDescriptorControl(sd.getValue(), control, new IntByReference()))
                     throw new NativeFailure(KERNEL.GetLastError());
-                if (owner.getValue() == null || !SECURITY.IsValidSid(new PSID(owner.getValue()))
-                        || !SECURITY.EqualSid(user, new PSID(owner.getValue())))
-                    throw new IOException("Windows private owner rejected");
+                requireOwner(user, owner.getValue());
                 boolean inheritedSidecar = sidecar && (control.getValue() & 0x1000) == 0;
                 if ((control.getValue() & 4) == 0 || (!inheritedSidecar && (control.getValue() & 0x1000) == 0)
                         || dacl.getValue() == null)
@@ -302,6 +363,11 @@ public final class WindowsPrivateAcl {
                 }
                 if (!full) throw new IOException("Windows private access unavailable");
             } finally { free(sd.getValue()); }
+        }
+
+        private static void requireOwner(PSID user, Pointer owner) throws IOException {
+            if (owner == null || !SECURITY.IsValidSid(new PSID(owner)) || !SECURITY.EqualSid(user, new PSID(owner)))
+                throw new IOException("Windows private owner rejected");
         }
 
         private static boolean trustedAncestorSid(PSID sid, PSID user) {

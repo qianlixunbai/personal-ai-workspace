@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [Windows 模型状态有效账户绑定候选](engineering/MODEL-STATE-OWNER-CONTRACT-FIX.md)完成：基于 Bootstrap／私有 ACL 的当前 TokenUser 契约，在两个生产文件中用固定 SID 取代 Windows 的 Java 用户名期待值，保留完整校验和末尾 owner 检查，并拒绝后续主体变化。194 个 Java 源编译及一个不加载原生库／Store 的纯 SID 契约检查通过；原生文件校验、原／替代 Profile 构造登记和 EXE 均未运行，未打包或部署。当前采样不是旧根因证明；完整验收仍 BLOCKED / productionGo=false。
+
 2026-11-10 [原 model-state 操作范围与只读观察](engineering/MODEL-STATE-READONLY-OBSERVATION.md)完成：此前拒绝是 Store 构造中的产品校验，精确对象的独立元数据查询未见旧拒绝。本次按明确范围普通权限采样成功，当前为普通目录，owner 与有效令牌 SID 相等、与同进程 Java 命名账户 SID 不等；只能证明当前上下文，不能追认旧失败根因。未重试构造／登记／EXE，未修改产品或安全规则；无新产品模块、旧测试／包未重跑，完整验收仍 BLOCKED / productionGo=false。
 
 2026-11-10 [知识、记忆与会话整合交付](engineering/KNOWLEDGE-CONVERSATION-DELIVERY-REPORT.md)完成：新独立 `PersonalAiWorkspace-knowledge-conversation-workflows-20261110.zip` 纳入此前未打包的五项完整流程，实际来源 `b4ae52e`，最新产品 `1e65271`。一次离线构建及 933 载荷／934 ZIP 条目／420 内嵌 pin 校验通过，旧测试未重跑；main、六份用户文档和六个旧 ZIP 哈希不变，Job 0、共享锁释放。当前会话为两项产品模块加一次整合交付，未凑第三项功能；仅本地提交，未推送。新包完整 EXE／WebView、真实模型恢复与整体维护仍未验收，原 model-state 动作未重试，BLOCKED / productionGo=false。

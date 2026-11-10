@@ -36,6 +36,7 @@ public final class ModelStateStore implements AutoCloseable {
     }
     private final Path root;
     private final UserPrincipal account;
+    private final WindowsPrivateAcl.OwnerIdentity windowsOwner;
     private final Object rootKey;
     private final FileChannel channel;
     private final FileLock lock;
@@ -85,9 +86,12 @@ public final class ModelStateStore implements AutoCloseable {
                     || Files.exists(ancestor.resolve("pom.xml"), LinkOption.NOFOLLOW_LINKS))
                 throw new IOException("Model state must be outside the project");
         }
-        account = root.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(System.getProperty("user.name"));
         windows = Files.getFileAttributeView(nearestExisting(root), PosixFileAttributeView.class) == null
                 && Files.getFileAttributeView(nearestExisting(root), DosFileAttributeView.class) != null;
+        // Windows Profile admission and private ACLs bind the effective TokenUser, not a JVM property.
+        windowsOwner = windows ? WindowsPrivateAcl.bindCurrentOwner() : null;
+        account = windows ? null : root.getFileSystem().getUserPrincipalLookupService()
+                .lookupPrincipalByName(System.getProperty("user.name"));
         noLinks(root);
         createDirectories(root);
         rootKey = verify(root, true);
@@ -474,7 +478,7 @@ public final class ModelStateStore implements AutoCloseable {
     }
     private static Path nearestExisting(Path path) throws IOException { while (!exists(path)) path = path.getParent(); return path; }
     private void createDirectories(Path path) throws IOException {
-        if (windows) { WindowsPrivateAcl.directory(path); return; }
+        if (windows) { WindowsPrivateAcl.directory(path, windowsOwner); return; }
         if (exists(path)) return;
         createDirectories(path.getParent());
         Files.createDirectory(path, permissions(true));
@@ -482,18 +486,21 @@ public final class ModelStateStore implements AutoCloseable {
     private void createPrivate(Path file) throws IOException {
         if (!exists(file)) {
             try {
-                if (windows) WindowsPrivateAcl.createFile(file);
+                if (windows) WindowsPrivateAcl.createFile(file, windowsOwner);
                 else Files.createFile(file, permissions(false));
             }
             catch (FileAlreadyExistsException ignored) { /* Verify the existing identity and permissions. */ }
         }
     }
     private Object verify(Path path, boolean directory) throws IOException {
-        if (windows) WindowsPrivateAcl.verify(path, directory);
+        if (windows) WindowsPrivateAcl.verify(path, directory, windowsOwner);
         noLinks(path);
         var attr = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if ((directory ? !attr.isDirectory() : !attr.isRegularFile()) || (!windows && attr.fileKey() == null)
-                || !Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).equals(account)) throw new IOException("Invalid model state ownership or type");
+        if ((directory ? !attr.isDirectory() : !attr.isRegularFile()) || (!windows && attr.fileKey() == null))
+            throw new IOException("Invalid model state ownership or type");
+        if (windows) WindowsPrivateAcl.verifyOwner(path, directory, windowsOwner);
+        else if (!Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).equals(account))
+            throw new IOException("Invalid model state ownership or type");
         var posix = Files.getFileAttributeView(path, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
         if (posix != null) {
             if (!posix.readAttributes().permissions().equals(PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------")))
