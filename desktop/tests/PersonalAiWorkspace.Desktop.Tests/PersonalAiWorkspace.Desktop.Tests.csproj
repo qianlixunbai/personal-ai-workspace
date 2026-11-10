@@ -15,6 +15,10 @@
   <Target Name="ValidateRuntimeLifecycleProbeAssets" BeforeTargets="PrepareForBuild" Condition="'$(RuntimeLifecycleProbe)' == 'true'">
     <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../frontend/dist/workspace-assets.json')" Text="Runtime lifecycle probe requires previously built production frontend assets." />
   </Target>
+  <Target Name="ValidateRuntimeLifecycleProbeSources" BeforeTargets="PrepareForBuild" Condition="'$(RuntimeLifecycleProbe)' == 'true' and '$(Mmf3ProfileAcceptanceBuild)' == 'true'">
+    <Error Condition="'$(TrustedDevelopmentManifest)' == '' or !Exists('$(TrustedDevelopmentManifest)')" Text="Profile runtime probe requires an explicit reviewed TrustedDevelopmentManifest." />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)" Command="node &quot;$(MSBuildThisFileDirectory)../../frontend/scripts/verify-probe-sources.mjs&quot; &quot;$(TrustedDevelopmentManifest)&quot;" />
+  </Target>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
