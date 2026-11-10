@@ -31,3 +31,30 @@ Web missing-record recovery is committed as `af1d295`. The loaded editor now off
 Unknown writes are never acknowledged by comparison, and archived records remain read-only in this review route. Missing reads lead to the explicit recovery from module 2. Navigation/session/editor changes clear comparisons and suppress late reads; no persistent copy, schema, model request or auto-merge was introduced. Existing reload/discard remains available.
 
 Three affected component checks passed, 3/3 (24 unrelated cases filtered out), plus TypeScript: conflict/declined confirmation/change during review/manual merge/second conflict/same-ID Save; archived and missing targets plus late hidden reads; and ambiguous create/update with read-only comparison. The existing synthetic MemoryService now enforces expectedRevision so concurrent updates exercise actual conflict semantics. Evidence: `.verification/web-memory-conflict-20261110/{Check.ps1,run.log,typecheck.log,test.log}`. Wrapper PID 24484 released at 08:23:24 UTC. No actual browser, model, database or persistence retest was started. This completes three user workflows; package them together and write the next handoff before changing conversations.
+
+## Combined development delivery and resource closure
+
+Module 3 is committed as `0c9b2fb2614a4af0b1e4bddcecd4fc93bb819288`. All three workflows are in one new [ZIP](../../artifacts/PersonalAiWorkspace-memory-draft-recovery-20261110.zip) and [unpacked EXE](../../artifacts/PersonalAiWorkspace-memory-draft-recovery-20261110/PersonalAiWorkspace.Desktop.exe). Older packages and checkpoints remain untouched. This closure is not a fourth feature module.
+
+| Check | Actual result |
+| --- | --- |
+| ZIP | 384,684,115 bytes; SHA-256 `2F243281800B006E59D07FA336C36A4D3687CAA27C653A90F75DE324B39F2DA7` |
+| Desktop DLL | SHA-256 `C34731BEFF3355DABCABDE597280AF47DC33BA84F3F93B5C7C31AB9D8E94A237` |
+| Payload | 933 files; actual extraction/relocation and embedded-source probe `DEVELOPMENT_PACKAGE_SOURCES_PASS` |
+| Frontend | Rebuilt from current source; fresh hashed assets and CSP verified; previous hashed asset directory was not copied |
+| Runtime | Reused unchanged; JAR SHA-256 `BC8F0CC35D2F9321AF848F7FFDFE271DB07B770CF1878454F07A8FD0C0D12625` |
+| Build | Desktop self-contained publish passed; frontend typecheck/build passed with the existing >500 kB chunk-size warning, not an error |
+| Resources | Package wrapper PID 20272 released Session 1 mutex at 08:25:43 UTC; at 08:27:34 it was available and 18765 was not listening |
+| Preserved | main `f5266bf4383f52a2293b0fe4bfe1964af958e64a`; all six user-document hashes; previous `ED558034...` edit-flows ZIP |
+
+Evidence: `.verification/memory-draft-recovery-delivery-20261110/{Build.ps1,README.txt,run.log,frontend-build.log,publish.log,embedded-sources.log,result.json,lock.json,final-state.json}`. All four synchronous build/check/package sessions returned exit 0. No service, Profile, database, model, browser or product EXE was started. No push, main change, KAG/finance repository action, ACL/EFS/registry/network policy change, approval rejection, pending approval or uncertain write/commit occurred.
+
+An incidental early `rg --files .verification` search for the existing wrapper hit OS access-denied on seven unrelated private directories: `browser-smoke-auth`, `m2b2b-r1-chrome/private`, `local-smoke-auth`, `mmf-3-same-account/run-4a5ae09cbaa24be0af840b1c7efda64c`, `mmf-1-review-1l0_ctyf`, `postgresql-credential-recovery-fixture`, and `v1-ollama-0401-environment/models`. This was directory enumeration, not an approval rejection; no content was read and none was retried. The known wrapper was then read at its already-discovered exact path. Those unrelated enumerations are stopped, not needed for this delivery. Earlier refused Crashpad/process-metadata targets were not revisited.
+
+## Handoff after three completed operations
+
+Stop this conversation here and continue in a fresh conversation in the same personal-ai-workspace project. Read STATUS, this report, and the current user goals before picking another substantial operation; the three specific gaps identified here are now closed. Do not manufacture further response checks or assume historical ADR exclusions are current backlog. No new WebView2 root-cause evidence was discovered in this round; a startup rerun is not proposed.
+
+Keep the current accuracy boundary: the historical full EXE -> natural WebView2 failure -> native Save -> tray exit -> independent reopen success is for `cff8015`. This new package has synthetic native/Bridge-component checks and packaging evidence only. New controls have not had physical UI/IME or minimum-window visual acceptance. Draft recovery retains content within the open editor; it is not an on-disk draft archive. Normal WebView2 pages, default no-argument entry, maintenance/migration, PostgreSQL desktop, cross-machine behavior and formal release remain unaccepted. Previous database reopen hashes changed, so never claim whole-database zero writes. Do not repeat accepted save/reopen, old timeout experiments, refused reads, or security changes; do not touch real memories.
+
+The user requested few targeted checks and continuous work between modules. Continue that policy, preserve the six documents/data/old packages, use precise local-only commits, and acquire the existing shared mutex only for the full lifecycle of builds/browser/services. Static work needs no lock. On disconnection stop mutations and verify uncertain outcomes read-only before retrying.
