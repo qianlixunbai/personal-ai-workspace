@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 迁移修复统一开发包已交付：`artifacts/PersonalAiWorkspace-migration-long-path-20261110.zip`，构建来源 `31b877616779dfa5c8e2e80c6a319e7b4b29958f`，933 payload / 934 ZIP 条目逐项核对，420 内嵌来源 pin 与实际文件一致；Runtime 与 Desktop 重建，前端/Java/helper 不变。旧包全部保留，main 与六份用户文档不变，不推送。新包完整 EXE 未重跑；退出观察来自旧验收程序，默认入口、成功维护迁移和正式发布仍未通过。构建 Job 清理前 2 个成员由 Job 收尾，锁已释放；断连恢复先只读核实，无重复动作或未定结果。[完整 SHA、证据、权限边界和下一会话交接](engineering/MIGRATION-AND-EXIT-DELIVERY-HANDOFF.md)。
+
 2026-11-10 退出剩余成员已完成一次限定观察：同一已验收 EXE 正常托盘退出码 0 后，guardian Job 从 5 降为 2，约 3.05 秒内归零，再关闭空 Job；没有强制收尾，无持续残留证据，因此未改产品关闭逻辑。Runtime Owner 仍用既有终止机制，不称 Java graceful shutdown；前次三次即时 Job 清理的历史结论保持。共享锁已释放，未查询旧进程或被拒范围。详见 [退出观察](engineering/DESKTOP-EXIT-DRAIN-ACCEPTANCE.md)。
 
 2026-11-10 离线迁移长路径源库/备份已修复：Workspace 与 Knowledge 各自的长源路径、长备份路径共 4 个合成组合通过；目标不可用时备份完整、源库哈希及全部表行不变、再次提交不覆盖、写锁释放。原版同 4 个组合在目标前失败。未连接 PostgreSQL、启动模型或修改默认配置；这是备份与失败回滚验收，不能称真实用户迁移或目标导入完成。源码与必要聚焦验证见 [离线迁移报告](engineering/OFFLINE-MIGRATION-LONG-PATH-ACCEPTANCE.md)，统一包尚待更新。

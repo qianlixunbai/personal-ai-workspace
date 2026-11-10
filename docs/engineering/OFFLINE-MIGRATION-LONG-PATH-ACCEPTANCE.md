@@ -36,3 +36,5 @@
 静态核对 `Program.ResolveDevelopmentProfile`、`DevelopmentWorkspaceSelection` 与 `WindowsProfileSecurity.Parent`：无参数流程的 `last-workspace` 绑定 OS Known Folder 下私有应用目录；已有 `--open-development-workspace-once` 仅隔离打开行为，不验证默认记录写入。未发现支持独立配置根的产品入口。没有改真实默认记录后再回滚，没有伪造 LOCALAPPDATA，也没有为测试增加绕开 Native Gate 的任意路径参数。默认入口仍待独立方案与实际验收。
 
 此源码修复不修改现有 ZIP。后续统一开发包应准确记录新 Runtime pin 和来源，保留所有旧包；本报告不是发布批准。真实 PostgreSQL 导入、个人恢复、用户数据迁移和默认配置切换仍不在本次自动执行范围。
+
+后续交付已完成：新包 `PersonalAiWorkspace-migration-long-path-20261110.zip`，完整 SHA、内嵌 pin 核对、退出观察及接续边界见 [最终交接](MIGRATION-AND-EXIT-DELIVERY-HANDOFF.md)。旧 ZIP 未修改。
