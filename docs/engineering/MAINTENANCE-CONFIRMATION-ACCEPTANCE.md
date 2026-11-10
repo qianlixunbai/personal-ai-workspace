@@ -55,3 +55,15 @@ agent-desktop 的技能说明已读，但 CLI 未安装／不在可调用路径�
 剩余最小条件：把已发布迁移的逐会话协议接入真正的普通原生启动授权，并保持中断失效；把实际模型执行 owner／结束证明及未知状态接入维护准入；在这些准入成立后，将通用维护入口的来源／目标选择连接到本轮已经实现的原生最终确认。迁移后的普通启动仍被原 `MaintenanceStartupFence` 阻断。不存在待批准的真实模型运行或真实数据迁移动作，本轮也没有自动审批拒绝或未知执行结果。
 
 main、六份用户文档、真实数据／凭据／默认配置及旧包保持原状；不推送。没有重试旧端口、被拒 Profile 或未知进程信息读取，没有修改现有权限或系统安全／网络设置。新合成 Profile 仅通过原有受控准备工具创建。
+## 本地交付凭证补记
+
+2026-11-10 断连后完成限定只读核查，确认此前打包成功；没有重跑打包、测试、服务或清理，也没有修改包内容。产品与本报告原始提交为 `fa9a5943632d0f1dfe09d904d69b57c087d7fd6e`。
+
+- 开发包：`artifacts/PersonalAiWorkspace-maintenance-confirmation-20261110.zip`，目录副本为同名无扩展名目录。
+- ZIP SHA-256：`D8A8FF61EF20245485400CAED48364517C9337AD312A6EC8E88AFC155A6FB43F`。
+- 933 个载荷文件，含清单共 934 个 ZIP 条目和 934 个目录文件。逐一核对归档与目录文件的 SHA-256、字节数及清单，全部一致，无缺项或多项。
+- 发布 Runtime SHA-256：`50F62968AE2B6615D47F50CE90A6E438CD309BF5440A2E14A3FB1FB178EBE083`；Desktop DLL SHA-256：`A3ED2DD95AF97A937F36BA91A24B6175F665F9BF3861F0A00598C0D29A77A097`。交付凭证中的 `desktopSha256` 指 DLL。Runtime 与已验收运行字节仅构建来源标记不同；420 条内嵌校验值为此前打包验收记录，本次未重执行嵌入资源验证。
+- `.verification/maintenance-confirmation-20261110/delivery-result.json` 与清单均绑定上述产品提交，`productionGo=false`。清单的 `sourceDirty=true` 与当时保留六份未跟踪用户文档的现场相符；只读核查时没有已跟踪文件改动。
+- 同目录 `publish-cleanup.json`：`2026-11-10T16:13:18.2659818Z`，guardian PID 41896，`jobActiveBeforeCleanup=0`、`jobReleased=true`、`lockReleased=true`、`failure=null`。上次打包和该次清理的未知状态据此解除，没有扫描或终止任何未知进程。
+
+该包仅为开发交付，不是安装器，不开启更新，不授权真实数据迁移或外部模型执行；完整维护仍为 **BLOCKED / productionGo=false**。完整视觉验收及通用维护向导未完成，剩余功能准入条件仍以上文为准。此次补记和文档提交不改变包内容与产品来源提交。
