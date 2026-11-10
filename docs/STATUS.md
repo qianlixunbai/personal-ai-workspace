@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 最终 r2 包的退出疑点已完成一次有界确认：Desktop 退出 0 后，自有 guardian Job 从 5 降至 2 个成员，2,941 ms 样本归零，随后关闭空 Job，无外层强制清理。观察最多 15 秒且计入原 420 秒总预算；资源限制和锁保留，实际总耗时约 78.2 秒。前轮包装在 Dispose 后约 170 ms 即收尾，不能由此判泄漏；本次与历史约 3 秒异步结束一致，无需修改产品或重打包。合成 guard 未变，远端终态仍未证明、productionGo=false。新增聚焦观察包装，首个无效长度 ID 的准备失败回执保留，产品未启动；有效新 Profile 完成一次确认。会话三个实质模块已完成，未推送。[时间线、包装与精确边界](engineering/INTEGRATED-EXIT-OBSERVATION.md)。
+
 2026-11-10 最终 r2 整合包已完成一次真实 EXE 的隔离网页/Runtime 联动：React 正常就绪、原生认证有效、当前 SQLite 状态可查；“查看阻断请求（只读）”展示两条合成未知请求，恢复保持禁用。托盘退出后，独立原生维护入口确认本次 Runtime 正常关闭，guard 哈希原样保留，维护继续 BLOCKED / productionGo=false。Desktop 退出 0；外层收尾前 5 个自有 Job 成员由 Job 清理，不能称全树自然退出；后续检查 Job 0，两轮锁均释放。使用既有 port=0 生命周期，没有查询旧端口、调用模型或修改产品代码，原 r2 包继续有效且未重打包。纠正此前“普通入口固定端点”的旧判断；真实恢复、默认启动与完整维护仍未验收。[截图、证据与范围](engineering/INTEGRATED-WEB-RUNTIME-ACCEPTANCE.md)。
 
 2026-11-10 累积功能已整合为独立新开发包 `artifacts/PersonalAiWorkspace-integrated-development-20261110-r2.zip`，产品源 `75b9614`。完整 Java 产品、Desktop 与 React 重建；567 个 class、248 个沿用资源/依赖条目、933 个载荷、934 个 ZIP 条目及 420 条内嵌 pin 核对通过。最终实际 EXE 的选择器取消、合成只读维护页及迁移审阅页检查通过并正常退出，Job 0/锁释放。第一份无 `-r2` 后缀候选已因 JAR 文件头问题作废，不能使用。没有启动 Runtime/模型/数据库；完整网页联动、真实恢复和维护仍 BLOCKED / productionGo=false。旧包、main、六份用户文档和默认配置不变，未推送。[最终包、SHA、失败证据与验收边界](engineering/INTEGRATED-DEVELOPMENT-DELIVERY.md)。
