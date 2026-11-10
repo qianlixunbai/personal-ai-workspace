@@ -11,16 +11,17 @@ import org.springframework.beans.factory.annotation.Qualifier;
 @Configuration
 public class KnowledgeConfiguration {
     @Bean(destroyMethod="close") KnowledgeAnswerHistory knowledgeAnswerHistory(@Value("${workspace.data-directory}") Path directory, RuntimeProperties p) {
-        return new KnowledgeAnswerHistory(directory, p.security().tokenFile());
+        return restricted() ? KnowledgeAnswerHistory.unavailable() : new KnowledgeAnswerHistory(directory, p.security().tokenFile());
     }
     @Bean(destroyMethod="close") KnowledgeStore knowledgeStore(@Value("${workspace.data-directory}") Path directory,RuntimeProperties p,
             @Value("${workspace.persistence.backend:sqlite}") String backend,
             @Qualifier("workspacePostgresqlDataSource") ObjectProvider<DataSource> data){
         return switch(backend){case "sqlite"->new KnowledgeStore(directory,p.security().tokenFile());
-            case "postgresql"->new KnowledgeStore(data.getObject(),directory,p.security().tokenFile());
+            case "postgresql"->restricted() ? new KnowledgeStore(data.getObject()) : new KnowledgeStore(data.getObject(),directory,p.security().tokenFile());
             default->throw new IllegalArgumentException("Unsupported Knowledge persistence backend");};
     }
-    @Bean(destroyMethod="close") KnowledgeIngestion knowledgeIngestion(KnowledgeStore store){return new KnowledgeIngestion(store);}
+    @Bean(destroyMethod="close") KnowledgeIngestion knowledgeIngestion(KnowledgeStore store){return restricted() ? KnowledgeIngestion.unavailable(store) : new KnowledgeIngestion(store);}
     @Bean KnowledgeBackup knowledgeBackup(KnowledgeStore store,RuntimeProperties p){return new KnowledgeBackup(store,p.security().tokenFile());}
-    @Bean(destroyMethod="close") KnowledgeLexicalIndex knowledgeLexicalIndex(KnowledgeStore store){return new KnowledgeLexicalIndex(store);}
+    @Bean(destroyMethod="close") KnowledgeLexicalIndex knowledgeLexicalIndex(KnowledgeStore store){return restricted() ? KnowledgeLexicalIndex.unavailable(store) : new KnowledgeLexicalIndex(store);}
+    private static boolean restricted(){return io.github.qianlixunbai.workspace.security.WindowsNativeGate.maintenanceRuntime()!=null;}
 }

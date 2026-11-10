@@ -17,7 +17,7 @@ public final class SqliteMaintenanceFixture {
         var output = System.out; System.setOut(new PrintStream(OutputStream.nullOutputStream())); System.setErr(System.out);
         byte[] input = System.in.readNBytes(16385); String stage = "INPUT";
         try {
-            require((args.length == 0 || args.length == 1 && Set.of("--maintenance-binding","--maintenance-model-state").contains(args[0])) && input.length < 16385);
+            require((args.length == 0 || args.length == 1 && Set.of("--maintenance-binding","--maintenance-model-state","--restricted-writers").contains(args[0])) && input.length < 16385);
             var config = JsonMapper.builder().build().readTree(input);
             int port = config.path("port").asInt(); require(port >= 49152 && port <= 65535);
             Path cluster = Path.of(config.path("data").asString()).toAbsolutePath().normalize();
@@ -81,11 +81,20 @@ public final class SqliteMaintenanceFixture {
             Path modelLock = root.resolve("model-state/.lock");
             if (!Files.exists(modelLock)) io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(modelLock);
             require(Files.size(modelLock) == 0);
-            if(args.length==1 && args[0].equals("--maintenance-model-state")) {
+            if(args.length==1 && Set.of("--maintenance-model-state","--restricted-writers").contains(args[0])) {
                 try(var models=new io.github.qianlixunbai.workspace.model.ModelStateStore(root.resolve("model-state"),token,data)) {
                     require(models.selection()==null);
                     // A local synthetic selection record, not an installed/loaded model claim.
                     models.commit(0,"fixture-no-execution:latest","a".repeat(64));
+                }
+            }
+            if(args.length==1 && args[0].equals("--restricted-writers")) {
+                // Independent local truth must stay byte-identical while this domain is disabled.
+                // No provider/task is started: this is only a fresh synthetic durable history row.
+                try(var history=new KnowledgeAnswerHistory(data,token)) {
+                    history.begin(UUID.randomUUID(),"Synthetic unfinished question","synthetic",
+                            new io.github.qianlixunbai.workspace.model.ModelProfile.PublicProfile("fixture","1",
+                                    io.github.qianlixunbai.workspace.model.ModelProfile.Locality.LOCAL),"fixture");
                 }
             }
             output.println("OWNER_FIXTURE_DOCUMENT " + documentId);

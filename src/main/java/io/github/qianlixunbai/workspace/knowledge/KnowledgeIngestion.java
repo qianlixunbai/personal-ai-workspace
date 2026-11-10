@@ -13,7 +13,9 @@ public final class KnowledgeIngestion implements AutoCloseable {
     private final ThreadPoolExecutor executor=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4),r->{var t=new Thread(r,"knowledge-ingestion");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
     private volatile boolean closed;
     public KnowledgeIngestion(KnowledgeStore store){this.store=store;}
+    static KnowledgeIngestion unavailable(KnowledgeStore store){var value=new KnowledgeIngestion(store);value.close();return value;}
     public KnowledgeStore.Job upload(String request,String doc,String expected,String filename,long size,InputStream input) {
+        if(closed)throw error(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);
         KnowledgeStore.id(request);var prior=store.findJob(request);if(prior!=null)return prior;
         if(closed||!capacity.tryAcquire())throw error(ErrorCode.KNOWLEDGE_QUEUE_FULL);
         boolean admitted=false,queued=false;

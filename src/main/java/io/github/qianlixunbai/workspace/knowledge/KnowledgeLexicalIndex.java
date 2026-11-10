@@ -41,8 +41,11 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         "CREATE TABLE chunks(id INTEGER PRIMARY KEY,document TEXT NOT NULL,revision INTEGER NOT NULL,ordinal INTEGER NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL,first_line INTEGER NOT NULL,last_line INTEGER NOT NULL,heading TEXT,UNIQUE(document,revision,ordinal))",
         "CREATE VIRTUAL TABLE lexical USING fts5(title,heading,body,tokenize='ascii')");
     public KnowledgeLexicalIndex(KnowledgeStore store){this(store,MAX_BYTES,LexicalChunker.MAX_CHUNKS);}
-    KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks){
+    static KnowledgeLexicalIndex unavailable(KnowledgeStore store){return new KnowledgeLexicalIndex(store,MAX_BYTES,LexicalChunker.MAX_CHUNKS,false);}
+    KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks){this(store,maxBytes,maxChunks,true);}
+    private KnowledgeLexicalIndex(KnowledgeStore store,long maxBytes,int maxChunks,boolean enabled){
         this.store=store;this.maxBytes=maxBytes;this.maxChunks=maxChunks;
+        if(!enabled){directory=null;staging=null;database=null;closed=true;state="UNAVAILABLE";executor.shutdownNow();return;}
         directory=store.postgresql()?null:store.root().resolve("index");staging=directory==null?null:directory.resolve("staging");database=directory==null?null:directory.resolve("lexical.db");
         store.onCorpusChanged(this::invalidate);
         try {
@@ -86,7 +89,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         if(state.equals("READY")&&!Objects.equals(publishedFingerprint,fingerprint(store.searchCorpus(),sqliteVersion)))invalidate();
         return new Status(state,state.equals("READY")?documentCount:0,state.equals("READY")?chunkCount:0);
     }
-    public Status rebuild(){invalidate();return status();}
+    public Status rebuild(){if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);invalidate();return status();}
     private void requestRebuild() {
         if(closed)return;rerun.set(true);
         if(running.compareAndSet(false,true))try{executor.execute(this::run);}catch(RejectedExecutionException ignored){running.set(false);}
@@ -180,6 +183,7 @@ public final class KnowledgeLexicalIndex implements AutoCloseable {
         return search(raw,requestedLimit,null);
     }
     public Results search(String raw,Integer requestedLimit,KnowledgeScope scope) {
+        if(closed)throw error(ErrorCode.KNOWLEDGE_INDEX_UNAVAILABLE);
         var query=LexicalAnalyzer.query(raw);int limit=requestedLimit==null?10:requestedLimit;
         if(limit<1||limit>10)throw error(ErrorCode.KNOWLEDGE_SEARCH_INVALID);
         var refs=store.searchCorpus();String current=sqliteVersion==null?null:fingerprint(refs,sqliteVersion);

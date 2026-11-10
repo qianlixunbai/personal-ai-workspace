@@ -37,6 +37,11 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
     }
     public record Page(List<Summary> items, long total, int page, int limit) {}
 
+    // Restricted data sessions must not open, create, upgrade or reconcile this independent
+    // SQLite domain. The existing data methods fail closed when no connection is held.
+    static KnowledgeAnswerHistory unavailable() { return new KnowledgeAnswerHistory(); }
+    private KnowledgeAnswerHistory() {}
+
     public KnowledgeAnswerHistory(Path data, Path token) {
         try {
             PrivateKnowledgeDirectory.validate(data.toAbsolutePath().normalize(), token);
@@ -183,6 +188,7 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
     }
     private interface Operation<T> { T run() throws Exception; }
     private <T> T read(Operation<T> work) {
+        if (db == null) throw failure(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE);
         try { return work.run(); } catch (WorkspaceException e) { throw e; } catch (Exception e) { throw failure(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE); }
     }
     private <T> T transaction(Operation<T> work) {

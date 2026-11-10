@@ -12,7 +12,7 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public static partial class RuntimeLifecycleProbe
 {
-    private static int RunMigratedWorkspaceStartup(string id,string psql)
+    private static int RunMigratedWorkspaceStartup(string id,string psql,bool restrictedWriters=false)
     {
         byte[] configuration=Encoding.UTF8.GetBytes(Console.In.ReadToEnd());string stage="PROFILE";
         try
@@ -22,6 +22,7 @@ public static partial class RuntimeLifecycleProbe
             using var chosen=JsonDocument.Parse(configuration);var target=chosen.RootElement;
             using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(300));
             string source=Path.Combine(profile.Root,"data","memory.db"),sourceBefore=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source)));
+            string? historyBefore=restrictedWriters?HistoryFingerprint(profile):null;
             stage="PREPARE_MIGRATED_SOURCE";
             var migrationUi=Task.Run(()=>DriveMigrationDialog(profile,target,psql,true,deadline.Token));
             _=migrationUi.ContinueWith(t=>{if(t.IsFaulted)deadline.Cancel();},TaskScheduler.Default);
@@ -31,6 +32,7 @@ public static partial class RuntimeLifecycleProbe
                 migrationUi.GetAwaiter().GetResult();operation=migration.Operation;
                 migration.FinishAsync(deadline.Token).GetAwaiter().GetResult();Assert.True(migration.VerifiedStopped);
             }
+            if(restrictedWriters)return VerifyRestrictedWriterReopen(profile,target,psql,deadline.Token,operation,sourceBefore,historyBefore!);
             string activation=Path.Combine(profile.Root,"evidence","sqlite-activation",operation);
             string savedConfiguration=Path.Combine(profile.Root,"data","database.dpapi");
             string configurationBefore=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(savedConfiguration)));
@@ -103,6 +105,51 @@ public static partial class RuntimeLifecycleProbe
         }
         catch(Exception failure){Console.WriteLine("MIGRATED_STARTUP_STOP "+stage+" "+failure.GetType().Name);Console.WriteLine(failure.Message);Console.WriteLine(failure.StackTrace);return 10;}
         finally{CryptographicOperations.ZeroMemory(configuration);}
+    }
+    private static string HistoryFingerprint(Mmf3AcceptanceLaunch profile)
+    {
+        string root=Path.Combine(profile.Root,"data","knowledge-answer-history");
+        Assert.True(File.Exists(Path.Combine(root,"history.db")));
+        return string.Join("\n",Directory.GetFiles(root).Order().Select(path=>Path.GetFileName(path)+":"+Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))));
+    }
+    private static int VerifyRestrictedWriterReopen(Mmf3AcceptanceLaunch profile,JsonElement target,string psql,
+        CancellationToken token,string operation,string sourceBefore,string historyBefore)
+    {
+        Assert.Equal(historyBefore,HistoryFingerprint(profile));
+        const string indexCounts="SELECT (SELECT count(*) FROM workspace.knowledge_chunks),(SELECT count(*) FROM workspace.knowledge_index_metadata)";
+        // Import builds a derived index; remove only synthetic derived state after migration to expose an eager reopen rebuild.
+        var initialIndex=Sql(psql,target,indexCounts);Assert.Equal(0,initialIndex.Code);Assert.NotEqual("0|0",initialIndex.Output.Trim());
+        string conversation=Guid.NewGuid().ToString(),turn=Guid.NewGuid().ToString(),task=Guid.NewGuid().ToString(),job=Guid.NewGuid().ToString();
+        // This fixture owns the isolated database. These rows represent later unfinished domain
+        // work, not active writers or external model executions, and must not be reconciled here.
+        string seed=$"BEGIN; DELETE FROM workspace.knowledge_chunks; DELETE FROM workspace.knowledge_index_metadata; INSERT INTO workspace.conversations VALUES('{conversation}','Synthetic later conversation','ACTIVE',1,1); "
+            +$"INSERT INTO workspace.conversation_turns VALUES('{turn}','{conversation}',1,'PENDING',1,1,'{task}',NULL); "
+            +$"INSERT INTO workspace.knowledge_jobs SELECT '{job}',id,'PENDING',NULL,2,'later.txt','TXT',1,version,'2026-11-10T00:00:00Z' FROM workspace.knowledge_documents; COMMIT;";
+        Assert.Equal(0,Sql(psql,target,seed).Code);
+        Assert.Equal("0|0",Sql(psql,target,indexCounts).Output.Trim());
+        string preserved=$"SELECT t.status,t.updated_at,c.updated_at,coalesce(t.failure_code,''),j.state,coalesce(j.error,'') FROM workspace.conversation_turns t JOIN workspace.conversations c ON c.id=t.conversation_id CROSS JOIN workspace.knowledge_jobs j WHERE t.id='{turn}' AND j.id='{job}'";
+        var before=Sql(psql,target,preserved);Assert.Equal(0,before.Code);Assert.Equal("PENDING|1|1||PENDING|",before.Output.Trim());
+        DevelopmentRuntimeOwner? owner=null;
+        using(var client=RuntimeClient.CreateMmf3Acceptance(()=>owner?.ReadCredential()))
+        using(owner=new DevelopmentRuntimeOwner(profile,client))
+        {
+            var ui=Task.Run(()=>DriveResumeDialog(profile,target,true,token,owner));
+            owner.Start(token);ui.GetAwaiter().GetResult();WaitOwner(owner,true,token);
+            Assert.Equal("POSTGRESQL",client.GetStorageStatusAsync(token).GetAwaiter().GetResult().Backend);
+            Assert.Equal(DesktopError.ModelUnavailable,Assert.Throws<DesktopException>(()=>client.GetModelStatusAsync(token).GetAwaiter().GetResult()).Error);
+            Assert.Equal(historyBefore,HistoryFingerprint(profile));
+            Assert.Equal(before.Output,Sql(psql,target,preserved).Output);
+            Assert.Equal("0|0",Sql(psql,target,indexCounts).Output.Trim());
+            owner.StopAsync().GetAwaiter().GetResult();Assert.True(owner.LastStopConfirmed);
+        }
+        Assert.Equal(historyBefore,HistoryFingerprint(profile));
+        var after=Sql(psql,target,preserved);Assert.Equal(0,after.Code);Assert.Equal(before.Output,after.Output);
+        var stoppedIndex=Sql(psql,target,indexCounts);Assert.Equal(0,stoppedIndex.Code);Assert.Equal("0|0",stoppedIndex.Output.Trim());
+        Assert.Equal(sourceBefore,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(profile.Root,"data","memory.db")))));
+        Console.WriteLine(JsonSerializer.Serialize(new{passed=true,profile=profile.RunId,operation,
+            historyBytesPreserved=true,conversationPendingPreserved=true,knowledgePendingPreserved=true,indexNotRebuilt=true,
+            normalCloseObserved=true,modelDisabled=true,sourceUnchanged=true,visualAcceptance=false,productionGo=false}));
+        return 0;
     }
     private static void WaitOwner(DevelopmentRuntimeOwner owner,bool ready,CancellationToken token)
     {

@@ -13,7 +13,12 @@ public class ConversationConfiguration {
             @Qualifier("workspacePostgresqlDataSource") ObjectProvider<DataSource> postgresql) {
         var store = initializedDatabase.postgresql() ? new ConversationStore(postgresql.getObject())
                 : new ConversationStore(initializedDatabase.databaseFile());
-        try { store.reconcilePending(); return store; }
+        try {
+            // Restricted migrated sessions do not enable conversations. Opening Memory must
+            // not rewrite pending conversation outcomes as an eager bean initialization effect.
+            if (io.github.qianlixunbai.workspace.security.WindowsNativeGate.maintenanceRuntime()==null) store.reconcilePending();
+            return store;
+        }
         catch (RuntimeException failure) { store.close(); throw failure; }
     }
 }
