@@ -92,7 +92,7 @@ export function StorageSettings({ bridge, enabled, onRuntimeUnconfirmed }: {
   }
   const value = (field: keyof StorageStatus) => snapshot ? labels[String(snapshot[field])] ?? '尚未检查' : '尚未检查'
   return <section className="card" aria-labelledby="storage-title" aria-busy={working}>
-    <div className="card-heading"><h2 id="storage-title">本地数据与存储</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void inspect() }}>重新检查存储</button></div>
+    <div className="card-heading"><h2 id="storage-title" tabIndex={-1}>本地数据与存储</h2><button className="secondary" disabled={!enabled || working} onClick={() => { void inspect() }}>重新检查存储</button></div>
     <dl className="status-list">
       <div><dt>Java Runtime 启动观察（Desktop）</dt><dd>{startup ? startup.failure === 'NONE' ? '本次确认可访问并通过原生认证' : labels[startup.failure] : '尚未检查'}</dd></div>
       <div><dt>当前持久化引擎</dt><dd>{snapshot ? snapshot.backend === 'SQLITE' ? 'SQLite' : snapshot.backend === 'POSTGRESQL' ? 'PostgreSQL' : '配置不受支持' : '等待受控查询'}</dd></div>

@@ -34,7 +34,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const showRuntime = () => {
     const group = document.getElementById('settings-connection')
     if (group instanceof HTMLDetailsElement) group.open = true
-    document.getElementById('settings-status-title')?.focus()
+    document.getElementById('workspace-status-title')?.focus()
   }
   const registerLeave = useCallback((guard: MemoryLeaveGuard) => { leaveMemory.current = guard; return () => { leaveMemory.current = leave => leave() } }, [])
   const registerDraft = useCallback((receive: MemoryDraftReceiver) => { receiveMemoryDraft.current = receive; return () => { receiveMemoryDraft.current = () => false } }, [])
@@ -140,7 +140,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
         <div hidden={page !== 'memory'}><MemoryPage bridge={bridge} enabled={!!status && !busy} visible={page === 'memory'} registerLeave={registerLeave} registerDraft={registerDraft} openBackup={() => { void run('native.openMemoryBackup') }} /></div>
         <div hidden={page !== 'knowledge'}><KnowledgePage bridge={bridge} enabled={!!status && !busy} visible={page === 'knowledge'} onMemoryDraft={draftFromSource} /></div>
         {page === 'finance' && <FinancePage bridge={bridge} enabled={!!status && !busy} openSettings={() => navigate('settings')} />}
-        {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} onRuntimeUnconfirmed={invalidateRuntimeObservation} />}
+        {page === 'settings' && <SettingsPage bridge={bridge} status={status} busy={busy} open={method => { void run(method) }} refresh={() => { void run() }} onRuntimeUnconfirmed={invalidateRuntimeObservation} navigate={navigate} />}
         {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status" className="operation-status">{notice}</p>}
       </div>
     </main>

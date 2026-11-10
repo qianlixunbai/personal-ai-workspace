@@ -34,6 +34,7 @@ import { conversationResponseBytes, isAdmission, isConversation, isConversationD
 import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, ConversationSearchPage, ConversationSearchScope, ConversationDraftOpen } from './conversations'
 import type { MemoryRef } from './contracts'
 import type { AssistantSubmit, MemoryChoice, Method, NativeMethod, OperationView, ShellStatus, WebViewPort } from './contracts'
+import { StatusObservations } from './statusObservations'
 
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
@@ -44,6 +45,7 @@ const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown�
 
 interface Pending { method: Method; searchQuery?: string; searchScope?: string; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 export class WorkspaceClient {
+  readonly statusObservations = new StatusObservations()
   private session: string | null = null
   private pending = new Map<string, Pending>()
   private listeners = new Set<() => void>()
@@ -55,10 +57,10 @@ export class WorkspaceClient {
   onSession(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   onVisionClear(listener: (handle: string) => void) { this.visionListeners.add(listener); return () => { this.visionListeners.delete(listener) } }
   onStorageStartup(listener: (status: StorageStartupStatus) => void) { this.storageListeners.add(listener); return () => { this.storageListeners.delete(listener) } }
-  bootstrap() { return this.request('shell.bootstrap') as Promise<ShellStatus> }
-  refreshStatus() { return this.request('shell.refreshStatus') as Promise<ShellStatus> }
-  storageStatus() { return this.request('storage.status') as Promise<StorageStatus> }
-  storageStartupStatus() { return this.request('storage.startupStatus') as Promise<StorageStartupStatus> }
+  bootstrap() { return this.statusObservations.track('shell', () => this.request('shell.bootstrap') as Promise<ShellStatus>) }
+  refreshStatus() { return this.statusObservations.track('shell', () => this.request('shell.refreshStatus') as Promise<ShellStatus>) }
+  storageStatus() { return this.statusObservations.track('storage', () => this.request('storage.status') as Promise<StorageStatus>) }
+  storageStartupStatus() { return this.statusObservations.track('startup', () => this.request('storage.startupStatus') as Promise<StorageStartupStatus>) }
   financeImports(page = 0, size = 10) {
     if (!isImportQuery(page, size)) return Promise.reject(new BridgeError('InvalidRequest', '导入历史分页无效。'))
     return this.request('finance.imports', { page, size }) as Promise<FinanceImportPage>
@@ -135,13 +137,29 @@ export class WorkspaceClient {
   visionTask(taskId: string, cancel = false) { return this.request(cancel ? 'vision.cancel' : 'vision.get', { taskId }) as Promise<VisionTask> }
   currentVisionTask() { return this.request('vision.get') as Promise<VisionTask> }
   clearVision() { return this.request('vision.clear') as Promise<{ cleared: true }> }
-  inspectModels() { return this.request('models.inspect') as Promise<ModelSnapshot> }
-  inspectModelExecutions() { return this.request('models.inspectRecovery') as Promise<ModelExecutionInspection> }
+  inspectModels() { return this.statusObservations.track('model', () => this.request('models.inspect') as Promise<ModelSnapshot>) }
+  inspectModelExecutions() {
+    this.statusObservations.invalidate(['model'], '执行记录检查不能证明当前模型可用，请显式只读检查模型状态。')
+    return this.request('models.inspectRecovery') as Promise<ModelExecutionInspection>
+  }
   mutateModel(payload: ModelRequest) {
     if (!isModelRequest(payload)) return Promise.reject(new BridgeError('InvalidRequest', '模型意图无效，请刷新。'))
-    return this.request('models.mutate', payload) as Promise<ModelOutcome>
+    const session = this.session
+    const reset = () => {
+      if (session === this.session) this.statusObservations.invalidate(['model'], '模型操作后的状态需要显式只读检查。')
+    }
+    reset()
+    return (this.request('models.mutate', payload) as Promise<ModelOutcome>).finally(reset)
   }
-  open(method: NativeMethod) { return this.request(method) as Promise<{ opened: true }> }
+  open(method: NativeMethod) {
+    const session = this.session
+    const reset = () => {
+      if (session === this.session && (method === 'native.openCredentialFlow' || method === 'native.openDatabaseSettings'))
+        this.statusObservations.invalidate(['shell', 'startup', 'storage', 'model'], '原生设置可能已变化，请重新检查。')
+    }
+    reset()
+    return (this.request(method) as Promise<{ opened: true }>).finally(reset)
+  }
   selectMemories() { return this.request('assistant.selectMemories') as Promise<MemoryChoice> }
   submitAssistant(payload: AssistantSubmit) { return this.request('assistant.submit', payload) as Promise<OperationView> }
   proposeMemory(text: string) { return this.request('assistant.proposeMemory', { text }) as Promise<OperationView> }
@@ -215,6 +233,8 @@ export class WorkspaceClient {
     const request = { version: 1, sessionId: this.session, requestId, method, payload }
     if (new TextEncoder().encode(JSON.stringify(request)).length > 32 * 1024)
       return Promise.reject(new BridgeError('InvalidRequest', '输入超出 bridge 传输预算，请缩短文本。'))
+    if (submission(method) || method === 'vision.submit' || method === 'vision.validate')
+      this.statusObservations.invalidate(['model'], '模型相关请求使旧观察失效；请显式检查当前模型状态，任务结束以原任务回执为准。')
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
         : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
@@ -256,7 +276,10 @@ export class WorkspaceClient {
     if (bytes > conversationResponseBytes) return
     if (data.type === 'storage.lifecycle') {
       if (bytes <= 64 * 1024 && exactFields(data, ['type', 'version', 'sessionId', 'result']) && data.version === 1 && this.session !== null
-        && data.sessionId === this.session && isStorageStartupStatus(data.result)) this.storageListeners.forEach(listener => listener(data.result as StorageStartupStatus))
+        && data.sessionId === this.session && isStorageStartupStatus(data.result)) {
+        this.statusObservations.lifecycle(data.result)
+        this.storageListeners.forEach(listener => listener(data.result as StorageStartupStatus))
+      }
       return
     }
     if (data.type === 'vision.cleared') {
@@ -269,6 +292,7 @@ export class WorkspaceClient {
       if (data.sessionId === this.session) return
       this.rejectPending('工作区已重新加载，请显式重试。')
       this.session = data.sessionId
+      this.statusObservations.reset()
       this.listeners.forEach(listener => listener())
       return
     }
@@ -364,6 +388,7 @@ export class WorkspaceClient {
   }
   dispose() {
     this.port?.removeEventListener('message', this.receive)
+    this.statusObservations.reset()
     this.rejectPending('工作区已关闭。'); this.listeners.clear(); this.visionListeners.clear(); this.storageListeners.clear(); this.session = null
   }
 }

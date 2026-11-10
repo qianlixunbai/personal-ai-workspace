@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 [工作区状态总览与功能入口](../engineering/WORKSPACE-STATUS-OVERVIEW-REPORT.md)完成现有结构化快照的统一展示与操作导航，支持独立失败、回执时间、过期和会话失效。它是子系统状态的实用切片，没有资源／系统／进程采样，不代表所有功能或完整桌面就绪；合成 UI 与类型检查通过，未打包或进行 EXE／WebView 验收，安全候选和既有 BLOCKED / productionGo=false 边界保留。
+
 2026-11-10 [累计知识／记忆／会话流程已整合为新开发包](../engineering/KNOWLEDGE-CONVERSATION-DELIVERY-REPORT.md)，来源 `b4ae52e`，包含五项此前未打包的流程。当前会话完成参考准备、手动草稿文件两项产品模块与一次必要交付；没有把包装算作第三项新功能。编译及包来源核对通过，旧测试未重跑；完整 EXE／WebView、真实恢复与维护仍 BLOCKED，原拒绝未重试。后续依据真实缺口或新相关证据推进，不重复打包或凑小规则。
 
 2026-11-10 [手动草稿文件的保存与恢复](../engineering/CONVERSATION-DRAFT-FILES-REPORT.md)作为本会话第二个完整模块交付，产品 `1e65271`。补齐窗口内草稿不能跨重开保存的已证实缺口：用户控制新文件保存、同一会话核对、全文对照与恢复，不扩展自动记忆或隐式保存。两项 UI 和一个 Native 文件流程通过；实际 EXE 退出／重开仍未验收，未打包，原 model-state 拒绝保持停止，整体维护 BLOCKED。
@@ -116,7 +118,7 @@ Vision 的最新技术边界见 [修复报告](../engineering/V1-VISION-GATE-REM
 | W1 后续 | Search / Web Answer、引用整合及 W1 最终验收；当前不能宣传为可用 |
 | Finance 后续 | 账本写入、导入创建到确认、预算等需独立领域设计／来源核验；Budgets 当前 UNSUPPORTED |
 | 统一金融 AI | 只沿用 Workspace Unified AI Assistant + Shared Runtime；不迁入独立 Finance AI Analyst，不开启自主金融工具 |
-| Resource Monitor / System Status | 统一资源／子系统状态属于未来完整能力；现有模型／存储状态不等于完整资源监控 |
+| Resource Monitor / System Status | 已有五项既有快照的[状态总览与操作入口](../engineering/WORKSPACE-STATUS-OVERVIEW-REPORT.md)；系统资源监控仍属未来能力，当前不采样系统／进程／端口 |
 | P1 产品整合 | 启动／退出与 degraded UX、隐私与恢复、安装／迁移、发布可信链、最终 Windows 验收 |
 | 分发与维护 | 代码签名、安装器、更新、明确许可证与 CI 方案分别处理；当前无正式 Release、CI PASS 或 Production GO |
 

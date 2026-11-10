@@ -6,23 +6,26 @@ import { FinanceAccounts } from '../components/FinanceAccounts'
 import type { WorkspaceClient } from '../bridge/client'
 import type { ModelAction, ModelFact, ModelSnapshot, ModelExecutionInspection } from '../bridge/models'
 import { ModelExecutionRecords } from '../components/ModelExecutionRecords'
+import type { Page } from '../app/navigation'
 const maintenance: { method: NativeMethod; title: string; description: string }[] = [
   { method: 'native.openMemoryBackup', title: '记忆备份', description: '导出或恢复手动保存的记忆。' },
   { method: 'native.openWorkspaceBackup', title: '工作区备份', description: '包含记忆与对话；知识库需单独备份。' },
   { method: 'native.openKnowledgeBackup', title: '知识库备份', description: '导出或恢复文档与源版本。' },
 ]
-export function SettingsPage({ bridge, status, busy, open, refresh, onRuntimeUnconfirmed }: {
+export function SettingsPage({ bridge, status, busy, open, refresh, onRuntimeUnconfirmed, navigate }: {
   bridge: WorkspaceClient; status: ShellStatus | null; busy: boolean; open: (method: NativeMethod) => void; refresh: () => void
   onRuntimeUnconfirmed: (runtimeReachable: boolean) => void
+  navigate?: (page: Page) => void
 }) {
   return <div className="settings-page">
+    <StatusPanel bridge={bridge} status={status} {...(navigate ? { navigate } : {})} />
     <details className="settings-group"><summary>快速助手<span>全局快捷键与选区操作</span></summary><section className="card" aria-labelledby="shortcuts-title"><h2 id="shortcuts-title">快捷键</h2>
       <div className="shortcut-row"><span>选中文字后选择翻译、总结或解释</span><kbd>Ctrl + Alt + Shift + Q</kbd></div>
       <div className="shortcut-row"><span>直接翻译选中的文字</span><kbd>Ctrl + Alt + Shift + T</kbd></div>
       <p className="hint">也可从托盘打开。Esc 关闭浮窗并清除本次内容；结果需要手动复制。</p></section></details>
     <details id="settings-connection" className="settings-group" open><summary>连接与存储<span>本机服务、数据库与凭据</span></summary>
       <section className="card"><div className="card-heading"><h2 id="settings-status-title" tabIndex={-1}>本机运行状态</h2><button className="secondary" onClick={refresh} disabled={busy || !status}>刷新状态</button></div>
-        <StatusPanel status={status} /><p className="hint">{!status || status.runtime !== 'Available' ? '下一步：刷新状态；若仍无法确认，请在下方重新检查 Runtime 启动观察，并参照 docs/DEVELOPMENT.md 的启动与故障处理说明。'
+        <p className="hint">{!status || status.runtime !== 'Available' ? '下一步：刷新状态；若仍无法确认，请在下方重新检查 Runtime 启动观察，并参照 docs/DEVELOPMENT.md 的启动与故障处理说明。'
           : status.credential !== 'Ready' ? '下一步：在原生窗口核对连接凭据；认证未通过前，模型与数据库可用性保持未知。'
           : '下一步：分别重新检查存储、只读刷新模型。Runtime 可访问并通过认证，不代表数据库或模型已就绪。'}</p>
         <div className="operation-actions"><button disabled={busy || !status?.nativeEntries.includes('native.openCredentialFlow')} onClick={() => open('native.openCredentialFlow')}>管理连接凭据…</button><button disabled={busy || !status?.nativeEntries.includes('native.openBrowserPairing')} onClick={() => open('native.openBrowserPairing')}>浏览器翻译配对…</button></div>
@@ -30,8 +33,8 @@ export function SettingsPage({ bridge, status, busy, open, refresh, onRuntimeUnc
       <StorageSettings bridge={bridge} enabled={!!status && !busy} onRuntimeUnconfirmed={onRuntimeUnconfirmed} />
     </details>
     <ModelManagement bridge={bridge} enabled={!!status && !busy && status.runtime === 'Available' && status.credential === 'Ready'} />
-    <details className="settings-group"><summary>财务连接<span>独立数据库与身份绑定</span></summary><FinanceAccounts bridge={bridge} enabled={!!status && !busy} /></details>
-    <section aria-labelledby="maintenance-title"><h2 id="maintenance-title" className="section-title">备份与恢复</h2><p className="hint backup-warning">备份包含明文个人内容，请妥善保管。恢复前请在原生窗口核对范围和目标位置。</p><div className="maintenance-list">{maintenance.map(entry => <article className="maintenance-row" key={entry.method}>
+    <details className="settings-group"><summary id="settings-finance-title">财务连接<span>独立数据库与身份绑定</span></summary><FinanceAccounts bridge={bridge} enabled={!!status && !busy} /></details>
+    <section aria-labelledby="maintenance-title"><h2 id="maintenance-title" tabIndex={-1} className="section-title">备份与恢复</h2><p className="hint backup-warning">备份包含明文个人内容，请妥善保管。恢复前请在原生窗口核对范围和目标位置。</p><div className="maintenance-list">{maintenance.map(entry => <article className="maintenance-row" key={entry.method}>
       <div><h3>{entry.title}</h3><p>{entry.description}</p></div><button className="secondary" onClick={() => open(entry.method)} disabled={busy || !status?.nativeEntries.includes(entry.method)}>打开<span className="sr-only"> {entry.title}</span></button>
     </article>)}</div></section>
     <details className="settings-group settings-notices"><summary id="settings-privacy-title">隐私与高级说明</summary>
@@ -112,7 +115,7 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
     : !s.ready ? '在此核对模型选择；需要验证时使用高级模型操作中的验证加载，并在原生窗口明确确认。'
     : '可继续发起文本任务；本次 Ready 只表示 Runtime 的准入结果，不保证后续执行成功。'
   return <section className="card" aria-labelledby="models-title" aria-busy={working}>
-    <div className="card-heading"><h2 id="models-title">本机模型</h2><button className="secondary" disabled={disabled} onClick={() => { void inspect() }}>只读刷新模型</button></div>
+    <div className="card-heading"><h2 id="models-title" tabIndex={-1}>本机模型</h2><button className="secondary" disabled={disabled} onClick={() => { void inspect() }}>只读刷新模型</button></div>
     <div className="model-overview"><div><span className="quiet-label">Runtime 记录的模型</span><strong>{s?.activeModel ?? (s?.configuredModel ? `${s.configuredModel}（配置选择）` : '尚未确认')}</strong></div><span className={`model-state ${s?.uncertain || s?.error ? 'needs-attention' : ''}`}>{s?.uncertain ? '执行结果待确认' : s?.switching ? '正在切换' : readyLabel}</span></div>
     <p className="hint">下一步：{nextStep}</p>
     {!s && <p className="hint">只读刷新可查看当前模型，不会启动或切换模型。</p>}
