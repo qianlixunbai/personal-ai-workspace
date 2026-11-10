@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 WebView2 默认 InPrivate Profile 修正已提交 `64b33b2` 并交付 `artifacts/PersonalAiWorkspace-webview-default-profile-20261110.zip`：933 文件、实际解压与嵌入来源通过，ZIP SHA256 `BD29D41EED4F83C8D14FF5C539C0F64323918D536F7BAC05CE109D4A057AFEA9`。这是已有原生/WPF新合成对照支持的最小修正，未改安全条件；前端和 Runtime 字节不变，旧包、六份用户文档、main 保留，无推送。构建锁已释放，18765 保持 UNKNOWN。完整应用正常页面＋Runtime 联动、默认入口、维护迁移及发布仍待验收；无需先请求 EFS/ACL/沙箱变更，不继续添加假设记忆功能。[完整证据与接续](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
+
 2026-11-10 交付判断：显式记忆核心能力及已确认的编辑／查找缺口已实现，当前优先处理正常网页启动。参考 WebView2 上游命名 Profile 延迟报告后，两次全新合成对照取得新证据：省略自定义 ProfileName，原生控制器约 236 ms 创建；实际 WPF／本地页面／Bridge 在约 12.48 s 就绪，启动与退出清理通过。已将同一最小修正应用到源码，保留 InPrivate、原生目录准入及超时，不改 EFS/ACL/沙箱。WPF 为不启动 Runtime 的隔离宿主，不代表完整 EXE/Java 或保存重开验收；首次原生对照走过 AssistantApp 普通启动，不能声称零 Runtime 启动。两次 Job 收尾、共享锁已释放；18765 保持 UNKNOWN，没有替代诊断查询。准备一份新开发包，旧包／main／六份用户文档不变。[证据、边界与下一步](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
 
 2026-11-10 记忆管理的相关查找已完成两个实际入口并统一交付：原生 `b5a5a9e`、网页 `0d7955a`，可从分散关键词进入保留草稿对照、同 ID 修订、归档／恢复。新包 `artifacts/PersonalAiWorkspace-memory-management-recall-20261110.zip` 含 933 文件，实际解压和嵌入来源通过；Runtime、旧包、main、六份用户文档保持不变，无推送。共享锁已释放；本轮未启动服务，最终 18765 只读查询报错，状态记为 UNKNOWN 并停止，不换路线重试。没有重跑 WebView2 或保存重开；正常浏览器、默认入口、维护迁移及发布仍未验收。两个完整入口和一次统一交付后接续新对话，不凑第三项功能。[交付、验证、限制与接续](engineering/MEMORY-MANAGEMENT-RECALL-FLOWS.md)。
