@@ -21,6 +21,32 @@ async function setup(port = new MemoryService()) {
   return { port, bridge, view, title: screen.getByLabelText('记忆标题') as HTMLInputElement, content: screen.getByLabelText('记忆内容') as HTMLTextAreaElement }
 }
 const edit = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } })
+it('ignores an obsolete dirty-state failure after Save but still reports the current notification failure', async () => {
+  const { bridge, port, title, content } = await setup()
+  let rejectOld: (problem: Error) => void = () => {}
+  const notifications = vi.spyOn(bridge, 'memoryEditorState').mockImplementationOnce(() =>
+    new Promise<{ acknowledged: true }>((_resolve, reject) => { rejectOld = reject }))
+  edit(title, 'Synthetic saved current memory'); edit(content, 'Synthetic saved current body')
+  await click('保存')
+  expect(screen.getByText('Memory 已保存。')).toBeTruthy()
+  expect(notifications.mock.calls.map(args => args[0])).toEqual([true])
+  expect(port.sent.filter(request => request.method === 'memory.create')).toHaveLength(1)
+
+  await act(async () => rejectOld(new Error('Late old dirty notification failure')))
+  expect(notifications.mock.calls.map(args => args[0])).toEqual([true, false])
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByText('Memory 已保存。')).toBeTruthy()
+  expect(title.value).toBe('Synthetic saved current memory')
+  expect(content.value).toBe('Synthetic saved current body')
+
+  notifications.mockRejectedValueOnce(new Error('Current dirty notification failure'))
+  await act(async () => { edit(content, 'Synthetic new unsaved edits') })
+  expect(notifications.mock.calls.map(args => args[0])).toEqual([true, false, true])
+  expect(screen.getByRole('alert').textContent).toContain('原生未保存状态保护未能确认')
+  expect(content.value).toBe('Synthetic new unsaved edits')
+  expect(port.items.find(item => item.title === title.value)?.content).toBe('Synthetic saved current body')
+  expect(port.sent.filter(request => request.method === 'memory.create')).toHaveLength(1)
+})
 it('previews one search result without replacing a dirty draft, rejects changed revisions and discards late hidden reads', async () => {
   const service = new MemoryService()
   const body = '第一段\r\n[a+b] literal <img src=x onerror=alert(1)>\n第二段 [a+b]'

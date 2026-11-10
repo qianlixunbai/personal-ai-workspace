@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [Memory 编辑状态通知竞态](engineering/MEMORY-EDITOR-STATE-RACE-REPORT.md)：保存成功后，旧的未保存状态通知失败不再给当前记录留下过期警告；当前通知失败仍明确提示。保留原有 native 通知顺序、确认与未知写入保护，不重试或自动写入。单条回归先复现失败，修复后 MemoryPage 24/24 和 TypeScript 通过；未更新分发包，真实桌面保存／关闭／重开仍未通过。
+
 2026-11-09 [Memory 草稿主动查重](engineering/MEMORY-DRAFT-DUPLICATE-REVIEW-REPORT.md)：手工及知识回答原文草稿可不调用模型、主动核对已有使用中记忆；复用现有有界查重，明确显示重复项、失败及检查不完整，打开已有记录仍需丢弃确认，保存仍由用户明确执行。两个相关前端文件 35/35、TypeScript 通过；首轮 React key 冲突已修正并保留日志。未更新分发包，未通过完整 Memory 桌面保存／重开。另一次唯一隔离 startup 已捕获 GPU／渲染／浏览器进程退出，宿主及已记录 browser PID 均退出，18765 关闭；未放宽清理或安全设置，仍为 Development-only。
 
 2026-11-09 [知识回答转记忆草稿](engineering/KNOWLEDGE-MEMORY-DRAFT-REPORT.md)：当前成功回答及历史回答可明确进入既有 Memory 人工审阅，保留原文及助手未核实归属；不自动调用模型或保存，引用不持久关联。Knowledge 12/12、Memory 19/19、Conversation 19/19 及前端类型／构建通过，首轮夹具失败保留。仅本地源码提交，未重打预览包；完整桌面、个人恢复、PG 与模型质量未随本轮验收，仍为 Development-only。

@@ -45,6 +45,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const newButton = useRef<HTMLButtonElement>(null)
   const focusNext = useRef<'editor' | 'new' | null>(null)
   const signalQueue = useRef<Promise<unknown>>(Promise.resolve())
+  const signalGeneration = useRef(0)
   const signalledDirty = useRef(false)
   const baseline = loaded ?? emptyMemory()
   const dirty = draft.type !== baseline.type || draft.title !== baseline.title || draft.content !== baseline.content
@@ -65,10 +66,12 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     if (!bridge.ready || dirty === signalledDirty.current) return
     signalledDirty.current = dirty
     const token = generation.current
+    // Keep native notifications ordered; only the latest one may report its failure.
+    const signal = ++signalGeneration.current
     signalQueue.current = signalQueue.current.catch(() => {}).then(() => {
       if (token !== generation.current) return
       return bridge.memoryEditorState(dirty)
-    }).catch(() => { if (token === generation.current) setError('原生未保存状态保护未能确认。请保持窗口打开并显式 Save 或丢弃修改。') })
+    }).catch(() => { if (token === generation.current && signal === signalGeneration.current) setError('原生未保存状态保护未能确认。请保持窗口打开并显式 Save 或丢弃修改。') })
   }, [bridge, dirty])
   const requestDiscard = (action: () => void, reload = false) => {
     if (actionLock.current || confirmation) return
