@@ -3,6 +3,15 @@ Personal AI Workspace - Windows 原生安全开发包
 DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
 此 ZIP 使用经本机审查的构建和工具链，不是安装器或正式发布。
 
+2026-11-10 离线迁移可靠性更新（产品修复 5d86d409019f21308714f8854c011c0282428bdc）：
+Memory/Conversation 与 Knowledge 的离线迁移现支持长源路径和长备份路径。
+4 个全新合成组合已核对：目标不可用时完整备份保留、源文件和全部表行不变、备份不覆盖、写锁释放。
+本项只验收源库/备份及失败保全，未连接 PostgreSQL；不表示成功导入、真实用户迁移或恢复激活通过。
+新包重建 Runtime 与对应 Desktop 信任 pin，保留既有前端和工具链；未重跑整套网页保存/重开。
+另对下述已验收旧程序进行一次退出观察：托盘退出码 0 后，自有 Job 剩余成员在约 3.05 秒内归零，
+guardian 关闭空 Job，无强制收尾。Runtime Owner 的既有终止机制不变，不能称 Java graceful shutdown。
+默认配置未切换；无参数默认入口、完整维护迁移、跨机器和正式发布仍未验收。
+
 2026-11-10 正常网页入口验收（产品源码 64b33b2991acb407d6887040ec1fe7ae902b0afb）：
 已用全新合成工作区和 --open-development-workspace-once 完成实际 EXE 与自有 Runtime 联动，
 正常 React 页面约 12.6 秒就绪；设置页确认原生认证和 SQLite，真实托盘退出码为 0。
@@ -12,7 +21,7 @@ DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
 每次桌面退出后，验收辅助 Job 内仍有 5 个子进程，由 Job 关闭清理；不能称全部进程自然退出。
 这是本机合成环境的一次打开入口验收，不证明无参数默认入口、全部功能、其他机器或正式发布通过。
 浏览器使用已准入的全新私有目录内的默认 InPrivate Profile；未更改 EFS、ACL、沙箱或系统设置。
-本交付仅更新说明和完整性清单，程序、前端和 Runtime 与实际验收包的字节完全一致；旧包保留。
+上述历史验收包仅更新说明和完整性清单；本次迁移修复包另行重建，全部旧包保留。
 
 本包包含：持续对话、显式记忆、资料检索与知识问答历史，以及以下完整资料流程：
 知识库“导入文档” -> 选择 TXT / Markdown / DOCX / PDF -> Word / PDF 摘录预览并明确确认 ->

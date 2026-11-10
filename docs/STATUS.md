@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 退出剩余成员已完成一次限定观察：同一已验收 EXE 正常托盘退出码 0 后，guardian Job 从 5 降为 2，约 3.05 秒内归零，再关闭空 Job；没有强制收尾，无持续残留证据，因此未改产品关闭逻辑。Runtime Owner 仍用既有终止机制，不称 Java graceful shutdown；前次三次即时 Job 清理的历史结论保持。共享锁已释放，未查询旧进程或被拒范围。详见 [退出观察](engineering/DESKTOP-EXIT-DRAIN-ACCEPTANCE.md)。
+
 2026-11-10 离线迁移长路径源库/备份已修复：Workspace 与 Knowledge 各自的长源路径、长备份路径共 4 个合成组合通过；目标不可用时备份完整、源库哈希及全部表行不变、再次提交不覆盖、写锁释放。原版同 4 个组合在目标前失败。未连接 PostgreSQL、启动模型或修改默认配置；这是备份与失败回滚验收，不能称真实用户迁移或目标导入完成。源码与必要聚焦验证见 [离线迁移报告](engineering/OFFLINE-MIGRATION-LONG-PATH-ACCEPTANCE.md)，统一包尚待更新。
 
 2026-11-10 完整正常网页验收已通过：复用 `64b33b2` 新包及全新合成工作区，实际 EXE／自有 Runtime 三次启动约 12.6 秒完成 React/Bridge 就绪，原生认证与 SQLite 状态通过；正常网页明确保存一次 Memory，独立 EXE 重开读回相同 ID、标题、正文、ACTIVE／Revision 1 和显示更新时间，没有再次保存。三次真实托盘退出码均为 0，浏览器清理通过；每次 Job 关闭前仍有 5 个成员，由 Job 收尾，不能称全部自然退出。共享锁均已释放，默认记录未改，无模型或真实数据操作。用户自身查询时的“无监听”与应用运行证据分别记录，未重试被拒系统查询。验收说明提交 `f0cbfa2`，新包 `artifacts/PersonalAiWorkspace-normal-web-verified-20261110.zip` 已交付：933 个 payload 文件中仅 README 改变，其余 932 个文件字节不变，934 个 ZIP 条目实字节核对通过；旧包保留、无重编译、无推送。默认入口、维护迁移、个人恢复、跨机及正式发布仍待验收。[完整证据、SHA 与边界](engineering/MEMORY-NORMAL-WEB-EXE-ACCEPTANCE.md)。
