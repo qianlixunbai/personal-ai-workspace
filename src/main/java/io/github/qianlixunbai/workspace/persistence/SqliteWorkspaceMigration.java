@@ -33,6 +33,58 @@ public final class SqliteWorkspaceMigration {
         @Override public String toString() { return "WorkspaceMigration[private]"; }
     }
 
+    /** Already isolated snapshot only. No live-source stop proof or cutover permission. */
+    static final class Snapshot implements AutoCloseable {
+        private final Connection source;
+        final Result expected;
+        private boolean closed;
+
+        Snapshot(Connection source) throws Exception {
+            this.source = source;
+            if (!source.getAutoCommit() || !"SQLite".equals(source.getMetaData().getDatabaseProductName()))
+                throw new SQLException();
+            sql(source, "BEGIN");
+            try { verifySource(source); expected = summarize(source); }
+            catch (Exception failure) { close(); throw failure; }
+        }
+
+        void writeTo(Connection target) throws Exception {
+            if (closed || target.getAutoCommit()) throw new SQLException();
+            requireEmpty(target);
+            copyAndVerify(source, target, expected);
+            recordReceipt(target, expected);
+        }
+
+        @Override public void close() throws SQLException {
+            if (!closed) { closed = true; sql(source, "ROLLBACK"); }
+        }
+    }
+
+    private static void requireEmpty(Connection db) throws SQLException {
+        if (count(db, "SELECT count(*) FROM workspace.sqlite_import") != 0) throw new SQLException();
+        for (Table table : TABLES)
+            if (count(db, "SELECT count(*) FROM " + table.name) != 0) throw new SQLException();
+    }
+
+    private static void copyAndVerify(Connection snapshot, Connection db, Result expected) throws Exception {
+        for (Table table : TABLES) copy(snapshot, db, table);
+        validateRows(db);
+        if (!expected.equals(summarize(db))) throw new SQLException();
+    }
+
+    private static void recordReceipt(Connection db, Result expected) throws SQLException {
+        try (var s = db.prepareStatement("INSERT INTO workspace.sqlite_import VALUES(1,?,?)")) {
+            s.setString(1, expected.contentDigest); s.setLong(2, System.currentTimeMillis()); s.executeUpdate();
+        }
+    }
+
+    static boolean matchesCommitted(Connection db, Result expected) throws Exception {
+        if (!expected.equals(summarize(db))) return false;
+        try (var s = db.createStatement(); var r = s.executeQuery("SELECT source_digest FROM workspace.sqlite_import WHERE singleton=1")) {
+            return r.next() && expected.contentDigest.equals(r.getString(1)) && !r.next();
+        }
+    }
+
     /**
      * The operator must stop Runtime before invoking this offline tool and keep it stopped until
      * switching authority. BEGIN IMMEDIATE additionally excludes SQLite writers during this call.
@@ -88,16 +140,10 @@ public final class SqliteWorkspaceMigration {
                 PostgresqlWorkspace.begin(db, true);
                 try {
                     stage = "EMPTY_TARGET_CHECK";
-                    if (count(db, "SELECT count(*) FROM workspace.sqlite_import") != 0) throw new SQLException();
-                    for (Table table : TABLES)
-                        if (count(db, "SELECT count(*) FROM " + table.name) != 0) throw new SQLException();
+                    requireEmpty(db);
                     stage = "COPY_AND_VERIFY";
-                    for (Table table : TABLES) copy(snapshot, db, table);
-                    validateRows(db);
-                    if (!expected.equals(summarize(db))) throw new SQLException();
-                    try (var s = db.prepareStatement("INSERT INTO workspace.sqlite_import VALUES(1,?,?)")) {
-                        s.setString(1, expected.contentDigest); s.setLong(2, System.currentTimeMillis()); s.executeUpdate();
-                    }
+                    copyAndVerify(snapshot, db, expected);
+                    recordReceipt(db, expected);
                     stage = "COMMIT"; sql(db, "COMMIT");
                 } catch (Exception failure) {
                     try { sql(db, "ROLLBACK"); } catch (SQLException ignored) { /* Connection is closed below. */ }
@@ -108,10 +154,7 @@ public final class SqliteWorkspaceMigration {
             stage = "COMMIT_VISIBILITY";
             try (var committed = target.getConnection()) {
                 PostgresqlWorkspace.begin(committed, false);
-                if (!expected.equals(summarize(committed))) throw new SQLException();
-                try (var s = committed.createStatement(); var r = s.executeQuery("SELECT source_digest FROM workspace.sqlite_import WHERE singleton=1")) {
-                    if (!r.next() || !expected.contentDigest.equals(r.getString(1))) throw new SQLException();
-                }
+                if (!matchesCommitted(committed, expected)) throw new SQLException();
                 sql(committed, "COMMIT");
             }
             return expected;

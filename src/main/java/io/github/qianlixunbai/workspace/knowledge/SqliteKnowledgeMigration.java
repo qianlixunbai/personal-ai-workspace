@@ -27,6 +27,75 @@ public final class SqliteKnowledgeMigration {
         @Override public String toString(){return "KnowledgeMigration[private]";}
     }
 
+    /** Pins an already isolated snapshot and its source files until the coordinating owner closes it.
+     * This is not live-source stop proof, Windows admission, or authority to publish configuration. */
+    public static final class Snapshot implements AutoCloseable {
+        private final Connection source;
+        private final FileProof proof;
+        private final Result expected;
+        private boolean closed;
+
+        public Snapshot(Connection source, Path sourceRoot) throws Exception {
+            this.source = source;
+            if (!source.getAutoCommit() || !"SQLite".equals(source.getMetaData().getDatabaseProductName()))
+                throw new SQLException();
+            sql(source, "BEGIN");
+            try {
+                verifySqlite(source); expected = summarize(source, false);
+                proof = new FileProof(source, sourceRoot.toAbsolutePath().normalize());
+            } catch (Exception failure) { sql(source, "ROLLBACK"); throw failure; }
+        }
+
+        public Result expected() { return expected; }
+
+        /** Caller owns one PostgreSQL transaction and both domains' writer locks; never commits. */
+        public void writeTo(Connection target) throws Exception {
+            if (closed || target.getAutoCommit()) throw new SQLException();
+            KnowledgePostgresql.verify(target);
+            requireEmpty(target);
+            copyAndVerify(source, target, expected);
+            buildIndex(target); verifyFiles(); recordReceipt(target, expected);
+        }
+
+        public void verifyFiles() throws IOException {
+            if (closed) throw new IOException("Snapshot closed");
+            proof.verify();
+        }
+
+        @Override public void close() throws Exception {
+            if (!closed) {
+                closed = true;
+                try { proof.close(); } finally { sql(source, "ROLLBACK"); }
+            }
+        }
+        @Override public String toString() { return "KnowledgeSnapshot[private]"; }
+    }
+
+    private static void requireEmpty(Connection db) throws SQLException {
+        if (count(db,"SELECT count(*) FROM workspace.knowledge_sqlite_import") != 0) throw new SQLException();
+        for (var table : TABLES)
+            if (count(db,"SELECT count(*) FROM workspace.knowledge_" + table.name) != 0) throw new SQLException();
+    }
+
+    private static void copyAndVerify(Connection snapshot, Connection db, Result expected) throws Exception {
+        for (var table : TABLES) copy(snapshot, db, table);
+        if (!expected.equals(summarize(db, true))) throw new SQLException();
+        sql(db, "SET CONSTRAINTS ALL IMMEDIATE");
+    }
+
+    private static void recordReceipt(Connection db, Result expected) throws SQLException {
+        try (var s = db.prepareStatement("INSERT INTO workspace.knowledge_sqlite_import VALUES(1,?,?)")) {
+            s.setString(1, expected.contentDigest); s.setLong(2, System.currentTimeMillis()); s.executeUpdate();
+        }
+    }
+
+    public static boolean matchesCommitted(Connection db, Result expected) throws Exception {
+        if (!expected.equals(summarize(db, true))) return false;
+        try (var s = db.createStatement(); var r = s.executeQuery("SELECT content_digest FROM workspace.knowledge_sqlite_import WHERE singleton=1")) {
+            return r.next() && expected.contentDigest.equals(r.getString(1)) && !r.next();
+        }
+    }
+
     /** The caller must keep the old Runtime stopped through the separately authorized cutover. */
     public static Result migrate(Path sourceRoot,Path backupRoot,DataSource target)throws IOException{
         sourceRoot=sourceRoot.toAbsolutePath().normalize();backupRoot=backupRoot.toAbsolutePath().normalize();
@@ -79,25 +148,17 @@ public final class SqliteKnowledgeMigration {
                 KnowledgePostgresql.begin(db,true);
                 try{
                     stage="EMPTY_KNOWLEDGE_CHECK";
-                    if(count(db,"SELECT count(*) FROM workspace.knowledge_sqlite_import")!=0)throw new SQLException();
-                    for(var table:TABLES)if(count(db,"SELECT count(*) FROM workspace.knowledge_"+table.name)!=0)throw new SQLException();
-                    stage="COPY_AND_VERIFY";for(var table:TABLES)copy(snapshot,db,table);
-                    if(!expected.equals(summarize(db,true)))throw new SQLException();
-                    sql(db,"SET CONSTRAINTS ALL IMMEDIATE");
+                    requireEmpty(db);
+                    stage="COPY_AND_VERIFY";copyAndVerify(snapshot,db,expected);
                     stage="REBUILD_INDEX";buildIndex(db);
                     stage="FILE_RECHECK";proof.verify();
-                    try(var s=db.prepareStatement("INSERT INTO workspace.knowledge_sqlite_import VALUES(1,?,?)")){
-                        s.setString(1,expected.contentDigest);s.setLong(2,System.currentTimeMillis());s.executeUpdate();
-                    }
+                    recordReceipt(db,expected);
                     stage="COMMIT";sql(db,"COMMIT");
                 }catch(Exception e){try{sql(db,"ROLLBACK");}catch(SQLException ignored){}throw e;}
                 stage="COMMIT_VISIBILITY";
                 try(var committed=target.getConnection()){
                     KnowledgePostgresql.begin(committed,false);
-                    if(!expected.equals(summarize(committed,true)))throw new SQLException();
-                    try(var s=committed.createStatement();var r=s.executeQuery("SELECT content_digest FROM workspace.knowledge_sqlite_import WHERE singleton=1")){
-                        if(!r.next()||!expected.contentDigest.equals(r.getString(1)))throw new SQLException();
-                    }
+                    if(!matchesCommitted(committed,expected))throw new SQLException();
                     sql(committed,"COMMIT");
                 }
                 stage="STORE_READBACK";

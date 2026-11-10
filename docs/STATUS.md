@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 两域共同事务已实现并通过一次真实 PostgreSQL 闭环：记忆／会话与知识在同一目标事务写入，知识 CHECK 失败时全域回滚；实际 commit 后模拟确认丢失保持 COMMIT_UNCONFIRMED，只读核对完整数据，不重放；新数据与重复拒绝保全、Store 重开、第二个新目标普通成功均通过。源与完整合成备份不变，配置未生成；临时 PostgreSQL 正常停止、密码清除、Job 0、共享锁释放。新 API 只接受已隔离快照，原生来源准入仍 BLOCKED，受保护阶段日志和配置恢复未实现，不能称完整用户迁移。新开发包待统一，旧包与真实数据保留。[实现、验收、历史失败与精确阻塞](engineering/COMBINED-MIGRATION-TRANSACTION-ACCEPTANCE.md)。
+
 2026-11-10 实际数据库设置切换与独立重开已通过：原交付包的 AssistantApp/React/Bridge/原生窗口/Java helper，在新合成 Profile 和独立 PostgreSQL 17.11 中完成检查、取消保存、确认 DPAPI 保存、明确重启与独立宿主重开；两次实际 PostgreSQL Store 读回同一记忆和知识原文，旧令牌失效，切换区间源库字节相同。验收宿主承载真实组件，不是无参数产品 EXE 或物理输入验收。数据库正常停止、临时密码/配置移除，最终 2 个自有子进程由 Job 收尾、锁释放；生产代码/旧包未变，无重打包。完整维护入口仍受来源停写证明、两域事务及配置激活协调缺口阻塞，已给出可维护产品方案，未绕过准入。[完整结果、失败历史、清理及接续](engineering/DATABASE-CUTOVER-ENTRY-ACCEPTANCE.md)；[入口设计审查](engineering/MAINTENANCE-CUTOVER-ENTRY-REVIEW.md)。
 
 2026-11-10 已补齐真实 PostgreSQL 离线导入：使用交付包原始 Runtime、全新合成 Profile 和独立 PostgreSQL 17.11，Workspace v3 与 Knowledge v1 两条文件迁移 API 均通过长源/备份路径、实际目标约束失败回滚、成功提交逐列读回、重复拒绝、备份/源保全及 Store 重开。JVM 退出 0；报告复制因加密属性失败导致包装退出 1，随后仅导出既有合成文本，哈希相同，未重跑迁移或改 EFS。自有数据库正常停止，Job 清理前 0、锁释放。无生产代码或包变更、不推送；完整用户维护入口/后端切换、默认入口与正式发布仍未验收。[证据、历史失败与明确范围](engineering/OFFLINE-POSTGRESQL-IMPORT-ACCEPTANCE.md)。
