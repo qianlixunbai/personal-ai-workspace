@@ -9,10 +9,13 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop;
 
+internal enum ConversationDraftAction { Switch, Create }
+
 // Minimal native surface. Runtime owns all history admission and prompt assembly.
 public sealed class ConversationWindow : Window
 {
     private readonly RuntimeClient runtime;
+    private readonly Func<ConversationDraftAction, bool> confirmDraft;
     private readonly CancellationTokenSource lifetime = new();
     internal readonly ComboBox Conversations = new() { DisplayMemberPath = "Title", MinWidth = 220 };
     internal readonly TextBox Input = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxLength = 3000, Height = 110, IsUndoEnabled = false };
@@ -31,9 +34,12 @@ public sealed class ConversationWindow : Window
     private MemorySelectionWindow? picker;
     private bool closed, rendering;
     private int historyPage;
-    internal ConversationWindow(RuntimeClient runtime)
+    internal ConversationWindow(RuntimeClient runtime, Func<ConversationDraftAction, bool>? confirmation = null)
     {
         this.runtime = runtime; Title = "Conversation · Local Only"; Width = 720; Height = 740; MinWidth = 550; MinHeight = 600;
+        confirmDraft = confirmation ?? (action => MessageBox.Show(this,
+            action == ConversationDraftAction.Create ? "新建对话并丢弃当前未发送消息？\n取消或打开失败会保留草稿。" : "切换会话并丢弃当前未发送消息？\n取消或读取失败会保留草稿。",
+            "Conversation", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         var grid = new Grid { Margin = new Thickness(16) };
         foreach (var height in new[] { GridLength.Auto, GridLength.Auto, new GridLength(1,GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto })
             grid.RowDefinitions.Add(new RowDefinition { Height = height });
@@ -44,21 +50,13 @@ public sealed class ConversationWindow : Window
         Grid.SetRow(Input,4); grid.Children.Add(Input);
         var bottom = Row(SendButton, CancelButton, State); Grid.SetRow(bottom,5); grid.Children.Add(bottom); Content = grid;
         Loaded += async (_,_) => await RunAsync(RefreshAsync);
-        NewButton.Click += async (_,_) => await RunAsync(async () => {
-            var item = await runtime.CreateConversationAsync(null,lifetime.Token); await RefreshAsync(item.Id);
-        });
+        NewButton.Click += async (_,_) => await NewAsync();
         RefreshButton.Click += async (_,_) => await RunAsync(RefreshAsync);
         Conversations.SelectionChanged += async (_,_) => {
-            if (!rendering && !closed) {
-                historyPage=0; ActiveTask=null; ClearSelection();
-                await RunAsync(async () => {
-                    await LoadDetailAsync();
-                    if (Detail is { TotalTurns: > 10 }) { historyPage=(Detail.TotalTurns-1)/10; await LoadDetailAsync(); }
-                });
-            }
+            if (!rendering && !closed && Conversations.SelectedItem is Conversation item) await SelectAsync(item);
         };
-        PreviousButton.Click += async (_,_) => await RunAsync(async () => { historyPage--; await LoadDetailAsync(); });
-        NextButton.Click += async (_,_) => await RunAsync(async () => { historyPage++; await LoadDetailAsync(); });
+        PreviousButton.Click += async (_,_) => await RunAsync(() => LoadDetailAsync(historyPage - 1));
+        NextButton.Click += async (_,_) => await RunAsync(() => LoadDetailAsync(historyPage + 1));
         SendButton.Click += async (_,_) => await SendAsync();
         CancelButton.Click += async (_,_) => await CancelAsync();
         ArchiveButton.Click += async (_,_) => await RunAsync(async () => {
@@ -99,27 +97,73 @@ public sealed class ConversationWindow : Window
         finally { Busy=false; if (!closed) Controls(); }
     }
     private Task RefreshAsync() => RefreshAsync(null);
-    private async Task RefreshAsync(Guid? preferred) {
-        var id=preferred ?? (Conversations.SelectedItem as Conversation)?.Id;
+    private async Task RefreshAsync(Conversation? preferred) {
+        var current=preferred ?? Detail?.Conversation ?? Conversations.SelectedItem as Conversation;
         var items=new List<Conversation>();
         for (int page=0;page<100;page++) {
             var result=await runtime.ListConversationsAsync(ConversationStatus.ACTIVE,page,10,lifetime.Token); items.AddRange(result.Items);
             if (items.Count>=result.Total) break;
         }
-        if (closed) return; rendering=true;
-        Conversations.ItemsSource=items; Conversations.SelectedItem=items.FirstOrDefault(x=>x.Id==id) ?? items.FirstOrDefault(); rendering=false;
-        ActiveTask=null; ClearSelection(); historyPage=0; await LoadDetailAsync();
-        if (Detail is { TotalTurns: > 10 }) { historyPage=(Detail.TotalTurns-1)/10; await LoadDetailAsync(); }
+        if (closed) return;
+        // Retain the current identity even if it disappeared from the ACTIVE list.
+        // Read it explicitly instead of silently moving its draft into another conversation.
+        var item=items.FirstOrDefault(x=>x.Id==current?.Id) ?? current ?? items.FirstOrDefault();
+        var next=item is null ? null : await ReadLatestAsync(item.Id);
+        if (closed) return;
+        if (item is not null && items.All(x=>x.Id!=item.Id)) items.Insert(0,next!.Conversation);
+        rendering=true; Conversations.ItemsSource=items; rendering=false;
+        CommitConversation(next);
     }
-    private async Task LoadDetailAsync() {
+    internal async Task NewAsync() {
+        if (Busy || closed || Input.Text.Length>0 && !confirmDraft(ConversationDraftAction.Create)) return;
+        await RunAsync(async () => {
+            var item=await runtime.CreateConversationAsync(null,lifetime.Token);
+            if (closed) return;
+            try { await RefreshAsync(item); }
+            catch (DesktopException ex) {
+                if (!closed) State.Text=ErrorText.For(ex.Error)+" 新会话已创建，但未能打开。当前草稿已保留；可刷新列表后打开，无需再次新建。";
+            }
+        });
+    }
+    internal async Task SelectAsync(Conversation item) {
+        RestoreSelected();
+        if (Busy || closed || item.Id==Detail?.Conversation.Id
+            || Input.Text.Length>0 && !confirmDraft(ConversationDraftAction.Switch)) return;
+        await RunAsync(async () => {
+            var next=await ReadLatestAsync(item.Id);
+            if (!closed) CommitConversation(next);
+        });
+    }
+    private void RestoreSelected() {
+        rendering=true;
+        Conversations.SelectedItem=Conversations.Items.Cast<Conversation>().FirstOrDefault(x=>x.Id==Detail?.Conversation.Id);
+        rendering=false;
+    }
+    private async Task<ConversationDetail> ReadLatestAsync(Guid id) {
+        var first=await runtime.GetConversationAsync(id,0,10,lifetime.Token);
+        if (closed || first.TotalTurns<=10) return first;
+        return await runtime.GetConversationAsync(id,(first.TotalTurns-1)/10,10,lifetime.Token);
+    }
+    private void CommitConversation(ConversationDetail? next) {
+        if (next?.Conversation.Id!=Detail?.Conversation.Id) Input.Clear();
+        ClearSelection(); ActiveTask=null;
+        if (next is null) { Detail=null; historyPage=0; History.Clear(); State.Text="Create a Conversation to begin."; }
+        else ShowDetail(next);
+        RestoreSelected();
+    }
+    private Task LoadDetailAsync() => LoadDetailAsync(historyPage);
+    private async Task LoadDetailAsync(int page) {
         if (Conversations.SelectedItem is not Conversation item) { Detail=null; History.Clear(); State.Text="Create a Conversation to begin."; return; }
-        var detail=await runtime.GetConversationAsync(item.Id,historyPage,10,lifetime.Token);
-        if (closed) return; Detail=detail;
+        var detail=await runtime.GetConversationAsync(item.Id,page,10,lifetime.Token);
+        if (!closed) ShowDetail(detail);
+    }
+    private void ShowDetail(ConversationDetail detail) {
+        Detail=detail; historyPage=detail.Page;
         History.Text=string.Join("\n\n",detail.Turns.Select(x=> $"Turn {x.Sequence} · USER\n{x.UserMessage.Content}\n\n"
             +(x.AssistantMessage is { } assistant ? $"ASSISTANT\n{assistant.Content}" : $"[{x.Status}{(x.FailureCode is { } failure ? " · "+failure : "")}]")));
         State.Text=$"{detail.Conversation.Status} · Page {historyPage+1} · {detail.TotalTurns} Turns";
         var pending=detail.Turns.FirstOrDefault(x=>x.Status==ConversationTurnStatus.PENDING);
-        if (pending is not null) ActiveTask=pending.TaskId;
+        if (pending is not null || historyPage==Math.Max(0,(detail.TotalTurns-1)/10)) ActiveTask=pending?.TaskId;
     }
     internal void ApplySelection(IReadOnlyList<MemorySelection> selected) {
         if (closed) return;
