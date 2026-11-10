@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [知识、记忆与会话整合交付](engineering/KNOWLEDGE-CONVERSATION-DELIVERY-REPORT.md)完成：新独立 `PersonalAiWorkspace-knowledge-conversation-workflows-20261110.zip` 纳入此前未打包的五项完整流程，实际来源 `b4ae52e`，最新产品 `1e65271`。一次离线构建及 933 载荷／934 ZIP 条目／420 内嵌 pin 校验通过，旧测试未重跑；main、六份用户文档和六个旧 ZIP 哈希不变，Job 0、共享锁释放。当前会话为两项产品模块加一次整合交付，未凑第三项功能；仅本地提交，未推送。新包完整 EXE／WebView、真实模型恢复与整体维护仍未验收，原 model-state 动作未重试，BLOCKED / productionGo=false。
+
 2026-11-10 [手动会话草稿文件](engineering/CONVERSATION-DRAFT-FILES-REPORT.md)完成，产品 `1e65271`：明确保存消息快照为新文件，重开原会话后读取、预览并确认替换草稿；不自动保存／发送，不恢复记忆权限，错误或后来编辑不覆盖。两项前端流程、一个 Native 合成文件往返及最终类型／编译检查通过，旧组未重跑。文件层重开是 session 重置，不是实际 EXE 重启；未打包／完整桌面验收，旧包不含本会话两模块。原 model-state 阻塞不变，productionGo=false。
 
 2026-11-10 [会话参考准备](engineering/CONVERSATION-REFERENCE-PREPARATION-REPORT.md)作为一个完整核心模块完成，产品 `3f8167f`：主动选择资料原文／记忆正文，预览完整消息，回查／移除，核对准确来源后插入当前会话草稿。失败／超限／迟到回执保留草稿，用户仍须手动发送；无真实模型或自动保存。两项新合成流程及最终类型检查通过，旧组未重跑，Job 与共享锁释放。仅本地提交，未打包／EXE／WebView 验收；旧包不含该功能。原 model-state 取证／登记停止，整体维护仍 BLOCKED / productionGo=false。
