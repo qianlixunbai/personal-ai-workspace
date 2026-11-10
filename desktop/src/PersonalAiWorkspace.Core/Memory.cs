@@ -27,6 +27,7 @@ public sealed record MemoryRecallResult(IReadOnlyList<MemoryRecallHit> Hits, int
 }
 public sealed record MemoryCreateInput(MemoryType Type, string Title, string Content)
 {
+    public bool IsValid() => MemoryValidation.ValidText(Type, Title, Content);
     public void Validate() => MemoryValidation.Text(Type, Title, Content);
     public override string ToString() => $"MemoryCreateInput[type={Type}]";
 }

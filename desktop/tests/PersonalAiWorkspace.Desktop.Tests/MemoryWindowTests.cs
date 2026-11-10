@@ -157,7 +157,7 @@ public sealed class MemoryWindowTests
             await window.SaveAsync(); // Validation fails before dispatch: retry remains possible.
             Assert.Equal(0, store.Mutations);
             Assert.Equal(ErrorText.For(DesktopError.MemoryInvalid), window.StatusText.Text);
-            Assert.True(window.SaveButton.IsEnabled);
+            Assert.False(window.SaveButton.IsEnabled);
 
             window.TitleBox.Text = PrivateTitle;
             store.LoseNextWriteResponse = true;

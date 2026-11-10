@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -55,7 +56,10 @@ public partial class MemoryWindow : Window
         StatusFilter.IsEnabled = TypeFilter.IsEnabled = MemoryList.IsEnabled = available;
         SearchBox.IsReadOnly = TitleBox.IsReadOnly = ContentBox.IsReadOnly = busy;
         EditorType.IsEnabled = available;
-        SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty;
+        bool validDraft = new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid();
+        SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty && validDraft;
+        DraftValidationText.Text = $"标题 {TitleBox.Text.EnumerateRunes().Count()} / 160 字符 · 正文 {ContentBox.Text.Length} / 2000 UTF-16 单位（{Encoding.UTF8.GetByteCount(ContentBox.Text)} / 8192 UTF-8 字节）";
+        if (Dirty && !validDraft) DraftValidationText.Text += "\n暂不能保存：标题和正文均须填写有效文字，且不能超过上限。请修改草稿；内容不会自动截断。";
         LifecycleButton.IsEnabled = DeleteButton.IsEnabled = available && loaded is not null && !stale && !missing && !outcomeUnknown;
         ReloadButton.IsEnabled = available && loaded is not null && !missing;
         PreviousButton.IsEnabled = available && results?.HasPrevious == true;
@@ -242,7 +246,7 @@ public partial class MemoryWindow : Window
         closed = true; lifetime.Cancel(); rendering = true;
         TitleBox.Clear(); ContentBox.Clear(); SearchBox.Clear(); MemoryList.ItemsSource = null;
         loaded = null; results = null; view = new(); stale = missing = outcomeUnknown = false;
-        MetadataText.Text = PageText.Text = StatusText.Text = "";
+        DraftValidationText.Text = MetadataText.Text = PageText.Text = StatusText.Text = "";
         lifetime.Dispose();
     }
 }

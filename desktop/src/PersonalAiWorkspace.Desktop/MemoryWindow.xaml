@@ -59,6 +59,7 @@
           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/>
           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <TextBlock Text="Type" FontWeight="SemiBold"/>
         <ComboBox Grid.Row="1" x:Name="EditorType" SelectedIndex="1" SelectionChanged="EditorTypeChanged" Margin="0,4,0,10">
@@ -69,8 +70,9 @@
         <TextBlock Grid.Row="4" Text="Content · ≤ 2000 UTF-16 单位 · ≤ 8192 UTF-8 字节" FontWeight="SemiBold"/>
         <TextBox Grid.Row="5" x:Name="ContentBox" TextChanged="EditorTextChanged" AcceptsReturn="True" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" Margin="0,4,0,10" AutomationProperties.Name="Memory content"/>
-        <TextBlock Grid.Row="6" x:Name="MetadataText" Text="New · 尚未保存" TextWrapping="Wrap" Foreground="#475569" Margin="0,0,0,10"/>
-        <WrapPanel Grid.Row="7">
+        <TextBlock Grid.Row="6" x:Name="DraftValidationText" TextWrapping="Wrap" Foreground="#475569" Margin="0,0,0,10"/>
+        <TextBlock Grid.Row="7" x:Name="MetadataText" Text="New · 尚未保存" TextWrapping="Wrap" Foreground="#475569" Margin="0,0,0,10"/>
+        <WrapPanel Grid.Row="8">
           <Button x:Name="NewButton" Content="New" Click="New"/>
           <Button x:Name="SaveButton" Content="Save" Click="Save"/>
           <Button x:Name="LifecycleButton" Content="Archive" Click="Lifecycle"/>
