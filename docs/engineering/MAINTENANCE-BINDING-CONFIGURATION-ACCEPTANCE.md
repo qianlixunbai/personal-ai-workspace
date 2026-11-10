@@ -51,3 +51,19 @@
 因此完整用户维护迁移、个人恢复、默认入口和正式发布仍未验收。这里是产品协议缺口，不是本轮新的权限拒绝；不需要放宽 EFS、ACL、沙箱或系统策略。旧 Get-NetTCPConnection/18765、Docker、Crashpad／私有目录、旧进程元数据和原生诊断拒绝均未重试。main、六份未跟踪用户文档、真实记忆／知识、默认配置／Profile／数据库、持久凭据和旧包保持不动；不推送。
 
 三个完成层级以同一产品提交交付，配置发布与启动 fence 必须一起保留；不可只回滚 fence 而保留发布 API。完整 SHA、包哈希和最终资源核对见下方本地交付记录。
+
+## 本地交付记录
+
+产品、限定验收探针及本报告基础版本已提交：`ccfffa2d463957713fd2bf081f785c4059307038`，分支 `codex/knowledge-version-compare`。main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，无推送。
+
+新包 `artifacts/PersonalAiWorkspace-maintenance-binding-config-20261110.zip` 及同名解压目录已完成；`productionGo=false`。只对最终验收候选更新构建来源标记，用本地缓存 `--no-restore` 重建 Desktop 内嵌来源 pin；前端、JDK、NativeBootstrap 未重建。没有再跑 EXE 或数据库验收。
+
+| 交付项目 | 核对值 |
+| --- | --- |
+| ZIP SHA-256 | `0EAC0591CB9751D756638BF97E373C41B31948B9258550E2EB27B0127B259827` |
+| Runtime SHA-256 | `402CAD90AC97294D71855C853F139B03BB9CD59B460919F9CDA0FF83FFB785E9` |
+| Desktop DLL SHA-256 | `33674A8084436D28753D0D036876F8A7AF3D9A42E2E609F0F47B696E40364FAE` |
+| payload／ZIP 条目／内嵌 Runtime pins | 933／934／420，全部实际字节校验通过 |
+| 与验收候选比较 | 只有 META-INF/workspace-runtime.properties 的构建来源标记变化，其余所有 JAR 条目字节一致 |
+
+publish guardian `34588` 于 `2026-11-10T12:43:41.6419542Z` 关闭空 Job 并释放共享锁；`delivery-result.json`／`publish-cleanup.json` 在 r3 证据目录。当前所有已执行工具动作都有完成回执，无权限审核拒绝、待审批或结果不明动作。六份用户文档 SHA 和上一份 owner ZIP SHA 与本轮基线一致；其他旧包没有写入。没有读取禁止的原始会话存储。
