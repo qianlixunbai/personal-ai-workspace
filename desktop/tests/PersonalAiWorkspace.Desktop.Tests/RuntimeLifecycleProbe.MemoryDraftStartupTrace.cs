@@ -22,6 +22,8 @@ public static partial class RuntimeLifecycleProbe
         private readonly EventHandler<CoreWebView2InitializationCompletedEventArgs> completed;
         private readonly EventHandler<CoreWebView2ProcessFailedEventArgs> processFailed;
         private readonly EventHandler<CoreWebView2BrowserProcessExitedEventArgs> browserExited;
+        private readonly EventHandler<object> processInfosChanged;
+        private readonly HashSet<long> ownedBrowserIds = new();
         private readonly EventHandler sourceInitialized;
         private readonly int sessionId;
         private readonly string threadDesktop;
@@ -60,10 +62,15 @@ public static partial class RuntimeLifecycleProbe
                 catch (Exception error) when (error is COMException or InvalidOperationException)
                 { Write("PROCESS_FAILURE_DETAILS_UNAVAILABLE", new { hresult = error.HResult }); }
             };
-            browserExited = (_, result) => Write("ENVIRONMENT_BROWSER_EXITED", new {
-                browserProcessId = result.BrowserProcessId,
-                exitKind = result.BrowserProcessExitKind.ToString()
-            });
+            browserExited = (_, result) =>
+            {
+                RememberBrowser(result.BrowserProcessId);
+                Write("ENVIRONMENT_BROWSER_EXITED", new {
+                    browserProcessId = result.BrowserProcessId,
+                    exitKind = result.BrowserProcessExitKind.ToString()
+                });
+            };
+            processInfosChanged = (_, _) => ReadOwnedBrowsers();
             completed = (_, result) =>
             {
                 controllerCompleted = result.IsSuccess;
@@ -71,24 +78,14 @@ public static partial class RuntimeLifecycleProbe
                 if (result.IsSuccess && window.Browser.CoreWebView2 is { } core)
                 {
                     initializedCore = core;
-                    browserProcessId = core.BrowserProcessId;
-                    initializedEnvironment = core.Environment;
-                    browserVersion = initializedEnvironment.BrowserVersionString;
-                    initializedEnvironment.BrowserProcessExited += browserExited;
+                    ObserveEnvironment(core.Environment);
+                    RememberBrowser(core.BrowserProcessId);
                     core.ProcessFailed += processFailed;
-                    try
-                    {
-                        var relative = Path.GetRelativePath(window.Host.UserDataFolder!, initializedEnvironment.FailureReportFolderPath);
-                        failureReportFolder = Path.IsPathRooted(relative) || relative == ".."
-                            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-                            ? "OUTSIDE_OWNED_PROFILE" : relative;
-                    }
-                    catch (Exception error) when (error is COMException or InvalidOperationException)
-                    { failureReportFolder = "UNAVAILABLE"; }
                 }
                 Write("CONTROLLER_CALLBACK");
             };
             sourceInitialized = (_, _) => Write("HWND_CREATED");
+            window.Host.AcceptanceEnvironmentCreated += ObserveEnvironment;
             window.Browser.CoreWebView2InitializationCompleted += completed;
             window.SourceInitialized += sourceInitialized;
             timer = new DispatcherTimer(DispatcherPriority.Background, window.Dispatcher)
@@ -96,6 +93,47 @@ public static partial class RuntimeLifecycleProbe
             timer.Tick += (_, _) => { heartbeats++; Write("DISPATCHER_HEARTBEAT"); };
             Write("HOST_CREATED");
             timer.Start();
+        }
+
+        private void ObserveEnvironment(CoreWebView2Environment environment)
+        {
+            if (disposed || initializedEnvironment is not null) return;
+            initializedEnvironment = environment;
+            environment.BrowserProcessExited += browserExited;
+            environment.ProcessInfosChanged += processInfosChanged;
+            try
+            {
+                browserVersion = environment.BrowserVersionString;
+                var relative = Path.GetRelativePath(window.Host.UserDataFolder!, environment.FailureReportFolderPath);
+                failureReportFolder = Path.IsPathRooted(relative) || relative == ".."
+                    || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                    ? "OUTSIDE_OWNED_PROFILE" : relative;
+            }
+            catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException)
+            { failureReportFolder = "UNAVAILABLE"; }
+            ReadOwnedBrowsers();
+            Write("ENVIRONMENT_OBSERVED");
+        }
+
+        private void ReadOwnedBrowsers()
+        {
+            if (disposed || initializedEnvironment is null) return;
+            try
+            {
+                // The host validated this environment's unique synthetic UDF before publishing it.
+                // No OS-wide process query, command lines, frames, or foreign profiles.
+                foreach (var process in initializedEnvironment.GetProcessInfos())
+                    if (process.Kind == CoreWebView2ProcessKind.Browser) RememberBrowser(process.ProcessId);
+            }
+            catch (Exception error) when (error is COMException or InvalidOperationException)
+            { Write("OWNED_PROCESSES_UNAVAILABLE", new { hresult = error.HResult }); }
+        }
+
+        private void RememberBrowser(long id)
+        {
+            if (disposed || id <= 0 || ownedBrowserIds.Count >= 8 || !ownedBrowserIds.Add(id)) return;
+            browserProcessId = id;
+            Write("OWNED_BROWSER_DISCOVERED");
         }
 
         private void Write(string observation, object? eventDetails = null)
@@ -118,6 +156,7 @@ public static partial class RuntimeLifecycleProbe
                 browserWidth = window.Browser.ActualWidth, browserHeight = window.Browser.ActualHeight,
                 stage = window.Host.StartupStage, failure = window.Host.StartupFailureCode,
                 controllerCompleted, controllerHresult, browserProcessId, browserVersion,
+                ownedBrowserProcessIds = ownedBrowserIds.ToArray(),
                 processFailureKind, eventDetails, failureReportFolder,
                 sdkVersion = typeof(CoreWebView2Environment).Assembly.GetName().Version?.ToString(),
                 threadDesktop, inputDesktop
@@ -159,6 +198,7 @@ public static partial class RuntimeLifecycleProbe
             timer.Stop();
             Write("HOST_TEARDOWN");
             disposed = true;
+            window.Host.AcceptanceEnvironmentCreated -= ObserveEnvironment;
             window.Browser.CoreWebView2InitializationCompleted -= completed;
             window.SourceInitialized -= sourceInitialized;
             // Startup failure may already have disposed the control before fixture teardown.
@@ -166,6 +206,9 @@ public static partial class RuntimeLifecycleProbe
             catch (InvalidOperationException) { }
             catch (COMException) { }
             try { if (initializedEnvironment is not null) initializedEnvironment.BrowserProcessExited -= browserExited; }
+            catch (InvalidOperationException) { }
+            catch (COMException) { }
+            try { if (initializedEnvironment is not null) initializedEnvironment.ProcessInfosChanged -= processInfosChanged; }
             catch (InvalidOperationException) { }
             catch (COMException) { }
         }

@@ -66,6 +66,7 @@ internal sealed class WorkspaceWebViewHost
 
 #if MMF3_ACCEPTANCE && DEBUG
     private readonly Mmf3AcceptanceLaunch? acceptance;
+    internal event Action<CoreWebView2Environment>? AcceptanceEnvironmentCreated;
 #endif
     internal WorkspaceWebViewHost(WebView2 view, IWorkspaceNativeActions native, Action<string> fallback, string? assetFolder = null, Func<bool>? confirmDiscard = null
 #if MMF3_ACCEPTANCE && DEBUG
@@ -139,6 +140,7 @@ internal sealed class WorkspaceWebViewHost
                 acceptance.Validate();
                 if (!string.Equals(Path.GetFullPath(environment.UserDataFolder), acceptance.Profile, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("MMF3 profile mismatch.");
+                AcceptanceEnvironmentCreated?.Invoke(environment);
             }
 #endif
             if (closing || failed) return;
