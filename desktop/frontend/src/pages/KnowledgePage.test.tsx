@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KnowledgePage } from './KnowledgePage'
 import { WorkspaceClient } from '../bridge/client'
 import { KnowledgeService } from '../test/knowledgeFixtures'
+import { findSourceMatches } from '../components/knowledgeSourceMatches'
 const clients: WorkspaceClient[] = []
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
@@ -57,4 +58,101 @@ it('session rotation clears loaded source and does not persist content or IDs', 
   const storage = vi.spyOn(Storage.prototype, 'setItem'); const { port } = await setup(); await click(/fixture.md/); await click('预览源文本')
   await act(async () => port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc')); expect(screen.queryByText(/window.pwned=1/)).toBeNull(); expect(storage).not.toHaveBeenCalled()
   expect(location.hash).not.toContain(port.document.documentId)
+})
+
+class SourceFindService extends KnowledgeService {
+  text = '# 旧版\n前文预算😀[x].\n<img src=x onerror=alert(1)>\n预算😀[x]. 预算😀[X].'
+  boundary = this.text.indexOf('预算') + 2
+  hold = false
+  fail = false
+  constructor() { super(); this.document.currentReadyRevision = '2' }
+  override detail() { const result = super.detail(); result.revisions.push({ sourceRevision: '2', sourceType: 'MARKDOWN', byteLength: 10 }); return result }
+  override postMessage(value: unknown) {
+    const r = value as { method: string; payload: { documentId: string; sourceRevision: string; offset: number } }
+    if (r.method !== 'knowledge.preview') { super.postMessage(value); return }
+    this.sent.push(value as Record<string, unknown>)
+    if (this.hold) return
+    const index = this.sent.length - 1, request = this.sent[index]!
+    if (this.fail && r.payload.offset > 0) {
+      this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'KnowledgeStorageUnavailable', message: '合成读取失败。' } }); return
+    }
+    const text = r.payload.sourceRevision === '1' ? this.text : '新版中没有该短语。', offset = r.payload.offset
+    const end = offset < this.boundary ? Math.min(this.boundary, text.length) : text.length
+    this.reply(index, { ...this.preview(), sourceRevision: r.payload.sourceRevision, offset, text: text.slice(offset, end), nextOffset: end < text.length ? end : null, locators: [] })
+  }
+}
+
+it('finds literal phrases across preview boundaries in the selected old version and opens exact highlighted source', async () => {
+  const storage = vi.spyOn(Storage.prototype, 'setItem'), { port } = await setup(new SourceFindService())
+  await click(/fixture.md/)
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '1' } })
+  fireEvent.click(screen.getByText('在此版本中查找'))
+  const input = screen.getByLabelText('原文查找短语')
+  fireEvent.change(input, { target: { value: '预算😀[x].' } })
+  expect(port.sent.filter(r => r.method === 'knowledge.preview')).toHaveLength(0)
+  await click('查找此版本')
+  expect(screen.getByText('已完整查找源版本 1，找到 2 处。')).toBeTruthy()
+  const results = within(screen.getByRole('region', { name: '版本内查找结果' }))
+  expect(results.getAllByText('预算😀[x].', { selector: 'mark' })).toHaveLength(2)
+  expect(port.sent.filter(r => r.method === 'knowledge.preview').map(r => r.payload)).toEqual([
+    { documentId: port.document.documentId, sourceRevision: '1', offset: 0 },
+    { documentId: port.document.documentId, sourceRevision: '1', offset: 9 },
+  ])
+  expect(document.querySelector('img,script,iframe')).toBeNull()
+  await click('打开第 1 处原文')
+  const source = within(screen.getByRole('region', { name: '纯文本预览' }))
+  expect(source.getByText('预算', { selector: 'mark' })).toBeTruthy()
+  expect(source.getByText(/当前可用版本为 2/)).toBeTruthy()
+  expect(source.getByText(/查找命中范围：行 2–2/)).toBeTruthy()
+  await click('下一页文本')
+  expect(source.getByText('😀[x].', { selector: 'mark' })).toBeTruthy()
+  expect(storage).not.toHaveBeenCalled(); expect(location.href).not.toContain('预算')
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '2' } })
+  expect(screen.queryByRole('region', { name: '版本内查找结果' })).toBeNull()
+  expect((screen.getByLabelText('原文查找短语') as HTMLTextAreaElement).value).toBe('')
+})
+
+it('does not publish prefix results on failed reads, and stopping or leaving suppresses late pages without replay', async () => {
+  const port = new SourceFindService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const view = render(<KnowledgePage bridge={bridge} enabled visible />)
+  await screen.findByRole('button', { name: /fixture.md/ }); await click(/fixture.md/)
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '1' } })
+  fireEvent.click(screen.getByText('在此版本中查找'))
+  fireEvent.change(screen.getByLabelText('原文查找短语'), { target: { value: '预算' } })
+  port.fail = true; await click('查找此版本')
+  expect(screen.getByRole('alert').textContent).toBe('合成读取失败。')
+  expect(screen.queryByText(/已完整查找/)).toBeNull()
+  expect(screen.queryByRole('region', { name: '版本内查找结果' })).toBeNull()
+  port.fail = false; port.hold = true
+  await click('查找此版本'); const held = port.sent.length - 1
+  await click('停止查找')
+  expect((screen.getByRole('button', { name: '查找此版本' }) as HTMLButtonElement).disabled).toBe(true)
+  const partial = { ...port.preview(), text: '预算', nextOffset: 2, locators: [] }
+  await act(async () => port.reply(held, partial))
+  expect(screen.getByText('已停止查找。')).toBeTruthy()
+  expect(port.sent.filter(r => r.method === 'knowledge.preview')).toHaveLength(3)
+  await click('查找此版本'); const late = port.sent.length - 1
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible={false} />)
+  await act(async () => port.reply(late, partial))
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible />)
+  expect(screen.queryByRole('region', { name: '版本内查找结果' })).toBeNull()
+  expect((screen.getByLabelText('原文查找短语') as HTMLTextAreaElement).value).toBe('')
+  expect(port.sent.filter(r => r.method === 'knowledge.preview')).toHaveLength(4)
+  port.hold = false
+  fireEvent.change(screen.getByLabelText('原文查找短语'), { target: { value: '不存在' } }); await click('查找此版本')
+  expect(screen.getByText('已完整查找源版本 1，找到 0 处。')).toBeTruthy()
+  await act(async () => port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc'))
+  expect(screen.queryByText(/已完整查找/)).toBeNull()
+  expect(port.sent.some(r => ['knowledge.answerSubmit', 'knowledge.rebuildSearchIndex', 'knowledge.import'].includes(r.method as string))).toBe(false)
+})
+
+it('keeps literal overlapping matches, multiline coordinates and Unicode snippets while bounding the displayed list', () => {
+  const found = findSourceMatches('😀甲\n😀甲\n😀甲', '😀甲\n😀甲')
+  expect(found.matches.map(m => [m.startOffset, m.endOffset, m.startLine, m.endLine])).toEqual([[0, 7, 1, 2], [4, 11, 2, 3]])
+  const many = findSourceMatches('a'.repeat(100_000), 'aa')
+  expect(many.total).toBe(99_999); expect(many.matches).toHaveLength(200)
+  const text = '😀'.repeat(31) + 'a预算b' + '😀'.repeat(31), match = findSourceMatches(text, '预算').matches[0]!
+  expect(match.snippet).not.toMatch(/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/u)
+  expect(match.snippet.slice(match.startOffset - match.snippetOffset, match.endOffset - match.snippetOffset)).toBe('预算')
+  expect(() => findSourceMatches('anything', '')).toThrow('查找短语')
 })

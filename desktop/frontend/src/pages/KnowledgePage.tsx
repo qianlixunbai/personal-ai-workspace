@@ -8,6 +8,8 @@ import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { KnowledgeSourcePreview, type KnowledgeSourceTarget } from '../components/KnowledgeSourcePreview'
 import { KnowledgeWebCapture } from '../components/KnowledgeWebCapture'
 import { KnowledgeVersionComparison } from '../components/KnowledgeVersionComparison'
+import { KnowledgeSourceFind } from '../components/KnowledgeSourceFind'
+import type { SourceMatch } from '../components/knowledgeSourceMatches'
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'ASSISTANT') => void }) {
@@ -94,6 +96,14 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (epoch !== generation.current || pick !== selection.current) return
     setRevision(sourceRevision); setSourceTarget(null); offsets.current = []; setPreview(result)
   })
+  const openFoundSource = (match: SourceMatch) => run(async () => {
+    if (!enabled || !visible || !document || !revision) return
+    const epoch = generation.current, pick = selection.current
+    const result = await bridge.previewKnowledge(document.documentId, revision, match.startOffset)
+    if (epoch !== generation.current || pick !== selection.current) return
+    offsets.current = []; setPreview(result)
+    setSourceTarget({ documentId: document.documentId, sourceRevision: revision, startOffset: match.startOffset, endOffset: match.endOffset, startLine: match.startLine, endLine: match.endLine, kind: 'find' })
+  })
   const openHit = (hit: Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'>, kind: KnowledgeSourceTarget['kind'] = 'search') => run(async () => {
     if (!enabled || !visible) return
     const epoch = generation.current, pick = selection.current + 1; const loaded = await load(hit.documentId)
@@ -129,6 +139,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
             <button disabled={!enabled || busy || !revision} onClick={() => { void showPreview(0, 'reset') }}>预览源文本</button></div>
           {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible} hasPrevious={offsets.current.length > 0} navigate={showPreview} />}
+          {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId) }) }}>刷新详情</button>
             <button disabled={!enabled || busy || processing || stale || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
