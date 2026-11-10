@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { KnowledgePreview } from '../bridge/knowledge'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { HighlightedText } from './HighlightedText'
@@ -12,6 +12,7 @@ export function KnowledgeSourcePreview({ preview, target, currentRevision, disab
   saveExcerpt?: ((start: number, end: number) => void) | undefined
 }) {
   const text = useRef<HTMLPreElement>(null)
+  const rangeId = useId()
   const [selection, setSelection] = useState<{ preview: KnowledgePreview; start: number; end: number } | null>(null)
   const excerpt = selection?.preview === preview && !disabled ? selection : null
   const source = target?.documentId === preview.documentId && target.sourceRevision === preview.sourceRevision ? target : null
@@ -41,8 +42,8 @@ export function KnowledgeSourcePreview({ preview, target, currentRevision, disab
   return <section aria-label="纯文本预览">
     <p className="knowledge-location">源版本 {preview.sourceRevision}{currentRevision && currentRevision !== preview.sourceRevision ? ` · 当前可用版本为 ${currentRevision}，此处仍显示所选旧版本` : ''} · 文本偏移 {preview.offset}–{preview.offset + preview.text.length}</p>
     <p className="knowledge-location">{preview.locators.map(l => `${l.type} · 行 ${l.startLine}–${l.endLine}${l.heading ? ` · ${l.heading}` : ''}`).join('')}</p>
-    {source && <p className="hint" id="knowledge-source-range">{label}范围：行 {source.startLine}–{source.endLine}，文本偏移 {source.startOffset}–{source.endOffset}。{ranges.length ? `高亮为本页与${label}范围重合的原文，其余为上下文。` : `本页为上下文，未包含${label}范围。`}</p>}
-    <pre ref={text} tabIndex={0} aria-describedby={source ? 'knowledge-source-range' : undefined}><HighlightedText text={preview.text} ranges={ranges} /></pre>
+    {source && <p className="hint" id={rangeId}>{label}范围：行 {source.startLine}–{source.endLine}，文本偏移 {source.startOffset}–{source.endOffset}。{ranges.length ? `高亮为本页与${label}范围重合的原文，其余为上下文。` : `本页为上下文，未包含${label}范围。`}</p>}
+    <pre ref={text} tabIndex={0} aria-describedby={source ? rangeId : undefined}><HighlightedText text={preview.text} ranges={ranges} /></pre>
     {saveExcerpt && <div>
       <button disabled={!excerpt} onMouseDown={event => event.preventDefault()} onClick={() => { if (excerpt) saveExcerpt(excerpt.start, excerpt.end) }}>将选中原文整理为记忆草稿</button>
       <p className="hint">{excerpt ? `已选中原文，文本偏移 ${preview.offset + excerpt.start}–${preview.offset + excerpt.end}。` : '先在本页原文中选择需要保留的文字。'}草稿包含所选原文、资料名称和源版本；需审阅并明确保存，之后仍须主动选择记忆才会用于问答。</p>

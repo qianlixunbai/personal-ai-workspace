@@ -1,0 +1,123 @@
+import { useEffect, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
+import type { WorkspaceClient } from '../bridge/client'
+import { isConversationSearchQuery } from '../bridge/conversations'
+import type { ConversationSearchHit, ConversationSearchPage, ConversationSearchScope } from '../bridge/conversations'
+import type { MemoryList, MemoryMetadata, MemoryStatus } from '../bridge/memory'
+import type { KnowledgeSearchHit, KnowledgeSearchResult } from '../bridge/knowledgeSearch'
+import { HighlightedText } from './HighlightedText'
+import { MemoryPreview } from './MemoryPreview'
+import { searchReadError, WorkspaceConversationReader, WorkspaceKnowledgeReader } from './WorkspaceSearchReaders'
+
+type Group<T> = { data: T | null; busy: boolean; error: string }
+const empty = <T,>(): Group<T> => ({ data: null, busy: false, error: '' })
+type Search = { query: string; memory: MemoryStatus; conversations: ConversationSearchScope }
+type Selection = { kind: 'memory'; item: MemoryMetadata } | { kind: 'conversation'; hit: ConversationSearchHit } | { kind: 'knowledge'; hit: KnowledgeSearchHit }
+
+// This view only reads existing domain APIs. The underlying pages remain mounted;
+// neither current editor state nor selected model context is changed by a result.
+export function WorkspaceSearchDialog({ bridge, close }: { bridge: WorkspaceClient; close: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null), input = useRef<HTMLInputElement>(null)
+  const readerFocus = useRef<HTMLButtonElement>(null), resultFocus = useRef<HTMLButtonElement | null>(null)
+  const closeRef = useRef(close); closeRef.current = close
+  const generation = useRef(0), pending = useRef(0), composing = useRef(false)
+  const [query, setQuery] = useState(''), [memoryStatus, setMemoryStatus] = useState<MemoryStatus>('ACTIVE')
+  const [scope, setScope] = useState<ConversationSearchScope>('ALL'), [submitted, setSubmitted] = useState<Search | null>(null)
+  const [memories, setMemories] = useState<Group<MemoryList>>(empty)
+  const [conversations, setConversations] = useState<Group<ConversationSearchPage>>(empty)
+  const [knowledge, setKnowledge] = useState<Group<KnowledgeSearchResult>>(empty)
+  const [memoryPage, setMemoryPage] = useState(0), [conversationPage, setConversationPage] = useState(0)
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const busy = memories.busy || conversations.busy || knowledge.busy
+  const valid = isConversationSearchQuery(query)
+  useEffect(() => { if (selection) readerFocus.current?.focus() }, [selection])
+  const choose = (value: Selection, button: HTMLButtonElement) => { resultFocus.current = button; setSelection(value) }
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null, element = dialog.current
+    element?.showModal(); input.current?.focus()
+    const unsubscribe = bridge.onSession(() => { generation.current++; closeRef.current() })
+    return () => { generation.current++; unsubscribe(); element?.close(); if (previous?.isConnected) previous.focus() }
+  }, [bridge])
+  const load = async <T,>(request: () => Promise<T>, publish: Dispatch<SetStateAction<Group<T>>>) => {
+    const token = generation.current
+    pending.current++; publish({ data: null, busy: true, error: '' })
+    try { const data = await request(); if (token === generation.current) publish({ data, busy: false, error: '' }) }
+    catch (problem) { if (token === generation.current) publish({ data: null, busy: false, error: searchReadError(problem) }) }
+    finally { if (token === generation.current) pending.current-- }
+  }
+  const loadMemory = (search: Search, page: number) => {
+    setMemoryPage(page)
+    void load(() => bridge.listMemory({ query: search.query, status: search.memory, type: null, page }), setMemories)
+  }
+  const loadConversations = (search: Search, page: number) => {
+    setConversationPage(page)
+    void load(() => bridge.searchConversations(search.query, search.conversations, page), setConversations)
+  }
+  const search = () => {
+    if (pending.current || !valid || composing.current) return
+    generation.current++; setSelection(null)
+    const value = { query, memory: memoryStatus, conversations: scope }
+    setSubmitted(value); loadMemory(value, 0); loadConversations(value, 0)
+    void load(() => bridge.searchKnowledge(value.query), setKnowledge)
+  }
+  const retry = (action: () => void) => { if (!pending.current) { setSelection(null); action() } }
+  return <dialog ref={dialog} className="workspace-search-dialog" aria-labelledby="workspace-search-title"
+    onCancel={event => { event.preventDefault(); closeRef.current() }}>
+    <div className="workspace-search-heading"><h2 id="workspace-search-title">查找工作区</h2><button onClick={close}>关闭查找</button></div>
+    <p className="hint">查找已保存的记忆、对话消息和资料。打开结果只读查看，关闭后继续当前草稿。</p>
+    <form onSubmit={event => { event.preventDefault(); search() }}>
+      <label>工作区关键词<input ref={input} value={query} disabled={busy} aria-describedby="workspace-search-query-hint"
+        onChange={event => setQuery(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
+        onKeyDown={event => { if (event.key === 'Enter' && (composing.current || event.nativeEvent.isComposing)) event.preventDefault() }} /></label>
+      <div className="workspace-search-filters"><label>记忆范围<select value={memoryStatus} disabled={busy} onChange={event => setMemoryStatus(event.target.value as MemoryStatus)}>
+        <option value="ACTIVE">活动记忆</option><option value="ARCHIVED">归档记忆</option></select></label>
+        <label>对话范围<select value={scope} disabled={busy} onChange={event => setScope(event.target.value as ConversationSearchScope)}>
+          <option value="ALL">全部对话</option><option value="ACTIVE">活动对话</option><option value="ARCHIVED">归档对话</option></select></label>
+        <button className="primary" type="submit" disabled={busy || !valid}>查找</button></div>
+      <p id="workspace-search-query-hint" className="hint">请输入 1–100 个字；空白和大小写保留。{query && !valid ? '当前关键词为空白、过长或含无效字符。' : ''}</p>
+    </form>
+    {submitted && <><p className="hint" role="status">以下结果来自“{submitted.query}”。记忆和对话匹配连续原文；资料按关键词检索当前可用版本，最多显示 10 个片段。</p>
+      <div className="workspace-search-layout"><div>
+        <section aria-label="工作区记忆结果" aria-busy={memories.busy}>
+          <h3>{submitted.memory === 'ACTIVE' ? '活动记忆' : '归档记忆'}</h3>
+          {memories.busy && <p role="status">正在查找记忆…</p>}
+          {memories.error && <p role="alert" className="error">{memories.error} <button disabled={busy} onClick={() => retry(() => loadMemory(submitted, memoryPage))}>重试记忆查找</button></p>}
+          {memories.data && <><p className="hint">共 {memories.data.total} 条 · 第 {memoryPage + 1} 页</p><ul className="workspace-search-results">
+            {memories.data.items.map(item => <li key={item.id}><button onClick={event => choose({ kind: 'memory', item }, event.currentTarget)}>
+              <span dir="auto">{item.title}</span><small>{item.type === 'PREFERENCE' ? '偏好' : '项目笔记'} · 版本 {item.revision} · 查看正文</small></button></li>)}</ul>
+            {memories.data.total === 0 && <p>没有匹配记忆。</p>}
+            <div className="pagination"><button disabled={busy || memoryPage === 0} onClick={() => retry(() => loadMemory(submitted, memoryPage - 1))}>上一页记忆</button>
+              <button disabled={busy || (memoryPage + 1) * 20 >= memories.data.total} onClick={() => retry(() => loadMemory(submitted, memoryPage + 1))}>下一页记忆</button></div></>}
+        </section>
+        <section aria-label="工作区对话结果" aria-busy={conversations.busy}>
+          <h3>{submitted.conversations === 'ALL' ? '全部对话' : submitted.conversations === 'ACTIVE' ? '活动对话' : '归档对话'}</h3>
+          {conversations.busy && <p role="status">正在查找对话…</p>}
+          {conversations.error && <p role="alert" className="error">{conversations.error} <button disabled={busy} onClick={() => retry(() => loadConversations(submitted, conversationPage))}>重试对话查找</button></p>}
+          {conversations.data && <><p className="hint">第 {conversationPage + 1} 页 · {conversations.data.items.length} 条消息</p><ul className="workspace-search-results">
+            {conversations.data.items.map(hit => <li key={hit.messageId}><button onClick={event => choose({ kind: 'conversation', hit }, event.currentTarget)}>
+              <span dir="auto">{hit.conversation.title}</span><small>第 {hit.sequence} 轮 · {hit.role === 'USER' ? '用户消息' : '助手回复'} · {hit.conversation.status === 'ARCHIVED' ? '已归档' : '活动'} · 查看整轮</small>
+              <span className="workspace-search-snippet" dir="auto">{hit.before && '…'}<HighlightedText text={hit.snippet} ranges={[{ start: hit.matchStart, end: hit.matchEnd }]} />{hit.after && '…'}</span>
+            </button></li>)}</ul>{!conversations.data.items.length && <p>没有匹配消息。</p>}
+            <div className="pagination"><button disabled={busy || conversationPage === 0} onClick={() => retry(() => loadConversations(submitted, conversationPage - 1))}>上一页消息</button>
+              <button disabled={busy || !conversations.data.hasMore || conversationPage >= 199999} onClick={() => retry(() => loadConversations(submitted, conversationPage + 1))}>下一页消息</button></div></>}
+        </section>
+        <section aria-label="工作区资料结果" aria-busy={knowledge.busy}>
+          <h3>活动资料 · 最多 10 个片段</h3>
+          {knowledge.busy && <p role="status">正在查找资料…</p>}
+          {knowledge.error && <p role="alert" className="error">{knowledge.error} <button disabled={busy} onClick={() => retry(() => { void load(() => bridge.searchKnowledge(submitted.query), setKnowledge) })}>重试资料查找</button></p>}
+          {knowledge.data && <><ul className="workspace-search-results">{knowledge.data.hits.map(hit => <li key={`${hit.documentId}/${hit.sourceRevision}/${hit.startOffset}`}><button onClick={event => choose({ kind: 'knowledge', hit }, event.currentTarget)}>
+            <span dir="auto">{hit.title}</span><small>源版本 {hit.sourceRevision} · 行 {hit.startLine}–{hit.endLine} · 查看原文</small>
+            <span className="workspace-search-snippet" dir="auto"><HighlightedText text={hit.snippet} ranges={hit.highlightRanges} /></span>
+          </button></li>)}</ul>{!knowledge.data.hits.length && <p>没有匹配资料片段。</p>}</>}
+        </section>
+      </div><div className="workspace-search-reader">
+        {!selection && <p className="hint">选择结果，在这里阅读。</p>}
+        {selection && <><button ref={readerFocus} onClick={() => { setSelection(null); resultFocus.current?.focus() }}>收起查找预览</button>
+          {selection.kind === 'memory' && <MemoryPreview key={`memory/${selection.item.id}/${selection.item.revision}`} bridge={bridge} metadata={selection.item} query={submitted.query} idPrefix="workspace-memory-preview" />}
+          {selection.kind === 'conversation' && <WorkspaceConversationReader key={`conversation/${selection.hit.messageId}`} bridge={bridge} hit={selection.hit} query={submitted.query} />}
+          {selection.kind === 'knowledge' && <WorkspaceKnowledgeReader key={`knowledge/${selection.hit.documentId}/${selection.hit.sourceRevision}/${selection.hit.startOffset}`} bridge={bridge} hit={selection.hit} />}
+        </>}
+      </div></div>
+    </>}
+  </dialog>
+}

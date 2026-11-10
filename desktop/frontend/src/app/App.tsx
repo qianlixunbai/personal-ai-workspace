@@ -14,6 +14,7 @@ import { FinancePage } from '../pages/FinancePage'
 import { KnowledgePage } from '../pages/KnowledgePage'
 import { Icon } from '../components/Icon'
 import { FinanceArtwork } from '../components/FinanceArtwork'
+import { WorkspaceSearchDialog } from '../components/WorkspaceSearchDialog'
 
 export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [page, setPage] = useState(() => pageFromHash(location.hash))
@@ -22,6 +23,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('正在连接工作区…')
+  const [searchOpen, setSearchOpen] = useState(false)
   const generation = useRef(0)
   const statusRequest = useRef(0)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -47,7 +49,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
       if (runtime) showRuntime()
       return
     }
-    const commit = () => { focusRuntime.current = runtime; history.replaceState(null, '', `#/${next}`); setPage(next); heading.current?.focus({ preventScroll: true }) }
+    const commit = () => { setSearchOpen(false); focusRuntime.current = runtime; history.replaceState(null, '', `#/${next}`); setPage(next); heading.current?.focus({ preventScroll: true }) }
     if (pageRef.current === 'memory') leaveMemory.current(commit); else commit()
   }
   useEffect(() => {
@@ -55,7 +57,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
     const bootstrap = () => {
       const current = ++generation.current
       const request = ++statusRequest.current
-      setStatus(null); setBusy(true); setError(''); setNotice('正在检查本机状态…')
+      setSearchOpen(false); setStatus(null); setBusy(true); setError(''); setNotice('正在检查本机状态…')
       void bridge.bootstrap().then(result => { if (!disposed && current === generation.current && request === statusRequest.current) { setStatus(result); setNotice('') } })
         .catch(() => { if (!disposed && current === generation.current) { setError('工作区连接失败。请从原生窗口关闭后重新打开。'); setNotice('') } })
         .finally(() => { if (!disposed && current === generation.current) setBusy(false) })
@@ -121,6 +123,7 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
           <Icon name={item.id} /><span className="nav-copy"><span className="nav-label">{item.label}</span></span></a>)}</div>)}</nav>
       <label className="workspace-picker">工作区页面<select value={page} onChange={event => navigate(event.target.value as typeof page)}>{pages.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <div className="sidebar-bottom">
+        <button className="runtime-link workspace-search-entry" title="查找工作区" aria-label="查找工作区" disabled={!status || busy} onClick={() => setSearchOpen(true)}><Icon name="search" /><span className="nav-copy">查找工作区</span></button>
         <button className="runtime-link" title={`${runtimeLabel}；查看本机运行状态，模型状态请在设置中检查`} aria-label={`${runtimeLabel}，查看本机运行状态`} onClick={() => navigate('settings', true)}><Icon name="status" /><span className="nav-copy"><span>{runtimeLabel}</span></span><span className={`dot ${runtimeConfirmed ? 'online' : ''}`} /></button>
         <a className="settings-link" href="#/settings" title="设置" aria-label="设置" aria-current={page === 'settings' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('settings') }}><Icon name="settings" /><span className="nav-copy"><span className="nav-label">设置</span></span></a>
         <button className="theme-button" title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`} onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; saveTheme(next); setTheme(next) }}><Icon name={theme === 'light' ? 'moon' : 'sun'} /><span className="nav-copy"><span>{theme === 'light' ? '深色模式' : '浅色模式'}</span></span></button>
@@ -141,5 +144,6 @@ export function App({ bridge }: { bridge: WorkspaceClient }) {
         {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status" className="operation-status">{notice}</p>}
       </div>
     </main>
+    {searchOpen && !!status && !busy && <WorkspaceSearchDialog bridge={bridge} close={() => setSearchOpen(false)} />}
   </div>
 }

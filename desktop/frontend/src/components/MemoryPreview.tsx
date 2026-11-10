@@ -12,7 +12,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 // Mounted only by an explicit preview click. One preview is retained by the parent;
 // closing, refreshing, filtering or leaving unmounts it and ignores a late response.
-export function MemoryPreview({ bridge, metadata, query }: { bridge: WorkspaceClient; metadata: MemoryMetadata; query: string }) {
+export function MemoryPreview({ bridge, metadata, query, idPrefix = 'memory-preview' }: { bridge: WorkspaceClient; metadata: MemoryMetadata; query: string; idPrefix?: string }) {
   const [item, setItem] = useState<MemoryItem | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -29,8 +29,8 @@ export function MemoryPreview({ bridge, metadata, query }: { bridge: WorkspaceCl
     })
     return () => { disposed = true }
   }, [bridge, metadata.id, metadata.revision, metadata.status])
-  return <section id={`memory-preview-${metadata.id}`} className="memory-preview" aria-label="记忆只读预览" aria-busy={!item && !error}>
-    <p className="hint">只读预览；右侧未保存的编辑保持不变。</p>
+  return <section id={`${idPrefix}-${metadata.id}`} className="memory-preview" aria-label="记忆只读预览" aria-busy={!item && !error}>
+    <p className="hint">只读预览；未保存的编辑保持不变。</p>
     {!item && !error && <p role="status">正在读取记忆…</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {item && <><h3 dir="auto"><Highlight text={item.title} query={query} /></h3>

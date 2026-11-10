@@ -1,6 +1,7 @@
 @import './tokens.css';
 @import './dashboard.css';
 @import './answer.css';
+@import './workspace-search.css';
 
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }

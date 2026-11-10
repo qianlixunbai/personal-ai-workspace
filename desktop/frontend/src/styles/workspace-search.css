@@ -1,0 +1,23 @@
+.workspace-search-dialog { width: min(1100px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); padding: 24px; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+.workspace-search-dialog::backdrop { background: #0007; }
+.workspace-search-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.workspace-search-heading h2 { margin: 0; }
+.workspace-search-dialog form label { display: grid; gap: 6px; }
+.workspace-search-dialog input { width: 100%; min-width: 0; }
+.workspace-search-dialog input, .workspace-search-dialog select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--control-border); border-radius: var(--radius-control); padding: 8px; }
+.workspace-search-dialog input:focus-visible, .workspace-search-dialog select:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.workspace-search-dialog mark { color: var(--text); background: var(--accent-soft); text-decoration: underline; }
+.workspace-search-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; }
+.workspace-search-layout { display: grid; grid-template-columns: minmax(240px, 2fr) minmax(0, 3fr); gap: 24px; }
+.workspace-search-layout > div > section { margin-bottom: 24px; }
+.workspace-search-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.workspace-search-results button { width: 100%; display: grid; gap: 6px; text-align: start; overflow-wrap: anywhere; }
+.workspace-search-results small { color: var(--muted); }
+.workspace-search-snippet { white-space: pre-wrap; line-height: 1.6; }
+.workspace-search-reader { min-width: 0; }
+.workspace-search-reader pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+@media (max-width: 759px) {
+  .workspace-search-layout { display: block; }
+  .workspace-search-dialog { padding: 16px; }
+  .sidebar .workspace-search-entry .nav-copy { display: grid; }
+}
