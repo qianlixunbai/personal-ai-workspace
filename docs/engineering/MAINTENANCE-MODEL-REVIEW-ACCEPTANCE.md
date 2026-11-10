@@ -52,4 +52,20 @@ Java 最终候选 SHA-256：`C620B68FB1138266E982AB054120A2FFFD76E15A21ABAF7DCB4
 
 本轮没有新的权限拒绝、待审批或未知执行结果。最初基线文档哈希读取因 Git 非 ASCII 文件名输出编码导致路径解析失败，随后仅使用公开仓库六份文档的实际文件路径完成哈希；不是权限拒绝，也未读取任何被拒 Profile。
 
-产品提交及新包 SHA 在交付后补入下节。完整维护迁移与普通重启仍是产品缺口，不是待用户批准某个系统策略更改。
+完整维护迁移与普通重启仍是产品缺口，不是待用户批准某个系统策略更改。
+
+## 本地交付记录
+
+产品提交：`79f81ff16527ccd15d4ce04c56b5db6b6b781e71`，分支 `codex/knowledge-version-compare`。新包 `artifacts/PersonalAiWorkspace-maintenance-model-review-20261110.zip` 及同名目录已交付；933 payload 文件、934 ZIP 条目逐一核对，420 条内嵌 Runtime pins 与实际文件相符，`productionGo=false`。
+
+| 交付项 | SHA-256 |
+| --- | --- |
+| ZIP | `F1056BDDAC78D852B0645AF9E50C6D63E7E85C69DD868AFC9EAB7F68A4C83BFD` |
+| Runtime JAR | `CB000AA4D2A572657E4FBC6CD799AEEAB0CD6B67306F79BFCE69C678E2926B72` |
+| Desktop DLL | `B99162EA71E06BD9407BDDBEFDD1CD77A6A3AB633E7D00B7139655AF695660DF` |
+
+Runtime 仅更新 `META-INF/workspace-runtime.properties` 的来源标记，其他全部 JAR 条目与已验收候选字节相同。Desktop 从已构建的最终源编译，嵌入交付 pins；前端／JDK／NativeBootstrap 沿用，不重新运行应用或模型矩阵。最终回执位于 r3 的 `delivery-result.json`、`publish-cleanup.json`。前一 Runtime handoff ZIP SHA 仍为 `CF7567E167BAD79CD7AF65A883035BB7B08AB3BD11AC20E63884E86FE657CB8C`；main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`；六份用户文档全部基线哈希一致。无推送。
+
+打包 guardian 36652 于 `2026-11-10T14:30:19.9729597Z` 记录 Job active 0、Job 关闭、共享锁释放。所有执行通道均返回完成回执，没有待审批或未知结果。
+
+接续优先级：以当前证据复核为前置，设计每次普通启动均可失效／核对的原生生命周期授权；再明确外部模型实际资源的独立 owner 与退出证明；最后把来源／目标选择和当次确认接到满足完整条件的执行入口。审阅页和历史安全停止均不能替代这三项。不要重跑本轮两组流程或前轮事务矩阵，除非对应代码发生变化或发现新的具体风险。

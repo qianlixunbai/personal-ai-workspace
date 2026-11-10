@@ -1,6 +1,6 @@
 # 当前状态
 
-2026-11-10 模型状态真实 writer 移交、停机后的当前来源／备份／配置／目标复核，以及只读迁移审阅页已完成聚焦合成验证。非空模型选择字节保留；pending guard 在导入前拒绝；正常结束与真实 Job 中断均保留后来数据，普通启动仍拒绝。两个临时 PostgreSQL 正常停止、凭据清理，Job 0／共享锁释放。模型权重／runner／推理未执行；审阅页仅编译，未做可视验收。**普通重启授权、外部模型执行所有权、最终来源／目标确认与执行入口仍未完成，完整维护 BLOCKED 保持。** [实际资源、验收与精确后续边界](engineering/MAINTENANCE-MODEL-REVIEW-ACCEPTANCE.md)。
+2026-11-10 模型状态真实 writer 移交、停机后的当前来源／备份／配置／目标复核，以及只读迁移审阅页已本地交付，产品提交 `79f81ff16527ccd15d4ce04c56b5db6b6b781e71`。新包 `artifacts/PersonalAiWorkspace-maintenance-model-review-20261110.zip`，SHA-256 `F1056BDDAC78D852B0645AF9E50C6D63E7E85C69DD868AFC9EAB7F68A4C83BFD`；933 payload／934 ZIP 条目／420 内嵌 pins 全部核对。非空模型选择字节保留；pending guard 在导入前拒绝；正常结束与真实 Job 中断均保留后来数据，普通启动仍拒绝。两个临时 PostgreSQL 正常停止、凭据清理，Job 0／共享锁释放。模型权重／runner／推理未执行；审阅页仅编译，未做可视验收。**普通重启授权、外部模型执行所有权、最终来源／目标确认与执行入口仍未完成，完整维护 BLOCKED 保持。** main、六份用户文档、真实数据和旧包不变，无推送。[实际资源、验收与精确后续边界](engineering/MAINTENANCE-MODEL-REVIEW-ACCEPTANCE.md)。
 
 2026-11-10 原生分阶段 Runtime 接管与本次会话安全结束已交付：产品提交 `1c37625595aff3dddd3544be850239da329c72e1`；新包 `artifacts/PersonalAiWorkspace-maintenance-runtime-handoff-20261110.zip`（SHA-256 `CF7567E167BAD79CD7AF65A883035BB7B08AB3BD11AC20E63884E86FE657CB8C`），933 payload／934 ZIP 条目／420 内嵌 pins 核对通过，Runtime 除来源标记外与验收候选一致。来源／备份／配置重叠移交，真正 Spring 数据源完成绑定核对后进入可写初始化，正常 Knowledge 初始化和三个实际 Store 后端核对通过。HTTP 新增数据在安全结束后保留；新进程核对完整终态，真实中断保留未完成记录，普通新 JVM 继续被 fence 阻断。两组临时库正常停止、凭据清理，验收及打包 Job 0／共享锁释放。普通重启授权、模型所有权和完整用户入口仍未完成，BLOCKED／未注册写入者保护保持。旧包、main、六份用户文档和真实数据不变，无推送。[完整协议、SHA、实际证据、历史失败与接续](engineering/MAINTENANCE-RUNTIME-HANDOFF-ACCEPTANCE.md)。
 
