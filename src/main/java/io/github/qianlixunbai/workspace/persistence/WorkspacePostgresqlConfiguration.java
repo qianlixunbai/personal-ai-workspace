@@ -10,6 +10,13 @@ import org.springframework.core.env.Environment;
 @ConditionalOnProperty(name = "workspace.persistence.backend", havingValue = "postgresql")
 public class WorkspacePostgresqlConfiguration {
     @Bean(name = "workspacePostgresqlDataSource", defaultCandidate = false)
+    javax.sql.DataSource runtimeDataSource(Environment environment)throws java.io.IOException {
+        var data=workspacePostgresqlDataSource(environment);
+        var activation=io.github.qianlixunbai.workspace.security.WindowsNativeGate.maintenanceRuntime();
+        return activation==null?data:activation.bindDataSource(data);
+    }
+    // Read-only configuration inspection also uses this factory. It must never consume the
+    // actual Runtime bean's once-only initialization boundary or release maintenance locks.
     PGSimpleDataSource workspacePostgresqlDataSource(Environment environment) {
         String prefix = "workspace.persistence.postgresql.";
         String url = environment.getRequiredProperty(prefix + "url");

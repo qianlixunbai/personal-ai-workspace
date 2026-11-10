@@ -17,6 +17,9 @@ import static io.github.qianlixunbai.workspace.conversation.ConversationLimits.*
 public final class ConversationStore implements AutoCloseable {
     private Connection db;
     private boolean postgresql;
+    public synchronized long maintenanceBackend(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime runtime)throws java.io.IOException {
+        if(!postgresql)throw new java.io.IOException("PostgreSQL backend required");return runtime.verifyBackend(db);
+    }
     public ConversationStore(DataSource dataSource) {
         try {
             db = dataSource.getConnection(); postgresql = true;

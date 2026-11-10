@@ -19,6 +19,9 @@ public final class MemoryStore implements AutoCloseable {
     private Path dataDirectory;
     private DataSource postgresql;
     private Connection connection;
+    public synchronized long maintenanceBackend(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime runtime)throws java.io.IOException {
+        if(postgresql==null)throw new java.io.IOException("PostgreSQL backend required");return runtime.verifyBackend(connection);
+    }
     public record Page(List<MemoryItem> items, long total, int page, int limit) {
         public Page { items = List.copyOf(items); }
     }

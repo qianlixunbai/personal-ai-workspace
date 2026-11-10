@@ -27,7 +27,7 @@ internal sealed partial class ProfileRecoveryCoordinator
     // Private primitive also exercised against a freshly created synthetic file/direct child.
     // DuplicateHandle preserves access and sharing on the same kernel file object. The parent
     // keeps its original; only child termination/child close releases the remote duplicate.
-    private static long DuplicateExclusion(FileStream original, Process child)
+    internal static long DuplicateExclusion(FileStream original, Process child)
     {
         if (!original.CanRead || !original.CanWrite || original.Length != 0 || child.HasExited) throw Stop();
         using var owner = Process.GetCurrentProcess();

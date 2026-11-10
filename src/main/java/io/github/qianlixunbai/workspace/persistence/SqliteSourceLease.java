@@ -30,7 +30,7 @@ public final class SqliteSourceLease implements AutoCloseable {
     private final List<DirectoryPin> directories = new ArrayList<>();
     private final Map<Path, FilePin> files = new LinkedHashMap<>();
     private final Fingerprint fingerprint;
-    private MaintenanceConfiguration.Publication publication;
+    private MaintenanceConfiguration.ConfigurationProof publication;
     private boolean closed;
 
     /** Only an actual NativeGate-consumed exclusion can select the canonical source. No path,
@@ -41,7 +41,16 @@ public final class SqliteSourceLease implements AutoCloseable {
     }
 
     private SqliteSourceLease(MaintenanceExclusion exclusion, Path root) throws IOException {
+        this(exclusion,root,null);
+    }
+    static SqliteSourceLease acquireForRuntime(MaintenanceExclusion exclusion,
+            MaintenanceConfiguration.ActivationConfiguration publication)throws IOException {
+        Path root=WindowsNativeGate.maintenanceProfileRoot(exclusion);publication.requireConfiguration(root);
+        return new SqliteSourceLease(exclusion,root,publication);
+    }
+    private SqliteSourceLease(MaintenanceExclusion exclusion,Path root,MaintenanceConfiguration.ConfigurationProof publication)throws IOException {
         this.exclusion = exclusion; this.root = root; data = root.resolve("data");
+        this.publication=publication;
         try {
             pinDirectory(data); pinDirectory(data.resolve("knowledge"));
             requireSqliteSource();

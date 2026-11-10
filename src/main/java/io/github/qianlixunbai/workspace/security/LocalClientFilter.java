@@ -20,6 +20,9 @@ final class LocalClientFilter extends OncePerRequestFilter {
 
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        if(!WindowsNativeGate.maintenanceRequestsAllowed()){
+            response.setHeader("Cache-Control","no-store");response.setStatus(503);return;
+        }
         boolean health = request.getMethod().equals("GET") && List.of("/actuator/health",
                 "/actuator/health/liveness", "/actuator/health/readiness").contains(request.getServletPath());
         if (health) { chain.doFilter(request, response); return; }

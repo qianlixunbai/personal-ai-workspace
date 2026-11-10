@@ -24,6 +24,8 @@ public final class WindowsNativeGate {
     private static io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.RuntimeLease runtimeLease;
     private static io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion maintenanceExclusion;
     private static boolean maintenanceAttempted;
+    private static volatile boolean maintenanceRuntimeAttempted;
+    private static volatile io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime maintenanceRuntime;
     private static boolean syntheticActivation;
     public static synchronized void receiveSyntheticActivation(java.io.InputStream input) throws IOException {
         if(admittedRoot!=null||syntheticActivation||maintenanceAttempted)throw new IOException("Activation already attempted");
@@ -92,8 +94,16 @@ public final class WindowsNativeGate {
         }
     }
 
-    public static synchronized Path profileRoot() throws IOException {
+    public static Path profileRoot() throws IOException {
+        if(maintenanceRuntimeAttempted){
+            if(maintenanceRuntime==null)throw new IOException("Maintenance Runtime STOP");
+            maintenanceRuntime.requireRuntimeAccess();return admittedRoot;
+        }
+        return ordinaryProfileRoot();
+    }
+    private static synchronized Path ordinaryProfileRoot()throws IOException {
         admit();
+        if(maintenanceRuntimeAttempted)throw new IOException("Maintenance Runtime STOP");
         if (admittedRoot == null || maintenanceAttempted) throw new IOException("Ordinary Development Profile required");
         io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.requireOrdinaryProfile(admittedRoot);
         // Every runtime/setup entry calls profileRoot before credentials, ADMITTED or Spring.
@@ -119,6 +129,19 @@ public final class WindowsNativeGate {
         if(admittedRoot==null||exclusion==null||exclusion!=maintenanceExclusion||runtimeLease!=null)throw new IOException("Maintenance exclusion STOP");
         exclusion.requireHeld(admittedRoot);
         return admittedRoot;
+    }
+
+    public static synchronized io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime receiveMaintenanceRuntime(
+            long handle,String operation,String challenge)throws IOException {
+        if(maintenanceRuntimeAttempted||maintenanceAttempted||runtimeLease!=null)throw new IOException("Maintenance Runtime STOP");
+        maintenanceRuntimeAttempted=true;
+        var exclusion=receiveMaintenanceExclusion(handle);
+        maintenanceRuntime=io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.accept(exclusion,operation,challenge);
+        return maintenanceRuntime;
+    }
+    public static io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime maintenanceRuntime(){return maintenanceRuntime;}
+    public static boolean maintenanceRequestsAllowed(){
+        return !maintenanceRuntimeAttempted||maintenanceRuntime!=null&&maintenanceRuntime.requestsAllowed();
     }
 
     /** Absence grants no exception. Presence always requires the original real Profile gate first. */
@@ -242,7 +265,7 @@ public final class WindowsNativeGate {
     public static void requireRuntimeArguments(String[] args) throws IOException {
         if (!isWindowsPlatform()) return;
         Path root = profileRoot();
-        requireProfileArguments(args,root);
+        requireProfileArguments(args,root,maintenanceRuntimeAttempted?0:18765);
     }
 
     public static void requireMaintenanceArguments(String[] args,io.github.qianlixunbai.workspace.persistence.MaintenanceExclusion exclusion) throws IOException {
@@ -250,7 +273,14 @@ public final class WindowsNativeGate {
     }
 
     private static void requireProfileArguments(String[] args,Path root) throws IOException {
-        List<String> expected = List.of("--server.address=127.0.0.1", "--server.port=18765",
+        requireProfileArguments(args,root,18765);
+    }
+    public static void requireMaintenanceRuntimeArguments(String[] args,io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime runtime)throws IOException {
+        if(runtime==null||runtime!=maintenanceRuntime)throw new IOException("Maintenance Runtime STOP");
+        requireProfileArguments(args,maintenanceProfileRoot(maintenanceExclusion),0);
+    }
+    private static void requireProfileArguments(String[] args,Path root,int port) throws IOException {
+        List<String> expected = List.of("--server.address=127.0.0.1", "--server.port="+port,
             "--workspace.security.token-file=" + root.resolve("credentials/client-token"),
             "--workspace.data-directory=" + root.resolve("data"),
             "--workspace.model-state-directory=" + root.resolve("model-state"));

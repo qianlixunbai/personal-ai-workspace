@@ -7,6 +7,18 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class PersonalAiWorkspaceApplication {
 
 	public static void main(String[] args) {
+		if(args.length>0&&args[0].equals("--native-maintenance-inspect-v1")){
+			System.exit(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.runInspection(
+				java.util.Arrays.copyOfRange(args,1,args.length),System.in,System.out));return;
+		}
+		if(args.length>0&&args[0].equals("--native-maintenance-runtime-v1")){
+			System.exit(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.runRuntime(
+				java.util.Arrays.copyOfRange(args,1,args.length),System.in,System.out));return;
+		}
+		if(args.length>0&&args[0].equals("--native-maintenance-owner-v1")){
+			System.exit(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime.runOwner(
+				java.util.Arrays.copyOfRange(args,1,args.length),System.in,System.out));return;
+		}
 		if (args.length > 0 && args[0].equals("--native-profile-recovery-v1")) {
 			System.exit(io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.runInspection(
 				java.util.Arrays.copyOfRange(args, 1, args.length), System.in, System.out));
@@ -33,19 +45,7 @@ public class PersonalAiWorkspaceApplication {
 			io.github.qianlixunbai.workspace.security.WindowsNativeGate.admit();
 			io.github.qianlixunbai.workspace.security.WindowsNativeGate.requireRuntimeArguments(args);
 			stage = "RUNTIME_START_FAILED";
-			var app = new SpringApplication(PersonalAiWorkspaceApplication.class);
-			if (java.nio.file.FileSystems.getDefault().getClass().getName().equals("sun.nio.fs.WindowsFileSystem")) {
-				var source = io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.load();
-				var finance = io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.loadFinance();
-				app.addInitializers(context -> {
-					try {
-						io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.install(context.getEnvironment(), source);
-						io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.installFinance(context.getEnvironment(), finance);
-					}
-					catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
-				});
-			}
-			app.run(args);
+			startRuntime(args);
 		} catch (Exception | LinkageError failure) {
 			if(syntheticActivation)try {
 				var root=io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot();
@@ -70,6 +70,22 @@ public class PersonalAiWorkspaceApplication {
 			System.err.println("WORKSPACE_STARTUP_V1\t" + stage);
 			System.exit(1);
 		}
+	}
+
+	/** Shared real application startup; maintenance does not substitute a reduced test context. */
+	public static org.springframework.context.ConfigurableApplicationContext startRuntime(String[] args)throws java.io.IOException {
+		io.github.qianlixunbai.workspace.security.WindowsNativeGate.admit();
+		io.github.qianlixunbai.workspace.security.WindowsNativeGate.requireRuntimeArguments(args);
+		var app=new SpringApplication(PersonalAiWorkspaceApplication.class);
+		if(java.nio.file.FileSystems.getDefault().getClass().getName().equals("sun.nio.fs.WindowsFileSystem")){
+			var source=io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.load();
+			var finance=io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.loadFinance();
+			app.addInitializers(context->{try{
+				io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.install(context.getEnvironment(),source);
+				io.github.qianlixunbai.workspace.persistence.TrustedDatabaseConfiguration.installFinance(context.getEnvironment(),finance);
+			}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}});
+		}
+		return app.run(args);
 	}
 
 }

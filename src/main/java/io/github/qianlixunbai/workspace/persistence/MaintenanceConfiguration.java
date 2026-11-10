@@ -61,8 +61,20 @@ public final class MaintenanceConfiguration {
         var publication=new Publication(root,operation,expected);
         try{publication.open();return publication;}catch(Exception failure){publication.close();throw stopped();}
     }
+    static boolean inspectPublishedBinding(Path root,String operation,String digest,MaintenanceTarget.Binding binding)throws IOException {
+        try(var prepared=open(root,operation);var actual=new SqliteSourceLease.FilePin(root.resolve("data/database.dpapi"))){
+            if(!digest.equals(prepared.intent.after)||!digest.equals(actual.digest())||!binding.equals(prepared.intent.target.binding()))return false;
+            try(var db=dataSource(prepared.plain).getConnection()){
+                PostgresqlWorkspace.verify(db);boolean matches=MaintenanceTarget.matches(db,binding);
+                actual.verify();prepared.verify();return matches;
+            }
+        }catch(Exception failure){throw stopped();}
+    }
 
-    static final class Publication implements AutoCloseable {
+    sealed interface ConfigurationProof permits Publication,ActivationConfiguration {
+        void requireConfiguration(Path root)throws IOException;
+    }
+    static final class Publication implements AutoCloseable,ConfigurationProof {
         private final Path root;private final String operation;private final SqliteCombinedMigration.Expected expected;
         private Prepared prepared;private FileChannel gate;private String gateIdentity;
         private java.sql.Connection target;private SqliteSourceLease.FilePin configuration;
@@ -106,7 +118,7 @@ public final class MaintenanceConfiguration {
                     ||!gateIdentity.equals(TrustedDatabaseConfiguration.Identity.read(prepared.dir.resolve("publication.lock"),false)))throw stopped();
             prepared.verify();
         }
-        void requireConfiguration(Path expectedRoot)throws IOException {
+        public void requireConfiguration(Path expectedRoot)throws IOException {
             if(!root.equals(expectedRoot)||!published||configuration==null)throw stopped();
             verifyGate();configuration.verify();
             if(!configuration.digest().equals(prepared.intent.after))throw stopped();
@@ -115,6 +127,7 @@ public final class MaintenanceConfiguration {
             requireConfiguration(expectedRoot);
             try{MaintenanceTarget.verifyHeld(target,expected);}catch(Exception failure){throw stopped();}
         }
+        String configurationDigest()throws IOException{requireHeld(root);return prepared.intent.after;}
         public void close(){
             if(closed)return;closed=true;
             // Closing is suspension, not successful activation. All durable records remain fenced.
@@ -123,6 +136,52 @@ public final class MaintenanceConfiguration {
             if(gate!=null)try{gate.close();}catch(IOException ignored){}
             if(prepared!=null)prepared.close();
         }
+    }
+
+    /** Fresh child proof: exact published bytes, protected intent/attempt and a live target lock.
+     * It is never constructed from a request digest, old success flag or process metadata. */
+    static final class ActivationConfiguration implements AutoCloseable,ConfigurationProof {
+        final Path root;final Prepared prepared;final SqliteSourceLease.FilePin actual,attempt;
+        java.sql.Connection target;private boolean closed;
+        private ActivationConfiguration(Path root,Prepared prepared,SqliteSourceLease.FilePin actual,
+                                        SqliteSourceLease.FilePin attempt,java.sql.Connection target){
+            this.root=root;this.prepared=prepared;this.actual=actual;this.attempt=attempt;this.target=target;
+        }
+        static ActivationConfiguration open(Path root,String operation)throws IOException {
+            Prepared prepared=null;SqliteSourceLease.FilePin actual=null,attempt=null;java.sql.Connection target=null;
+            try {
+                prepared=MaintenanceConfiguration.open(root,operation);
+                actual=new SqliteSourceLease.FilePin(root.resolve("data/database.dpapi"));
+                if(!actual.digest().equals(prepared.intent.after))throw stopped();
+                attempt=new SqliteSourceLease.FilePin(prepared.dir.resolve("attempt.dpapi"));
+                byte[] encrypted=read(attempt),plain=null;
+                try{plain=Crypt32Util.cryptUnprotectData(encrypted,entropy(root,operation),1,null);
+                    if(!prepared.intent.equals(JSON.readValue(plain,Intent.class)))throw stopped();}
+                finally{Arrays.fill(encrypted,(byte)0);if(plain!=null)Arrays.fill(plain,(byte)0);}
+                target=MaintenanceTarget.holdVerified(dataSource(prepared.plain),prepared.intent.target);
+                var result=new ActivationConfiguration(root,prepared,actual,attempt,target);
+                result.requireConfiguration(root);return result;
+            }catch(Exception failure){
+                if(target!=null)try{target.close();}catch(Exception ignored){}
+                if(attempt!=null)try{attempt.close();}catch(Exception ignored){}
+                if(actual!=null)try{actual.close();}catch(Exception ignored){}
+                if(prepared!=null)prepared.close();throw stopped();
+            }finally{if(prepared!=null){if(prepared.plain!=null)Arrays.fill(prepared.plain,(byte)0);
+                if(prepared.encrypted!=null)Arrays.fill(prepared.encrypted,(byte)0);}}
+        }
+        SqliteCombinedMigration.Expected expected(){return prepared.intent.target;}
+        String digest(){return prepared.intent.after;}
+        public void requireConfiguration(Path expectedRoot)throws IOException {
+            if(closed||!root.equals(expectedRoot))throw stopped();prepared.verify();actual.verify();attempt.verify();
+            if(!actual.digest().equals(prepared.intent.after))throw stopped();
+        }
+        void releaseBootstrapTarget()throws IOException {
+            try{MaintenanceTarget.verifyHeld(target,expected());target.close();target=null;}
+            catch(Exception failure){throw stopped();}
+        }
+        public void close(){if(closed)return;closed=true;
+            if(target!=null)try{target.close();}catch(Exception ignored){}
+            try{actual.close();}catch(Exception ignored){}try{attempt.close();}catch(Exception ignored){}prepared.close();}
     }
 
     /** Fresh Gate/exclusion, protected intent and unchanged source/backup/target are all needed.

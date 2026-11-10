@@ -10,7 +10,7 @@ import java.nio.file.*;
 public final class MaintenanceStartupFence {
     private MaintenanceStartupFence() {}
     public static void requireNoPendingOperation(Path root) throws IOException {
-        for(String registry:new String[]{"sqlite-maintenance","sqlite-configuration"}) {
+        for(String registry:new String[]{"sqlite-maintenance","sqlite-configuration","sqlite-activation"}) {
             Path directory=root.resolve("evidence").resolve(registry);
             try{Files.readAttributes(directory,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);}
             catch(NoSuchFileException absent){continue;}

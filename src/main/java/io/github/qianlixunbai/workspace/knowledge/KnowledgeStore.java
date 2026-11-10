@@ -18,6 +18,9 @@ public final class KnowledgeStore implements AutoCloseable {
     private final Path root;
     private Connection db;
     private DataSource postgresql;
+    public synchronized long maintenanceBackend(io.github.qianlixunbai.workspace.persistence.MaintenanceRuntime runtime)throws IOException {
+        if(postgresql==null)throw new IOException("PostgreSQL backend required");return runtime.verifyBackend(db);
+    }
     private FileChannel lockChannel;
     private FileLock processLock;
     private volatile Runnable corpusChanged=()->{};
