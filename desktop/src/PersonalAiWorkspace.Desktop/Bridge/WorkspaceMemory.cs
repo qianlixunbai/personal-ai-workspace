@@ -52,6 +52,14 @@ internal sealed class WorkspaceMemory(RuntimeClient runtime)
         lock (sync) Require(session, id);
         return Project(await runtime.GetMemoryAsync(id, ct));
     }
+    internal async Task<object> RecallAsync(string session, string query, MemoryType? type, CancellationToken ct)
+    {
+        HashSet<Guid> known; lock (sync) known = Require(session);
+        var result = await runtime.RecallMemoryAsync(query, type, ct);
+        lock (sync) foreach (var hit in result.Hits) Authorize(session, known, hit.Item.Id);
+        // Keep Runtime relevance order and expose only metadata; opening the body remains explicit.
+        return new { items = result.Hits.Select(x => Metadata(x.Item)).ToArray(), result.Total, limit = PageSize };
+    }
     internal async Task<MemoryView> CreateAsync(string session, MemoryCreateInput input, CancellationToken ct)
     {
         HashSet<Guid> known; lock (sync) known = Require(session);

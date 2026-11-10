@@ -25,6 +25,11 @@ public sealed class WorkspaceMemoryTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++; if (Hold is not null) await Hold.Task;
+            if (request.RequestUri!.AbsolutePath == "/api/v1/memory/recall")
+            {
+                Assert.Equal(HttpMethod.Post, request.Method);
+                return Reply(new { hits = new[] { new { item = Item(), score = 1, matchedTerms = new[] { "java" } } }, total = 1, limit = 20 });
+            }
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/items"))
             {
                 var query = request.RequestUri.Query[1..].Split('&').Select(x => x.Split('=')).ToDictionary(x => x[0], x => Uri.UnescapeDataString(x[1]));
@@ -124,7 +129,7 @@ public sealed class WorkspaceMemoryTests
     }
     [Fact] public async Task MemoryMethodsAreExactAllowlistAndDirtySignalIsSessionCheckedAndSurvivesFailure()
     {
-        Assert.Equal(new[] { "memory.archive", "memory.create", "memory.delete", "memory.editorState", "memory.get", "memory.list", "memory.restore", "memory.update" }, WorkspaceBridge.MemoryMethods.Order());
+        Assert.Equal(new[] { "memory.archive", "memory.create", "memory.delete", "memory.editorState", "memory.get", "memory.list", "memory.recall", "memory.restore", "memory.update" }, WorkspaceBridge.MemoryMethods.Order());
         using var f = new Fixture(); await f.Bridge.ReceiveAsync("https://evil.invalid", Document, f.Request("memory.editorState", new { dirty = true }));
         await f.Bridge.ReceiveAsync(Document, Document, f.Request("memory.editorState", new { dirty = true }, Guid.NewGuid().ToString("D"))); Assert.False(f.Bridge.EditorDirty);
         await f.Send("memory.editorState", new { dirty = true }); Assert.True(f.Bridge.EditorDirty);
@@ -137,6 +142,29 @@ public sealed class WorkspaceMemoryTests
         // The bridge suppresses its old-session response as well as old authorization.
         await pending; Assert.Empty(f.Sent);
         Assert.Equal(0, f.Memory.AuthorizationCount(f.Bridge.SessionId));
+    }
+    [Fact] public async Task RelatedLookupAuthorizesMetadataOnlyAndNeverLeaksAuthorizationAcrossSessions()
+    {
+        using var f = new Fixture();
+        foreach (var query in new[] { "", " ", new string('界', 161), "bad\0text" })
+            await f.Bridge.ReceiveAsync(Document, Document, f.Request("memory.recall", new { query, type = (string?)null }));
+        await f.Bridge.ReceiveAsync(Document, Document, f.Request("memory.recall", new { query = "java", type = "ALL" }));
+        await f.Bridge.ReceiveAsync(Document, Document, f.Request("memory.recall", new { query = "java", type = (string?)null, status = "ARCHIVED" }));
+        Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Calls);
+        var result = (await f.Send("memory.recall", new { query = "java 测试", type = "PROJECT_NOTE" })).GetProperty("result");
+        var item = Assert.Single(result.GetProperty("items").EnumerateArray());
+        Assert.False(item.TryGetProperty("content", out _));
+        Assert.Equal("9007199254740993", item.GetProperty("revision").GetString());
+        Assert.Equal(20, result.GetProperty("limit").GetInt32());
+        Assert.Equal(1, f.Memory.AuthorizationCount(f.Bridge.SessionId));
+        Assert.Equal("Synthetic body", (await f.Send("memory.get", new { memoryId = f.Handler.Id })).GetProperty("result").GetProperty("content").GetString());
+        f.Handler.Hold = new();
+        var pending = f.Bridge.ReceiveAsync(Document, Document, f.Request("memory.recall", new { query = "java", type = (string?)null }));
+        f.Rotate(); f.Handler.Hold.SetResult(); await pending;
+        Assert.Empty(f.Sent); Assert.Equal(0, f.Memory.AuthorizationCount(f.Bridge.SessionId));
+        int calls = f.Handler.Calls;
+        Assert.False((await f.Send("memory.get", new { memoryId = f.Handler.Id })).GetProperty("ok").GetBoolean());
+        Assert.Equal(calls, f.Handler.Calls);
     }
     [Fact] public async Task WorstEscapedSingleAndTwentyMetadataItemsFitOrdinary64KiB()
     {

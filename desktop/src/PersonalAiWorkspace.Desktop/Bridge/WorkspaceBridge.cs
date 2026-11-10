@@ -266,10 +266,12 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (MemoryMethods.Contains(method))
             {
                 if (memory is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Memory 暂时不可用，请打开原生窗口。");
-                var id = method is "memory.list" or "memory.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("memoryId").GetString()!, "D");
+                var id = method is "memory.list" or "memory.recall" or "memory.create" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("memoryId").GetString()!, "D");
                 result = method switch
                 {
                     "memory.list" => await memory.ListAsync(session, ReadMemoryQuery(payload), cancellation),
+                    "memory.recall" => await memory.RecallAsync(session, payload.GetProperty("query").GetString()!,
+                        payload.GetProperty("type").ValueKind == JsonValueKind.Null ? null : ReadMemoryType(payload), cancellation),
                     "memory.get" => await memory.GetAsync(session, id, cancellation),
                     "memory.create" => await memory.CreateAsync(session, new(ReadMemoryType(payload), payload.GetProperty("title").GetString()!, payload.GetProperty("content").GetString()!), cancellation),
                     "memory.update" => await memory.UpdateAsync(session, id, new(ReadRevision(payload), ReadMemoryType(payload), payload.GetProperty("title").GetString()!, payload.GetProperty("content").GetString()!), cancellation),
@@ -371,7 +373,7 @@ internal sealed class WorkspaceBridge : IDisposable
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
       "conversations.send", "conversations.cancelPending", "conversations.export" };
     internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
-    { "memory.list", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
+    { "memory.list", "memory.recall", "memory.get", "memory.create", "memory.update", "memory.archive", "memory.restore", "memory.delete", "memory.editorState" };
     private static SelectedMemoryRef[] ReadReferences(JsonElement payload) => payload.GetProperty("selectedMemoryRefs").EnumerateArray()
         .Select(x => new SelectedMemoryRef(x.GetProperty("memoryId").GetString()!, x.GetProperty("revision").GetString()!, x.GetProperty("position").GetInt32())).ToArray();
     private static FinanceTransactionQuery TransactionQuery(JsonElement payload) => new(payload.GetProperty("page").GetInt32(),
@@ -510,6 +512,12 @@ internal sealed class WorkspaceBridge : IDisposable
     private static bool ValidMemoryPayload(string method, JsonElement payload)
     {
         if (method == "memory.editorState") return Fields(payload, "dirty") && payload.GetProperty("dirty").ValueKind is JsonValueKind.True or JsonValueKind.False;
+        if (method == "memory.recall")
+        {
+            if (!Fields(payload, "query", "type") || !Text(payload, "query", 320, out var query) || string.IsNullOrWhiteSpace(query)
+                || payload.GetProperty("type").ValueKind != JsonValueKind.Null && (!Text(payload, "type", 12, out var type) || type is not ("PREFERENCE" or "PROJECT_NOTE"))) return false;
+            try { new MemoryQuery(query).Validate(); return true; } catch (DesktopException) { return false; }
+        }
         if (method == "memory.list")
         {
             if (!Fields(payload, "query", "status", "type", "page") || payload.GetProperty("query").ValueKind != JsonValueKind.String

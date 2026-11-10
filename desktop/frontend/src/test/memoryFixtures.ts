@@ -17,6 +17,12 @@ export class MemoryService extends Port {
       if (method.startsWith('shell.')) { this.reply(index, status); return }
       if (method.startsWith('native.')) { this.reply(index, { opened: true }); return }
       if (method === 'memory.editorState') { this.reply(index, { acknowledged: true }); return }
+      if (method === 'memory.recall') {
+        if (this.failList) { reject('MemoryStorageUnavailable'); return }
+        // Synthetic relevance order intentionally differs from literal list ordering.
+        const items = this.items.filter(x => x.status === 'ACTIVE' && (payload.type === null || x.type === payload.type)).reverse()
+        this.reply(index, { items: items.slice(0, 20).map(metadata), total: items.length, limit: 20 }); return
+      }
       if (method === 'memory.list') {
         if (this.failList) { reject('MemoryStorageUnavailable'); return }
         const items = this.items.filter(x => x.status === payload.status && (payload.type === null || x.type === payload.type)

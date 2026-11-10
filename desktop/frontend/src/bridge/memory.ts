@@ -8,6 +8,7 @@ export interface MemoryMetadata {
 }
 export interface MemoryItem extends MemoryMetadata { content: string }
 export interface MemoryList { items: MemoryMetadata[]; total: number; page: number; limit: 20 }
+export interface MemoryRelated { items: MemoryMetadata[]; total: number; limit: 20 }
 export interface MemoryDraft { type: MemoryType; title: string; content: string }
 export interface MemoryQuery { query: string; status: MemoryStatus; type: MemoryType | null; page: number }
 export const emptyMemory = (): MemoryDraft => ({ type: 'PROJECT_NOTE', title: '', content: '' })
@@ -48,4 +49,11 @@ export function isMemoryList(value: unknown): value is MemoryList {
   return items.every(isMemoryMetadata) && new Set(items.map(x => x.id)).size === items.length
     && items.every((x, i) => i === 0 || Date.parse(items[i - 1]!.updatedAt) > Date.parse(x.updatedAt)
       || Date.parse(items[i - 1]!.updatedAt) === Date.parse(x.updatedAt) && items[i - 1]!.id < x.id)
+}
+export function isMemoryRelated(value: unknown): value is MemoryRelated {
+  if (!isObject(value) || !exactFields(value, ['items', 'total', 'limit']) || typeof value.total !== 'number'
+    || !Number.isInteger(value.total) || value.total < 0 || value.total > 1000 || value.limit !== 20
+    || !Array.isArray(value.items) || value.items.length !== Math.min(20, value.total)) return false
+  return value.items.every(isMemoryMetadata) && value.items.every(x => x.status === 'ACTIVE')
+    && new Set(value.items.map(x => x.id)).size === value.items.length
 }

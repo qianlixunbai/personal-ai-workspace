@@ -28,8 +28,8 @@ import { isFinanceAsset, isFinanceAssetPage, isFinanceAssetQuery } from './finan
 import type { FinanceAsset, FinanceAssetPage, FinanceAssetQuery } from './financeAssets'
 import { isFinancePositionQuery, isFinancePositionPage, isFinancePositionDetail } from './financeInvestments'
 import type { FinancePositionQuery, FinancePositionPage, FinancePositionDetail } from './financeInvestments'
-import { isMemoryItem, isMemoryList } from './memory'
-import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery } from './memory'
+import { isMemoryItem, isMemoryList, isMemoryRelated } from './memory'
+import type { MemoryDraft, MemoryItem, MemoryList, MemoryQuery, MemoryRelated, MemoryType } from './memory'
 import { conversationResponseBytes, isAdmission, isConversation, isConversationDetail, isConversationList, isConversationSearchPage, isConversationSearchQuery } from './conversations'
 import type { Conversation, ConversationAdmission, ConversationDetail, ConversationList, ConversationStatus, ConversationSearchPage, ConversationSearchScope } from './conversations'
 import type { MemoryRef } from './contracts'
@@ -176,6 +176,7 @@ export class WorkspaceClient {
   }
   cancelConversationPending(conversationId: string, turnId: string) { return this.request('conversations.cancelPending', { conversationId, turnId }) as Promise<{ requested: true }> }
   listMemory(query: MemoryQuery) { return this.request('memory.list', query) as Promise<MemoryList> }
+  recallMemory(query: string, type: MemoryType | null) { return this.request('memory.recall', { query, type }) as Promise<MemoryRelated> }
   getMemory(memoryId: string) { return this.request('memory.get', { memoryId }) as Promise<MemoryItem> }
   createMemory(draft: MemoryDraft) { return this.request('memory.create', draft) as Promise<MemoryItem> }
   updateMemory(memoryId: string, expectedRevision: string, draft: MemoryDraft) { return this.request('memory.update', { memoryId, expectedRevision, ...draft }) as Promise<MemoryItem> }
@@ -320,6 +321,7 @@ export class WorkspaceClient {
         : pending.method === 'knowledge.archive' || pending.method === 'knowledge.restore' ? isKnowledgeDocument(data.result) && data.result.documentId === pending.documentId && BigInt(data.result.metadataVersion) > BigInt(pending.expectedMetadataVersion!) && data.result.status === (pending.method === 'knowledge.archive' ? 'ARCHIVED' : 'ACTIVE')
         : pending.method === 'knowledge.delete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
         : pending.method === 'memory.list' ? isMemoryList(data.result) && data.result.page === pending.page && data.result.items.every(x => x.status === pending.status && (pending.type === null || x.type === pending.type))
+        : pending.method === 'memory.recall' ? isMemoryRelated(data.result) && data.result.items.every(x => pending.type === null || x.type === pending.type)
         : ['memory.get', 'memory.create', 'memory.update', 'memory.archive', 'memory.restore'].includes(pending.method) ? isMemoryItem(data.result)
           && (!pending.memoryId || data.result.id === pending.memoryId)
           && (!pending.expectedRevision || BigInt(data.result.revision) > BigInt(pending.expectedRevision))

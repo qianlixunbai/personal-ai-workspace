@@ -21,6 +21,8 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [query, setQuery] = useState<MemoryQuery>({ query: '', status: 'ACTIVE', type: null, page: 0 })
   const [search, setSearch] = useState('')
   const [list, setList] = useState<MemoryList | null>(null)
+  const [relatedSearch, setRelatedSearch] = useState(false)
+  const relatedRef = useRef(false)
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
@@ -93,12 +95,16 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     })
     return true
   }), [registerDraft, enabled, dirty, confirmation, busy])
-  const fetchList = async (view = queryRef.current) => {
+  const fetchList = async (view = queryRef.current, related = relatedRef.current) => {
     setPreviewId(null)
     const token = ++listGeneration.current
+    related = related && view.status === 'ACTIVE'
+    if (related) view = { ...view, page: 0 }
+    relatedRef.current = related; setRelatedSearch(related)
+    queryRef.current = view; setQuery(view)
     setListLoading(true)
     try {
-      let result = await bridge.listMemory(view)
+      let result: MemoryList = related ? { ...await bridge.recallMemory(view.query, view.type), page: 0 } : await bridge.listMemory(view)
       if (token !== listGeneration.current) return false
       if (result.page > 0 && result.page * 20 >= result.total) {
         view = { ...view, page: Math.max(0, Math.ceil(result.total / 20) - 1) }
@@ -113,15 +119,16 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     }
     finally { if (token === listGeneration.current) setListLoading(false) }
   }
-  const refresh = async (view = queryRef.current) => {
+  const refresh = async (view = queryRef.current, related = relatedRef.current) => {
     const token = generation.current
     setError('')
-    try { if (await fetchList(view) && token === generation.current) setNotice('列表已刷新；编辑器中的修改保持原样。') }
+    try { if (await fetchList(view, related) && token === generation.current) setNotice('列表已刷新；编辑器中的修改保持原样。') }
     catch (problem) { if (token === generation.current) setError(message(problem)) }
   }
   useEffect(() => bridge.onSession(() => {
     generation.current++; listGeneration.current++; actionLock.current = false; queried.current = false; signalledDirty.current = false
     setBusy(false); setListLoading(false); setList(null); loadEditor(null); setSearch(''); setConfirmation(null); setNotice('')
+    relatedRef.current = false; setRelatedSearch(false)
     queryRef.current = { query: '', status: 'ACTIVE', type: null, page: 0 }; setQuery(queryRef.current)
   }), [bridge])
   useEffect(() => {
@@ -256,9 +263,10 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
       loadEditor(null); setNotice('Memory 已删除。'); await refreshAfterMutation(); focusNext.current = 'new'
     }, true) } })
   }
-  const searchNow = () => {
+  const searchNow = (related = false) => {
     if (!validQuery(search)) { setError('搜索文字必须是有效 Unicode，最多 160 个 Unicode 字符。'); return }
-    void refresh({ ...queryRef.current, query: search, page: 0 })
+    if (related && !search.trim()) { setError('请输入问题或关键词，再查找相关记忆。'); return }
+    void refresh({ ...queryRef.current, query: search, page: 0 }, related)
   }
   const disabled = !enabled || busy
   return <div className="memory-page">
@@ -267,27 +275,31 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     </div></div>
     <div className="memory-layout">
       <section className="card memory-list" aria-labelledby="memory-list-title"><div className="card-heading"><h2 id="memory-list-title">我的记忆</h2><button type="button" disabled={disabled || listLoading} onClick={() => { void refresh() }}>刷新</button></div>
-        <form onSubmit={event => { event.preventDefault(); if (!disabled && !listLoading) searchNow() }}>
+        <form onSubmit={event => { event.preventDefault(); if (!disabled && !listLoading) searchNow(relatedRef.current) }}>
           <label className="sr-only" htmlFor="memory-search">搜索记忆</label><input id="memory-search" placeholder="搜索标题和正文" aria-describedby="memory-search-help" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} autoComplete="off"
             onKeyDown={event => { if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault() }} />
-          <div className="operation-actions"><button disabled={disabled || listLoading}>搜索</button></div>
+          <div className="operation-actions"><button type="button" disabled={disabled || listLoading} onClick={() => searchNow()}>搜索</button>
+            <button type="button" disabled={disabled || listLoading || query.status !== 'ACTIVE' || !search.trim()} onClick={() => searchNow(true)}>查找相关记忆</button></div>
         </form>
         <div className="memory-filters"><label htmlFor="memory-status">状态<select id="memory-status" value={query.status} disabled={disabled || listLoading || !!revisionReview} onChange={event => { void refresh({ ...queryRef.current, status: event.target.value as MemoryStatus, page: 0 }) }}>
           <option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select></label>
           <label htmlFor="memory-filter-type">类型<select id="memory-filter-type" value={query.type ?? 'ALL'} disabled={disabled || listLoading} onChange={event => { void refresh({ ...queryRef.current, type: event.target.value === 'ALL' ? null : event.target.value as MemoryType, page: 0 }) }}>
             <option value="ALL">全部</option><option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></label></div>
-        <p id="memory-search-help" className="hint">搜索标题和正文，区分大小写。</p>
+        <p id="memory-search-help" className="hint">{relatedSearch
+          ? '相关查找：仅使用中记录，按词语匹配排序，并非语义判断；不会自动选用记忆。最多显示前 20 条，请细化关键词或筛选类型。'
+          : '搜索标题和正文，匹配完整原文片段，区分大小写。相关查找只用于使用中的记忆。'}</p>
         <ul tabIndex={0} aria-label="Memory list" aria-busy={listLoading}>{list?.items.map(item => <li key={item.id}><button id={`memory-select-${item.id}`} className="memory-select" aria-label={`${item.title} ${item.type} ${item.status} Revision ${item.revision} ${item.updatedAt}`} aria-pressed={loaded?.id === item.id || revisionReview?.target?.id === item.id} disabled={disabled || listLoading || !!revisionReview && item.status !== 'ACTIVE'}
           onClick={() => { if (revisionReview) chooseRevisionTarget(item); else if (loaded?.id !== item.id) requestDiscard(() => get(item.id)) }}>{item.title}<span>{item.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · 版本 {item.revision}</span><span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span></button>
           <button type="button" className="memory-preview-toggle" disabled={disabled || listLoading} aria-expanded={previewId === item.id}
             aria-describedby={`memory-select-${item.id}`} aria-controls={previewId === item.id ? `memory-preview-${item.id}` : undefined}
             onClick={() => setPreviewId(current => current === item.id ? null : item.id)}>{previewId === item.id ? '收起预览' : '预览正文'}</button>
-          {previewId === item.id && visible && enabled && !listLoading && <MemoryPreview bridge={bridge} metadata={item} query={query.query} />}
+          {previewId === item.id && visible && enabled && !listLoading && <MemoryPreview bridge={bridge} metadata={item} query={relatedSearch ? '' : query.query} />}
         </li>)}</ul>
-        {!listLoading && list?.total === 0 && <p className="empty-state">没有找到记忆。可在右侧手动保存偏好或项目笔记。</p>}
-        <div className="pagination" aria-label="Memory pagination"><button disabled={disabled || listLoading || !list || list.page === 0} onClick={() => { void refresh({ ...queryRef.current, page: query.page - 1 }) }}>上一页</button>
+        {!listLoading && list?.total === 0 && <p className="empty-state">{relatedSearch ? '没有词语匹配，可换关键词或用原文搜索；不代表没有相关记忆。' : '没有找到记忆。可在右侧手动保存偏好或项目笔记。'}</p>}
+        {relatedSearch ? <p aria-live="polite">相关结果 {list?.items.length ?? 0} / {list?.total ?? 0}{!listLoading && list && list.total > 20 && ' · 仅显示前 20 条'}</p>
+        : <div className="pagination" aria-label="Memory pagination"><button disabled={disabled || listLoading || !list || list.page === 0} onClick={() => { void refresh({ ...queryRef.current, page: query.page - 1 }) }}>上一页</button>
           <span>{query.page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))} · {list?.total ?? 0}</span>
-          <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>
+          <button disabled={disabled || listLoading || !list || (list.page + 1) * 20 >= list.total} onClick={() => { void refresh({ ...queryRef.current, page: query.page + 1 }) }}>下一页</button></div>}
       </section>
       <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : revisionReview ? '修订已有记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled || !!revisionReview} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
         {fromConversation && <p className="hint">已从来源填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。来源角色仅用于本次草稿审阅；保存后标记为由你确认保存（MANUAL），不保留原会话、问答或引用关联。</p>}
