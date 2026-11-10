@@ -46,8 +46,7 @@ public final class NativeRuntimeLifecycle {
             if (!"CLOSE".equals(input.readUTF()) || !attempt.equals(input.readUTF())
                     || !challenge.equals(input.readUTF())) throw new IOException();
             serving = false; // Reject new HTTP work before closing the real application context.
-            context.close();
-            if (context.isActive()) throw new IOException();
+            RuntimeWorkShutdown.closeContext(context);
             output.writeUTF("CONTEXT_CLOSED"); output.writeUTF(attempt); output.writeUTF(challenge); output.flush();
             // System.exit in main terminates the JVM only after the context close returns.
             // External providers are outside this receipt's scope, even when exit code is zero.
