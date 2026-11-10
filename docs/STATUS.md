@@ -1,6 +1,6 @@
 # 当前状态
 
-2026-11-10 完整正常网页验收已通过：复用 `64b33b2` 新包及全新合成工作区，实际 EXE／自有 Runtime 三次启动约 12.6 秒完成 React/Bridge 就绪，原生认证与 SQLite 状态通过；正常网页明确保存一次 Memory，独立 EXE 重开读回相同 ID、标题、正文、ACTIVE／Revision 1 和显示更新时间，没有再次保存。三次真实托盘退出码均为 0，浏览器清理通过；每次 Job 关闭前仍有 5 个成员，由 Job 收尾，不能称全部自然退出。共享锁均已释放，默认记录未改，无模型或真实数据操作。用户自身查询时的“无监听”与应用运行证据分别记录，未重试被拒系统查询。正在仅更新交付说明，保留实际验收程序字节与旧包；默认入口、维护迁移、个人恢复、跨机及正式发布仍待验收。[完整证据与边界](engineering/MEMORY-NORMAL-WEB-EXE-ACCEPTANCE.md)。
+2026-11-10 完整正常网页验收已通过：复用 `64b33b2` 新包及全新合成工作区，实际 EXE／自有 Runtime 三次启动约 12.6 秒完成 React/Bridge 就绪，原生认证与 SQLite 状态通过；正常网页明确保存一次 Memory，独立 EXE 重开读回相同 ID、标题、正文、ACTIVE／Revision 1 和显示更新时间，没有再次保存。三次真实托盘退出码均为 0，浏览器清理通过；每次 Job 关闭前仍有 5 个成员，由 Job 收尾，不能称全部自然退出。共享锁均已释放，默认记录未改，无模型或真实数据操作。用户自身查询时的“无监听”与应用运行证据分别记录，未重试被拒系统查询。验收说明提交 `f0cbfa2`，新包 `artifacts/PersonalAiWorkspace-normal-web-verified-20261110.zip` 已交付：933 个 payload 文件中仅 README 改变，其余 932 个文件字节不变，934 个 ZIP 条目实字节核对通过；旧包保留、无重编译、无推送。默认入口、维护迁移、个人恢复、跨机及正式发布仍待验收。[完整证据、SHA 与边界](engineering/MEMORY-NORMAL-WEB-EXE-ACCEPTANCE.md)。
 
 2026-11-10 已撤销上一条自行增加的“需用户确认端口独占”条件：旧 UNKNOWN 本身不是权限拒绝，持续开发授权已覆盖常规只读检查及安全合成验收。按更正执行了一次正常权限 `Get-NetTCPConnection -LocalPort 18765 -State Listen -ErrorAction Stop`，此次实际返回 `CimException / PermissionDenied / HRESULT 0x80041003`、消息“拒绝访问”，并非无监听项；已保存精确错误。遵照真实拒绝后停止的要求，没有换路线／提升权限重查，没有识别或终止进程，也未启动 EXE、Runtime、浏览器或准备 Profile。18765 仍为 UNKNOWN，完整联动验收仍受阻；此为系统 CIM 访问拒绝，不是自动审批拒绝，没有待审批或结果不明启动，未持重运行锁。[更正、确切错误及后续边界](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
 

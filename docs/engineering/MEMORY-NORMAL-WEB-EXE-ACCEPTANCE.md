@@ -48,4 +48,20 @@ Memory ID：`549b5951-60ac-436d-9dd2-e631d9cf2c26`；类型 `PROJECT_NOTE`，状
 
 共享 Session 1 `Local\Dot_KAG_Workspace_HeavyRun` 覆盖各次准备/启动至退出及 Job 清理，在 finally 释放：09:41:46.046、09:47:54.921、09:51:42.130 UTC。没有遗留运行中的本轮 guardian 或持有的 Job/重运行锁。各次 `last-workspace` 均由不存在保持不存在；不创建或改写默认记录，不触碰真实 Profile、数据库、个人浏览器数据、EFS/ACL、注册表、网络或系统策略。
 
-此次已补齐限定合成环境中完整正常网页/Runtime 和网页 Memory 保存重开证据。无参数默认入口、维护迁移、个人恢复、跨机器、物理输入/IME、最小尺寸及正式发布仍未验收。其他记忆编辑/查找功能的先前聚焦检查不扩大为此次全部实际 UI 验收。没有为凑模块添加功能、跑额外测试或调用模型。只需把准确说明随新命名交付包提供，实际验证过的程序字节保持不变。
+此次已补齐限定合成环境中完整正常网页/Runtime 和网页 Memory 保存重开证据。无参数默认入口、维护迁移、个人恢复、跨机器、物理输入/IME、最小尺寸及正式发布仍未验收。其他记忆编辑/查找功能的先前聚焦检查不扩大为此次全部实际 UI 验收。没有为凑模块添加功能、跑额外测试或调用模型。当前限定交付目标没有待执行的阻塞动作；系统端口读取的历史拒绝依然保留，不影响已经取得的本轮应用内证据，也不构成未来重查授权。
+
+## 说明更新与最终开发包
+
+验收报告及 README 提交为 `f0cbfa2edc8b2cf728953a874070e6d437e52ff5`。新的 [开发 ZIP](../../artifacts/PersonalAiWorkspace-normal-web-verified-20261110.zip) 和 [解压目录 EXE](../../artifacts/PersonalAiWorkspace-normal-web-verified-20261110/PersonalAiWorkspace.Desktop.exe) 复用全部实际验收程序字节，只更新 README 与对应清单；没有重编译或再启动。
+
+| 交付项 | 结果 |
+| --- | --- |
+| 产品来源 | `64b33b2991acb407d6887040ec1fe7ae902b0afb` |
+| ZIP 字节数 / SHA-256 | 384,687,815 / `ACE6C4BFC53ABB4CE762B5C89882A6F9AAD709D3864A1ADB7D144F0B02F8C11C` |
+| 清单 payload | 933 个文件；其中 932 个文件的字节完全不变，唯一 payload 差异为 README.txt |
+| README SHA-256 | `7125EEF3DBB6AE1F68E4359226C834AAD93441BA8D72B401ADA168A98DD14DB6` |
+| ZIP 核对 | 934 个条目逐项读取压缩流核对长度及 SHA-256，包括清单本身；未再做不必要的启动测试 |
+| 原包 | 原 default-profile ZIP 哈希仍为 `BD29D41EED4F83C8D14FF5C539C0F64323918D536F7BAC05CE109D4A057AFEA9`；更早包未改写 |
+| 包装收尾 | guardian PID 10824，09:57:04.858 UTC 释放共享锁；无浏览器/Runtime 启动 |
+
+包装证据：同一 evidence 目录下 `Package-Verified.ps1`、`verified-package-result.json`、`package-lock.json`。清单标明 `README_ONLY_AFTER_NORMAL_WEB_EXE_ACCEPTANCE`、原验收包 SHA 和说明提交；产品来源没有被说明提交替代。最终受跟踪工作区、main 与六份用户文档的保留检查写入 `final-state.json`。开发分支仍为 `codex/knowledge-version-compare`，main 保持 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，不推送。
