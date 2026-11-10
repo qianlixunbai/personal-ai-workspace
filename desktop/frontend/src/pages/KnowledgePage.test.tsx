@@ -82,6 +82,85 @@ class SourceFindService extends KnowledgeService {
   }
 }
 
+class NavigationService extends SourceFindService {
+  other = { ...this.document, documentId: 'ffffffff-ffff-4fff-8fff-ffffffffffff', title: '另一份资料.md', currentReadyRevision: '3' }
+  override postMessage(value: unknown) {
+    const request = value as { method: string; payload: { documentId: string } }
+    if (['knowledge.get', 'knowledge.preview'].includes(request.method) && request.payload.documentId === this.other.documentId) {
+      this.sent.push(value as typeof this.sent[number])
+      this.reply(this.sent.length - 1, request.method === 'knowledge.get'
+        ? { document: this.other, revisions: [{ sourceRevision: '3', sourceType: 'MARKDOWN', byteLength: 40 }], job: null }
+        : { ...this.preview(), documentId: this.other.documentId, sourceRevision: '3', text: '另一份资料😀的引用。', locators: [] })
+      return
+    }
+    super.postMessage(value)
+  }
+}
+
+it('revisits exact sources across documents, preserves ranges and local back stacks, and keeps failed or late navigation isolated', async () => {
+  const port = new NavigationService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const view = render(<KnowledgePage bridge={bridge} enabled visible />)
+  await screen.findByRole('button', { name: /fixture.md/ }); await click(/fixture.md/)
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '1' } })
+  fireEvent.click(screen.getByText('在此版本中查找'))
+  fireEvent.change(screen.getByLabelText('原文查找短语'), { target: { value: '预算😀[x].' } })
+  await click('查找此版本'); await click('打开第 1 处原文'); await click('下一页文本')
+  vi.spyOn(port, 'hit').mockReturnValue({ ...port.hit(), documentId: port.other.documentId, title: port.other.title, sourceRevision: '3', startOffset: 0, endOffset: 11 })
+  const search = screen.getByLabelText('检索关键词'); fireEvent.change(search, { target: { value: '预算' } })
+  await act(async () => fireEvent.submit(search.closest('form')!)); await click('打开此位置')
+  const source = () => screen.getByRole('region', { name: '纯文本预览' })
+  const second = source().textContent
+  port.fail = true; await click('返回上一处来源')
+  expect(source().textContent).toBe(second)
+  expect((screen.getByRole('button', { name: '返回上一处来源' }) as HTMLButtonElement).disabled).toBe(false)
+  port.fail = false; await click('返回上一处来源')
+  expect((screen.getByLabelText('已发布源版本') as HTMLSelectElement).value).toBe('1')
+  expect(source().querySelector('mark')?.textContent).toBe('😀[x].')
+  expect(source().textContent).toContain('查找命中范围')
+  await click('上一页文本')
+  expect(source().querySelector('mark')?.textContent).toBe('预算')
+  await click('前进到下一处来源'); expect(source().textContent).toBe(second)
+  port.hold = true; await click('返回上一处来源')
+  const late = port.sent.length - 1
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible={false} />)
+  await act(async () => port.reply(late, { ...port.preview(), offset: 7, text: '预算', nextOffset: 9, locators: [] }))
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible />)
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  expect(screen.queryByRole('navigation', { name: '来源阅读记录' })).toBeNull()
+  expect(port.sent.some(r => /answerSubmit|import|delete/.test(String(r.method)))).toBe(false)
+})
+
+it('locates source lines in the selected immutable version and retains reading on absent lines, read failure or departure', async () => {
+  const storage = vi.spyOn(Storage.prototype, 'setItem'), port = new SourceFindService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const view = render(<KnowledgePage bridge={bridge} enabled visible />)
+  await screen.findByRole('button', { name: /fixture.md/ }); await click(/fixture.md/)
+  fireEvent.change(screen.getByLabelText('已发布源版本'), { target: { value: '1' } })
+  fireEvent.click(screen.getByText('按原文行号定位'))
+  const line = screen.getByLabelText('原文行号')
+  fireEvent.change(line, { target: { value: '0' } })
+  expect((screen.getByRole('button', { name: '定位原文行' }) as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.change(line, { target: { value: '3' } }); await click('定位原文行')
+  const source = screen.getByRole('region', { name: '纯文本预览' }), original = source.textContent
+  expect(source.querySelector('mark')?.textContent).toBe('<img src=x onerror=alert(1)>')
+  expect(source.textContent).toContain('行号定位范围：行 3–3')
+  expect(port.sent.filter(r => r.method === 'knowledge.preview').at(-1)?.payload).toEqual({ documentId: port.document.documentId, sourceRevision: '1', offset: port.text.indexOf('<img') })
+  expect(document.querySelector('img,script,iframe')).toBeNull()
+  fireEvent.change(line, { target: { value: '999' } }); await click('定位原文行')
+  expect(source.textContent).toBe(original); expect(screen.getByRole('alert').textContent).toContain('没有此行')
+  port.fail = true; fireEvent.change(line, { target: { value: '2' } }); await click('定位原文行')
+  expect(source.textContent).toBe(original); expect(screen.getByRole('alert').textContent).toBe('合成读取失败。')
+  port.fail = false; port.hold = true; await click('定位原文行')
+  const late = port.sent.length - 1, count = port.sent.filter(r => r.method === 'knowledge.preview').length
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible={false} />)
+  await act(async () => port.reply(late, { ...port.preview(), text: '预算', nextOffset: 2, locators: [] }))
+  view.rerender(<KnowledgePage bridge={bridge} enabled visible />)
+  expect(port.sent.filter(r => r.method === 'knowledge.preview')).toHaveLength(count)
+  expect(screen.queryByRole('region', { name: '纯文本预览' })).toBeNull()
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect((screen.getByLabelText('原文行号') as HTMLInputElement).value).toBe('')
+  expect(storage).not.toHaveBeenCalled()
+})
+
 it('finds literal phrases across preview boundaries in the selected old version and opens exact highlighted source', async () => {
   const storage = vi.spyOn(Storage.prototype, 'setItem'), { port } = await setup(new SourceFindService())
   await click(/fixture.md/)

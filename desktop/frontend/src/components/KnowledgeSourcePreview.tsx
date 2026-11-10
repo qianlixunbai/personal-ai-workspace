@@ -3,7 +3,7 @@ import type { KnowledgePreview } from '../bridge/knowledge'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { HighlightedText } from './HighlightedText'
 
-export type KnowledgeSourceTarget = Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'> & { kind: 'citation' | 'search' | 'find' }
+export type KnowledgeSourceTarget = Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'> & { kind: 'citation' | 'search' | 'find' | 'line' }
 
 export function KnowledgeSourcePreview({ preview, target, currentRevision, disabled, hasPrevious, navigate }: {
   preview: KnowledgePreview; target: KnowledgeSourceTarget | null; currentRevision: string | null
@@ -15,7 +15,7 @@ export function KnowledgeSourcePreview({ preview, target, currentRevision, disab
   const end = source ? Math.min(source.endOffset, preview.offset + preview.text.length) - preview.offset : 0
   const ranges = start < end ? [{ start, end }] : []
   const sectionStart = preview.locators[0]?.startOffset
-  const label = source?.kind === 'citation' ? '引用' : source?.kind === 'find' ? '查找命中' : '检索命中'
+  const label = source?.kind === 'citation' ? '引用' : source?.kind === 'find' ? '查找命中' : source?.kind === 'line' ? '行号定位' : '检索命中'
   useEffect(() => { text.current?.focus(); if (text.current) text.current.scrollTop = 0 }, [preview])
   return <section aria-label="纯文本预览">
     <p className="knowledge-location">源版本 {preview.sourceRevision}{currentRevision && currentRevision !== preview.sourceRevision ? ` · 当前可用版本为 ${currentRevision}，此处仍显示所选旧版本` : ''} · 文本偏移 {preview.offset}–{preview.offset + preview.text.length}</p>

@@ -10,6 +10,10 @@ import { KnowledgeWebCapture } from '../components/KnowledgeWebCapture'
 import { KnowledgeVersionComparison } from '../components/KnowledgeVersionComparison'
 import { KnowledgeSourceFind } from '../components/KnowledgeSourceFind'
 import type { SourceMatch } from '../components/knowledgeSourceMatches'
+import { KnowledgeSourceLine } from '../components/KnowledgeSourceLine'
+import { readSourceText } from '../components/knowledgeSourceText'
+
+type ReadingPosition = { documentId: string; revision: string; offset: number; target: KnowledgeSourceTarget | null; offsets: number[] }
 
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'ASSISTANT') => void }) {
@@ -20,10 +24,17 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false), [stale, setStale] = useState(false), [unknownRequest, setUnknownRequest] = useState<string | null>(null)
   const generation = useRef(0), selection = useRef(0), offsets = useRef<number[]>([]), selected = useRef<string | null>(null)
+  const trail = useRef<{ back: ReadingPosition[]; forward: ReadingPosition[] }>({ back: [], forward: [] })
   const filter = useRef<HTMLSelectElement>(null)
   const [corpusEpoch, setCorpusEpoch] = useState(0)
   const document = detail?.document
   const processing = document?.processingState === 'PENDING' || document?.processingState === 'PARSING'
+  const position = (): ReadingPosition | null => preview ? { documentId: preview.documentId, revision: preview.sourceRevision, offset: preview.offset, target: sourceTarget, offsets: [...offsets.current] } : null
+  const remember = () => {
+    const current = position()
+    if (current) trail.current.back = [...trail.current.back.slice(-31), current]
+    trail.current.forward = []
+  }
   const report = (e: unknown) => { setError(e instanceof Error ? e.message : 'Knowledge 操作暂时不可用。'); if (e instanceof BridgeError && ['KnowledgeRevisionConflict', 'OutcomeUnknown', 'KnowledgeDeleteIncomplete'].includes(e.code)) setStale(true) }
   const refreshList = async () => { const epoch = generation.current; const result = await bridge.listKnowledge(status, page); if (epoch === generation.current) { setList(result); setCorpusEpoch(n => n + 1) } }
   const load = async (id: string, reset = true) => {
@@ -32,7 +43,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (epoch !== generation.current || pick !== selection.current) return false
     const keepReader = !reset && document?.documentId === id && !!revision
     if (keepReader && !result.revisions.some(r => r.sourceRevision === revision)) throw new BridgeError('KnowledgeNotFound', '所选源版本已不可用。保留此前阅读内容，未切换到其他版本。')
-    if (!keepReader) { setPreview(null); setSourceTarget(null); offsets.current = []; setRevision(result.document.currentReadyRevision ?? '') }
+    if (!keepReader) { remember(); setPreview(null); setSourceTarget(null); offsets.current = []; setRevision(result.document.currentReadyRevision ?? '') }
     selected.current = id; setDetail(result); setStale(false)
     return true
   }
@@ -42,12 +53,12 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     finally { if (epoch === generation.current) setBusy(false) }
   }
   useEffect(() => {
-    const clear = () => { generation.current++; selection.current++; selected.current = null; offsets.current = []; setList(null); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setUnknownRequest(null); setConfirmDelete(false) }
+    const clear = () => { generation.current++; selection.current++; selected.current = null; offsets.current = []; trail.current = { back: [], forward: [] }; setList(null); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setUnknownRequest(null); setConfirmDelete(false) }
     const unsubscribe = bridge.onSession(clear); return () => { clear(); unsubscribe() }
   }, [bridge])
   useEffect(() => {
     if (!visible) {
-      selection.current++; offsets.current = []
+      selection.current++; offsets.current = []; trail.current = { back: [], forward: [] }
       setPreview(null); setSourceTarget(null)
     }
   }, [visible])
@@ -87,7 +98,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const mutation = (action: 'archive' | 'restore' | 'delete') => run(async () => {
     if (!document) return
     const epoch = generation.current, id = document.documentId
-    if (action === 'delete') { await bridge.deleteKnowledge(id, document.metadataVersion); if (epoch !== generation.current) return; selection.current++; selected.current = null; offsets.current = []; setDetail(null); setPreview(null); setSourceTarget(null); filter.current?.focus(); setNotice('文档及保留的源版本已删除。') }
+    if (action === 'delete') { await bridge.deleteKnowledge(id, document.metadataVersion); if (epoch !== generation.current) return; selection.current++; selected.current = null; offsets.current = []; trail.current = { back: trail.current.back.filter(p => p.documentId !== id), forward: trail.current.forward.filter(p => p.documentId !== id) }; setDetail(null); setPreview(null); setSourceTarget(null); filter.current?.focus(); setNotice('文档及保留的源版本已删除。') }
     else { await (action === 'archive' ? bridge.archiveKnowledge(id, document.metadataVersion) : bridge.restoreKnowledge(id, document.metadataVersion)); if (epoch !== generation.current) return; await load(id); setNotice(action === 'archive' ? '文档已归档。' : '文档已恢复。') }
     await refreshList()
   })
@@ -96,14 +107,14 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     const epoch = generation.current, pick = selection.current
     const result = await bridge.previewKnowledge(document.documentId, sourceRevision, offset)
     if (epoch !== generation.current || pick !== selection.current) return
-    setRevision(sourceRevision); setSourceTarget(null); offsets.current = []; setPreview(result)
+    remember(); setRevision(sourceRevision); setSourceTarget(null); offsets.current = []; setPreview(result)
   })
   const openFoundSource = (match: SourceMatch) => run(async () => {
     if (!enabled || !visible || !document || !revision) return
     const epoch = generation.current, pick = selection.current
     const result = await bridge.previewKnowledge(document.documentId, revision, match.startOffset)
     if (epoch !== generation.current || pick !== selection.current) return
-    offsets.current = []; setPreview(result)
+    remember(); offsets.current = []; setPreview(result)
     setSourceTarget({ documentId: document.documentId, sourceRevision: revision, startOffset: match.startOffset, endOffset: match.endOffset, startLine: match.startLine, endLine: match.endLine, kind: 'find' })
   })
   const openHit = (hit: Pick<KnowledgeSearchHit, 'documentId' | 'sourceRevision' | 'startOffset' | 'endOffset' | 'startLine' | 'endLine'>, kind: KnowledgeSourceTarget['kind'] = 'search') => run(async () => {
@@ -115,9 +126,49 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (epoch !== generation.current || pick !== selection.current) return
     // Commit the complete destination together. A missing source or failed read
     // must not replace the previous document/version, highlight or return stack.
-    selected.current = hit.documentId; offsets.current = []; setStale(false)
+    remember(); selected.current = hit.documentId; offsets.current = []; setStale(false)
     setDetail(nextDetail); setRevision(hit.sourceRevision); setPreview(result)
     setSourceTarget({ documentId: hit.documentId, sourceRevision: hit.sourceRevision, startOffset: hit.startOffset, endOffset: hit.endOffset, startLine: hit.startLine, endLine: hit.endLine, kind })
+  })
+  const revisit = (direction: 'back' | 'forward') => run(async () => {
+    if (!enabled || !visible) return
+    const destination = trail.current[direction].at(-1)
+    if (!destination) return
+    const epoch = generation.current, pick = ++selection.current
+    const nextDetail = await bridge.getKnowledge(destination.documentId)
+    if (epoch !== generation.current || pick !== selection.current) return
+    const result = await bridge.previewKnowledge(destination.documentId, destination.revision, destination.offset)
+    if (epoch !== generation.current || pick !== selection.current) return
+    const current = position(), opposite = direction === 'back' ? 'forward' : 'back'
+    // Re-read the exact immutable source. Failed navigation never consumes history
+    // or presents cached text for a source that may no longer be available.
+    trail.current[direction] = trail.current[direction].slice(0, -1)
+    if (current) trail.current[opposite] = [...trail.current[opposite].slice(-31), current]
+    selected.current = destination.documentId; offsets.current = [...destination.offsets]
+    setDetail(nextDetail); setRevision(destination.revision); setPreview(result); setSourceTarget(destination.target); setStale(false)
+  })
+  const openLine = (line: number) => run(async () => {
+    if (!enabled || !visible || !document || !revision) return
+    const epoch = generation.current, pick = selection.current, deadline = Date.now() + 30_000
+    const check = () => {
+      if (epoch !== generation.current || pick !== selection.current) throw new Error('阅读位置已变更。')
+      if (Date.now() > deadline) throw new Error('原文读取超时，保留当前阅读位置。')
+    }
+    let text: string
+    try { text = await readSourceText(bridge, document.documentId, revision, check, '此版本超出行号定位的读取范围，请使用原文分页阅读。') }
+    catch (failure) { if (epoch !== generation.current || pick !== selection.current) return; throw failure }
+    let startOffset = 0
+    for (let current = 1; current < line; current++) {
+      const next = text.indexOf('\n', startOffset)
+      if (next < 0) throw new Error('所选版本没有此行，保留当前阅读位置。')
+      startOffset = next + 1
+    }
+    if (startOffset >= text.length) throw new Error('所选行位于文本末尾，没有可读取的正文。')
+    const newline = text.indexOf('\n', startOffset), endOffset = newline < 0 ? text.length : Math.max(startOffset + 1, newline)
+    const result = await bridge.previewKnowledge(document.documentId, revision, startOffset)
+    if (epoch !== generation.current || pick !== selection.current) return
+    check(); remember(); offsets.current = []; setPreview(result)
+    setSourceTarget({ documentId: document.documentId, sourceRevision: revision, startOffset, endOffset, startLine: line, endLine: line, kind: 'line' })
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
     <div className="card-heading memory-toolbar knowledge-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
@@ -137,14 +188,20 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
         <div className="pagination"><button disabled={!enabled || busy || page === 0} onClick={() => setPage(page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || !list || (page + 1) * 20 >= list.total} onClick={() => setPage(page + 1)}>下一页文档</button></div>
       </section>
       <section className="card knowledge-detail" aria-labelledby="knowledge-detail-title"><h2 id="knowledge-detail-title">{document?.title ?? '选择一个文档'}</h2>
+        {(trail.current.back.length > 0 || trail.current.forward.length > 0) && <nav className="pagination" aria-label="来源阅读记录">
+          <button disabled={!enabled || !visible || busy || !trail.current.back.length} onClick={() => { void revisit('back') }}>返回上一处来源</button>
+          <button disabled={!enabled || !visible || busy || !trail.current.forward.length} onClick={() => { void revisit('forward') }}>前进到下一处来源</button>
+          <span className="hint">仅保留本页最近 32 处阅读位置，返回时重新核对原版本。</span>
+        </nav>}
         {!document && <p className="empty-state">从左侧选择文档，查看版本与原文。</p>}
         {document && <><p role="status" aria-live="polite">{document.status === 'ACTIVE' ? '使用中' : '已归档'} · {labels[document.processingState]}</p>
           {processing && <p role="progressbar" aria-label="Knowledge 导入处理" aria-valuetext={labels[document.processingState]}>等待完整 READY 发布；旧 READY 版本仍可预览。</p>}
           {detail.job?.errorCode && <p className="error" role="alert">本次处理未完成：{detail.job.errorCode}。已存在的 READY 版本保持可用；可显式重新选择文件导入。</p>}
           {stale && <p role="alert">请刷新详情确认当前状态后再修改；不会自动重试。</p>}
-          <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
+          <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { remember(); selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
             <button disabled={!enabled || busy || !revision} onClick={() => { void showPreview(0, 'reset') }}>预览源文本</button></div>
           {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible} hasPrevious={offsets.current.length > 0} navigate={showPreview} />}
+          {revision && visible && <KnowledgeSourceLine key={`line/${document.documentId}/${revision}`} disabled={!enabled || busy} open={openLine} />}
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId, false) }) }}>刷新详情</button>
