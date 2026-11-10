@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 本轮 owner 已统一交付：产品提交 `3ab41e34256eb3095bb61645ed14db2e904c157f`，新包 `artifacts/PersonalAiWorkspace-sqlite-maintenance-owner-20261110.zip`（SHA-256 `8FA58BC5C65C0FD8691FDDCE66F65EF561AD9C60948DF89A3F315D87A6EF6A3D`）。933 payload／934 ZIP 条目／420 内嵌来源 pin 全部通过；候选与交付 Runtime 除构建来源标记外逐项字节一致。打包 Job 0、锁已释放，旧包、六份用户文档与 main 保持原样，无推送。此组已完成共同事务、来源 lease、owner／阶段观察，下一组转入原生所有权移交与配置恢复设计；完整维护迁移仍未开通。[完整 SHA、验收和接续边界](engineering/SQLITE-MAINTENANCE-OWNER-ACCEPTANCE.md)。
+
 2026-11-10 SQLite 来源停写 owner 与受保护阶段观察已完成合成闭环：真实 NativeGate/exclusion 下，已有写入者阻止获取，两域数据库和知识原文的跨进程写入／可写映射被拒绝；完整备份保持至一次真实共同提交和新连接核对。并发 owner 拒绝，关闭后的新进程能重读 DPAPI 阶段链，持久记录仍阻止重放；未完成记录、后续配置和新增源数据均保全。三个 Java 子进程正常退出，临时 PostgreSQL 正常停止、密码清理、Job 0、共享锁释放。来源 lease 独立提交 `0893f525e8cd3a3cba5eba71448d4d58ffa837b6`。原生 BLOCKED 保持；当前是来源／备份／导入 owner 和只读恢复判定，尚缺激活期间原生所有权移交、稳定目标绑定及配置恢复写入，未开通完整用户迁移。没有重跑既有两域事务、网页或 EXE 矩阵，main、六份用户文档和旧包保留，不推送。[实现、最小验收、失败现场与剩余阻塞](engineering/SQLITE-MAINTENANCE-OWNER-ACCEPTANCE.md)。
 
 2026-11-10 两域共同事务已实现并通过一次真实 PostgreSQL 闭环：记忆／会话与知识在同一目标事务写入，知识 CHECK 失败时全域回滚；实际 commit 后模拟确认丢失保持 COMMIT_UNCONFIRMED，只读核对完整数据，不重放；新数据与重复拒绝保全、Store 重开、第二个新目标普通成功均通过。源与完整合成备份不变，配置未生成；临时 PostgreSQL 正常停止、密码清除、Job 0、共享锁释放。模块提交 `12b2d880fbab3ecfab655671b8d157ab7cc6d485`，新开发包 `artifacts/PersonalAiWorkspace-combined-migration-20261110.zip` 的 933 payload／934 ZIP 条目／420 内嵌来源 pin 全部通过。交付 Runtime 只更新已验收候选的构建来源标记，其余 JAR 字节一致；未重跑完整 EXE。新 API 只接受已隔离快照，原生来源准入仍 BLOCKED，受保护阶段日志和配置恢复未实现，不能称完整用户迁移。main、六份用户文档、旧包与真实数据保留，不推送。[实现、验收、历史失败、完整 SHA 与精确阻塞](engineering/COMBINED-MIGRATION-TRANSACTION-ACCEPTANCE.md)。

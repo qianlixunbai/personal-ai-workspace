@@ -64,3 +64,23 @@ owner 持有两份数据库和所有引用知识原文的 Windows 文件句柄�
 完整原生维护入口针对用户 Profile 的来源选择、配置发布／恢复写入与激活仍被设计边界阻塞，并非本轮新权限拒绝。当前 `MaintenanceExclusion` 同时阻止同 Profile Runtime 启动；需要实现可核实的原生所有权移交及启动核对，不能关闭 exclusion 后假称仍持有停写证明。还需稳定目标集群绑定及明确配置比较／恢复规则；现有目标身份只绑定同一服务启动实例，服务重启后保守返回变化。不能用已写入的记录替代这些能力。
 
 原生用户确认仍保留，没有放宽 `UNREGISTERED_WRITERS_UNPROVEN`，没有自动迁移、个人恢复或正式发布。后续应设计上述移交／配置机制，再决定如何合并来源证明链。没有 ACL／EFS／沙箱／系统策略变更，旧拒读和服务访问边界继续保持；真实数据、默认 Profile／配置、持久凭据、main、六份用户文档和旧包均不动。本轮无推送。
+
+## 本地交付与接续
+
+来源 lease 提交：`0893f525e8cd3a3cba5eba71448d4d58ffa837b6`。owner、阶段回调、合成探针和验收说明提交：`3ab41e34256eb3095bb61645ed14db2e904c157f`。均在 `codex/knowledge-version-compare`；main 仍是 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`，不推送。
+
+统一新包为 `artifacts/PersonalAiWorkspace-sqlite-maintenance-owner-20261110.zip`，并保留同名解压目录；`productionGo=false`，不是正式发布。包内 README 明确说明当前功能边界，没有把观察记录写成恢复／激活承诺。
+
+| 交付证据 | 值 |
+| --- | --- |
+| ZIP SHA-256 | `8FA58BC5C65C0FD8691FDDCE66F65EF561AD9C60948DF89A3F315D87A6EF6A3D` |
+| Runtime SHA-256 | `9670088A1793910E0A2F07ACD57966EA914EEB0612E019BA91BCCD3EADE3CE14` |
+| Desktop DLL SHA-256 | `B0D6E132F078CD1EE56AC0806E032BACA173D9095126E95628C57D245F2136AD` |
+| payload／ZIP 条目／内嵌来源 pin | 933／934／420，全部实际字节核对通过 |
+| 交付源码提交 | `3ab41e34256eb3095bb61645ed14db2e904c157f` |
+
+交付 Runtime 只更新验收候选的构建来源标记，其余所有 JAR 条目解压字节相同。Desktop 使用已有缓存 `--no-restore` 更新内嵌来源 pin，前端、JDK 和 NativeBootstrap 未重建。相较上轮包仅 Core DLL、Desktop DLL／EXE、README 和 Runtime JAR 五个 payload 文件变化，其他 928 个文件一致；没有重复运行 EXE 或数据库验收。
+
+publish guardian `31272` 于 `2026-11-10T12:22:56.6135845Z` 关闭空 Job 并释放共享锁。`delivery-result.json`、`publish-cleanup.json` 和最终 Git／保护对象核对回执保存在本轮构建证据目录。原六份未跟踪用户文档逐项 SHA 与上轮基线相同，未暂存；迁移长路径、正常网页及两域共同事务三份旧 ZIP 哈希也与基线一致。
+
+本组已完成此前两域共同事务、来源 lease、owner／阶段观察三个真实模块。下一组继续前述原生所有权移交和配置恢复设计；必须先核实实际 Git 与精确回执，再做新的合成验证。未执行真实用户迁移，未留下待审批或结果不明的工具动作，旧拒绝范围不因换会话失效。
