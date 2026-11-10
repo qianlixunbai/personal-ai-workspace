@@ -127,7 +127,7 @@ class OllamaProviderTest {
         var transport=org.mockito.Mockito.mock(OllamaProvider.class);
         var store=org.mockito.Mockito.mock(ModelStateStore.class);
         var armed=new AtomicBoolean();var guardHook=new AtomicReference<Runnable>(() -> {});
-        org.mockito.Mockito.doAnswer(call->{armed.set(true);guardHook.get().run();return null;}).when(store).armGuard();
+        org.mockito.Mockito.doAnswer(call->{armed.set(true);guardHook.get().run();return null;}).when(store).armGuard(org.mockito.ArgumentMatchers.any(ModelStateStore.RequestBinding.class));
         org.mockito.Mockito.doAnswer(call->{armed.set(false);return null;}).when(store).clearGuard();
         org.mockito.Mockito.when(transport.admitLocal(org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.nullable(String.class),org.mockito.ArgumentMatchers.nullable(String.class),

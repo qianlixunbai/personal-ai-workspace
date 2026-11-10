@@ -555,6 +555,7 @@ public final class ActiveModelManager implements AutoCloseable {
         private boolean visionTask, visionValidation;
         private OllamaProvider.VisionContext expectedVisionContext;
         private final String generation=cacheEpoch;
+        private final UUID reservationId = UUID.randomUUID();
         private Request request;
         /** An in-memory capability for one immutable HTTP request, never a recovery credential. */
         public final class Request {
@@ -669,7 +670,9 @@ public final class ActiveModelManager implements AutoCloseable {
                                 : provider.admitLocal(selectedModel, contextBudget, new Cancellation()).digest();
                         store.requireValidation(selectedRevision, selectedModel, selectedDigest);
                     }
-                    store.armGuard();
+                    store.armGuard(new ModelStateStore.RequestBinding(request.id, reservationId,
+                        request.http.uri().toString(), "/api/chat".equals(request.http.uri().getPath()) ? "chat" : "unload",
+                        model.model(), model.runner(), model.digest(), model.revision()));
                 }
                 catch (IOException failure) {
                     synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }

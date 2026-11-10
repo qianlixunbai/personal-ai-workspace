@@ -16,6 +16,7 @@ import io.github.qianlixunbai.workspace.security.WindowsPrivateAcl;
 /** Private, single-writer state. Neither selection nor execution guards belong to domain backups. */
 public final class ModelStateStore implements AutoCloseable {
     public static final long MAX_REVISION = 9007199254740991L;
+    private static final int MAX_GUARD_BYTES = 65536, MAX_GUARD_REQUESTS = 128;
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
@@ -49,7 +50,29 @@ public final class ModelStateStore implements AutoCloseable {
     private Object selectionKey;
     private boolean unresolved;
     private Object guardKey;
+    private byte[] guardBytes;
+    private final UUID ownerSession = UUID.randomUUID();
+    private final String stateBinding;
+    private final Map<UUID, RequestBinding> guardRequests = new LinkedHashMap<>();
     private boolean closed;
+
+    /** Metadata only: never includes prompts, response bodies, client tokens or provider credentials. */
+    public record RequestBinding(UUID requestId, UUID reservationId, String endpoint, String operation,
+                                 String model, String runner, String digest, long selectionRevision) {
+        public RequestBinding {
+            Objects.requireNonNull(requestId); Objects.requireNonNull(reservationId);
+            var uri = java.net.URI.create(endpoint);
+            if (!"http".equals(uri.getScheme()) || !"127.0.0.1".equals(uri.getHost())
+                    || uri.getPort() < 1 || uri.getPort() == 11435 || uri.getUserInfo() != null
+                    || uri.getQuery() != null || uri.getFragment() != null
+                    || !("chat".equals(operation) && "/api/chat".equals(uri.getPath())
+                        || "unload".equals(operation) && "/api/generate".equals(uri.getPath()))
+                    || !validModel(model) || !validDigest(digest) || !Set.of("ggml", "llamacpp", "mlx").contains(runner)
+                    || selectionRevision < 0 || selectionRevision > MAX_REVISION)
+                throw new IllegalArgumentException("Invalid external request binding");
+        }
+        @Override public String toString() { return "ModelRequestBinding[private]"; }
+    }
 
     public ModelStateStore(Path directory, Path tokenFile, Path dataDirectory) throws IOException {
         root = directory.toAbsolutePath().normalize();
@@ -68,6 +91,10 @@ public final class ModelStateStore implements AutoCloseable {
         noLinks(root);
         createDirectories(root);
         rootKey = verify(root, true);
+        try {
+            stateBinding = HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest((root + "\n" + rootKey).getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException failure) { throw new IOException("State identity unavailable"); }
         Path lockFile = root.resolve(".lock");
         createPrivate(lockFile);
         lockKey = verify(lockFile, false);
@@ -100,7 +127,7 @@ public final class ModelStateStore implements AutoCloseable {
                 for (String name : List.of("execution-guard.json", "execution-guard.pending")) {
                     Path guard = root.resolve(name);
                     if (exists(guard)) {
-                        try { parseGuard(read(guard, 128)); }
+                        try { parseGuard(read(guard, MAX_GUARD_BYTES)); }
                         catch (IOException invalid) { /* Remains unresolved, including permission/type errors. */ }
                     }
                 }
@@ -196,35 +223,66 @@ public final class ModelStateStore implements AutoCloseable {
     /** Called before transport send, serialized with all operation exits by the model owner. */
     public synchronized void armGuard() throws IOException {
         checkSelection();
+        if (!guardRequests.isEmpty()) throw new IOException("Bound guard cannot be used as a legacy guard");
         if (unresolved) {
-            if (guardKey == null || !Objects.equals(guardKey, verify(root.resolve("execution-guard.json"), false)))
-                throw new IOException("Execution guard identity changed");
-            parseGuard(read(root.resolve("execution-guard.json"), 128));
-            if (exists(root.resolve("execution-guard.pending"))) throw new IOException("Interrupted execution guard");
+            checkLiveGuard(false);
             return;
         }
-        if (exists(root.resolve("execution-guard.json")) || exists(root.resolve("execution-guard.pending")))
+        publishGuard("{\"version\":1,\"unresolved\":true}".getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Called by the real request owner before the first possible socket write. */
+    public synchronized void armGuard(RequestBinding binding) throws IOException {
+        Objects.requireNonNull(binding);
+        checkSelection();
+        if (unresolved) {
+            checkLiveGuard(false);
+            if (guardRequests.isEmpty()) throw new IOException("Legacy guard has no request owner");
+        }
+        if (guardRequests.size() >= MAX_GUARD_REQUESTS || guardRequests.containsKey(binding.requestId()))
+            throw new IOException("Execution guard request limit or reused identity");
+        var next = new LinkedHashMap<>(guardRequests);
+        next.put(binding.requestId(), binding);
+        byte[] bytes = JSON.writeValueAsBytes(Map.of("version", 2, "unresolved", true,
+            "ownerSession", ownerSession, "stateBinding", stateBinding, "requests", next.values()));
+        if (bytes.length > MAX_GUARD_BYTES) throw new IOException("Execution guard exceeds budget");
+        publishGuard(bytes);
+        guardRequests.put(binding.requestId(), binding);
+    }
+
+    private void publishGuard(byte[] bytes) throws IOException {
+        if (unresolved) checkLiveGuard(false);
+        else if (exists(root.resolve("execution-guard.json")) || exists(root.resolve("execution-guard.pending")))
             throw new IOException("Unexpected execution guard");
-        atomicWrite("execution-guard.json", "execution-guard.pending",
-                "{\"version\":1,\"unresolved\":true}".getBytes(StandardCharsets.UTF_8), 128, false);
+        // Fail closed even if durable publication fails before its final read-back.
         unresolved = true;
-        guardPin = pin(root.resolve("execution-guard.json"));
+        atomicWrite("execution-guard.json", "execution-guard.pending", bytes, MAX_GUARD_BYTES, false);
+        byte[] actual = read(root.resolve("execution-guard.json"), MAX_GUARD_BYTES);
+        if (!Arrays.equals(bytes, actual)) throw new IOException("Execution guard publication outcome unknown");
+        guardBytes = actual;
         guardKey = verify(root.resolve("execution-guard.json"), false);
+    }
+
+    private void checkLiveGuard(boolean ownPending) throws IOException {
+        Path guard = root.resolve("execution-guard.json");
+        if (guardBytes == null || guardKey == null || !Objects.equals(guardKey, verify(guard, false))
+                || !Arrays.equals(guardBytes, read(guard, MAX_GUARD_BYTES)))
+            throw new IOException("Execution guard owner or identity changed");
+        if (!ownPending && exists(root.resolve("execution-guard.pending"))) throw new IOException("Interrupted execution guard");
     }
 
     public synchronized void clearGuard() throws IOException {
         checkSelection();
         if (!unresolved) return;
         Path guard = root.resolve("execution-guard.json");
-        if (guardKey == null || !Objects.equals(guardKey, verify(guard, false))) throw new IOException("Execution guard identity changed");
-        parseGuard(read(guard, 128));
-        if (exists(root.resolve("execution-guard.pending"))) throw new IOException("Interrupted execution guard");
+        checkLiveGuard(false);
         checkPaths();
         if (guardPin != null) { guardPin.close(); guardPin = null; }
         try { Files.delete(guard); }
         catch (IOException failure) { guardPin = pin(guard); throw failure; }
+        if (exists(guard)) throw new IOException("Execution guard removal outcome unknown");
         unresolved = false;
-        guardKey = null;
+        guardKey = null; guardBytes = null; guardRequests.clear();
     }
 
     /** Historical guards have no request/owner binding. Native consent cannot recover them. */
@@ -253,9 +311,15 @@ public final class ModelStateStore implements AutoCloseable {
         }
         if (!Objects.equals(pendingKey, verify(pending, false))) throw new IOException("Model pending identity changed");
         if (exists(target)) verify(target, false);
+        boolean guardWrite = targetName.equals("execution-guard.json");
+        if (guardWrite && guardBytes != null) checkLiveGuard(true);
         if (selectionWrite && selectionPin != null) { selectionPin.close(); selectionPin = null; }
+        if (guardWrite && guardPin != null) { guardPin.close(); guardPin = null; }
         try { Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
-        finally { if (selectionWrite && exists(target)) selectionPin = pin(target); }
+        finally {
+            if (selectionWrite && exists(target)) selectionPin = pin(target);
+            if (guardWrite && exists(target)) guardPin = pin(target);
+        }
     }
 
     private void checkSelection() throws IOException {
@@ -302,6 +366,24 @@ public final class ModelStateStore implements AutoCloseable {
     }
     private static void parseGuard(byte[] bytes) throws IOException {
         JsonNode node = parse(bytes);
+        if (node.path("version").isIntegralNumber() && node.path("version").asLong() == 2) {
+            exact(node, Set.of("version", "unresolved", "ownerSession", "stateBinding", "requests"));
+            if (!node.path("unresolved").isBoolean() || !node.path("unresolved").asBoolean()
+                    || !node.path("stateBinding").isString() || !validDigest(node.path("stateBinding").asString())
+                    || !node.path("ownerSession").isString() || !node.path("requests").isArray()
+                    || node.path("requests").isEmpty() || node.path("requests").size() > MAX_GUARD_REQUESTS)
+                throw new IOException("Invalid bound execution guard");
+            try {
+                UUID.fromString(node.path("ownerSession").asString());
+                var ids = new HashSet<UUID>();
+                for (JsonNode entry : node.path("requests")) {
+                    exact(entry, Set.of("requestId", "reservationId", "endpoint", "operation", "model", "runner", "digest", "selectionRevision"));
+                    var binding = JSON.treeToValue(entry, RequestBinding.class);
+                    if (!ids.add(binding.requestId())) throw new IOException("Repeated guard request");
+                }
+            } catch (RuntimeException invalid) { throw new IOException("Invalid bound execution guard"); }
+            return; // Parsing never grants a live owner or permits recovery after restart.
+        }
         exact(node, Set.of("version", "unresolved"));
         if (!node.path("version").isIntegralNumber() || !node.path("version").canConvertToLong() || node.path("version").asLong() != 1
                 || !node.path("unresolved").isBoolean() || !node.path("unresolved").asBoolean()) throw new IOException("Invalid execution guard");

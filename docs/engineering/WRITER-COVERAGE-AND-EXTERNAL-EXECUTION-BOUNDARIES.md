@@ -21,15 +21,15 @@
 | 派生知识索引：`KnowledgeLexicalIndex` | 受限实例不启动索引 worker 或回调。迁移本身可合法生成目标索引；实测迁移后清空的合成索引在日常重开后仍为空。 | 不宣称迁移过程无索引写入，也不覆盖普通索引 worker 的所有取消/异常场景。 |
 | 独立问答历史：`KnowledgeAnswerHistory` | SQLite `data/knowledge-answer-history/history.db` 与主 Workspace/Knowledge 存储独立。受限实例无连接；含 QUEUED 行的全部文件实测逐字节不变。 | 没有迁移此域，也不能把主数据库备份视为包含这份独立历史。 |
 | 原生会话凭据/浏览器注册：`LocalClientToken`、`BrowserClients` | 本次原生 token 正常轮换属于允许启动写入；浏览器 registry/pending/lock 不打开或修复。实际原生凭据成功、原有效合成 browser credential 被拒绝。 | token 更新不证明历史浏览器任务结束；浏览器注册表不在业务数据库迁移中。 |
-| 模型状态：`ModelStateStore`、`MaintenanceModelState` | 文件身份/快照和实际模型状态写锁交接；未知/pending guard 拒绝维护，RECOVER 不再清除。 | 这些文件锁只证明本地状态所有权，不拥有权重、Ollama 服务、runner、远端请求。 |
+| 模型状态：`ModelStateStore`、`MaintenanceModelState` | 文件身份/快照和实际模型状态写锁交接；guard v2 在实际外发前绑定当前 writer、状态目录、request/reservation 与模型/端点；未知/pending guard 拒绝维护，RECOVER 不再清除。 | writer 会话不是原生维护会话或远端执行 ID；这些文件锁不拥有权重、Ollama 服务、runner、远端请求。 |
 | 本地任务和 transport：`TaskManager`、`OllamaProvider`、Web workers | 受限 HTTP 不提交任务，模型 manager 拒绝执行；本次没有真实 provider 请求。实际原生 JVM/自有 Job 退出覆盖本次进程内写入生命期。 | cancel、shutdownNow 或本地连接关闭不是外部执行完成。已有 TaskManager 不等待所有 worker 的退出；知识 worker 的 bounded await 也不能单独成为全局完成证明。 |
-| 外部模型执行：普通 Ollama HTTP、隔离 vision transport | 原有正常完成协议和未知 guard 保持；本轮仅以新建本地合成 HTTP 验证 guard 拒绝人工恢复。隔离 vision 原生检查有自己的限定范围。 | 普通外部服务不是由本次 native owner 创建/持有的专用执行资源；没有通用的请求所有权交接与结束回执。未实测真实模型，也未验收所有真实提供商。 |
+| 外部模型执行：普通 Ollama HTTP、隔离 vision transport | 普通推理/卸载接入单次 socket 写入，禁用自动重试；所有完成/退出回调绑定活体请求能力；合成服务证明取消/超时/关闭及迟到回复不清除未知 guard，并发一个成功不能清掉另一个。隔离 vision 原生检查保留自己的限定范围。 | 普通外部服务不是由本次 native owner 创建/持有的专用执行资源；未实现重启后认领、远端取消终态证明或原生 owner 接管。未实测真实模型，也未验收真实云提供商；源码接入不等于视觉路径完成验收。 |
 | Finance/行情：`FinanceModuleConfiguration`、`FinanceInfrastructureConfiguration`、`TrustedMarketDataFile` | 默认配置 Finance 和其 Flyway 都关闭，受限 HTTP 不开放；本轮未启用或访问。 | 独立 Finance 数据库、身份文件及行情配置不因此纳入 Workspace 三个 store 的关闭证明。未来启用前必须单独纳入范围。 |
 | 迁移、备份、配置、原生证据与临时资源 | `SqliteSourceLease` 固定本次来源/备份；`MaintenanceTarget` 在关键阶段持有实际表锁及绑定；append-only 会话绑定本次 operation/session/challenge 与实际 native Process 退出。 | 三个 store 的连接清空不等于所有域/外部 SQL 清空。已释放的锁和旧 native-exit 不能替代下一会话的实时准入。 |
 
 ## 完整闭环的最小完成判据
 
-后续开发的真实调用路径、单次传输与本地退出证据见 [外部请求所有权](EXTERNAL-REQUEST-OWNERSHIP.md)。该验证不提升任何共享服务的归属或远端结束权限，完整维护继续 BLOCKED。
+后续三个模块的真实调用路径、单次传输、活体请求能力及持久化绑定证据见 [外部请求所有权](EXTERNAL-REQUEST-OWNERSHIP.md)。该验证不提升任何共享服务的归属或远端结束权限，完整维护继续 BLOCKED。
 
 1. **范围先确定。** 对计划开放的每个域，列出全部实际写路径、后台 callback、独立文件/数据库和启动修复行为。未纳入协议的写入者不得默认为不存在。受限模式的禁止初始化必须与路由限制同时成立。
 2. **本地写入确实终止。** 停止新准入，保留当前会话资源并结束实际任务/事务；关闭和核对全部本域连接、文件 writer。随后由持有原始进程句柄的 native owner 观察 JVM 退出，核对自己的 Job；错误、强制终止、部分状态均不能生成正常完成凭证。

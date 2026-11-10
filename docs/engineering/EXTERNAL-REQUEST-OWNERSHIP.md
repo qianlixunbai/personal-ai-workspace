@@ -39,4 +39,22 @@
 
 证据 `.verification/external-request-binding-20261110/{result.json,token-cleanup.json,build-cleanup.json,run-cleanup.json}`：passed、临时 token 清理、Job 0、锁释放、failure=null。没有外部模型/付费 API、系统设置改动或重新打包。
 
-这不是云提供商验收、专属模型进程树验收或桌面视觉验收。下一项是将本次请求身份绑定到实际持久化 guard。
+## 已完成：发送前的持久化绑定
+
+实际 `prepareCheckedSend` 现在调用 `ModelStateStore.armGuard(RequestBinding)`。guard v2 包含本次持锁 writer 的随机 `ownerSession`、实际状态目录路径与文件身份的 SHA-256 `stateBinding`，以及 request/reservation UUID、loopback endpoint、chat/unload、模型、runner、digest、selection revision。writer 会话不冒充原生维护 operation/session，也不冒充远端执行 ID。提示词、回复和凭据不写入 guard。
+
+并发/连续尝试先将新的绑定原子发布、强制写入并回读，再允许 socket 写入；保留先前绑定直至所有相关 lease 安全退出。当前 writer 每次操作都核对固定文件身份和精确字节，pending、替换、写入失败、超预算均 fail-closed。单个 guard 上限 128 次尝试/64 KiB；达到上限后不发送新请求，也不裁剪历史来腾空间。
+
+重开只解析，不认领；旧 v1、v2、损坏或 pending guard 都继续 unresolved。目录哈希、UUID、旧回执或人工确认本身不能重建内存能力，也不能让维护准入。原来的 `MaintenanceModelState` 只接受其已知正常文件集合，仍拒绝包含 guard 的目录。
+
+最终针对性验证 `ExternalRequestLifecycleTest.durableRequestsAreBoundBeforeEgress`：两个真实产品 HTTP 请求同时在合成服务端等待；服务读取到的 guard 已有两个不同 request/reservation、同一 writer/状态目录绑定与正确模型/端点。一个请求成功并释放 lease 后，另一个未结束请求的 guard 保留；第二个断连后 guard 不变，重开拒绝清除及维护所有权。没有强杀 JVM 或假称此测试证明远端进程退出。
+
+证据 `.verification/external-request-durable-20261110/{result.json,token-cleanup.json,build-cleanup.json,run-cleanup.json}` 全部成功，Job active 0、锁释放、临时 token 删除、failure=null。只编译三个改动产品源文件及相关测试支持；5 条既有 `ExtendedOpenOption` 警告，无编译错误。未重跑前两组已通过场景。
+
+## 接续边界
+
+- 受支持：当前可信进程内，已准入 Ollama 协议的单次 HTTP transport 与当前 writer/请求绑定；同次有效协议终态可结束该次请求。合成验收覆盖这些实际调用路径。
+- 不受支持：认领共享/任意既有服务，远端取消或终态查询，重启后恢复旧能力，拿本地取消/JVM 退出/服务列表当远端结束证据。未知执行仍永久阻断，直至未来实现针对原执行的可信结束合同；本轮没有提供恢复后门。
+- 下一核心缺口：专属执行资源在创建前由原生 owner 持有，或 provider 原生的请求绑定、可认证终态合同；必须与当前原生维护会话/关闭回执接通并防重放。当前本地 writer 会话不能代替这些证明。可继续用新建自有进程做合成开发；本轮未启动真实模型，没有需要额外批准的待执行真实请求。
+- 维护还需全部独立 writer 的关闭、外部模型边界和完整桌面流程/视觉验收。`TaskManager.close` 的 worker drain、回复持久化的异常/并发细节以及独立数据域不能由此三项模型改动自动获得许可。
+- 无待审批、拒绝或结果不明动作。main、六份用户文档与旧维护确认 ZIP/JAR 保持原基线；只保留本地回滚提交，不推送、不重新打包。旧包不包含本轮模块。

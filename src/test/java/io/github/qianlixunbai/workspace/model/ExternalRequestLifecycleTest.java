@@ -13,6 +13,81 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ExternalRequestLifecycleTest {
     @TempDir Path root;
 
+    @Test void durableRequestsAreBoundBeforeEgress() throws Exception {
+        var support = new ModelFoundationTest(); support.root = root;
+        Path state = root.resolve("durable-request-state");
+        Path guardPath = state.resolve("execution-guard.json");
+        byte[] guard;
+        try (var fixture = support.new Fixture();
+             var models = new ActiveModelManager(fixture.profiles, fixture.provider, fixture.properties,
+                 new ModelStateStore(state, support.token(), support.data()));
+             var first = models.reserve("translate.fast", "ownership-fixture");
+             var second = models.reserve("translate.fast", "ownership-fixture");
+             var worker = Executors.newFixedThreadPool(2)) {
+            var entered = new CountDownLatch(2);
+            var finish = new CountDownLatch(1);
+            var calls = new AtomicInteger();
+            var snapshot = new AtomicReference<byte[]>();
+            fixture.server.removeContext("/api/chat");
+            fixture.server.createContext("/api/chat", exchange -> {
+                try (exchange) {
+                    var input = ModelFoundationTest.JSON.readTree(exchange.getRequestBody().readAllBytes());
+                    int call = calls.incrementAndGet();
+                    // Read at the server boundary: the guard is already durable before any model work.
+                    byte[] atEgress = Files.readAllBytes(guardPath);
+                    if (call == 2) snapshot.set(atEgress);
+                    entered.countDown();
+                    try { assertTrue(entered.await(5, TimeUnit.SECONDS)); }
+                    catch (InterruptedException failure) { Thread.currentThread().interrupt(); }
+                    if (call == 1) fixture.respond(exchange,
+                        io.github.qianlixunbai.workspace.provider.ollama.OllamaFixtures.completed(input.path("model").asString(), "OK"));
+                    else try { assertTrue(finish.await(8, TimeUnit.SECONDS)); }
+                        catch (InterruptedException failure) { Thread.currentThread().interrupt(); }
+                    // The second request disconnects without a protocol terminal response.
+                }
+            });
+            var one = worker.submit(() -> { try (first) { return fixture.provider.execute(ModelFoundationTest.request(first), new Cancellation()); } });
+            var two = worker.submit(() -> { try (second) { return fixture.provider.execute(ModelFoundationTest.request(second), new Cancellation()); } });
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                guard = snapshot.get(); assertNotNull(guard);
+                var json = ModelFoundationTest.JSON.readTree(guard);
+                assertEquals(2, json.path("version").asInt());
+                assertTrue(json.path("unresolved").asBoolean());
+                java.util.UUID.fromString(json.path("ownerSession").asString());
+                assertTrue(json.path("stateBinding").asString().matches("[a-f0-9]{64}"));
+                assertEquals(2, json.path("requests").size());
+                var ids = new java.util.HashSet<String>(); var reservations = new java.util.HashSet<String>();
+                for (var entry : json.path("requests")) {
+                    assertEquals(8, entry.size());
+                    ids.add(entry.path("requestId").asString()); reservations.add(entry.path("reservationId").asString());
+                    assertEquals("chat", entry.path("operation").asString());
+                    assertEquals(fixture.properties.ollama().baseUrl().resolve("/api/chat").toString(), entry.path("endpoint").asString());
+                    assertEquals(ModelFoundationTest.MODEL, entry.path("model").asString());
+                    assertEquals(ModelFoundationTest.DIGEST, entry.path("digest").asString());
+                }
+                assertEquals(2, ids.size()); assertEquals(2, reservations.size());
+                long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+                while (!one.isDone() && !two.isDone() && System.nanoTime() < limit) Thread.sleep(5);
+                assertTrue(one.isDone() || two.isDone());
+                assertEquals("OK", (one.isDone() ? one : two).get(1, TimeUnit.SECONDS));
+                assertArrayEquals(guard, Files.readAllBytes(guardPath)); // One success cannot clear the other request.
+            } finally { finish.countDown(); }
+            for (var result : java.util.List.of(one, two)) {
+                try { result.get(4, TimeUnit.SECONDS); }
+                catch (ExecutionException failure) { assertInstanceOf(WorkspaceException.class, failure.getCause()); }
+            }
+            assertTrue(models.status().uncertain());
+            assertArrayEquals(guard, Files.readAllBytes(guardPath));
+        }
+        try (var restarted = new ModelStateStore(state, support.token(), support.data())) {
+            assertTrue(restarted.unresolved());
+            assertThrows(java.io.IOException.class, restarted::clearGuard);
+            assertThrows(java.io.IOException.class, () -> restarted.requireMaintenanceOwnership(state));
+            assertArrayEquals(guard, Files.readAllBytes(guardPath));
+        }
+    }
+
     @Test void requestCompletionCannotCrossAttempts() throws Exception {
         var support = new ModelFoundationTest(); support.root = root;
         Path state = root.resolve("request-bindings");
