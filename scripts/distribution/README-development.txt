@@ -60,6 +60,11 @@ NativeBootstrap 仍要求本机 Microsoft.NETCore.App 10.0.x x64；界面要求 
 客户端正常退出、释放本次 Runtime 后强制显示同一选择器；选择“否”及已有 Profile。
 新 Profile 成功通过原生认证和存储检查后才更新记录；取消选择或启动失败不覆盖上次成功记录。
 也可用 PersonalAiWorkspace.Desktop.exe --choose-development-workspace 主动打开选择器。
+临时打开已创建的受信开发 Profile，可使用：
+PersonalAiWorkspace.Desktop.exe --open-development-workspace-once <32位小写十六进制Profile-ID>
+窗口标题显示“仅本次打开”。成功启动、重开都不读取或更新上次工作区记录；退出后默认入口保持不变。
+此方式仍使用该 Profile 的真实数据库，保存仍会持久化；它不是只读或临时数据模式。
+参数不创建 Profile、不接受自定义路径或端口，也不放宽身份、权限及原生准入校验。
 如有未保存的 Memory 修改，仍须先确认丢弃；取消退出不会切换。此入口不创建或改写数据库配置。
 不启用 Finance、不自动执行 Flyway、不初始化 PostgreSQL。原生数据库设置仅用于另行准备并授权的合成环境。
 包中没有用户凭据或数据库；旧开发包、旧 Profile 和备份原样保留。

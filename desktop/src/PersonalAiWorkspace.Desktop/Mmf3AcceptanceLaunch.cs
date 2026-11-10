@@ -13,6 +13,8 @@ internal sealed class Mmf3AcceptanceLaunch
 #if MMF3_PROFILE_ACCEPTANCE
     internal const string Label = "开发工作区 · Development-only";
     internal const string Argument = "--mmf3-profile-acceptance";
+    internal const string OpenOnceArgument = "--open-development-workspace-once";
+    internal bool OpenOnce { get; private init; }
 #else
     internal const string Label = "MMF3 TEST / 18765";
     internal const string Argument = "--mmf3-acceptance";
@@ -51,12 +53,23 @@ internal sealed class Mmf3AcceptanceLaunch
 
     internal static Mmf3AcceptanceLaunch Parse(string[] args)
     {
-        if (args.Length != 2 || args[0] != Argument || args[1].Length != 32)
+        if (args.Length != 2 ||
+#if MMF3_PROFILE_ACCEPTANCE
+            (args[0] != Argument && args[0] != OpenOnceArgument) ||
+#else
+            args[0] != Argument ||
+#endif
+            args[1].Length != 32)
             throw new IOException("Explicit MMF3 run identity required.");
         foreach (char c in args[1])
             if (c is not (>= '0' and <= '9') and not (>= 'a' and <= 'f'))
                 throw new IOException("Invalid MMF3 run identity.");
-        var launch = new Mmf3AcceptanceLaunch(args[1]);
+        var launch = new Mmf3AcceptanceLaunch(args[1])
+        {
+#if MMF3_PROFILE_ACCEPTANCE
+            OpenOnce = args[0] == OpenOnceArgument
+#endif
+        };
         launch.Validate();
 #if MMF3_PROFILE_ACCEPTANCE
         Mmf3ProfileNative.Verify(launch);

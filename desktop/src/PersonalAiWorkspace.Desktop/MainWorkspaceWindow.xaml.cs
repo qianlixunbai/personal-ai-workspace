@@ -31,6 +31,9 @@ public partial class MainWorkspaceWindow : Window
         InitializeComponent();
 #if MMF3_ACCEPTANCE && DEBUG
         if (acceptance is not null) Title += " · " + Mmf3AcceptanceLaunch.Label;
+#if MMF3_PROFILE_ACCEPTANCE
+        if (acceptance?.OpenOnce == true) Title += " · 仅本次打开";
+#endif
 #endif
         Host = new WorkspaceWebViewHost(Browser, native, message =>
         {

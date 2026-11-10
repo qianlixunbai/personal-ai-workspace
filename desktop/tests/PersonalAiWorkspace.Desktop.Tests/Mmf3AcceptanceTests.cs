@@ -626,14 +626,18 @@ public sealed class Mmf3AcceptanceTests
         Assert.Equal("开发工作区 · Development-only", Mmf3AcceptanceLaunch.Label);
         Assert.EndsWith(Path.Combine("PersonalAIWorkspace.Development", "Profiles", profileId), Mmf3ProfileState.Root(profileId));
         foreach (string[] arguments in new[] { Array.Empty<string>(), new[] { "--mmf3-acceptance", profileId },
-            new[] { Mmf3AcceptanceLaunch.Argument, "invalid" }, new[] { Mmf3AcceptanceLaunch.Argument, profileId, "--root", @"C:\arbitrary" } })
+            new[] { Mmf3AcceptanceLaunch.Argument, "invalid" }, new[] { Mmf3AcceptanceLaunch.Argument, profileId, "--root", @"C:\arbitrary" },
+            new[] { Mmf3AcceptanceLaunch.OpenOnceArgument }, new[] { Mmf3AcceptanceLaunch.OpenOnceArgument, "invalid" },
+            new[] { Mmf3AcceptanceLaunch.OpenOnceArgument, profileId, "--root", @"C:\arbitrary" },
+            new[] { Mmf3AcceptanceLaunch.OpenOnceArgument, profileId } })
             Assert.ThrowsAny<IOException>(() => Mmf3AcceptanceLaunch.Parse(arguments));
+        Assert.False(Directory.Exists(Mmf3ProfileState.Root(profileId)));
 #else
         var assembly = typeof(AssistantApp).Assembly;
         var main = assembly.GetType("PersonalAiWorkspace.Desktop.Program")!
             .GetMethod("Main", BindingFlags.Static | BindingFlags.NonPublic)!;
         string id = Guid.NewGuid().ToString("N");
-        foreach (string mode in new[] { "--mmf3-acceptance", "--mmf3-profile-acceptance" })
+        foreach (string mode in new[] { "--mmf3-acceptance", "--mmf3-profile-acceptance", "--open-development-workspace-once" })
         {
             Assert.Equal(2, main.Invoke(null, [new[] { mode }]));
             Assert.Equal(2, main.Invoke(null, [new[] { mode, "invalid" }]));
@@ -661,7 +665,7 @@ public sealed class Mmf3AcceptanceTests
         Assert.Null(assembly.GetType("PersonalAiWorkspace.Desktop.Mmf3AcceptanceLaunch"));
         Assert.Null(assembly.GetType("PersonalAiWorkspace.Desktop.Mmf3ProfileState"));
         Assert.Null(typeof(RuntimeClient).GetMethod("CreateMmf3Acceptance", BindingFlags.Static | BindingFlags.NonPublic));
-        foreach (string mode in new[] { "--mmf3-acceptance", "--mmf3-profile-acceptance" })
+        foreach (string mode in new[] { "--mmf3-acceptance", "--mmf3-profile-acceptance", "--open-development-workspace-once" })
             Assert.Equal(2, main.Invoke(null, [new[] { mode, id }]));
 #endif
 #endif

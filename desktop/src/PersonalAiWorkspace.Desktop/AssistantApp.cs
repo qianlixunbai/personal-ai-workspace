@@ -147,6 +147,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (acceptance is not null)
         {
             trayMenu.Items.Add("当前开发 Profile：" + acceptance.RunId).Enabled = false;
+            if (acceptance.OpenOnce) trayMenu.Items.Add("仅本次打开 · 不更改默认工作区").Enabled = false;
             var runtimeVersion = trayMenu.Items.Add("Java Runtime：未就绪");
             runtimeVersion.Enabled = false;
             trayMenu.Opening += (_, _) => runtimeVersion.Text = runtimeOwner?.RunningJarSha256 is string hash
@@ -593,6 +594,11 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
             try
             {
                 acceptance!.Validate();
+                if (acceptance.OpenOnce)
+                {
+                    developmentStartup.TrySetResult("READY_OPEN_ONCE");
+                    return;
+                }
                 DevelopmentWorkspaceSelection.Save(acceptance.RunId);
                 developmentStartup.TrySetResult("READY_SELECTION_SAVED");
             }
