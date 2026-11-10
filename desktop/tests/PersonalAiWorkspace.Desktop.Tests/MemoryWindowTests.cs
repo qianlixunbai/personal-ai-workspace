@@ -175,6 +175,9 @@ public sealed class MemoryWindowTests
             Assert.False(window.SaveButton.IsEnabled);
             Assert.Contains("操作结果待确认", window.MetadataText.Text);
             Safe(window.StatusText.Text);
+            await window.ReviewItemAsync(created);
+            Assert.False(window.AdoptReviewButton.IsEnabled);
+            await window.AdoptReviewAsync(); Assert.Contains("New", window.MetadataText.Text);
             await window.SaveAsync();
             Assert.Equal(1, store.Mutations);
 
@@ -204,6 +207,9 @@ public sealed class MemoryWindowTests
             Assert.False(window.SaveButton.IsEnabled);
             Assert.False(window.LifecycleButton.IsEnabled);
             Assert.False(window.DeleteButton.IsEnabled);
+            await window.ReviewItemAsync(created);
+            Assert.False(window.AdoptReviewButton.IsEnabled);
+            await window.AdoptReviewAsync(); Assert.False(window.SaveButton.IsEnabled);
             await window.SaveAsync(); await window.ChangeStatusAsync(); await window.DeleteAsync();
             Assert.Equal(2, store.Mutations);
             approve = false; await window.ReloadAsync();
@@ -293,7 +299,7 @@ public sealed class MemoryWindowTests
     });
 
     [Fact]
-    public Task ConflictPreservesEditsBlocksAllMutationsAndOnlyConfirmedReloadUsesLatestRevision() => StaAsync(async () =>
+    public Task ConflictCanBeReviewedAndMergedWithoutDiscardingDraftOrOverwritingUnseenChanges() => StaAsync(async () =>
     {
         var store = new Store(); var original = store.Add(); using var runtime = store.Client(); bool approve = false;
         var window = new MemoryWindow(runtime, _ => approve);
@@ -305,9 +311,26 @@ public sealed class MemoryWindowTests
         Assert.False(window.SaveButton.IsEnabled); Assert.False(window.LifecycleButton.IsEnabled); Assert.False(window.DeleteButton.IsEnabled);
         await window.SaveAsync(); await window.ChangeStatusAsync(); await window.DeleteAsync();
         Assert.Equal(1, store.Mutations); await window.ReloadAsync(); Assert.True(window.Stale);
-        approve = true; await window.ReloadAsync(); Assert.False(window.Stale); Assert.False(window.Dirty);
-        Assert.True(store.Items[original.Id].Content == window.ContentBox.Text, "Reload differs.");
-        window.ContentBox.Text += " explicit"; await window.SaveAsync(); Assert.Equal(6, store.Items[original.Id].Revision);
+        window.ReviewCurrentButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
+        Assert.Equal(store.Items[original.Id].Content, window.ReviewContent.Text);
+        Assert.Equal(edits, window.ContentBox.Text); Assert.True(window.Stale); Assert.False(window.SaveButton.IsEnabled);
+        await window.AdoptReviewAsync(); Assert.True(window.Stale); // Declined confirmation.
+        var unrelated = store.Add(); await window.ReviewItemAsync(unrelated);
+        Assert.False(window.AdoptReviewButton.IsEnabled); approve = true;
+        await window.AdoptReviewAsync(); Assert.Contains(original.Id.ToString("D"), window.MetadataText.Text);
+        await window.ReviewItemAsync(original);
+        window.ContentBox.Text = window.ReviewContent.Text + " merged local-edit";
+        string merged = window.ContentBox.Text;
+        await window.AdoptReviewAsync(); Assert.False(window.Stale); Assert.True(window.Dirty);
+        Assert.Equal(merged, window.ContentBox.Text); Assert.Equal(1, store.Mutations);
+        store.Items[original.Id] = store.Items[original.Id] with { Revision = 6, Title = "Synthetic concurrent title" };
+        await window.SaveAsync(); Assert.True(window.Stale); Assert.Equal(merged, window.ContentBox.Text);
+        await window.ReviewItemAsync(original);
+        window.TitleBox.Text = window.ReviewTitle.Text;
+        await window.AdoptReviewAsync(); await window.SaveAsync();
+        Assert.Equal(7, store.Items[original.Id].Revision); Assert.Equal(merged, store.Items[original.Id].Content);
+        Assert.Equal("Synthetic concurrent title", store.Items[original.Id].Title);
+        Assert.False(window.Dirty); Assert.Equal(3, store.Mutations);
         Safe(window.StatusText.Text); Assert.True(window.TryClose());
     });
 

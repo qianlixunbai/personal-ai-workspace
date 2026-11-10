@@ -99,6 +99,7 @@
           <Button x:Name="LifecycleButton" Content="Archive" Click="Lifecycle"/>
           <Button x:Name="DeleteButton" Content="Delete" Click="Delete"/>
           <Button x:Name="ReloadButton" Content="Reload" Click="Reload"/>
+          <Button x:Name="ReviewCurrentButton" Content="对照最新" Click="ReviewCurrent"/>
         </WrapPanel>
       </Grid>
     </Grid>

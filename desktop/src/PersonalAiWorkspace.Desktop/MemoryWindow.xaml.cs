@@ -11,7 +11,7 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop;
 
-internal enum MemoryConfirmation { Discard, Reload, Delete, AdoptReview }
+internal enum MemoryConfirmation { Discard, Reload, Delete, AdoptReview, ContinueReview }
 
 public partial class MemoryWindow : Window
 {
@@ -29,6 +29,9 @@ public partial class MemoryWindow : Window
     internal bool Stale => stale;
     internal bool IsClosed => closed;
     private MemoryType SelectedType => EditorType.SelectedIndex == 0 ? MemoryType.PREFERENCE : MemoryType.PROJECT_NOTE;
+    private bool CanAdoptReview => !outcomeUnknown && !missing && reviewed?.Status == MemoryStatus.ACTIVE
+        && (loaded is null || loaded.Id == reviewed.Id)
+        && new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid();
 
     internal MemoryWindow(RuntimeClient runtime, Func<MemoryConfirmation, bool>? confirmation = null)
     {
@@ -46,6 +49,7 @@ public partial class MemoryWindow : Window
         MemoryConfirmation.Reload => "重新加载将丢弃本地未保存的修改。继续？",
         MemoryConfirmation.Delete => "删除此 Memory？\n它将不再出现在后续 Memory 读取和搜索中。\n这不保证磁盘取证级擦除。未保存的修改也将丢弃。",
         MemoryConfirmation.AdoptReview => "保留右侧草稿，改为修订左侧已核对的这条记忆？\n此操作不会保存；之后点击 Save 才会更新它，不会另建一条。",
+        MemoryConfirmation.ContinueReview => "保留右侧草稿，以左侧已核对的最新版本继续编辑？\n请先将需要保留的内容合并到草稿。之后点击 Save 将用草稿更新这条记忆，此时不会写入。",
         _ => "丢弃未保存的修改？"
     }, "Memory", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
@@ -61,8 +65,9 @@ public partial class MemoryWindow : Window
         bool validDraft = new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid();
         ReviewTarget.IsEnabled = available;
         ReviewButton.IsEnabled = available && ReviewTarget.SelectedItem is MemoryItem;
-        AdoptReviewButton.IsEnabled = available && loaded is null && !outcomeUnknown && validDraft
-            && reviewed?.Status == MemoryStatus.ACTIVE;
+        AdoptReviewButton.IsEnabled = available && CanAdoptReview;
+        AdoptReviewButton.Content = loaded is null ? "保留草稿，修订这条记忆" : "保留草稿，以此版本继续编辑";
+        ReviewCurrentButton.IsEnabled = available && loaded is not null;
         SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty && validDraft;
         DraftValidationText.Text = $"标题 {TitleBox.Text.EnumerateRunes().Count()} / 160 字符 · 正文 {ContentBox.Text.Length} / 2000 UTF-16 单位（{Encoding.UTF8.GetByteCount(ContentBox.Text)} / 8192 UTF-8 字节）";
         if (Dirty && !validDraft) DraftValidationText.Text += "\n暂不能保存：标题和正文均须填写有效文字，且不能超过上限。请修改草稿；内容不会自动截断。";
@@ -245,13 +250,12 @@ public partial class MemoryWindow : Window
         if (closed) return;
         ShowReview(latest);
         StatusText.Text = "已读取当前保存内容，请与右侧草稿对照。没有写入或替换草稿。";
-    }, affectsLoaded: false);
+    }, affectsLoaded: item.Id == loaded?.Id);
     internal Task AdoptReviewAsync()
     {
-        if (busy || closed || loaded is not null || outcomeUnknown || reviewed?.Status != MemoryStatus.ACTIVE
-            || !new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid()
-            || !confirm(MemoryConfirmation.AdoptReview)) return Task.CompletedTask;
-        var expected = reviewed;
+        if (busy || closed || !CanAdoptReview
+            || !confirm(loaded is null ? MemoryConfirmation.AdoptReview : MemoryConfirmation.ContinueReview)) return Task.CompletedTask;
+        var expected = reviewed!;
         return RunAsync(async () =>
         {
             ClearReview();
@@ -274,6 +278,8 @@ public partial class MemoryWindow : Window
     private async void ReviewSelected(object sender, RoutedEventArgs e)
     { if (ReviewTarget.SelectedItem is MemoryItem item) await ReviewItemAsync(item); }
     private async void AdoptReview(object sender, RoutedEventArgs e) => await AdoptReviewAsync();
+    private async void ReviewCurrent(object sender, RoutedEventArgs e)
+    { if (loaded is not null) await ReviewItemAsync(loaded); }
     private async void Opened(object sender, RoutedEventArgs e) => await RefreshAsync();
     private async void Search(object sender, RoutedEventArgs e) => await RefreshAsync(search: true);
     private async void Refresh(object sender, RoutedEventArgs e) => await RefreshAsync();
