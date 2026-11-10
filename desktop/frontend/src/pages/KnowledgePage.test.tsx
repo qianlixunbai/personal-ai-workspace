@@ -9,9 +9,101 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.useRealTimers(); vi.restoreAllMocks() })
 const click = async (name: string | RegExp) => { await act(async () => fireEvent.click(screen.getByRole('button', { name }))) }
 async function setup(port = new KnowledgeService()) { const bridge = new WorkspaceClient(port); clients.push(bridge); port.session(); render(<KnowledgePage bridge={bridge} enabled visible />); await screen.findByRole('button', { name: /fixture.md/ }); return { port, bridge } }
+class ImportContinuityService extends KnowledgeService {
+  activeTotal = 1
+  archivedTotal = 21
+  failDetail = false
+  failList = false
+  holdLists = false
+  holdDetail = false
+  holdImportState = false
+  reject(index: number, message: string) {
+    const request = this.sent[index]!
+    this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'KnowledgeStorageUnavailable', message } })
+  }
+  list(status: 'ACTIVE' | 'ARCHIVED', page: number) {
+    const total = status === 'ACTIVE' ? this.activeTotal : this.archivedTotal
+    const items = Array.from({ length: Math.min(20, Math.max(0, total - page * 20)) }, (_, i) => {
+      const index = page * 20 + i
+      return status === 'ACTIVE' && index === 0 ? { ...this.document } : { ...this.document, status,
+        documentId: `dddddddd-dddd-4ddd-8ddd-${String(index + 1).padStart(12, '0')}`, title: `${status.toLowerCase()}-${index + 1}.md` }
+    })
+    return { items, total, page, limit: 20 }
+  }
+  override job() { const value = super.job(); return this.document.processingState === 'PARSING' ? { ...value, state: 'PARSING' as const, sourceRevision: null } : value }
+  override postMessage(value: unknown) {
+    const request = value as { method: string; payload: Record<string, unknown> }
+    if (request.method === 'knowledge.list') {
+      this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
+      if (this.holdLists) return
+      if (this.failList) { this.reject(index, '合成列表读取失败。'); return }
+      this.reply(index, this.list(request.payload.status as 'ACTIVE' | 'ARCHIVED', Number(request.payload.page))); return
+    }
+    if (request.method === 'knowledge.get' && (this.holdDetail || this.failDetail)) {
+      this.sent.push(value as Record<string, unknown>)
+      if (this.failDetail) this.reject(this.sent.length - 1, '合成详情读取失败。')
+      return
+    }
+    if (request.method === 'knowledge.importState' && this.holdImportState) { this.sent.push(value as Record<string, unknown>); return }
+    super.postMessage(value)
+  }
+}
+it('recovers accepted imports without resending, refreshes the intended list and corrects a page emptied by concurrent changes', async () => {
+  const port = new ImportContinuityService(); await setup(port)
+  await act(async () => fireEvent.change(screen.getByLabelText('文档状态'), { target: { value: 'ARCHIVED' } }))
+  await click('下一页文档'); expect(screen.getByRole('button', { name: /archived-21.md/ })).toBeTruthy()
+  const before = port.sent.length; port.failDetail = true; await click('导入文档')
+  expect((screen.getByLabelText('文档状态') as HTMLSelectElement).value).toBe('ACTIVE')
+  expect(screen.getByRole('region', { name: '本次文档导入' }).textContent).toContain('文件已接收')
+  expect((screen.getByRole('button', { name: '导入文档' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(port.sent.slice(before).filter(r => r.method === 'knowledge.list').every(r => JSON.stringify(r.payload) === JSON.stringify({ status: 'ACTIVE', page: 0 }))).toBe(true)
+  expect(screen.getByRole('alert').textContent).toBe('合成详情读取失败。')
+  port.failDetail = false; port.failList = true; await click('重新读取已接收资料')
+  expect(port.sent.filter(r => r.method === 'knowledge.import')).toHaveLength(1)
+  expect(port.sent.filter(r => r.method === 'knowledge.importState').map(r => r.payload)).toEqual([{ requestId: port.document.requestId }])
+  expect(screen.getByRole('heading', { name: 'fixture.md' })).toBeTruthy()
+  expect(screen.getByText('导入已接收，资料详情已读取。处理状态见文档详情。')).toBeTruthy()
+  expect(screen.getByRole('alert').textContent).toBe('合成列表读取失败。')
+  expect(screen.queryByRole('region', { name: '本次文档导入' })).toBeNull()
+  port.failList = false; port.activeTotal = 21; await click('刷新列表'); await click('下一页文档')
+  expect(screen.getByRole('button', { name: /active-21.md/ })).toBeTruthy()
+  port.activeTotal = 20; await click('刷新列表')
+  expect(screen.getByText('1 / 1')).toBeTruthy(); expect(screen.getByRole('button', { name: /fixture.md/ })).toBeTruthy()
+  expect(screen.queryByText(/还没有文档/)).toBeNull()
+  expect(port.sent.filter(r => r.method === 'knowledge.list').at(-1)?.payload).toEqual({ status: 'ACTIVE', page: 0 })
+  expect(port.sent.filter(r => r.method === 'knowledge.import')).toHaveLength(1)
+})
+it('keeps import polling on the current list and prevents late list or import lookup replies from crossing views or sessions', async () => {
+  const port = new ImportContinuityService(); port.document.processingState = 'PARSING'; await setup(port)
+  vi.useFakeTimers(); await click(/fixture.md/); port.holdDetail = true
+  await act(async () => { vi.advanceTimersByTime(1000) })
+  const poll = port.sent.map(r => r.method).lastIndexOf('knowledge.get')
+  await act(async () => fireEvent.change(screen.getByLabelText('文档状态'), { target: { value: 'ARCHIVED' } }))
+  expect(screen.getByRole('button', { name: /archived-1.md/ })).toBeTruthy()
+  port.document.processingState = 'READY'; port.holdLists = true
+  await act(async () => port.reply(poll, port.detail()))
+  const oldList = port.sent.map(r => r.method).lastIndexOf('knowledge.list')
+  expect(port.sent[oldList]?.payload).toEqual({ status: 'ARCHIVED', page: 0 })
+  await act(async () => fireEvent.change(screen.getByLabelText('文档状态'), { target: { value: 'ACTIVE' } }))
+  const newList = port.sent.map(r => r.method).lastIndexOf('knowledge.list')
+  await act(async () => port.reply(newList, port.list('ACTIVE', 0)))
+  await act(async () => port.reject(oldList, '不应出现的迟到错误'))
+  expect(screen.getByRole('button', { name: /fixture.md/ })).toBeTruthy(); expect(screen.queryByRole('alert')).toBeNull()
+  port.holdLists = false; port.holdDetail = false; port.unknown = true; await click('导入文档')
+  expect((screen.getByRole('button', { name: '导入文档' }) as HTMLButtonElement).disabled).toBe(true)
+  port.holdImportState = true; await click('检查导入状态')
+  const lookup = port.sent.map(r => r.method).lastIndexOf('knowledge.importState')
+  const reads = port.sent.filter(r => r.method === 'knowledge.get').length
+  // Resolve the old request, then rotate before its continuation resumes.
+  await act(async () => { port.reply(lookup, port.job()); port.session('cccccccc-cccc-4ccc-8ccc-cccccccccccc') })
+  expect(port.sent.filter(r => r.method === 'knowledge.get')).toHaveLength(reads)
+  expect(screen.queryByRole('region', { name: '本次文档导入' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'fixture.md' })).toBeNull()
+  expect(port.sent.filter(r => r.method === 'knowledge.import')).toHaveLength(1)
+})
 it('explicit keyword submit renders safe marks, keeps query ephemeral and opens the exact preview', async () => {
   const storage = vi.spyOn(Storage.prototype, 'setItem'); const { port } = await setup()
   const input = screen.getByLabelText('检索关键词'); fireEvent.change(input, { target: { value: '预算' } })

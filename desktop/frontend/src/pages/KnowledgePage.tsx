@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
-import type { KnowledgeDetail, KnowledgeList, KnowledgePreview } from '../bridge/knowledge'
+import type { KnowledgeDetail, KnowledgeImport, KnowledgeJob, KnowledgeList, KnowledgePreview } from '../bridge/knowledge'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { KnowledgeSearch } from '../components/KnowledgeSearch'
 import { KnowledgeAnswer } from '../components/KnowledgeAnswer'
@@ -22,7 +22,10 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const [preview, setPreview] = useState<KnowledgePreview | null>(null), [revision, setRevision] = useState('')
   const [sourceTarget, setSourceTarget] = useState<KnowledgeSourceTarget | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false), [stale, setStale] = useState(false), [unknownRequest, setUnknownRequest] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false), [stale, setStale] = useState(false), [importReceipt, setImportReceipt] = useState<KnowledgeImport | null>(null)
+  const [listLoading, setListLoading] = useState(false), [listError, setListError] = useState('')
+  const listView = useRef({ status, page }), listRequest = useRef(0)
+  const listActive = useRef(enabled && visible); listActive.current = enabled && visible
   const generation = useRef(0), selection = useRef(0), offsets = useRef<number[]>([]), selected = useRef<string | null>(null)
   const trail = useRef<{ back: ReadingPosition[]; forward: ReadingPosition[] }>({ back: [], forward: [] })
   const filter = useRef<HTMLSelectElement>(null)
@@ -36,7 +39,29 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     trail.current.forward = []
   }
   const report = (e: unknown) => { setError(e instanceof Error ? e.message : 'Knowledge 操作暂时不可用。'); if (e instanceof BridgeError && ['KnowledgeRevisionConflict', 'OutcomeUnknown', 'KnowledgeDeleteIncomplete'].includes(e.code)) setStale(true) }
-  const refreshList = async () => { const epoch = generation.current; const result = await bridge.listKnowledge(status, page); if (epoch === generation.current) { setList(result); setCorpusEpoch(n => n + 1) } }
+  const changeListView = (nextStatus: typeof status, nextPage: number) => {
+    if (listView.current.status === nextStatus && listView.current.page === nextPage) return
+    listRequest.current++; listView.current = { status: nextStatus, page: nextPage }
+    setStatus(nextStatus); setPage(nextPage); setList(null); setListError(''); setListLoading(false)
+  }
+  const refreshList = async (corpusChanged = true) => {
+    if (!listActive.current) return
+    const epoch = generation.current, request = ++listRequest.current, view = listView.current
+    const current = () => epoch === generation.current && request === listRequest.current && listActive.current
+    setListLoading(true); setListError('')
+    try {
+      const result = await bridge.listKnowledge(view.status, view.page)
+      if (!current()) return
+      if (corpusChanged) setCorpusEpoch(n => n + 1)
+      // Deleting/archiving the final item of a page must not look like an empty library.
+      if (view.page > 0 && view.page * 20 >= result.total) {
+        changeListView(view.status, Math.max(0, Math.ceil(result.total / 20) - 1)); return
+      }
+      setList(result)
+    } catch (e) {
+      if (current()) { setList(null); setListError(e instanceof Error ? e.message : '文档列表读取失败，请刷新列表。') }
+    } finally { if (current()) setListLoading(false) }
+  }
   const load = async (id: string, reset = true) => {
     const epoch = generation.current, pick = ++selection.current
     const result = await bridge.getKnowledge(id)
@@ -53,7 +78,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     finally { if (epoch === generation.current) setBusy(false) }
   }
   useEffect(() => {
-    const clear = () => { generation.current++; selection.current++; selected.current = null; offsets.current = []; trail.current = { back: [], forward: [] }; setList(null); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setUnknownRequest(null); setConfirmDelete(false) }
+    const clear = () => { generation.current++; selection.current++; listRequest.current++; selected.current = null; offsets.current = []; trail.current = { back: [], forward: [] }; setList(null); setListLoading(false); setListError(''); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setImportReceipt(null); setConfirmDelete(false) }
     const unsubscribe = bridge.onSession(clear); return () => { clear(); unsubscribe() }
   }, [bridge])
   useEffect(() => {
@@ -63,24 +88,43 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     }
   }, [visible])
   useEffect(() => {
-    if (!enabled || !visible) return
-    const epoch = generation.current; let disposed = false
-    void bridge.listKnowledge(status, page).then(result => { if (!disposed && epoch === generation.current) setList(result) }).catch(e => { if (!disposed && epoch === generation.current) report(e) })
-    return () => { disposed = true }
+    if (!enabled || !visible) { setListLoading(false); return }
+    void refreshList(false)
+    return () => { listRequest.current++ }
   }, [bridge, enabled, visible, status, page])
   useEffect(() => {
     if (!enabled || !visible || !processing || !document) return
     const epoch = generation.current, pick = selection.current, id = document.documentId
-    const timer = setTimeout(() => { void bridge.getKnowledge(id).then(result => { if (epoch === generation.current && pick === selection.current) { setDetail(result); setRevision(current => current || result.document.currentReadyRevision || ''); void refreshList().catch(report) } }).catch(e => { if (epoch === generation.current && pick === selection.current) report(e) }) }, 1000)
+    const timer = setTimeout(() => { void bridge.getKnowledge(id).then(result => { if (epoch === generation.current && pick === selection.current) { setDetail(result); setRevision(current => current || result.document.currentReadyRevision || ''); void refreshList() } }).catch(e => { if (epoch === generation.current && pick === selection.current) report(e) }) }, 1000)
     return () => clearTimeout(timer)
   }, [bridge, enabled, visible, document, processing, revision])
+  const readAcceptedImport = async (job: KnowledgeJob, epoch: number) => {
+    if (epoch !== generation.current || !listActive.current) return
+    changeListView('ACTIVE', 0)
+    const loaded = await load(job.documentId)
+    if (epoch !== generation.current || !loaded) return
+    setImportReceipt(null); setNotice('导入已接收，资料详情已读取。处理状态见文档详情。')
+    await refreshList()
+  }
   const importSource = (update: boolean) => run(async () => {
+    if (importReceipt) return
     const epoch = generation.current
     const result = await bridge.importKnowledge(update && document ? document.documentId : null, update && document ? document.metadataVersion : null)
     if (epoch !== generation.current) return
     if (result.outcome === 'CANCELLED') { setNotice('已取消导入。'); return }
-    if (result.outcome === 'UNKNOWN') { setUnknownRequest(result.requestId); setNotice('导入结果暂无法确认；请检查导入状态，文件不会自动重发。'); return }
-    setUnknownRequest(null); setStatus('ACTIVE'); setPage(0); await load(result.job!.documentId); await refreshList(); setNotice('导入已接受。')
+    setImportReceipt(result)
+    if (result.outcome === 'UNKNOWN') { setNotice('导入结果暂无法确认；请检查导入状态，文件不会自动重发。'); return }
+    setNotice('导入已接收，正在读取资料详情。读取失败不会重新导入。')
+    await readAcceptedImport(result.job!, epoch)
+  })
+  const checkImport = () => run(async () => {
+    if (!importReceipt?.requestId) return
+    const epoch = generation.current, requestId = importReceipt.requestId
+    const job = await bridge.knowledgeImportState(requestId)
+    if (epoch !== generation.current) return
+    setImportReceipt({ outcome: 'ACCEPTED', requestId, job })
+    setNotice('已查到原导入请求，正在读取资料详情。')
+    await readAcceptedImport(job, epoch)
   })
   const showPreview = (offset: number, history: 'push' | 'back' | 'reset' | 'before' = 'push') => run(async () => {
     if (!enabled || !visible || !document || !revision) return
@@ -99,7 +143,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (!document) return
     const epoch = generation.current, id = document.documentId
     if (action === 'delete') { await bridge.deleteKnowledge(id, document.metadataVersion); if (epoch !== generation.current) return; selection.current++; selected.current = null; offsets.current = []; trail.current = { back: trail.current.back.filter(p => p.documentId !== id), forward: trail.current.forward.filter(p => p.documentId !== id) }; setDetail(null); setPreview(null); setSourceTarget(null); filter.current?.focus(); setNotice('文档及保留的源版本已删除。') }
-    else { await (action === 'archive' ? bridge.archiveKnowledge(id, document.metadataVersion) : bridge.restoreKnowledge(id, document.metadataVersion)); if (epoch !== generation.current) return; await load(id); setNotice(action === 'archive' ? '文档已归档。' : '文档已恢复。') }
+    else { await (action === 'archive' ? bridge.archiveKnowledge(id, document.metadataVersion) : bridge.restoreKnowledge(id, document.metadataVersion)); if (epoch !== generation.current) return; const loaded = await load(id); if (epoch !== generation.current || !loaded) return; setNotice(action === 'archive' ? '文档已归档。' : '文档已恢复。') }
     await refreshList()
   })
   const openComparedSource = (sourceRevision: string, offset: number) => run(async () => {
@@ -172,7 +216,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
     <div className="card-heading memory-toolbar knowledge-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
-      <button className="primary" disabled={!enabled || busy} onClick={() => { void importSource(false) }}>导入文档</button>
+      <button className="primary" disabled={!enabled || busy || !!importReceipt} onClick={() => { void importSource(false) }}>导入文档</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
     <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
     <p className="hint">支持 UTF-8 TXT、Markdown、Word（.docx）正文和 PDF 文字层摘录。Word / PDF 须先预览确认，不保存原文件、图片与版式；PDF 不进行 OCR，扫描件须先转为文字并核对。</p>
@@ -181,11 +225,13 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} currentDocument={document} onMemoryDraft={onMemoryDraft} /></details>
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>
-        <div className="knowledge-list-tools"><label className="sr-only" htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => { setStatus(e.target.value as typeof status); setPage(0) }}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
-          <button disabled={!enabled || busy} onClick={() => { void run(refreshList) }}>刷新列表</button></div>
-        <ul tabIndex={0} aria-label="文档列表">{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(async () => { await load(d.documentId) }) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
+        <div className="knowledge-list-tools"><label className="sr-only" htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => changeListView(e.target.value as typeof status, 0)}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
+          <button disabled={!enabled || busy || listLoading} onClick={() => { void run(refreshList) }}>刷新列表</button></div>
+        {listLoading && <p role="status">正在读取文档列表…</p>}
+        {listError && <p role="alert" className="error">{listError}</p>}
+        <ul tabIndex={0} aria-label="文档列表" aria-busy={listLoading}>{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy || listLoading} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(async () => { await load(d.documentId) }) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
         {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入文档」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
-        <div className="pagination"><button disabled={!enabled || busy || page === 0} onClick={() => setPage(page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || !list || (page + 1) * 20 >= list.total} onClick={() => setPage(page + 1)}>下一页文档</button></div>
+        <div className="pagination"><button disabled={!enabled || busy || listLoading || page === 0} onClick={() => changeListView(status, page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(page + 1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || listLoading || !list || (page + 1) * 20 >= list.total} onClick={() => changeListView(status, page + 1)}>下一页文档</button></div>
       </section>
       <section className="card knowledge-detail" aria-labelledby="knowledge-detail-title"><h2 id="knowledge-detail-title">{document?.title ?? '选择一个文档'}</h2>
         {(trail.current.back.length > 0 || trail.current.forward.length > 0) && <nav className="pagination" aria-label="来源阅读记录">
@@ -205,14 +251,17 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId, false) }) }}>刷新详情</button>
-            <button disabled={!enabled || busy || processing || stale || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
+            <button disabled={!enabled || busy || processing || stale || !!importReceipt || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
             <button disabled={!enabled || busy || processing || stale} onClick={() => { void mutation(document.status === 'ACTIVE' ? 'archive' : 'restore') }}>{document.status === 'ACTIVE' ? '归档' : '恢复'}</button>
             <button className="destructive" disabled={!enabled || busy || processing || stale} onClick={() => setConfirmDelete(true)}>物理删除…</button>
             {processing && document.requestId && <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.cancelKnowledgeImport(document.documentId, document.requestId!); await load(document.documentId) }) }}>取消导入</button>}</div>
         </>}
       </section>
     </div>
-    {unknownRequest && <button disabled={busy || !enabled} onClick={() => { void run(async () => { const job = await bridge.knowledgeImportState(unknownRequest); setUnknownRequest(null); await load(job.documentId); await refreshList() }) }}>检查导入状态</button>}
+    {importReceipt && <section className="card" aria-label="本次文档导入">
+      <p>{importReceipt.outcome === 'UNKNOWN' ? '导入结果待确认。只检查原请求，不会重复发送文件。' : `文件已接收，最近确认状态：${labels[importReceipt.job!.state]}。可重新读取资料，无需再次导入。`}</p>
+      <button disabled={busy || !enabled || !visible} onClick={() => { void checkImport() }}>{importReceipt.outcome === 'UNKNOWN' ? '检查导入状态' : '重新读取已接收资料'}</button>
+    </section>}
     {error && <p role="alert" className="error">{error}</p>}<p role="status">{notice}</p>
     {confirmDelete && document && <ConfirmationDialog title="物理删除 Knowledge 文档？" confirmText="确认删除" cancel={() => setConfirmDelete(false)} confirm={() => { setConfirmDelete(false); void mutation('delete') }}><p>将删除此文档的所有源版本、私有源文件、normalized text 和 locator 数据。此操作无法撤销，不承诺取证级擦除。</p></ConfirmationDialog>}
   </section>
