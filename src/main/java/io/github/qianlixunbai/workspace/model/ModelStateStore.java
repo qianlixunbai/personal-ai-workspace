@@ -88,11 +88,11 @@ public final class ModelStateStore implements AutoCloseable {
         }
         windows = Files.getFileAttributeView(nearestExisting(root), PosixFileAttributeView.class) == null
                 && Files.getFileAttributeView(nearestExisting(root), DosFileAttributeView.class) != null;
-        // Windows Profile admission and private ACLs bind the effective TokenUser, not a JVM property.
-        windowsOwner = windows ? WindowsPrivateAcl.bindCurrentOwner() : null;
         account = windows ? null : root.getFileSystem().getUserPrincipalLookupService()
                 .lookupPrincipalByName(System.getProperty("user.name"));
         noLinks(root);
+        // Windows Profile admission and private ACLs bind the effective TokenUser, not a JVM property.
+        windowsOwner = windows ? WindowsPrivateAcl.bindCurrentOwner() : null;
         createDirectories(root);
         rootKey = verify(root, true);
         try {
@@ -321,7 +321,7 @@ public final class ModelStateStore implements AutoCloseable {
         if (bytes.length > limit) throw new IOException("Model state exceeds budget");
         Path pending = root.resolve(pendingName), target = root.resolve(targetName);
         if (exists(pending)) throw new IOException("Pending model state exists");
-        if (windows) WindowsPrivateAcl.createFile(pending);
+        if (windows) WindowsPrivateAcl.createFile(pending, windowsOwner);
         else Files.createFile(pending, permissions(false));
         Object pendingKey = verify(pending, false);
         try (var out = FileChannel.open(pending, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {

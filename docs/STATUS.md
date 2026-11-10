@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [模型状态绑定窄修经二次源码复核](engineering/MODEL-STATE-OWNER-CONTRACT-FIX.md#二次源码复核与本地-checkpoint)：`atomicWrite` 临时文件传固定 `windowsOwner`，构造顺序调整为 noLinks → 身份绑定 → createDirectories，后续校验和 NativeGate 保留。独立审阅者直接检查源码 diff，仅支持本地 checkpoint，未审阅 AST 检查器或运行检查；执行方新回执为 194 源编译、568 class、75 条警告及 5 个调用接线检查通过，未加载产品类／JNA。提交前后核对源码哈希，不重跑检查；原生行为、完整 token 约束、全程原子性和历史根因均未证明，无新包／部署／Profile 操作，完整验收继续 BLOCKED / productionGo=false。
+
 2026-11-10 [Windows 模型状态有效账户绑定候选](engineering/MODEL-STATE-OWNER-CONTRACT-FIX.md)完成：基于 Bootstrap／私有 ACL 的当前 TokenUser 契约，在两个生产文件中用固定 SID 取代 Windows 的 Java 用户名期待值，保留完整校验和末尾 owner 检查，并拒绝后续主体变化。194 个 Java 源编译及一个不加载原生库／Store 的纯 SID 契约检查通过；原生文件校验、原／替代 Profile 构造登记和 EXE 均未运行，未打包或部署。当前采样不是旧根因证明；完整验收仍 BLOCKED / productionGo=false。
 
 2026-11-10 [原 model-state 操作范围与只读观察](engineering/MODEL-STATE-READONLY-OBSERVATION.md)完成：此前拒绝是 Store 构造中的产品校验，精确对象的独立元数据查询未见旧拒绝。本次按明确范围普通权限采样成功，当前为普通目录，owner 与有效令牌 SID 相等、与同进程 Java 命名账户 SID 不等；只能证明当前上下文，不能追认旧失败根因。未重试构造／登记／EXE，未修改产品或安全规则；无新产品模块、旧测试／包未重跑，完整验收仍 BLOCKED / productionGo=false。
