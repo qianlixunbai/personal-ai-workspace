@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-10：[状态目录拒绝分支审计](engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)列明每个条件、历史证据和待确认的只读取证范围，根因未证实、原登记仍停止。[原文摘录到记忆](engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)记录一条独立完成的资料选区、审阅、明确保存流程及两项新合成检查；本轮无新包或 EXE／WebView 验收。
+
 2026-11-09：[完整会话导出](engineering/CONVERSATION-EXPORT-REPORT.md)提供全部持久轮次的原文笔记、原生保存与取消证据、新统一开发包及开源评估。记录草稿排除、状态／记忆引用保真、宿主新 Profile 和仓库目录写权限失败；不等同于个人恢复或正式发布。
 
 2026-11-09：[PDF 导入与完整应用验证](engineering/KNOWLEDGE-PDF-IMPORT-REPORT.md)提供最新统一开发 ZIP、实际 EXE 启动、PDF 预览确认／检索／重开证据、许可来源和边界。无 OCR，0 模型调用；上一阅读包的完整启动也已补验，下列文档保留各自原时点范围。

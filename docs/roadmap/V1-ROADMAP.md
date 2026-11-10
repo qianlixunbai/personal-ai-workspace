@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 优先完成[原状态目录拒绝的分支审计](../engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)，给出 Windows 准入约束、所有条件与最小待确认的只读证据，原动作仍停止；未知现场值没有被假设补全。同时交付一个完整流程[资料原文 → 手动记忆](../engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)，产品 `41cb53a`，只有用户选区和可编辑出处进入草稿，明确保存后沿已有显式选择使用。两项必要合成检查通过，无模型／新包或完整桌面结论；不为三项计数追加小修。下一步聚焦原拒绝证据与实际使用，整体维护继续 BLOCKED / productionGo=false。
+
 2026-11-10 [导入后继续查看资料](../engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)作为本会话第三个实质模块完成，`9daf2c1` 补齐已受理回执、只查原请求、列表视图与会话代次隔离、失效末页恢复；两项必要场景通过，独立新包已校验。前两项会话草稿保护继续包含，无重复验收或新安全权限。下一会话依据明确使用缺口或原拒绝的确切新证据推进，不继续凑模块；完整 EXE／WebView、真实模型恢复及维护仍未关闭，productionGo=false。
 
 2026-11-10 [会话编辑连续性](../engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)完成网页草稿丢失和原生跨会话误带草稿两项修复，产品 `bcd9f87`／`f061213`。仅检查直接受影响的前端 6 项与 Native 1 项，新开发包已校验。下一步按明确用户流程或原所有者拒绝的新证据推进，不为模块数重复阅读导航／Memory 另存，也不重复同类验收包装。[身份来源研究](../engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)补充了环境用户名与有效令牌的具体区别，但未证明原失败根因；EXE／WebView、真实模型恢复及完整维护仍未关闭，productionGo=false。

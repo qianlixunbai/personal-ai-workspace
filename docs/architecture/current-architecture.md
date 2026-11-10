@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-10 [原文摘录进入记忆草稿](../engineering/KNOWLEDGE-EXCERPT-MEMORY-REPORT.md)：React 将完全位于当前已验证 Knowledge 预览中的 DOM 选区核对为原文切片，绝对偏移与源版本随出处文字进入现有 Memory 草稿接收器。KNOWLEDGE 仅是临时编辑来源角色；保存复用原有 MANUAL 创建，不增加持久引用／自动选择／模型生成或协议。独立[状态目录分支审计](../engineering/MODEL-STATE-REJECTION-BRANCH-AUDIT.md)补齐两套身份链及 Windows provider 依据，但没有更改 Native／Java 校验或取得原拒绝的重试权限。
+
 2026-11-10 [Knowledge 导入连续性](../engineering/KNOWLEDGE-IMPORT-CONTINUITY-REPORT.md)：React 在详情读取成功前保留导入原请求回执，恢复入口仅调用既有 importState／get／list；状态查询 continuation 绑定原会话。所有列表读取统一使用当前视图 ref、请求序号、会话代次与页面可用性核对，筛选／页码改变即失效旧结果，列表失败与受理成功分别显示。回执未解决前阻止覆盖它的新导入；无持久回执、新 Runtime API／schema、自动重发或权限变更。
 
 2026-11-10 [会话编辑连续性](../engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)：React 将列表／搜索／新建／筛选的草稿确认集中在会话页，先经既有详情 API 读取目标及最新页、核对命中，再提交视图切换；失败保留原工作，成功仍撤销显式记忆范围。原生 ConversationWindow 同样先读取再同时更新选择／详情，刷新绑定原 ID，不自动把草稿带入其他会话。无新 Runtime API、schema、依赖、自动保存或重放。模型状态所有者规则未变，新增[只读身份来源分析](../engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)与桌面验收分别记账。
