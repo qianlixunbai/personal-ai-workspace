@@ -24,12 +24,14 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
         STOPPED_BEFORE_COMMIT, COMMIT_UNCONFIRMED, TARGET_VERIFIED }
     public record Recovery(String state, Stage lastStage, SqliteCombinedMigration.Inspection target) {}
     private record Entry(int version, String kind, String profile, String operation, int sequence,
-                         String previous, String source, String backup, Stage stage, SqliteCombinedMigration.Expected expected) {}
+                         String previous, String source, String backup, Stage stage, SqliteCombinedMigration.Expected expected,
+                         String confirmation) {}
     private static final JsonMapper JSON = JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private final SqliteSourceLease source;
     private final Path directory, backup;
     private final String operation, sourceDigest;
+    private final String confirmation;
     private final List<SqliteSourceLease.DirectoryPin> directories = new ArrayList<>();
     private final List<SqliteSourceLease.FilePin> records = new ArrayList<>(), backupFiles = new ArrayList<>();
     private Entry latest;
@@ -48,7 +50,14 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
     }
 
     private SqliteMaintenanceOwner(SqliteSourceLease source) throws IOException {
-        this.source = source; operation = UUID.randomUUID().toString().replace("-", "");
+        this(source,UUID.randomUUID().toString().replace("-", ""),null);
+    }
+    static SqliteMaintenanceOwner beginReviewed(SqliteSourceLease source,String operation,String confirmation)throws IOException {
+        if(!operation.matches("[a-f0-9]{32}")||!confirmation.matches("[a-f0-9]{64}"))throw stopped();
+        return new SqliteMaintenanceOwner(source,operation,confirmation);
+    }
+    private SqliteMaintenanceOwner(SqliteSourceLease source,String operation,String confirmation)throws IOException {
+        this.source=source;this.operation=operation;this.confirmation=confirmation;
         Path registry = source.root().resolve("evidence/sqlite-maintenance");
         directory = registry.resolve(operation); backup = directory.resolve("backup");
         try {
@@ -147,7 +156,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
                 var pin=new SqliteSourceLease.FilePin(directory.resolve(name));result.pins.add(pin);
                 var next=read(pin,result.source.root().getFileName().toString(),operation,sequence);
                 if(!next.previous.equals(previous)||!transition(last==null?null:last.stage,next.stage)
-                        ||last!=null&&(!next.source.equals(last.source)||last.backup!=null&&!last.backup.equals(next.backup)
+                        ||last!=null&&(!Objects.equals(next.confirmation,last.confirmation)||!next.source.equals(last.source)||last.backup!=null&&!last.backup.equals(next.backup)
                         ||last.expected!=null&&!last.expected.equals(next.expected)))throw stopped();
                 last=next;previous=pin.digest();sequence++;
             }
@@ -177,20 +186,28 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
     }
 
     public synchronized SqliteCombinedMigration.Expected importTarget(DataSource target) throws IOException {
+        return importTarget(target,null);
+    }
+    synchronized SqliteCombinedMigration.Expected importTarget(SqliteCombinedMigration.PreparedTarget target)throws IOException {
+        if(confirmation==null||!operation.equals(target.expected.binding().operation()))throw stopped();
+        return importTarget(null,target);
+    }
+    private SqliteCombinedMigration.Expected importTarget(DataSource target,SqliteCombinedMigration.PreparedTarget prepared) throws IOException {
         requireHeld();
         if (importAttempted || latest.stage != Stage.BACKUP_READY) throw stopped();
         importAttempted = true; // An uncertain stage write cannot replay this operation.
         try (var memory = SqliteSourceLease.readOnly(backup.resolve("memory.db"));
              var knowledge = SqliteSourceLease.readOnly(backup.resolve("knowledge/knowledge.db"))) {
-            var result = SqliteCombinedMigration.importSnapshots(memory, knowledge, backup.resolve("knowledge"), target,
-                    new SqliteCombinedMigration.Observer() {
+            var observer = new SqliteCombinedMigration.Observer() {
                         public void prepared(SqliteCombinedMigration.Expected expected) throws IOException {
                             requireHeld(); append(Stage.TARGET_PREPARED, expected);
                         }
                         public void committing() throws IOException {
                             requireHeld(); append(Stage.COMMIT_ATTEMPTED, latest.expected);
                         }
-                    }, operation);
+                    };
+            var result=prepared==null?SqliteCombinedMigration.importSnapshots(memory,knowledge,backup.resolve("knowledge"),target,observer,operation)
+                    :prepared.importSnapshots(memory,knowledge,backup.resolve("knowledge"),observer);
             requireHeld(); append(Stage.TARGET_VERIFIED, result);
             // No database.dpapi creation and no implicit restart/authority switch.
             return result;
@@ -234,7 +251,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
         if (!transition(latest == null ? null : latest.stage, stage) || sequence > 7) throw stopped();
         String previous = records.isEmpty() ? "0".repeat(64) : records.getLast().digest();
         Entry next = new Entry(1, "SQLITE_MAINTENANCE_OBSERVATION", source.root().getFileName().toString(), operation,
-                sequence, previous, sourceDigest, backupDigest, stage, expected);
+                sequence, previous, sourceDigest, backupDigest, stage, expected,confirmation);
         byte[] plain = null, protectedBytes = null;
         Path pending = directory.resolve(name(sequence, ".pending")), complete = directory.resolve(name(sequence, ".dpapi"));
         try {
@@ -298,7 +315,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
                     var pin = new SqliteSourceLease.FilePin(directory.resolve(name)); pins.add(pin);
                     Entry next = read(pin, root.getFileName().toString(), operation, sequence);
                     if (!next.previous.equals(previous) || !transition(last == null ? null : last.stage, next.stage)
-                            || last != null && (!next.source.equals(last.source)
+                            || last != null && (!Objects.equals(next.confirmation,last.confirmation)||!next.source.equals(last.source)
                             || last.backup != null && !last.backup.equals(next.backup)
                             || last.expected != null && !last.expected.equals(next.expected))) throw stopped();
                     last = next; previous = pin.digest(); sequence++;
@@ -333,6 +350,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
             plain = Crypt32Util.cryptUnprotectData(bytes.array(), entropy(profile, operation, sequence), 1, null);
             Entry result = JSON.readValue(plain, Entry.class);
             if (result.version != 1 || !"SQLITE_MAINTENANCE_OBSERVATION".equals(result.kind)
+                    || result.confirmation!=null&&!result.confirmation.matches("[a-f0-9]{64}")
                     || !profile.equals(result.profile) || !operation.equals(result.operation) || result.sequence != sequence
                     || result.stage == null || !result.source.matches("[0-9a-f]{64}") || !result.previous.matches("[0-9a-f]{64}")
                     || (result.stage == Stage.SOURCE_FROZEN ? result.backup != null : result.backup == null)
@@ -356,7 +374,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
         return ("PersonalAIWorkspace/SqliteMaintenance/observation/v1/" + profile + "/" + operation + "/" + sequence).getBytes(StandardCharsets.US_ASCII);
     }
     private static String name(int sequence, String extension) { return String.format(Locale.ROOT, "%04d", sequence) + extension; }
-    private static String sourceDigest(SqliteSourceLease.Fingerprint source) throws IOException {
+    static String sourceDigest(SqliteSourceLease.Fingerprint source) throws IOException {
         return digest(source.rootIdentity(), source.files());
     }
     private static String backupDigest(SqliteSourceLease.Fingerprint source, List<SqliteSourceLease.FilePin> pins) throws IOException {

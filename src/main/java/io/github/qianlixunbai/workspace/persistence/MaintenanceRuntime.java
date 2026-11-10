@@ -313,7 +313,7 @@ public final class MaintenanceRuntime implements AutoCloseable {
         try{
             WindowsNativeGate.admit();reply(output,Map.of("stage","OWNER_HELLO","pid",ProcessHandle.current().pid(),
                     "profile",System.getProperty("workspace.native.development-profile","")));
-            var request=readFrame(input,Set.of("action","handle","configuration"));if(!"PUBLISH".equals(request.get("action")))throw stopped();
+            var request=readFrame(input,Set.of("action","handle","configuration"));if(!"PREPARE".equals(request.get("action")))throw stopped();
             try(var exclusion=WindowsNativeGate.receiveMaintenanceExclusion((Long)request.get("handle"))){
                 WindowsNativeGate.requireMaintenanceArguments(args,exclusion);stage="SOURCE";
                 plain=Base64.getDecoder().decode((String)request.get("configuration"));var config=TrustedDatabaseConfiguration.parse(plain);
@@ -322,9 +322,19 @@ public final class MaintenanceRuntime implements AutoCloseable {
                 target.setCurrentSchema("workspace,pg_catalog");target.setConnectTimeout(3);target.setSocketTimeout(30);
                 String operation,challenge;
                 try(var model=new MaintenanceModelState(WindowsNativeGate.maintenanceProfileRoot(exclusion));
-                        var owner=SqliteMaintenanceOwner.begin(exclusion)){
-                    model.requireSnapshot();
-                    owner.createBackup();owner.importTarget(target);owner.prepareConfiguration(plain);Arrays.fill(plain,(byte)0);
+                        var review=new MaintenanceMigrationReview(exclusion,target,model)){
+                    stage="NATIVE_CONFIRMATION";
+                    reply(output,Map.of("stage","REVIEW_PREPARED","pid",ProcessHandle.current().pid(),"operation",review.operation(),
+                            "review",review.json,"digest",review.digest));
+                    var decision=readFrame(input,Set.of("action","operation","digest"));
+                    if(!review.operation().equals(decision.get("operation"))||!review.digest.equals(decision.get("digest")))throw stopped();
+                    if("CANCEL".equals(decision.get("action"))){
+                        reply(output,Map.of("stage","CANCELLED","operation",review.operation(),"digest",review.digest));return 0;
+                    }
+                    if(!"CONFIRM".equals(decision.get("action")))throw stopped();
+                    try(var owner=review.confirm((String)decision.get("operation"),(String)decision.get("digest"))){
+                    stage="CONFIRMED_MIGRATION";
+                    owner.createBackup();owner.importTarget(review.target);owner.prepareConfiguration(plain);Arrays.fill(plain,(byte)0);
                     owner.publishConfiguration();operation=owner.operationId();owner.requireHeld();
                     reply(output,Map.of("stage","PUBLISHED","operation",operation,"pid",ProcessHandle.current().pid()));
                     stage="HANDOFF_INTENT";var handoff=readFrame(input,Set.of("action","operation","pid","challenge"));
@@ -333,6 +343,7 @@ public final class MaintenanceRuntime implements AutoCloseable {
                     reply(output,Map.of("stage","OFFERED","operation",operation,"challenge",challenge));
                     command(readFrame(input,Set.of("action","operation","challenge")),"RELEASE",operation,challenge);
                     stage="RELEASE";owner.requireHeld();
+                    }
                 }
                 reply(output,Map.of("stage","RELEASED","operation",operation,"challenge",challenge));return 0;
             }

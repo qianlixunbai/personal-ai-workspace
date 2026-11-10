@@ -19,6 +19,8 @@ public static partial class RuntimeLifecycleProbe
     {
         if (args is ["--x1-execution-lifecycle-fixture"]) return RunX1ExecutionLifecycleFixture();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
+        if(args is ["--migration-confirmation",var confirmationProfile,var psql])return RunMaintenanceConfirmation(confirmationProfile,psql);
+        if(args is ["--migration-confirmation-rejections",var rejectedProfile,var rejectionPsql])return RunMaintenanceConfirmationRejections(rejectedProfile,rejectionPsql);
         if(args is ["--ordinary-native-lifecycle",var ordinaryId,var ordinaryMode,var ordinaryReceipt])
             return RunOrdinaryNativeLifecycle(ordinaryId,ordinaryMode,ordinaryReceipt);
         if(args is ["--maintenance-runtime-handoff",var maintenanceProfile])return RunMaintenanceRuntimeHandoff(maintenanceProfile);

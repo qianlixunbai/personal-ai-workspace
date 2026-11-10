@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace PersonalAiWorkspace.Desktop;
 
 // Native transport for an explicitly chosen SQLite source/target. No UI currently invokes it;
-// generic personal maintenance remains BLOCKED. The caller must own its native choice/confirmation.
+// generic personal maintenance remains BLOCKED. This transport owns its final native confirmation.
 // Both children are launched here from pinned product sources; no PID lookup or saved READY record.
 internal sealed class MaintenanceRuntimeHandoff : IDisposable
 {
@@ -94,10 +94,22 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         var hello=await Read(source,token).ConfigureAwait(false);Stage(hello,"OWNER_HELLO");
         if(hello.GetProperty("pid").GetInt64()!=source.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
         long sourceHandle=ProfileRecoveryCoordinator.DuplicateExclusion(runtimeLock,source);
-        await Write(source,new{action="PUBLISH",handle=sourceHandle,configuration=Convert.ToBase64String(configurationBytes)},token).ConfigureAwait(false);
+        await Write(source,new{action="PREPARE",handle=sourceHandle,configuration=Convert.ToBase64String(configurationBytes)},token).ConfigureAwait(false);
+        var prepared=await Read(source,token).ConfigureAwait(false);Stage(prepared,"REVIEW_PREPARED");
+        if(prepared.GetProperty("pid").GetInt64()!=source.Id||source.HasExited)throw Stop();
+        var review=MaintenanceMigrationConfirmation.Read(Text(prepared,"review"),Text(prepared,"digest"),profile.RunId,configurationBytes);
+        if(Text(prepared,"operation")!=review.Operation)throw Stop();
+        bool confirmed=await review.RequestAsync(token).ConfigureAwait(false);
+        RequireNative();if(source.HasExited)throw Stop();
+        await Write(source,new{action=confirmed?"CONFIRM":"CANCEL",operation=review.Operation,digest=review.Digest},token).ConfigureAwait(false);
+        if(!confirmed){
+            var cancelled=await Read(source,token).ConfigureAwait(false);Stage(cancelled,"CANCELLED");
+            if(Text(cancelled,"operation")!=review.Operation||Text(cancelled,"digest")!=review.Digest)throw Stop();
+            await RequireExited(source,token).ConfigureAwait(false);throw new OperationCanceledException("Native migration confirmation cancelled.");
+        }
         var published=await Read(source,token).ConfigureAwait(false);Stage(published,"PUBLISHED");
         operation=Text(published,"operation");Hex(operation,32);
-        if(published.GetProperty("pid").GetInt64()!=source.Id||source.HasExited)throw Stop();
+        if(operation!=review.Operation||published.GetProperty("pid").GetInt64()!=source.Id||source.HasExited)throw Stop();
 
         runtime=Launch(false);hello=await Read(runtime,token).ConfigureAwait(false);Stage(hello,"HELLO");
         if(hello.GetProperty("pid").GetInt64()!=runtime.Id||Text(hello,"profile")!=profile.RunId)throw Stop();
