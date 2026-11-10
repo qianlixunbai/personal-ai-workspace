@@ -13,6 +13,7 @@ import type { SourceMatch } from '../components/knowledgeSourceMatches'
 import { KnowledgeSourceLine } from '../components/KnowledgeSourceLine'
 import { readSourceText } from '../components/knowledgeSourceText'
 import { unicode } from '../bridge/memory'
+import { formatMemorySource } from '../components/memoryKnowledgeSource'
 
 type ReadingPosition = { documentId: string; revision: string; offset: number; target: KnowledgeSourceTarget | null; offsets: number[] }
 
@@ -38,7 +39,8 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
       || preview.sourceRevision !== revision || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > preview.text.length) return
     const content = preview.text.slice(start, end)
     if (!content.trim() || !unicode(content)) return
-    onMemoryDraft?.(`${content}\n\n出处：${document.title}\n资料 ID：${preview.documentId}\n源版本：${preview.sourceRevision}；文本偏移：${preview.offset + start}–${preview.offset + end}（不含结束位置）`, 'KNOWLEDGE')
+    onMemoryDraft?.(formatMemorySource({ excerpt: content, title: document.title, documentId: preview.documentId,
+      sourceRevision: preview.sourceRevision, startOffset: preview.offset + start, endOffset: preview.offset + end }), 'KNOWLEDGE')
   }
   const position = (): ReadingPosition | null => preview ? { documentId: preview.documentId, revision: preview.sourceRevision, offset: preview.offset, target: sourceTarget, offsets: [...offsets.current] } : null
   const remember = () => {

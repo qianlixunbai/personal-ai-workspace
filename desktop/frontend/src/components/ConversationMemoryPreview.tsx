@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { HistoricalMemory } from '../bridge/conversations'
 import type { MemoryItem } from '../bridge/memory'
+import { MemorySourceReview } from './MemorySourceReview'
 
 function ReferencedMemory({ bridge, reference }: { bridge: WorkspaceClient; reference: HistoricalMemory }) {
   const [item, setItem] = useState<MemoryItem | null>(null)
@@ -28,7 +29,8 @@ function ReferencedMemory({ bridge, reference }: { bridge: WorkspaceClient; refe
     {!item && !error && <p role="status">正在读取记忆…</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {item && <><h4 dir="auto">{item.title}</h4><p className="hint">当前保存正文（版本与本轮引用一致）。</p>
-      <pre dir="auto" tabIndex={0} aria-label="引用记忆正文">{item.content}</pre></>}
+      <pre dir="auto" tabIndex={0} aria-label="引用记忆正文">{item.content}</pre>
+      <MemorySourceReview bridge={bridge} content={item.content} /></>}
   </section>
 }
 

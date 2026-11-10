@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { BridgeError, WorkspaceClient } from '../bridge/client'
 import type { MemoryItem, MemoryMetadata } from '../bridge/memory'
+import { MemorySourceReview } from './MemorySourceReview'
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query) return <>{text}</>
@@ -33,6 +34,7 @@ export function MemoryPreview({ bridge, metadata, query }: { bridge: WorkspaceCl
     {!item && !error && <p role="status">正在读取记忆…</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {item && <><h3 dir="auto"><Highlight text={item.title} query={query} /></h3>
-      <pre dir="auto" tabIndex={0} aria-label="预览正文"><Highlight text={item.content} query={query} /></pre></>}
+      <pre dir="auto" tabIndex={0} aria-label="预览正文"><Highlight text={item.content} query={query} /></pre>
+      <MemorySourceReview bridge={bridge} content={item.content} /></>}
   </section>
 }
