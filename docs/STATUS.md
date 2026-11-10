@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [Knowledge 历史长路径修复](engineering/KNOWLEDGE-LONG-PATH-REPORT.md)：复用 Memory 已有 SQLite Windows 长路径连接，保持目录、schema、记录和安全校验。旧代码在新合成 1,100 字符路径失败，修复后实际保存及独立 JVM 重开通过；249 字符普通路径、第二写入者拒绝和 Memory 共用连接最小验证通过。原失败样本保留，无模型或浏览器，锁已释放。源库、索引及 Conversation 的同类连接待逐项核对；旧包未更新，完整 EXE/WebView2 验收边界不变。
+
 2026-11-10 [原生 Memory 真实持久化闭环](engineering/MEMORY-NATIVE-PERSISTENCE-REPORT.md)已通过：最终包 `0ad9665` 的实际原生窗口在新合成 Profile 内明确保存，经正常关闭后由独立桌面／Java 进程读取同一 SQLite 记录，重开写入 0、未保存修改未保留；两组服务正常退出、端口关闭、共享锁释放。使用真实 HTTP / Store，没有模型、WebView2 或既有用户数据。首次长合成路径在 Knowledge 历史库初始化失败，经只读对照证实 SQLite 路径限制；缩短全新验收子目录后闭环通过，产品长路径兼容性仍待处理。完整 AssistantApp／失败页入口与 WebView2 保存重开仍未通过本轮验收，不重复已通过的原生样本或旧测试。
 
 2026-11-10 [原生记忆本地交付](engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)：最终本地 ZIP 已包含备用入口、写入结果不明保护及保存前长度／有效性提示，来源 `0ad9665`，旧包与完整 Git 回滚保留。初版分发合同 7/7、编辑增量必要编译与一条受影响回归通过；最终 ZIP 933 文件及换路径后的实际内嵌来源独立核对通过，未重复篡改矩阵。首轮 NuGet 缓存／网络失败已解决，原日志保留。共享短运行锁已释放，六份用户文档和 main 未变。未启动桌面／JVM／模型，原 WebView2 保存／重开未通过，真实原生记忆保存／独立重开尚未执行，仍为 Development-only。

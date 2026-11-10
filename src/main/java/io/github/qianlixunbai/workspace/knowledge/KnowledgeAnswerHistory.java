@@ -2,6 +2,7 @@ package io.github.qianlixunbai.workspace.knowledge;
 
 import io.github.qianlixunbai.workspace.common.*;
 import io.github.qianlixunbai.workspace.model.ModelProfile;
+import io.github.qianlixunbai.workspace.persistence.SqliteFileUrl;
 import io.github.qianlixunbai.workspace.task.*;
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -58,7 +59,7 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
             if (processLock == null) throw new SQLException();
             Path file = root.resolve("history.db");
             if (!Files.exists(file)) PrivateKnowledgeDirectory.file(file);
-            db = DriverManager.getConnection("jdbc:sqlite:" + file);
+            db = DriverManager.getConnection(SqliteFileUrl.forFile(file));
             execute("PRAGMA busy_timeout=3000"); execute("PRAGMA journal_mode=DELETE"); execute("PRAGMA synchronous=FULL");
             try (var s = db.createStatement(); var r = s.executeQuery("PRAGMA quick_check")) {
                 if (!r.next() || !"ok".equals(r.getString(1)) || r.next()) throw new SQLException();
