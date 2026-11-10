@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 [会话编辑连续性](../engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)完成网页草稿丢失和原生跨会话误带草稿两项修复，产品 `bcd9f87`／`f061213`。仅检查直接受影响的前端 6 项与 Native 1 项，新开发包已校验。下一步按明确用户流程或原所有者拒绝的新证据推进，不为模块数重复阅读导航／Memory 另存，也不重复同类验收包装。[身份来源研究](../engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)补充了环境用户名与有效令牌的具体区别，但未证明原失败根因；EXE／WebView、真实模型恢复及完整维护仍未关闭，productionGo=false。
+
 2026-11-10 [来源回查、行号定位与问答草稿保护](../engineering/KNOWLEDGE-READING-NAVIGATION-REPORT.md)交付三个日常流程，产品 `370c313`，新增 3 项必要验证及类型检查通过。下一会话从实际核心流程或明确失败证据选择工作，不重复这批界面流程或扩充测试。桌面验收继续受原合成 model-state 所有权／类型拒绝阻断；只读分析发现原生有效令牌 SID 与 Java 命名账户两套检查来源，但没有当时的值可证明差异，不允许据此重试、换环境或放宽检查。完整维护仍 BLOCKED / productionGo=false。
 
 2026-11-10 [原生 Memory 日常编辑流程](../engineering/NATIVE-MEMORY-EDIT-FLOWS.md)已补齐保留草稿修订同一条记忆、版本冲突对照合并和主动检查相同正文，三项独立本地提交 `febc43e` / `f02390b` / `10a9c8c`。合并开发包 `PersonalAiWorkspace-native-memory-edit-flows-20261110.zip` 完成 933 文件／实际嵌入来源检查；旧包保留，本轮没有重跑持久化闭环。后续围绕“记录被删除后如何保留草稿继续保存”等明确用户操作核实，不为凑模块增加泛化回执校验或重复包装。WebView2 正常页面、默认入口、维护迁移和正式发布的原有未验收边界不变。

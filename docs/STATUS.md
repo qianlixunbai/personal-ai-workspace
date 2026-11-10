@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [会话草稿与上下文保护](engineering/CONVERSATION-DRAFT-TRANSITIONS-REPORT.md)完成两个实际使用修复：网页切换／新建／筛选先保护消息和标题，目标失败保留原编辑内容；原生窗口不再把旧草稿带入另一会话，刷新保持当前身份。产品 `bcd9f87`／`f061213`，6 项受影响前端场景及 1 项 Native 综合场景通过，类型／构建与新 `conversation-drafts` 包来源校验通过；原始夹具失败保留，未重跑旧测试组。新增[所有者身份来源核对](engineering/MODEL-STATE-IDENTITY-SOURCE-REVIEW.md)确认上游 JDK 默认用户名可来自 `USERNAME`，原生检查使用有效令牌 SID，仍缺原失败时取值，不构成重试或放宽检查依据。完整新包 EXE／WebView 未验收，维护仍 BLOCKED / productionGo=false；main、用户文档及旧包保留，未推送。
+
 2026-11-10 [来源回查、行号定位与问答草稿保护](engineering/KNOWLEDGE-READING-NAVIGATION-REPORT.md)已提交为 `370c313`：跨文档／版本返回会重新读取准确来源，行号定位绑定所选版本，历史替换和删除保留未提交问题。只选新增 3 项综合场景及类型检查通过，旧组未重跑。独立包 `PersonalAiWorkspace-reading-navigation-20261110.zip` 构建和来源／归档校验通过，Job 0、锁释放，旧包与用户文档未变。桌面模型状态目录拒绝仍保留，本轮仅核对检查顺序及两种身份来源，未重试／弱化检查；新流程完整 EXE／WebView 未验收，完整维护仍 BLOCKED / productionGo=false。
 
 2026-11-10 [前文阅读与引用跳转连续性](engineering/KNOWLEDGE-READING-CONTINUITY-REPORT.md)已提交为 `a9cbc5d`：新增准确旧版本的有界“阅读前文”，刷新详情保持阅读版本，失效引用跳转不清空原文和返回栈；与此前版本内查找合成三项实际阅读功能。前端 3 项、Native 2 项独立合同、Java 隔离 SQLite 2 项必要检查通过，新独立包 `PersonalAiWorkspace-source-reading-20261110.zip` 来源／归档校验通过。合并真实桌面验收在新合成 Profile 的模型状态目录准备阶段被 `Invalid model state ownership or type` 拒绝，EXE 尚未启动，未改权限／身份或重试；Job 0、锁和临时 token 已收尾。main、六份用户文档、旧 r2/source-find 包不变，不推送。新包实际交互尚未验收，完整维护仍 BLOCKED / productionGo=false。
