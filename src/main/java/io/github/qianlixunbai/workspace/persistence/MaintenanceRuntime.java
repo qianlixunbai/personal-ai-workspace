@@ -160,7 +160,11 @@ public final class MaintenanceRuntime implements AutoCloseable {
         var backends=storeBackends(context);
         verifyModel(context);
         synchronized(this){append("STOPPING",backends);state="STOPPING";}
+        var tasks=context.getBean(io.github.qianlixunbai.workspace.task.TaskManager.class);
+        tasks.close(); // Drain before destroying any stores; incomplete shutdown must stop FINISH.
+        if(!tasks.shutdownComplete())throw stopped();
         context.close(); // Normal Runtime destruction, including Knowledge workers and actual store connections.
+        if(!tasks.shutdownComplete())throw stopped(); // Spring may log and continue after a destroy failure.
         modelState.requireClosed();exclusion.retainStoppedModel();
         synchronized(this){
             if(context.isActive()||dataSource==null||dataSource.hasOpenConnections())throw stopped();requireOwned();

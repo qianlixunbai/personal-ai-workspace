@@ -11,6 +11,8 @@ import java.util.*;
 import java.util.concurrent.*;
 
 @Component
+// Async work outlives its submitting service. Keep its actual resources alive until drain.
+@org.springframework.context.annotation.DependsOn({"conversationStore", "activeModelManager"})
 public final class TaskManager {
     @FunctionalInterface public interface Work { Object execute(Cancellation cancellation); }
     /** Callbacks always run outside the task monitor. */
@@ -25,6 +27,10 @@ public final class TaskManager {
     private final ThreadPoolExecutor workers;
     private final ScheduledExecutorService timer;
     private final Map<UUID, Job> tasks = new HashMap<>();
+    private final Object shutdown = new Object();
+    private static final long DRAIN_NANOS = TimeUnit.SECONDS.toNanos(5);
+    private int cancelling;
+    private volatile boolean shutdownFailed;
     private boolean closed;
 
     public TaskManager(RuntimeProperties properties) {
@@ -92,8 +98,8 @@ public final class TaskManager {
                 finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "CANCELLATION"));
                 workers.remove(job);
                 job.work = null;
-                job.cancellation.cancel();
                 release = !job.inWorker; cancelled = true;
+                cancelling++;
             }
             view = job.view();
         }
@@ -108,15 +114,27 @@ public final class TaskManager {
             finish(job, TaskStatus.TIMED_OUT, null, ApiError.of(ErrorCode.TASK_TIMEOUT, phase));
             workers.remove(job);
             job.work = null;
-            job.cancellation.cancel();
             release = !job.inWorker;
+            cancelling++;
         }
         endCancelledLease(job, true, release);
     }
-    private static void endCancelledLease(Job job, boolean cancelled, boolean release) {
-        if (job.lease != null && cancelled) {
-            job.lease.cancelled();
-            if (release) job.lease.close();
+    private void endCancelledLease(Job job, boolean cancelled, boolean release) {
+        if (!cancelled) return;
+        // Transport/lease hooks can need the worker's locks. Never invoke them under this monitor.
+        try {
+            try { job.cancellation.cancel(); }
+            finally {
+                if (job.lease != null) {
+                    try { job.lease.cancelled(); }
+                    finally { if (release) job.lease.close(); }
+                }
+            }
+        } catch (RuntimeException | Error failure) {
+            shutdownFailed = true;
+            throw failure;
+        } finally {
+            synchronized (this) { cancelling--; notifyAll(); }
         }
     }
     private static java.time.Duration budget(String capability,java.time.Duration configured,long seconds) {
@@ -158,24 +176,50 @@ public final class TaskManager {
 
     @PreDestroy
     public void close() {
-        List<Job> cancelled = new ArrayList<>();
-        Set<Job> release = new HashSet<>();
-        synchronized (this) {
-            closed = true;
-            for (Job job : tasks.values()) {
-                if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
-                    finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "SHUTDOWN"));
-                    job.cancellation.cancel();
-                    job.work = null;
-                    cancelled.add(job);
-                    if (!job.inWorker) release.add(job);
+        synchronized (shutdown) {
+            List<Job> cancelled = new ArrayList<>();
+            Set<Job> release = new HashSet<>();
+            synchronized (this) {
+                closed = true;
+                for (Job job : tasks.values()) {
+                    if (job.status == TaskStatus.QUEUED || job.status == TaskStatus.RUNNING) {
+                        finish(job, TaskStatus.CANCELLED, null, ApiError.of(ErrorCode.TASK_CANCELLED, "SHUTDOWN"));
+                        job.work = null;
+                        cancelled.add(job); cancelling++;
+                        if (!job.inWorker) release.add(job);
+                    }
                 }
+                timer.shutdownNow();
+                workers.shutdownNow();
             }
-            timer.shutdownNow();
-            workers.shutdownNow();
-            tasks.clear();
+            for (Job job : cancelled) {
+                try { endCancelledLease(job, true, release.contains(job)); }
+                catch (RuntimeException failure) { shutdownFailed = true; } // Continue cancelling other tasks.
+            }
+            // A terminal TaskView is not a worker/lease exit. Include timer callbacks and any
+            // cancel caller currently outside the task monitor; none may outlive a successful close.
+            long deadline = System.nanoTime() + DRAIN_NANOS;
+            try {
+                if (!workers.awaitTermination(remaining(deadline), TimeUnit.NANOSECONDS)
+                        || !timer.awaitTermination(remaining(deadline), TimeUnit.NANOSECONDS)) shutdownFailed = true;
+                synchronized (this) {
+                    while (cancelling != 0 && remaining(deadline) > 0)
+                        TimeUnit.NANOSECONDS.timedWait(this, remaining(deadline));
+                    if (!shutdownComplete()) shutdownFailed = true;
+                    if (!shutdownFailed) tasks.clear();
+                }
+            } catch (InterruptedException interrupted) {
+                shutdownFailed = true;
+                Thread.currentThread().interrupt();
+            }
+            if (shutdownFailed) throw new IllegalStateException("Local task shutdown incomplete");
         }
-        for (Job job : cancelled) endCancelledLease(job, true, release.contains(job));
+    }
+    private static long remaining(long deadline) { return Math.max(0, deadline - System.nanoTime()); }
+
+    /** This live instance only. Never evidence of external provider completion or other writers. */
+    public synchronized boolean shutdownComplete() {
+        return closed && !shutdownFailed && cancelling == 0 && workers.isTerminated() && timer.isTerminated();
     }
 
     private final class Job implements Runnable {
@@ -242,6 +286,7 @@ public final class TaskManager {
                 }
             } finally {
                 try { if (lease != null) lease.close(); }
+                catch (RuntimeException | Error failure) { shutdownFailed = true; throw failure; }
                 finally { synchronized (TaskManager.this) { inWorker = false; } }
             }
         }
