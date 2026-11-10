@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 最终 r2 整合包已完成一次真实 EXE 的隔离网页/Runtime 联动：React 正常就绪、原生认证有效、当前 SQLite 状态可查；“查看阻断请求（只读）”展示两条合成未知请求，恢复保持禁用。托盘退出后，独立原生维护入口确认本次 Runtime 正常关闭，guard 哈希原样保留，维护继续 BLOCKED / productionGo=false。Desktop 退出 0；外层收尾前 5 个自有 Job 成员由 Job 清理，不能称全树自然退出；后续检查 Job 0，两轮锁均释放。使用既有 port=0 生命周期，没有查询旧端口、调用模型或修改产品代码，原 r2 包继续有效且未重打包。纠正此前“普通入口固定端点”的旧判断；真实恢复、默认启动与完整维护仍未验收。[截图、证据与范围](engineering/INTEGRATED-WEB-RUNTIME-ACCEPTANCE.md)。
+
 2026-11-10 累积功能已整合为独立新开发包 `artifacts/PersonalAiWorkspace-integrated-development-20261110-r2.zip`，产品源 `75b9614`。完整 Java 产品、Desktop 与 React 重建；567 个 class、248 个沿用资源/依赖条目、933 个载荷、934 个 ZIP 条目及 420 条内嵌 pin 核对通过。最终实际 EXE 的选择器取消、合成只读维护页及迁移审阅页检查通过并正常退出，Job 0/锁释放。第一份无 `-r2` 后缀候选已因 JAR 文件头问题作废，不能使用。没有启动 Runtime/模型/数据库；完整网页联动、真实恢复和维护仍 BLOCKED / productionGo=false。旧包、main、六份用户文档和默认配置不变，未推送。[最终包、SHA、失败证据与验收边界](engineering/INTEGRATED-DEVELOPMENT-DELIVERY.md)。
 
 2026-11-10 模型状态真实 writer 移交、停机后的当前来源／备份／配置／目标复核，以及只读迁移审阅页已本地交付，产品提交 `79f81ff16527ccd15d4ce04c56b5db6b6b781e71`。新包 `artifacts/PersonalAiWorkspace-maintenance-model-review-20261110.zip`，SHA-256 `F1056BDDAC78D852B0645AF9E50C6D63E7E85C69DD868AFC9EAB7F68A4C83BFD`；933 payload／934 ZIP 条目／420 内嵌 pins 全部核对。非空模型选择字节保留；pending guard 在导入前拒绝；正常结束与真实 Job 中断均保留后来数据，普通启动仍拒绝。两个临时 PostgreSQL 正常停止、凭据清理，Job 0／共享锁释放。模型权重／runner／推理未执行；审阅页仅编译，未做可视验收。**普通重启授权、外部模型执行所有权、最终来源／目标确认与执行入口仍未完成，完整维护 BLOCKED 保持。** main、六份用户文档、真实数据和旧包不变，无推送。[实际资源、验收与精确后续边界](engineering/MAINTENANCE-MODEL-REVIEW-ACCEPTANCE.md)。
