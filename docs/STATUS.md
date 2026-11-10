@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [原生 Memory 真实持久化闭环](engineering/MEMORY-NATIVE-PERSISTENCE-REPORT.md)已通过：最终包 `0ad9665` 的实际原生窗口在新合成 Profile 内明确保存，经正常关闭后由独立桌面／Java 进程读取同一 SQLite 记录，重开写入 0、未保存修改未保留；两组服务正常退出、端口关闭、共享锁释放。使用真实 HTTP / Store，没有模型、WebView2 或既有用户数据。首次长合成路径在 Knowledge 历史库初始化失败，经只读对照证实 SQLite 路径限制；缩短全新验收子目录后闭环通过，产品长路径兼容性仍待处理。完整 AssistantApp／失败页入口与 WebView2 保存重开仍未通过本轮验收，不重复已通过的原生样本或旧测试。
+
 2026-11-10 [原生记忆本地交付](engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)：最终本地 ZIP 已包含备用入口、写入结果不明保护及保存前长度／有效性提示，来源 `0ad9665`，旧包与完整 Git 回滚保留。初版分发合同 7/7、编辑增量必要编译与一条受影响回归通过；最终 ZIP 933 文件及换路径后的实际内嵌来源独立核对通过，未重复篡改矩阵。首轮 NuGet 缓存／网络失败已解决，原日志保留。共享短运行锁已释放，六份用户文档和 main 未变。未启动桌面／JVM／模型，原 WebView2 保存／重开未通过，真实原生记忆保存／独立重开尚未执行，仍为 Development-only。
 
 2026-11-10 [原生 Memory 备用入口](engineering/MEMORY-NATIVE-FALLBACK-REPORT.md)已提供 WebView2 失败页到既有记忆窗口的明确入口；[原生写入结果不明保护](engineering/MEMORY-NATIVE-OUTCOME-REPORT.md)防止已提交但响应丢失后重复保存，保留草稿与原有确认，允许只读核对。两个小阶段分别完成必要增量编译与单条 STA 用例，后一项先复现旧版失败；没有重跑前端回归或启动真实桌面／JVM／模型。共享短运行锁已采用并释放。分发包未更新，原 WebView2 保存／关闭／独立重开闭环仍未通过，继续为 Development-only。

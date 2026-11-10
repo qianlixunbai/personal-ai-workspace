@@ -2,6 +2,8 @@
 
 2026-11-10。接续 `c0a8a09bff7871eebc3b940bed5f5686174ce84e`，仅在 `codex/knowledge-version-compare` 开发；Development-only / unsigned。本轮没有启动 WebView2、完整 AssistantApp、JVM、模型或临时服务。
 
+后续接续已完成[原生 Memory 真实持久化闭环](MEMORY-NATIVE-PERSISTENCE-REPORT.md)：沿用本报告最终包，在新合成 Profile 中运行实际原生窗口、HTTP 与 SQLite，明确保存、正常关闭及独立宿主／Java 进程重开读取通过。以下构建记录仍是本报告原交付轮的事实；完整 AssistantApp 与 WebView2 验收边界保持。
+
 ## 已完成
 
 已将原生记忆备用入口、写入结果不明保护，以及最近前端记忆草稿／查重／通知修复纳入独立 Windows 开发包。沿用现有本地分发脚本和已审查 Runtime，不更换 helper、JDK、JNA 或任何预期信任哈希。包内说明列出备用入口、明确保存、未知结果的核对步骤及未通过的桌面验收。
@@ -46,6 +48,6 @@
 
 本轮完成本地包补齐、原生编辑反馈及最终同版本交付收尾；没有遗留待执行的构建、测试或提交结果。先核对 HEAD、索引和工作区，不重跑这里已通过的检查，不改六份用户文档、main 或其他仓库。
 
-下一真实关卡是**仅原生记忆的明确保存／取消与独立进程重开**。应复用现有运行时与原生窗口、最终包产品文件和有明确来源的合成 Profile；先精确核实端口与进程归属，18765 及旧浏览器后代仍未知，不得当作空闲或直接清理。当前 `RuntimeLifecycleProbe.MemoryDraft.cs` 的 save/reopen 模式会启动 WebView2，不能直接拿来冒充原生独立流程；若做最小适配，保留正常 Native Gate、Profile 校验与 Runtime 生命周期，并避免写上次工作区偏好。现有原生 STA 用例是合成 HTTP Store，不能替代实际 SQLite 持久化。不要为了这一步重跑默认／沙箱外 WebView2 startup 对照，或扩大诊断、恢复设施。
+原交接项**仅原生记忆的明确保存／取消与独立进程重开**已由后续[真实持久化报告](MEMORY-NATIVE-PERSISTENCE-REPORT.md)完成。使用最终包产品文件、正常 Native Gate 与新合成 Profile，实际持久化由不同宿主／Java 进程读回，未写上次工作区偏好。不要重跑该样本或借此重启无新证据的 WebView2 对照。18765 及旧浏览器后代仍未知，不得当作空闲或直接清理。
 
-需要保留的具体阻塞是 WebView2 controller 启动及 GPU／renderer 失败，根因仍未确定；当前新包没有解决它。原生保存／重开属于尚未执行的验收，而非已观察到原生持久化失败。构建首轮 NuGet 阻塞已解决，没有自动审批拒绝、待审批或结果不明的本轮写入。
+需要保留的具体阻塞是 WebView2 controller 启动及 GPU／renderer 失败，根因仍未确定；当前新包没有解决它。后续新发现的 Knowledge 历史库长路径限制与原生保存通过范围见真实持久化报告，不混同为浏览器根因。构建首轮 NuGet 阻塞已解决，没有自动审批拒绝、待审批或结果不明的本轮写入。

@@ -42,6 +42,17 @@ class RuntimeApiTest {
             : io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.data();
     private static Path temporaryMemoryDirectory() {
         try {
+            String nativePhase = System.getProperty("memory.native.desktop.fixture");
+            if (nativePhase != null) {
+                assertTrue(java.util.Set.of("save", "reopen").contains(nativePhase));
+                // Full-context Knowledge history uses the default Win32 SQLite VFS.
+                // Keep this synthetic subtree short, including its journal suffix.
+                Path root = io.github.qianlixunbai.workspace.security.WindowsNativeGate.profileRoot().resolve("evidence/m");
+                if (nativePhase.equals("save")) assertFalse(Files.exists(root));
+                else assertTrue(Files.isRegularFile(root.resolve("data/memory.db")));
+                io.github.qianlixunbai.workspace.memory.PrivateMemoryDirectory.directory(root);
+                return root;
+            }
             if (System.getProperty("knowledge.recovery.desktop.fixture") != null)
                 return io.github.qianlixunbai.workspace.knowledge.KnowledgeRecoveryDesktopFixture.root();
             if (io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.isWindows()) {
@@ -64,6 +75,12 @@ class RuntimeApiTest {
     private static final java.util.List<JsonNode> DESKTOP_CHATS = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile CountDownLatch slowEntered, slowRelease, slowExited;
     private static final int MOCK_PORT = freePort();
+    private static final int NATIVE_PORT = System.getProperty("memory.native.desktop.fixture") == null ? -1 : nativeMemoryPort();
+    private static int nativeMemoryPort() {
+        int port = freePort();
+        assertTrue(port > 1024 && port != 18765 && port != 18895 && port != 8765);
+        return port;
+    }
     private HttpServer mock;
     private final java.util.ArrayList<String> clientIds = new java.util.ArrayList<>();
     private final java.util.ArrayList<String> privateValues = new java.util.ArrayList<>();
@@ -158,6 +175,10 @@ class RuntimeApiTest {
         }
     }
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+        if (NATIVE_PORT != -1) {
+            registry.add("server.address", () -> "127.0.0.1");
+            registry.add("server.port", () -> NATIVE_PORT);
+        }
         registry.add("workspace.security.token-file", () -> TOKEN.toString());
         registry.add("workspace.data-directory", () -> MEMORY.toString());
         Path modelRoot = ISOLATED_ROOT.resolve("model-state-" + java.util.UUID.randomUUID());
@@ -167,6 +188,33 @@ class RuntimeApiTest {
         registry.add("workspace.ollama.connect-timeout", () -> "100ms");
     }
     @LocalServerPort int port;
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="memory.native.desktop.fixture", matches="save|reopen")
+    void desktopNativeMemoryPersistsAcrossProcessesWithoutModel() throws Exception {
+        String phase = System.getProperty("memory.native.desktop.fixture");
+        assertEquals(NATIVE_PORT, port);
+        var store = application.getBean(io.github.qianlixunbai.workspace.memory.MemoryStore.class);
+        assertFalse(store.postgresql());
+        assertEquals(MEMORY.resolve("memory.db"), store.databaseFile());
+        var before = json.readTree(send("GET", "/api/v1/memory/items?query=&status=ACTIVE&page=0&limit=20", null, true).body());
+        assertEquals(phase.equals("save") ? 0 : 1, before.path("total").asInt());
+        Path ready = ISOLATED_ROOT.resolve(phase + "-ready.json"), done = ISOLATED_ROOT.resolve(phase + "-done");
+        assertFalse(Files.exists(ready)); assertFalse(Files.exists(done)); token();
+        Path pending = ISOLATED_ROOT.resolve(phase + "-ready.pending");
+        io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(pending);
+        Files.writeString(pending, json.writeValueAsString(Map.of("port", port, "pid", ProcessHandle.current().pid(),
+                "tokenFile", TOKEN.toString(), "phase", phase, "database", store.databaseFile().toString(), "syntheticNativeMemory", true)));
+        Files.move(pending, ready, StandardCopyOption.ATOMIC_MOVE);
+        long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
+        while (!Files.exists(done) && System.nanoTime() < deadline) Thread.sleep(100);
+        assertTrue(Files.exists(done)); assertEquals("PASS", Files.readString(done));
+        var after = json.readTree(send("GET", "/api/v1/memory/items?query=&status=ACTIVE&page=0&limit=20", null, true).body());
+        assertEquals(1, after.path("total").asInt());
+        if (phase.equals("reopen")) assertEquals(before, after);
+        assertFalse(activeModels.status().ready()); assertEquals(0, CHAT_CALLS.get()); assertEquals(0, PROBE_CALLS.get());
+        // This opt-in path never starts even the synthetic provider.
+        System.out.println("NATIVE_MEMORY_REAL_HTTP_SQLITE_NO_MODEL_PASS_" + phase);
+    }
     @Test
     @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="conversation.search.desktop.fixture",matches="true")
     void desktopConversationSearchReadsSyntheticHistoryWithoutModelOrWrites() throws Exception {

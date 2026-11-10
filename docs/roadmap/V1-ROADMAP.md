@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 [原生 Memory 真实持久化](../engineering/MEMORY-NATIVE-PERSISTENCE-REPORT.md)补齐上一交付关卡：同包原生窗口实际保存、正常关闭、两个独立宿主／Java 进程读回同一 SQLite 内容，保留合成样本，重开零写入、无模型、服务退出。完整应用与 WebView2 仍单独未关闭。新发现 Knowledge 历史库的普通 SQLite URL 在 262 字符路径下打开失败；本轮仅缩短合成子目录完成 Memory 验收，长路径产品兼容性保留为下一真实缺口，不重复闭环样本。
+
 2026-11-10 [原生记忆本地交付](../engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)将备用入口、未知写入保护和保存前有效性／长度反馈纳入最终开发 ZIP（`0ad9665`），保留旧包与完整 Git 回滚。初版合同与最终包的独立完整性／内嵌来源校验通过，不增加存储／协议／模型或重复浏览器诊断。真实原生保存与独立重开仍是下一交付关卡，原 WebView2 故障保持独立未关闭。
 
 2026-11-09 [草稿保存前主动查重](../engineering/MEMORY-DRAFT-DUPLICATE-REVIEW-REPORT.md)补齐“知识回答原文／手工草稿 → 查看已存内容 → 明确保存”的可选审核入口，复用已有最多 20 条的正文查重，不新增模型、存储协议或自动合并。相关前端 35/35 及类型检查通过；分发包和 Memory 桌面闭环尚未更新／通过。[最新启动观察](../engineering/MEMORY-PROFILE-CLEAR-ANALYSIS.md)已捕获实际进程失败，停止桌面重复；后续按明确浏览器稳定性证据与真实 Memory 使用缺口推进，不削弱清理来换取 READY。

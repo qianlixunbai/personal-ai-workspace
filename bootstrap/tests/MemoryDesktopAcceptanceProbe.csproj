@@ -13,6 +13,7 @@
     <Compile Include="MemoryDesktopAcceptanceProbe.KnowledgeRecovery.cs" />
     <Compile Include="MemoryDesktopAcceptanceProbe.ConversationSearch.cs" />
     <Compile Include="MemoryDesktopAcceptanceProbe.ConversationExport.cs" />
+    <Compile Include="MemoryDesktopAcceptanceProbe.NativeMemory.cs" />
     <ProjectReference Include="../../desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj" />
   </ItemGroup>
 </Project>

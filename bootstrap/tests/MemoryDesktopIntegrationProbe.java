@@ -12,11 +12,12 @@ public final class MemoryDesktopIntegrationProbe {
         boolean web = Boolean.getBoolean("web.desktop.fixture");
         boolean conversationSearch = Boolean.getBoolean("conversation.search.desktop.fixture");
         boolean recovery = java.util.Set.of("prepare","reopen").contains(System.getProperty("knowledge.recovery.desktop.fixture",""));
-        if (!web && !recovery && !conversationSearch && !Boolean.getBoolean("memory.desktop.fixture")) throw new IllegalStateException();
+        boolean nativeMemory = java.util.Set.of("save","reopen").contains(System.getProperty("memory.native.desktop.fixture",""));
+        if (!web && !recovery && !conversationSearch && !nativeMemory && !Boolean.getBoolean("memory.desktop.fixture")) throw new IllegalStateException();
         System.out.println("MEMORY_DESKTOP_NATIVE_ADMITTED");
         var request = LauncherDiscoveryRequestBuilder.request()
                 .selectors(selectMethod("io.github.qianlixunbai.workspace.api.RuntimeApiTest",
-                        conversationSearch ? "desktopConversationSearchReadsSyntheticHistoryWithoutModelOrWrites" : recovery ? "desktopReadsEncryptedRestoredKnowledgeWithoutModelOrTaskReplay" : web ? "desktopWebKnowledgeWorkflowWithRealFetch" : "desktopMemoryWorkflowWithSyntheticProvider"))
+                        nativeMemory ? "desktopNativeMemoryPersistsAcrossProcessesWithoutModel" : conversationSearch ? "desktopConversationSearchReadsSyntheticHistoryWithoutModelOrWrites" : recovery ? "desktopReadsEncryptedRestoredKnowledgeWithoutModelOrTaskReplay" : web ? "desktopWebKnowledgeWorkflowWithRealFetch" : "desktopMemoryWorkflowWithSyntheticProvider"))
                 .configurationParameter("junit.jupiter.execution.parallel.enabled", "false").build();
         var summary = new SummaryGeneratingListener();
         try (var session = LauncherFactory.openSession()) { session.getLauncher().execute(request, summary); }
