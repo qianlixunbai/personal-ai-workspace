@@ -40,6 +40,18 @@ public final class SqliteCombinedMigration {
      * Any exception at/after COMMIT remains unconfirmed; never retry or activate automatically. */
     public static Expected importSnapshots(Connection workspace, Connection knowledge, Path knowledgeFiles,
                                            DataSource target) throws IOException {
+        return importSnapshots(workspace, knowledge, knowledgeFiles, target, new Observer() {});
+    }
+
+    // The maintenance owner durably records actual boundaries before target writes/COMMIT.
+    // An observer failure aborts the transaction; it cannot assert success or grant activation.
+    interface Observer {
+        default void prepared(Expected expected) throws IOException {}
+        default void committing() throws IOException {}
+    }
+
+    static Expected importSnapshots(Connection workspace, Connection knowledge, Path knowledgeFiles,
+                                    DataSource target, Observer observer) throws IOException {
         String stage = "SOURCE_VALIDATION";
         boolean commitAttempted = false;
         Expected expected = null;
@@ -50,6 +62,7 @@ public final class SqliteCombinedMigration {
                 if (!db.getAutoCommit()) throw new SQLException();
                 PostgresqlWorkspace.verify(db);
                 expected = new Expected(memory.expected, documents.expected(), identity(db));
+                stage = "RECORD_TARGET_INTENT"; observer.prepared(expected);
                 db.setAutoCommit(false);
                 try {
                     stage = "TARGET_EXCLUSION";
@@ -63,6 +76,7 @@ public final class SqliteCombinedMigration {
                     stage = "WORKSPACE_COPY"; memory.writeTo(db);
                     stage = "KNOWLEDGE_COPY"; documents.writeTo(db);
                     stage = "SOURCE_RECHECK"; documents.verifyFiles();
+                    stage = "RECORD_COMMIT_INTENT"; observer.committing();
                     stage = "COMMIT"; commitAttempted = true; db.commit();
                 } catch (Exception failure) {
                     // A rollback after a failed COMMIT cannot prove that COMMIT did not happen.
