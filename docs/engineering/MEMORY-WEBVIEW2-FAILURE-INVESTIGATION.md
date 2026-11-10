@@ -12,6 +12,41 @@ Official [EnsureCoreWebView2Async documentation](https://learn.microsoft.com/en-
 
 Read limitation: an exact-path listing of the previous synthetic Profile's `webview2-profile/EBWebView/Crashpad/reports` returned OS access denied. No dump contents were obtained and that range was not retried or bypassed. The initial filename discovery also encountered previously restricted unrelated `.verification` subdirectories; those were not inspected or retried. These are filesystem refusals, not an automatic approval-review rejection. Work continued from already saved workspace evidence.
 
+## 2026-11-10: one native controller boundary comparison
+
+Lifecycle fix: `50a4614924c1e2b3e5bf8b42f30faccbac6d069d`. To distinguish the WPF adapter from the common native initialization path, one temporary experimental build replaced the WPF `EnsureCoreWebView2Async` call with `CoreWebView2Environment.CreateCoreWebView2ControllerAsync`, using the loaded main window's HWND. The same environment options, `MainWorkspace` profile name, InPrivate requirement, native Profile admission and full `--open-development-workspace-once` entry remained in use. No page navigation or browser-data clear was attempted. This is an alternative API experiment, **not a proposed production implementation or normal-page acceptance**.
+
+Evidence and reviewed scripts are in `.verification/webview-native-boundary-20261110/`: `Build.ps1`, `Probe.cs.txt`, `WorkspaceWebViewHost.probe.cs`, `Run.ps1`, and `Restore-ProductBuild.ps1`. Temporary source was restored byte-for-byte in the build's `finally` before launch. The experiment bundle is separately labelled `NATIVE_CONTROLLER_BOUNDARY_ONLY_NOT_PRODUCT_ACCEPTANCE`, `sourceDirty=true`; it must not be distributed as the normal application. Its Desktop DLL SHA256 is `EA8632F531B8519B7B14C60FC8C397AEF2F403D95652A5152C3E6737E4C7844D`; probe-source SHA256 is `2C1E03E1B0FDAA02B20FF72330B374F15321C0C57B55623861E47DB10F5620CC`. Runtime and frontend bytes were checked against the previous accepted bundle and remained unchanged.
+
+A single formally requested sandbox-outside execution actually ran; it was not denied or left pending. Existing preparation tooling created new synthetic Profile `48975fb19a1a44a5872bd3bcdb6ccc95` (prepare PID 22544, exit 0). The experimental full EXE PID 11588 then used only that Profile and the one-time entry. Its default `last-workspace` was absent before and after. No existing memory/database was opened and no model was requested.
+
+| UTC | Observation |
+| --- | --- |
+| 07:09:33.2886981 | Environment returned. |
+| 07:09:33.3038007 | Environment version `157.0.4341.42`; `GetProcessInfos()` returned an empty list. |
+| 07:09:33.3060496 | Native controller request on STA with dispatcher access and a loaded, visible WPF view. |
+| 07:09:58.3250813 | Native task had not completed at the experiment's 25-second limit. |
+| 07:09:58.3253140 | Second environment process snapshot was also empty; no environment process/exit event was recorded. |
+| 07:09:58.4180227 | EXE exited 0 after the experiment called existing `AssistantApp.ExitAsync`; no tray acceptance is claimed. |
+
+This demonstrates that bypassing the WPF initialization adapter does **not** produce a controller within this bound in the same environment/Profile context. It does not prove which native operation is waiting, rule out a completion after 25 seconds, or identify EFS, ACLs, a runtime defect, package identity, GPU drivers or security software as the unique cause. The 25-second experiment deadline differs from the normal product's unchanged 30 seconds. Empty `GetProcessInfos()` snapshots are not proof that no OS child processes existed.
+
+In fact the guardian's owned Job still contained **3 active processes** after desktop exit. Closing the Job handle invoked the existing kill-on-close cleanup; this run cannot be described as all descendants exiting normally. The held desktop process had exited, port 18765 was closed after cleanup, and the heavy mutex was released. No process metadata scan, unknown-process termination or KAG port operation was used. No per-PID post-close absence claim is made for the three unnamed descendants.
+
+### New Profile metadata and remaining decision
+
+Two separately requested, read-only inspections targeted only this newly created Profile. `new-browser-directory.json` and `new-browser-metadata.json` record a 215-character UDF path under the launching context's MSIX LocalCache. Both its root and `EBWebView` carry the `Encrypted` file attribute; the protected root DACL grants FullControl to CurrentUser, LocalSystem and Administrators. The known `Crashpad/reports` directory exists but contains no report files. No raw browser contents, credentials or memory rows were read, and the earlier denied Profile was not revisited.
+
+Microsoft's [WebView2 security guidance](https://learn.microsoft.com/en-us/deployedge/webview2-security-tools#preserve-default-access-control-lists-acls-on-the-apps-user-data-folder-udf) explains that sandboxed child processes still require UDF access and that tightening those permissions can prevent initialization. The product's `WindowsProfileSecurity.CreateDirectory/ValidatePrivate` deliberately establishes and validates the restricted root contract. This makes compatibility between native browser storage and the current private storage contract a concrete investigation target, **not a demonstrated ACL failure**. EFS is an observed attribute, not a diagnosed cause. No ACL, encryption, Chromium sandbox, registry, antivirus, network or system policy was changed.
+
+Further live comparisons should change one explicitly chosen condition or obtain a narrowly scoped native failure trace. Repeating the same WPF/native startup is not informative. A cache-location/security experiment would need an explicit scope decision because this task forbids changing ACLs/security settings or bypassing Profile admission; no such experiment is approved, pending, or silently prepared to run. A native trace would first need an exact tool/owned-process/data-scope plan; no debugger, system trace, symbol download or runtime reinstall was performed. The specific denied/waiting native operation remains unknown.
+
+### Product restoration and handoff
+
+The temporary experiment also changed ordinary `win-x64` build outputs. These were restored by one necessary no-restore publish of clean product source `50a4614`, under the shared heavy mutex. `normal-product-result.json` confirms matching build/publish DLL hashes and absence of the experimental method marker. Normal Desktop DLL SHA256: `21BAC1425A23C0D39394E746F24B06A0530DD7D5F0BBE4E0B3FF05FF166274EA`. The normal output was **not launched**; `normal-product-publish` is a build output, not a new complete delivery bundle.
+
+Build, experiment and restoration each held Session 1 `Local\\Dot_KAG_Workspace_HeavyRun` only for their complete heavy lifecycle and released it in `finally`; receipts are `build-cleanup.json`, `cleanup.json`, `normal-product-build-cleanup.json`. Original packages, six user documents and main `f5266bf4383f52a2293b0fe4bfe1964af958e64a` remain preserved; no push. This session completed the lifecycle correction and one distinguishing native experiment, without filling a third module with more diagnostics. The prior complete-EXE native-memory save/reopen pass remains valid; normal WebView2 pages, no-argument default entry, maintenance/migration and formal release remain unaccepted. The delivered bundle still contains product `cff8015`; the new lifecycle correction exists in source and verified normal build output only.
+
 2026-11-09. Source baseline `d772c9a65d60d98458c9c1e3fef40d4de90ba197`, branch `codex/knowledge-version-compare`. This stage reads existing synthetic evidence and adds bounded application diagnostics. It neither fixes the native browser failure nor passes Memory desktop acceptance.
 
 ## Finding
