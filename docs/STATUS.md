@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [完整 EXE 的原生记忆备用入口](engineering/MEMORY-EXE-ENTRY-REPORT.md)已通过：实际产品从 WebView2 自然超时失败页打开 Memory，明确保存、托盘退出后，由独立 EXE/Java 重开读回同一记录和 Revision 1。`cff8015` 增加“仅本次打开”参数，保留默认工作区记录；编译及单条参数校验通过。重开后的整库哈希变化已做离线只读调查：源码明确每次启动重建派生索引，源记忆及显示元数据一致；缺少前态数据库副本，不能逐字节归因或声称整库零写入。新包 `artifacts/PersonalAiWorkspace-native-entry-verified-20261110.zip` 仅更新验收说明，932 个程序/资产文件与实际验收包字节不变，933 清单文件及 ZIP 934 条目已核对。两次桌面正常退出、Job 释放前为 0、端口关闭，互斥锁已释放；恢复时可选 WMI 复查受限已记录。WebView2 正常页面、无参数默认入口、维护迁移及正式发布仍未验收；main、六份用户文档与旧包保留，无推送。
+
 2026-11-10 [SQLite 长路径最终本地交付](engineering/KNOWLEDGE-LONG-PATH-REPORT.md)：历史、源库/索引、Conversation 三模块分别提交 `9fee490` / `baeaead` / `9498a8d`。新开发包 `artifacts/PersonalAiWorkspace-sqlite-long-path-20261110.zip` 已构建，933 文件、24 个改动类及实际内嵌来源核对通过；旧包、原失败样本、main、六份用户文档保留，无推送。超过 1,000 字符路径及普通路径均通过必要的真实存储/独立重开验证；完整 EXE、WebView2、维护迁移和正式发布未验收。自有进程退出、锁释放，本轮三模块完成，下一会话从明确剩余缺口接续，不重复已通过场景。
 
 2026-11-10 [Conversation 共用数据库长路径](engineering/KNOWLEDGE-LONG-PATH-REPORT.md)：确认 Memory 可开而旧 Conversation 不能开的同库问题后，复用相同 SQLite URL。236 / 1,074 字符路径的会话、轮次、消息及记忆已由独立 JVM 读回；分页与安全限制保留，工具初次页大小错误证据保留，没有重复保存。三个存储模块已完成必要验证；本地交付收尾中，完整 EXE / WebView2 与维护迁移边界不变。
