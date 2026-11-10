@@ -247,6 +247,52 @@ public sealed class MemoryWindowTests
     });
 
     [Fact]
+    public Task NativeReviewKeepsDraftAndOnlyExplicitSaveRevisesTheReviewedRecord() => StaAsync(async () =>
+    {
+        var store = new Store(); var original = store.Add(); using var runtime = store.Client(); bool approve = false;
+        var window = new MemoryWindow(runtime, _ => approve);
+        const string title = "Synthetic revised title", draft = "  Synthetic revised body 😀\nexact spacing  ";
+        try
+        {
+            window.TitleBox.Text = title; window.ContentBox.Text = draft; window.EditorType.SelectedIndex = 0;
+            await window.RefreshAsync();
+            window.ReviewTarget.SelectedItem = original;
+            window.ReviewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await DrainAsync();
+            Assert.Equal(original.Content, window.ReviewContent.Text);
+            Assert.True(window.ReviewContent.IsReadOnly); Assert.True(window.ReviewTitle.IsReadOnly);
+            Assert.Equal(draft, window.ContentBox.Text); Assert.True(window.AdoptReviewButton.IsEnabled);
+            await window.AdoptReviewAsync(); // No confirmation: still a new draft.
+            Assert.Contains("New", window.MetadataText.Text); Assert.Equal(0, store.Mutations);
+
+            approve = true;
+            store.Items[original.Id] = original with { Revision = 2, Content = "Synthetic changed while reviewing" };
+            await window.AdoptReviewAsync();
+            Assert.Contains("New", window.MetadataText.Text); Assert.Contains("已变更", window.StatusText.Text);
+            Assert.Equal(store.Items[original.Id].Content, window.ReviewContent.Text);
+            await window.AdoptReviewAsync();
+            Assert.Contains(original.Id.ToString("D"), window.MetadataText.Text);
+            Assert.Equal(title, window.TitleBox.Text); Assert.Equal(draft, window.ContentBox.Text);
+            Assert.Equal(0, window.EditorType.SelectedIndex); Assert.True(window.Dirty);
+            Assert.Equal(0, store.Mutations);
+            await window.SaveAsync();
+            var saved = Assert.Single(store.Items.Values);
+            Assert.Equal(original.Id, saved.Id); Assert.Equal(3, saved.Revision);
+            Assert.Equal(draft, saved.Content); Assert.Equal(title, saved.Title); Assert.Equal(MemoryType.PREFERENCE, saved.Type);
+            Assert.Equal(1, store.Mutations); Assert.False(window.Dirty);
+
+            window.NewItem(); window.TitleBox.Text = title; window.ContentBox.Text = draft;
+            var archived = store.Add(status: MemoryStatus.ARCHIVED);
+            await window.ReviewItemAsync(archived); Assert.False(window.AdoptReviewButton.IsEnabled);
+            await window.AdoptReviewAsync(); Assert.Contains("New", window.MetadataText.Text);
+            store.Failure = "MEMORY_NOT_FOUND"; await window.ReviewItemAsync(original);
+            Assert.Empty(window.ReviewContent.Text); Assert.False(window.AdoptReviewButton.IsEnabled);
+            Assert.Equal(draft, window.ContentBox.Text); Assert.Equal(1, store.Mutations);
+        }
+        finally { approve = true; window.TryClose(); }
+        Assert.Empty(window.ReviewContent.Text); Assert.Empty(window.ReviewTitle.Text);
+    });
+
+    [Fact]
     public Task ConflictPreservesEditsBlocksAllMutationsAndOnlyConfirmedReloadUsesLatestRevision() => StaAsync(async () =>
     {
         var store = new Store(); var original = store.Add(); using var runtime = store.Client(); bool approve = false;

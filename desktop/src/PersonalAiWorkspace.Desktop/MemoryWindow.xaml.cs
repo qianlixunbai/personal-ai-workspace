@@ -11,7 +11,7 @@ using PersonalAiWorkspace.Core;
 
 namespace PersonalAiWorkspace.Desktop;
 
-internal enum MemoryConfirmation { Discard, Reload, Delete }
+internal enum MemoryConfirmation { Discard, Reload, Delete, AdoptReview }
 
 public partial class MemoryWindow : Window
 {
@@ -20,6 +20,7 @@ public partial class MemoryWindow : Window
     private readonly Func<MemoryConfirmation, bool> confirm;
     private readonly CancellationTokenSource lifetime = new();
     private MemoryItem? loaded;
+    private MemoryItem? reviewed;
     private MemoryPage? results;
     private MemoryQuery view = new();
     private bool busy, writing, closed, rendering, initialized, stale, missing, outcomeUnknown;
@@ -44,6 +45,7 @@ public partial class MemoryWindow : Window
     {
         MemoryConfirmation.Reload => "重新加载将丢弃本地未保存的修改。继续？",
         MemoryConfirmation.Delete => "删除此 Memory？\n它将不再出现在后续 Memory 读取和搜索中。\n这不保证磁盘取证级擦除。未保存的修改也将丢弃。",
+        MemoryConfirmation.AdoptReview => "保留右侧草稿，改为修订左侧已核对的这条记忆？\n此操作不会保存；之后点击 Save 才会更新它，不会另建一条。",
         _ => "丢弃未保存的修改？"
     }, "Memory", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
@@ -57,6 +59,10 @@ public partial class MemoryWindow : Window
         SearchBox.IsReadOnly = TitleBox.IsReadOnly = ContentBox.IsReadOnly = busy;
         EditorType.IsEnabled = available;
         bool validDraft = new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid();
+        ReviewTarget.IsEnabled = available;
+        ReviewButton.IsEnabled = available && ReviewTarget.SelectedItem is MemoryItem;
+        AdoptReviewButton.IsEnabled = available && loaded is null && !outcomeUnknown && validDraft
+            && reviewed?.Status == MemoryStatus.ACTIVE;
         SaveButton.IsEnabled = available && !stale && !missing && !outcomeUnknown && Dirty && validDraft;
         DraftValidationText.Text = $"标题 {TitleBox.Text.EnumerateRunes().Count()} / 160 字符 · 正文 {ContentBox.Text.Length} / 2000 UTF-16 单位（{Encoding.UTF8.GetByteCount(ContentBox.Text)} / 8192 UTF-8 字节）";
         if (Dirty && !validDraft) DraftValidationText.Text += "\n暂不能保存：标题和正文均须填写有效文字，且不能超过上限。请修改草稿；内容不会自动截断。";
@@ -74,6 +80,7 @@ public partial class MemoryWindow : Window
     }
     private void LoadEditor(MemoryItem? item)
     {
+        ClearReview();
         rendering = true;
         loaded = item; stale = missing = outcomeUnknown = false;
         EditorType.SelectedIndex = item?.Type == MemoryType.PREFERENCE ? 0 : 1;
@@ -117,6 +124,7 @@ public partial class MemoryWindow : Window
             if (closed) return;
         }
         results = page;
+        ReviewTarget.ItemsSource = page.Items;
         rendering = true; MemoryList.ItemsSource = page.Items; rendering = false;
         SelectLoaded();
         PageText.Text = $"Page {page.Page + 1} / {Math.Max(1, (page.Total + page.Limit - 1) / page.Limit)} · {page.Total}";
@@ -133,6 +141,7 @@ public partial class MemoryWindow : Window
         next.Validate(); view = next;
         // Keep the editor, including dirty text, across list/search/filter refreshes.
         results = null; rendering = true; MemoryList.ItemsSource = null; rendering = false;
+        ReviewTarget.ItemsSource = null;
         await FetchListAsync();
         if (!closed) StatusText.Text = outcomeUnknown ? UnknownOutcomeMessage : stale ? ErrorText.For(DesktopError.MemoryRevisionConflict)
             : missing ? ErrorText.For(DesktopError.MemoryNotFound) : "Memory 列表已刷新。";
@@ -216,6 +225,55 @@ public partial class MemoryWindow : Window
         if (!closed) Close();
         return closed;
     }
+    private void ClearReview()
+    {
+        reviewed = null;
+        ReviewTitle.Clear(); ReviewContent.Clear(); ReviewMetadata.Text = "";
+    }
+    private void ShowReview(MemoryItem item)
+    {
+        reviewed = item;
+        ReviewTitle.Text = item.Title; ReviewContent.Text = item.Content;
+        ReviewMetadata.Text = $"{item.Id:D}\n{item.Type} · {item.Status} · Revision {item.Revision}\nUpdated {item.UpdatedAt:yyyy-MM-dd HH:mm:ss zzz}";
+        if (item.Status == MemoryStatus.ARCHIVED) ReviewMetadata.Text += "\n已归档：仅供对照，不能采用为修订目标。";
+        ReviewTab.IsSelected = true;
+    }
+    internal Task ReviewItemAsync(MemoryItem item) => RunAsync(async () =>
+    {
+        ClearReview();
+        var latest = await runtime.GetMemoryAsync(item.Id, lifetime.Token);
+        if (closed) return;
+        ShowReview(latest);
+        StatusText.Text = "已读取当前保存内容，请与右侧草稿对照。没有写入或替换草稿。";
+    }, affectsLoaded: false);
+    internal Task AdoptReviewAsync()
+    {
+        if (busy || closed || loaded is not null || outcomeUnknown || reviewed?.Status != MemoryStatus.ACTIVE
+            || !new MemoryCreateInput(SelectedType, TitleBox.Text, ContentBox.Text).IsValid()
+            || !confirm(MemoryConfirmation.AdoptReview)) return Task.CompletedTask;
+        var expected = reviewed;
+        return RunAsync(async () =>
+        {
+            ClearReview();
+            var latest = await runtime.GetMemoryAsync(expected.Id, lifetime.Token);
+            if (closed) return;
+            ShowReview(latest);
+            if (latest != expected)
+            {
+                StatusText.Text = "这条记忆已变更，请重新对照左侧最新内容再采用。右侧草稿已保留。";
+                return;
+            }
+            // Change only the update target. The exact local draft remains in the editor.
+            loaded = latest; stale = missing = false;
+            SelectLoaded();
+            StatusText.Text = "草稿已用于修订这条记忆，尚未保存。点击 Save 才会更新，不会另建一条。";
+        }, affectsLoaded: false);
+    }
+    private void ReviewTargetChanged(object sender, SelectionChangedEventArgs e)
+    { if (initialized) { ClearReview(); UpdateControls(); } }
+    private async void ReviewSelected(object sender, RoutedEventArgs e)
+    { if (ReviewTarget.SelectedItem is MemoryItem item) await ReviewItemAsync(item); }
+    private async void AdoptReview(object sender, RoutedEventArgs e) => await AdoptReviewAsync();
     private async void Opened(object sender, RoutedEventArgs e) => await RefreshAsync();
     private async void Search(object sender, RoutedEventArgs e) => await RefreshAsync(search: true);
     private async void Refresh(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -255,6 +313,7 @@ public partial class MemoryWindow : Window
     {
         closed = true; lifetime.Cancel(); rendering = true;
         TitleBox.Clear(); ContentBox.Clear(); SearchBox.Clear(); MemoryList.ItemsSource = null;
+        ReviewTarget.ItemsSource = null; ClearReview();
         loaded = null; results = null; view = new(); stale = missing = outcomeUnknown = false;
         DraftValidationText.Text = MetadataText.Text = PageText.Text = StatusText.Text = "";
         lifetime.Dispose();

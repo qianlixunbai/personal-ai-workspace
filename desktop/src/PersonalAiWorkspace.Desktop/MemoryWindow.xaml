@@ -43,6 +43,8 @@
     </WrapPanel>
     <Grid Grid.Row="3">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <TabControl x:Name="MemoryTabs">
+      <TabItem Header="记忆列表">
       <DataGrid x:Name="MemoryList" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
                 CanUserDeleteRows="False" CanUserSortColumns="False" SelectionMode="Single" SelectionUnit="FullRow"
                 SelectionChanged="ItemSelected" HeadersVisibility="Column" AutomationProperties.Name="Memory list">
@@ -54,6 +56,25 @@
           <DataGridTextColumn Header="Rev" Binding="{Binding Revision}" Width="45"/>
         </DataGrid.Columns>
       </DataGrid>
+      </TabItem>
+      <TabItem Header="保留草稿并对照" x:Name="ReviewTab">
+        <Grid Margin="10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="先搜索记忆，再在此选择当前页中的记录。对照不会替换右侧草稿。" TextWrapping="Wrap" Margin="0,0,0,8"/>
+          <ComboBox Grid.Row="1" x:Name="ReviewTarget" DisplayMemberPath="Title" SelectionChanged="ReviewTargetChanged"
+                    AutomationProperties.Name="对照记忆" Margin="0,0,0,8"/>
+          <Button Grid.Row="2" x:Name="ReviewButton" Content="读取所选记忆" Click="ReviewSelected" HorizontalAlignment="Left"/>
+          <TextBlock Grid.Row="3" x:Name="ReviewMetadata" TextWrapping="Wrap" Margin="0,10,0,6"/>
+          <TextBox Grid.Row="4" x:Name="ReviewTitle" IsReadOnly="True" TextWrapping="Wrap" AutomationProperties.Name="已存标题" Margin="0,0,0,8"/>
+          <TextBox Grid.Row="5" x:Name="ReviewContent" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="已存正文"/>
+          <Button Grid.Row="6" x:Name="AdoptReviewButton" Content="保留草稿，修订这条记忆" Click="AdoptReview" Margin="0,10,0,0"/>
+        </Grid>
+      </TabItem>
+      </TabControl>
       <Grid Grid.Column="2">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
