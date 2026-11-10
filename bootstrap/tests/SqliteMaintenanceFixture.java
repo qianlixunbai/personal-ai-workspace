@@ -17,7 +17,7 @@ public final class SqliteMaintenanceFixture {
         var output = System.out; System.setOut(new PrintStream(OutputStream.nullOutputStream())); System.setErr(System.out);
         byte[] input = System.in.readNBytes(16385); String stage = "INPUT";
         try {
-            require(args.length == 0 && input.length < 16385);
+            require((args.length == 0 || args.length == 1 && args[0].equals("--maintenance-binding")) && input.length < 16385);
             var config = JsonMapper.builder().build().readTree(input);
             int port = config.path("port").asInt(); require(port >= 49152 && port <= 65535);
             Path cluster = Path.of(config.path("data").asString()).toAbsolutePath().normalize();
@@ -56,6 +56,13 @@ public final class SqliteMaintenanceFixture {
                 sql(db, "GRANT INSERT,UPDATE,DELETE ON workspace.memory_items,workspace.conversations,workspace.conversation_turns,workspace.conversation_messages,workspace.conversation_memory_selections,workspace.knowledge_documents,workspace.knowledge_revisions,workspace.knowledge_jobs,workspace.knowledge_deletes,workspace.knowledge_chunks,workspace.knowledge_index_metadata TO cutover_app");
                 sql(db, "GRANT INSERT ON workspace.sqlite_import,workspace.knowledge_sqlite_import TO cutover_app");
                 sql(db, "REVOKE ALL ON FUNCTION workspace.reject_immutable_update() FROM PUBLIC");
+            }
+            if(args.length==1) {
+                try(var db=owner.getConnection();var resource=SqliteMaintenanceFixture.class.getResourceAsStream("/db/workspace/maintenance-target.sql")) {
+                    require(resource!=null);sql(db,new String(resource.readAllBytes(),StandardCharsets.UTF_8));
+                    sql(db,"GRANT SELECT,INSERT ON workspace.maintenance_import TO cutover_app");
+                    sql(db,"GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO cutover_app");
+                }
             }
             stage = "SYNTHETIC_SOURCE";
             UUID memoryId;

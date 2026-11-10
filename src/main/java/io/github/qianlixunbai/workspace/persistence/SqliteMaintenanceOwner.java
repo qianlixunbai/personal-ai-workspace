@@ -71,6 +71,25 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
 
     public synchronized String operationId() throws IOException { requireHeld(); return operation; }
 
+    synchronized Path configurationRoot() throws IOException { requireHeld(); return source.root(); }
+    synchronized SqliteCombinedMigration.Expected configurationTarget() throws IOException {
+        requireHeld();
+        if(latest.stage!=Stage.TARGET_VERIFIED || latest.expected.binding()==null) throw stopped();
+        return latest.expected;
+    }
+
+    /** Stages a protected configuration; neither publication nor Runtime activation is implicit. */
+    public synchronized void prepareConfiguration(byte[] configuration) throws IOException {
+        MaintenanceConfiguration.prepare(this,configuration);
+    }
+
+    /** Last action of this owner: publication retains source handles but ends further use.
+     * Ordinary Runtime remains fenced until a native activation protocol is implemented. */
+    public synchronized String publishConfiguration() throws IOException {
+        Path root=configurationRoot(); var expected=configurationTarget();
+        return MaintenanceConfiguration.publish(root,operation,expected,this::requireHeld);
+    }
+
     public synchronized void createBackup() throws IOException {
         requireHeld();
         if (latest.stage != Stage.SOURCE_FROZEN || backupDigest != null) throw stopped();
@@ -96,7 +115,7 @@ public final class SqliteMaintenanceOwner implements AutoCloseable {
                         public void committing() throws IOException {
                             requireHeld(); append(Stage.COMMIT_ATTEMPTED, latest.expected);
                         }
-                    });
+                    }, operation);
             requireHeld(); append(Stage.TARGET_VERIFIED, result);
             // No database.dpapi creation and no implicit restart/authority switch.
             return result;

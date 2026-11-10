@@ -101,6 +101,7 @@ public final class WindowsNativeGate {
         if (runtimeLease == null)
             runtimeLease = io.github.qianlixunbai.workspace.persistence.NativeProfileRecovery.acquireRuntimeLease(admittedRoot);
         runtimeLease.requireHeld(admittedRoot); // A lost/closed lease is STOP, never silently reacquired.
+        io.github.qianlixunbai.workspace.persistence.MaintenanceStartupFence.requireNoPendingOperation(admittedRoot);
         return admittedRoot;
     }
 

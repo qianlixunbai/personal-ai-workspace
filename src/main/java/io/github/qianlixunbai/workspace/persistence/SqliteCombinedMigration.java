@@ -18,7 +18,10 @@ public final class SqliteCombinedMigration {
         @Override public String toString() { return "MigrationTarget[private]"; }
     }
     public record Expected(SqliteWorkspaceMigration.Result workspace, SqliteKnowledgeMigration.Result knowledge,
-                           Target target) {
+                           Target target, MaintenanceTarget.Binding binding) {
+        public Expected(SqliteWorkspaceMigration.Result workspace, SqliteKnowledgeMigration.Result knowledge, Target target) {
+            this(workspace,knowledge,target,null);
+        }
         @Override public String toString() { return "CombinedMigration[private]"; }
     }
     public enum Inspection { EMPTY, MATCHING_DATA_AND_RECEIPTS, DIFFERENT_OR_PARTIAL, TARGET_CHANGED }
@@ -52,6 +55,11 @@ public final class SqliteCombinedMigration {
 
     static Expected importSnapshots(Connection workspace, Connection knowledge, Path knowledgeFiles,
                                     DataSource target, Observer observer) throws IOException {
+        return importSnapshots(workspace,knowledge,knowledgeFiles,target,observer,null);
+    }
+
+    static Expected importSnapshots(Connection workspace, Connection knowledge, Path knowledgeFiles,
+                                    DataSource target, Observer observer, String operation) throws IOException {
         String stage = "SOURCE_VALIDATION";
         boolean commitAttempted = false;
         Expected expected = null;
@@ -61,7 +69,8 @@ public final class SqliteCombinedMigration {
             try (var db = target.getConnection()) {
                 if (!db.getAutoCommit()) throw new SQLException();
                 PostgresqlWorkspace.verify(db);
-                expected = new Expected(memory.expected, documents.expected(), identity(db));
+                expected = new Expected(memory.expected, documents.expected(), identity(db),
+                        operation == null ? null : MaintenanceTarget.identify(db,operation));
                 stage = "RECORD_TARGET_INTENT"; observer.prepared(expected);
                 db.setAutoCommit(false);
                 try {
@@ -73,6 +82,7 @@ public final class SqliteCombinedMigration {
                     sql(db, "SELECT pg_advisory_xact_lock(170017,3)");
                     requireTrue(db, "SELECT singleton=1 FROM workspace.knowledge_control WHERE singleton=1 FOR UPDATE");
                     requireTrue(db, "SELECT singleton=1 FROM workspace.write_lock WHERE singleton=1 FOR UPDATE");
+                    if (expected.binding != null) { stage="BIND_OPERATION"; MaintenanceTarget.insert(db,expected.binding); }
                     stage = "WORKSPACE_COPY"; memory.writeTo(db);
                     stage = "KNOWLEDGE_COPY"; documents.writeTo(db);
                     stage = "SOURCE_RECHECK"; documents.verifyFiles();
@@ -105,7 +115,8 @@ public final class SqliteCombinedMigration {
             PostgresqlWorkspace.begin(db, false);
             try {
                 Inspection result;
-                if (!expected.target.equals(identity(db))) result = Inspection.TARGET_CHANGED;
+                if (expected.binding != null ? !MaintenanceTarget.matches(db,expected.binding)
+                        : !expected.target.equals(identity(db))) result = Inspection.TARGET_CHANGED;
                 else if (SqliteWorkspaceMigration.matchesCommitted(db, expected.workspace)
                         && SqliteKnowledgeMigration.matchesCommitted(db, expected.knowledge))
                     result = Inspection.MATCHING_DATA_AND_RECEIPTS;
