@@ -1,5 +1,7 @@
 # Desktop fallback fixes and native editor continuation
 
+Continuation: the next session completed three actual native editing operations in [Native Memory daily editing flows](NATIVE-MEMORY-EDIT-FLOWS.md), and delivered product `10a9c8c` in a new combined bundle. The earlier Assistant failure-message suggestion was deferred in favor of draft-preserving review, conflict merging and bounded duplicate checks. This report's original evidence and limits remain historical and unchanged.
+
 ## 2026-11-10: corrected development delivery
 
 Module 1 starts from clean tracked source `2bface5c0451cc8c38e169bd10bbc5fe4c9355b9` on `codex/knowledge-version-compare`. No AGENTS.md or .agents directory is present in this repository, and no AGENTS.md was found in its parent directories. Six untracked user documents were preserved and compared with their existing SHA-256 baseline.

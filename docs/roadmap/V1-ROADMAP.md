@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-10 [原生 Memory 日常编辑流程](../engineering/NATIVE-MEMORY-EDIT-FLOWS.md)已补齐保留草稿修订同一条记忆、版本冲突对照合并和主动检查相同正文，三项独立本地提交 `febc43e` / `f02390b` / `10a9c8c`。合并开发包 `PersonalAiWorkspace-native-memory-edit-flows-20261110.zip` 完成 933 文件／实际嵌入来源检查；旧包保留，本轮没有重跑持久化闭环。后续围绕“记录被删除后如何保留草稿继续保存”等明确用户操作核实，不为凑模块增加泛化回执校验或重复包装。WebView2 正常页面、默认入口、维护迁移和正式发布的原有未验收边界不变。
+
 2026-11-10 [桌面失败页与原生 Memory 交付](../engineering/DESKTOP-FALLBACK-DELIVERY-REPORT.md)当前推进到 `eeeaeb4` 开发包：已交付浏览器释放后关闭／缩放修复，以及原生写入关闭保护和保存回执校验。完整 EXE 的原生 Memory 保存／独立重开此前已在 `cff8015` 通过，SQLite 长路径问题也已有[独立修复证据](../engineering/KNOWLEDGE-LONG-PATH-REPORT.md)，不再重复这些闭环。新包完成包装／嵌入来源验证，未重新启动 EXE；正常 WebView2 页面仍未验收，根因未知。此前完整 EXE 重开数据库哈希变化，不能将下面旧宿主记录的“零写入”扩大为完整 Runtime 零写入。Development-only、无参数默认入口／维护迁移／正式发布边界保留。
 
 2026-11-10 [原生 Memory 真实持久化](../engineering/MEMORY-NATIVE-PERSISTENCE-REPORT.md)补齐上一交付关卡：同包原生窗口实际保存、正常关闭、两个独立宿主／Java 进程读回同一 SQLite 内容，保留合成样本，重开零写入、无模型、服务退出。完整应用与 WebView2 仍单独未关闭。新发现 Knowledge 历史库的普通 SQLite URL 在 262 字符路径下打开失败；本轮仅缩短合成子目录完成 Memory 验收，长路径产品兼容性保留为下一真实缺口，不重复闭环样本。
