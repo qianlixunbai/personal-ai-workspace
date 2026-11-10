@@ -39,3 +39,17 @@ Java 仅编译 3 个源文件、生成 7 个 class，以前轮交付 JAR 为底�
 下一步应围绕迁移后普通启动的明确能力及失效规则接线，然后接上述准入和用户确认；无需继续叠加与该路径无关的验收层。
 
 main、原六份未跟踪用户文档、旧交付包均由本轮 baseline 单独留证。未改真实数据、凭据、默认配置、其他仓库或系统安全／网络／权限设置；未重试已拒绝的端口查询、旧 Profile 或进程信息读取。代码完成并通过必要验证后本地提交，不推送。当前上下文没有实际路由元数据，无法把会话请求的模型／强度／快速模式当作已核实结果。
+
+## 本地交付
+
+产品提交：`02378b2a549cd54417b55e0f0b4c712d087e49ce`，分支 `codex/knowledge-version-compare`。包与同名目录：`artifacts/PersonalAiWorkspace-ordinary-native-lifecycle-20261110.zip`。933 个 payload 文件、934 个 ZIP 条目逐一核对，420 条内嵌 Runtime pins 匹配。
+
+| 交付项 | SHA-256 |
+| --- | --- |
+| ZIP | `31CA46E913C73D59DD8C010C3636087D643526043DE51908EE14CE5B4C2004B7` |
+| Runtime JAR | `542906BA127F8A09B045BEE991F5F38D9A4A709E2CADC1758CE1014032EEA2E3` |
+| Desktop DLL | `7AC3F5CD63872416E9298A4757D828D0E33642195CBDF28B3E0FB1A134B6ECDB` |
+
+Runtime 相对最终验收候选仅更新 `META-INF/workspace-runtime.properties` 来源信息，其余全部 JAR 条目字节一致。Desktop 从已验收源重新发布并嵌入交付 pins；前端、JDK、NativeBootstrap 沿用。没有宣称最终默认 EXE 的 WPF 点击／视觉验收，`productionGo=false`。
+
+`delivery-result.json`、`publish-cleanup.json`、`final-baseline.json` 均位于 r2 证据目录。打包 guardian 7984 于 `2026-11-10T15:28:24.5093128Z` 记录 Job active 0、Job 关闭和锁释放、failure=null。main 仍为 `f5266bf4383f52a2293b0fe4bfe1964af958e64a`；六份用户文档及上一包 `17C9B64C538217137BEFEA7E0DF7F74CE054CE1B5CD833C5FC0D26225CBCF2FB` 未改。产品提交后只剩原六份未跟踪用户文档；交付补记单独提交，没有推送、待审批或未知结果。
