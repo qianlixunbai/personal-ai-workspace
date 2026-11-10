@@ -4,7 +4,8 @@ import { StorageSettings } from '../components/StorageSettings'
 import { useEffect, useRef, useState } from 'react'
 import { FinanceAccounts } from '../components/FinanceAccounts'
 import type { WorkspaceClient } from '../bridge/client'
-import type { ModelAction, ModelFact, ModelSnapshot } from '../bridge/models'
+import type { ModelAction, ModelFact, ModelSnapshot, ModelExecutionInspection } from '../bridge/models'
+import { ModelExecutionRecords } from '../components/ModelExecutionRecords'
 const maintenance: { method: NativeMethod; title: string; description: string }[] = [
   { method: 'native.openMemoryBackup', title: '记忆备份', description: '导出或恢复手动保存的记忆。' },
   { method: 'native.openWorkspaceBackup', title: '工作区备份', description: '包含记忆与对话；知识库需单独备份。' },
@@ -46,32 +47,43 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
   const [modelSnapshot, setSnapshot] = useState<ModelSnapshot | null>(null)
   const snapshot = enabled ? modelSnapshot : null
   const [handle, setHandle] = useState('')
+  const [executions, setExecutions] = useState<ModelExecutionInspection | null>(null)
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const generation = useRef(0)
   const inFlight = useRef(false)
   useEffect(() => {
-    const reset = () => { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setHandle(''); setMessage(''); setError('') }
+    const reset = () => { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setExecutions(null); setHandle(''); setMessage(''); setError('') }
     const unsubscribe = bridge.onSession(reset)
     const unsubscribeLifecycle = bridge.onStorageStartup(reset)
     return () => { generation.current++; unsubscribe(); unsubscribeLifecycle() }
   }, [bridge])
   useEffect(() => {
-    if (!enabled) { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setHandle(''); setMessage(''); setError('') }
+    if (!enabled) { generation.current++; inFlight.current = false; setWorking(false); setSnapshot(null); setExecutions(null); setHandle(''); setMessage(''); setError('') }
   }, [enabled])
-  const inspect = async (recovery = false) => {
+  const inspect = async () => {
     if (inFlight.current || !enabled) return
-    inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setHandle(''); setError(''); setMessage('正在只读核对模型状态…')
+    inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setExecutions(null); setHandle(''); setError(''); setMessage('正在只读核对模型状态…')
     try {
-      const next = await bridge.inspectModels(recovery)
+      const next = await bridge.inspectModels()
       if (current === generation.current) { setSnapshot(next); setHandle(''); setMessage('状态已更新，未加载模型。') }
     } catch (problem) { if (current === generation.current) { setSnapshot(null); setError(problem instanceof Error ? problem.message : '模型状态不可用。'); setMessage('') } }
     finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
   }
+  const inspectExecutions = async () => {
+    if (inFlight.current || !enabled) return
+    inFlight.current = true; const current = ++generation.current; setWorking(true); setSnapshot(null); setExecutions(null); setHandle(''); setError(''); setMessage('正在读取本地执行记录…')
+    try {
+      const next = await bridge.inspectModelExecutions()
+      if (current === generation.current) { setExecutions(next); setMessage('本地记录已读取；未联系 Ollama，也未修改执行状态。') }
+    } catch (problem) {
+      if (current === generation.current) { setError(problem instanceof Error ? problem.message : '执行记录暂时无法读取。'); setMessage('') }
+    } finally { if (current === generation.current) { inFlight.current = false; setWorking(false) } }
+  }
   const mutate = async (action: ModelAction, target: string) => {
     if (inFlight.current || !enabled || !snapshot || !target) return
-    inFlight.current = true; const current = ++generation.current; setWorking(true); setError(''); setMessage('请在原生确认窗口核对精确操作。')
+    inFlight.current = true; const current = ++generation.current; setWorking(true); setExecutions(null); setError(''); setMessage('请在原生确认窗口核对精确操作。')
     const request = { action, handle: target, expectedSelectionRevision: snapshot.status.selectionRevision,
       recoveryGeneration: action === 'RECOVER' ? snapshot.status.recoveryGeneration : null }
     try {
@@ -132,11 +144,12 @@ function ModelManagement({ bridge, enabled }: { bridge: WorkspaceClient; enabled
     </div>
     <div className="card-heading">
       <button className="secondary" disabled={disabled || !configured || !idle || s?.uncertain} onClick={() => { if (configured) void mutate('VALIDATE', configured.handle) }}>确认原选择的验证加载</button>
-      <button className="secondary" disabled={disabled} onClick={() => { void inspect(true) }}>核对外部恢复（只读）</button>
+      <button className="secondary" disabled={disabled} onClick={() => { void inspectExecutions() }}>查看阻断请求（只读）</button>
       <button className="secondary" disabled title="缺少原执行的所有权与结束证明">恢复暂不可用</button>
     </div>
     <p className="hint">普通切换不会主动释放旧模型。加载仍可能触发 Ollama 自动驱逐旧模型或其他客户端驻留模型；失败不自动恢复旧显存状态。每次操作均须原生确认。</p>
     <p className="hint">恢复需要原执行的所有权与结束证明。当前外部 Ollama 路径尚不能提供这项证明，因此保留未知执行记录并暂停恢复；人工勾选、模型驻留列表和本地任务数不能替代它。</p>
+    {executions && <ModelExecutionRecords inspection={executions} />}
     <p className="hint">只支持已安装且通过审核的本地 metadata 子集；外部 local-only 配置未验证。Provider 声明 Vision 不表示 Workspace 支持图片处理。</p>
     </details>
     {error && <p role="alert" className="error">{error}</p>}{message && <p role="status">{message}</p>}

@@ -78,6 +78,8 @@ main { padding: 28px var(--page-gutter) 24px; display: flex; flex-direction: col
 .status-list > div { min-width: 0; }
 .status-list dt { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .status-list dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.execution-records { max-height: 28rem; overflow: auto; padding-left: 24px; }
+.execution-records > li { padding: 12px 8px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .card-heading h2 { margin: 0; }
 .section-title { font-size: 16px; margin: 24px 0 16px; }

@@ -37,6 +37,11 @@ public sealed class WorkspaceModelsTests
         internal readonly WorkspaceBridge Bridge;
         internal readonly List<string> Sent = [];
         internal int Posts, StatusReads; internal string? Posted; internal bool LosePost, Stale;
+        internal readonly List<string> ReadRoutes = [];
+        internal string ExecutionBody = JsonSerializer.Serialize(new { recordState = "PREVIOUS_SESSION", recoverySupported = false,
+            requests = new[] { new { requestId = Handle, operation = "chat", model = "a:latest", runner = "ggml", digest = Digest,
+                selectionRevision = 0, completion = "UNKNOWN" } } });
+        internal TaskCompletionSource<HttpResponseMessage>? PendingInspection;
         internal TaskCompletionSource<HttpResponseMessage>? PendingPost;
         WorkspaceModels IWorkspaceNativeActions.Models => Owner;
         public Task<ShellStatus> StatusAsync(CancellationToken token) => throw new NotSupportedException();
@@ -54,6 +59,9 @@ public sealed class WorkspaceModelsTests
                     if (PendingPost is not null) return await PendingPost.Task;
                     return Response(HttpStatusCode.OK, JsonSerializer.Serialize(Status(1)));
                 }
+                ReadRoutes.Add(route);
+                if (route == "/api/v1/models/executions") return PendingInspection is null
+                    ? Response(HttpStatusCode.OK, ExecutionBody) : await PendingInspection.Task;
                 if (route == "/api/v1/models/catalog") return Response(HttpStatusCode.OK, JsonSerializer.Serialize(new { selectionRevision = 0,
                     models = new[] { new { handle = Handle, model = "a:latest", runner = "ggml", digest = Digest, contextLimit = 32768, completion = true, localSourceVerified = true, providerDeclaredVision = false } } }));
                 Assert.Equal("/api/v1/models/status", route); StatusReads++;
@@ -68,6 +76,30 @@ public sealed class WorkspaceModelsTests
         internal object Payload(string action = "SWITCH", long revision = 0) => new { action, handle = Handle, expectedSelectionRevision = revision, recoveryGeneration = (string?)null };
         internal async Task Inspect() { await Receive("models.inspect", new { }); Sent.Clear(); }
         public void Dispose() { Bridge.Dispose(); Runtime.Dispose(); }
+    }
+    [Fact] public async Task RecoveryInspectionUsesOnlyLocalRecordsRejectsAuthorityAndDropsReplacedSession()
+    {
+        using var f = new Fixture(); await f.Inspect(); f.ReadRoutes.Clear();
+        await f.Receive("models.inspectRecovery", new { });
+        Assert.Equal(new[] { "/api/v1/models/executions" }, f.ReadRoutes);
+        using (var response = JsonDocument.Parse(Assert.Single(f.Sent))) {
+            var report = response.RootElement.GetProperty("result");
+            Assert.Equal("PREVIOUS_SESSION", report.GetProperty("recordState").GetString());
+            Assert.False(report.GetProperty("recoverySupported").GetBoolean());
+            Assert.Equal(Handle, report.GetProperty("requests")[0].GetProperty("requestId").GetString());
+        }
+        f.Sent.Clear(); await f.Receive("models.mutate", f.Payload());
+        Assert.Contains("ModelCatalogStale", Assert.Single(f.Sent)); Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
+        string valid = f.ExecutionBody;
+        foreach (string invalid in new[] { valid.Replace("\"recoverySupported\":false", "\"recoverySupported\":true"),
+            valid.Replace("UNKNOWN", "COMPLETED"), valid.Replace("\"recordState\":", "\"endpoint\":\"https://example.invalid\",\"recordState\":") }) {
+            f.Sent.Clear(); f.ExecutionBody = invalid; await f.Receive("models.inspectRecovery", new { });
+            Assert.Contains("InvalidResponse", Assert.Single(f.Sent)); Assert.DoesNotContain("\"requests\"", f.Sent[0]);
+        }
+        f.Sent.Clear(); f.PendingInspection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task pending = f.Receive("models.inspectRecovery", new { }); f.Rotate();
+        f.PendingInspection.SetResult(Response(HttpStatusCode.OK, valid)); await pending;
+        Assert.Empty(f.Sent); Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
     }
     [Fact] public async Task NativeAuthorityFreezesExactIntentRejectsStaleAndReplacementConsumesOnceAndReconcilesOnlyGet()
     {

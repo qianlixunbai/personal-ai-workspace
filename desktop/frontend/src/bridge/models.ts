@@ -17,11 +17,30 @@ export interface ModelStatus {
 export interface ModelSnapshot { status: ModelStatus; catalog: ModelCatalog | null; error: SafeError | null }
 export interface ModelOutcome { outcome: 'COMPLETED' | 'CANCELLED' | 'UNKNOWN'; snapshot: ModelSnapshot | null }
 export interface ModelRequest { action: ModelAction; handle: string; expectedSelectionRevision: number; recoveryGeneration: string | null }
+export type ExecutionRecordState = 'NONE' | 'CURRENT_SESSION' | 'PREVIOUS_SESSION' | 'LEGACY' | 'INCOMPLETE' | 'UNREADABLE' | 'UNAVAILABLE'
+export type ExecutionCompletion = 'PREPARED' | 'IN_PROGRESS' | 'COMPLETED' | 'NOT_SENT' | 'UNKNOWN'
+export interface ModelExecutionEntry { requestId: string; operation: 'chat' | 'unload'; model: string; runner: string; digest: string; selectionRevision: number; completion: ExecutionCompletion }
+export interface ModelExecutionInspection { recordState: ExecutionRecordState; recoverySupported: false; requests: ModelExecutionEntry[] }
 const revision = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 const name = (value: unknown): value is string => typeof value === 'string' && value.length <= 256 && /^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)?:[a-z0-9][a-z0-9._-]*$/.test(value)
   && !value.includes('..') && !value.endsWith(':cloud') && !value.endsWith('-cloud') && !value.endsWith(':local')
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 const runner = (value: unknown): value is string => typeof value === 'string' && ['ggml', 'llamacpp', 'mlx'].includes(value)
+export function isModelExecutionInspection(value: unknown): value is ModelExecutionInspection {
+  if (!isObject(value) || !exactFields(value, ['recordState', 'recoverySupported', 'requests']) || value.recoverySupported !== false
+    || !['NONE', 'CURRENT_SESSION', 'PREVIOUS_SESSION', 'LEGACY', 'INCOMPLETE', 'UNREADABLE', 'UNAVAILABLE'].includes(String(value.recordState))
+    || !Array.isArray(value.requests) || value.requests.length > 128
+    || ['CURRENT_SESSION', 'PREVIOUS_SESSION'].includes(String(value.recordState)) !== (value.requests.length > 0)) return false
+  const ids = new Set<string>()
+  return value.requests.every(row => {
+    if (!isObject(row) || !exactFields(row, ['requestId', 'operation', 'model', 'runner', 'digest', 'selectionRevision', 'completion'])
+      || !isId(row.requestId) || ids.has(row.requestId) || !['chat', 'unload'].includes(String(row.operation))
+      || !name(row.model) || !runner(row.runner) || !digest(row.digest) || !revision(row.selectionRevision)
+      || !['PREPARED', 'IN_PROGRESS', 'COMPLETED', 'NOT_SENT', 'UNKNOWN'].includes(String(row.completion))
+      || value.recordState === 'PREVIOUS_SESSION' && row.completion !== 'UNKNOWN') return false
+    ids.add(row.requestId); return true
+  })
+}
 export function isModelRequest(value: unknown): value is ModelRequest {
   return isObject(value) && exactFields(value, ['action', 'handle', 'expectedSelectionRevision', 'recoveryGeneration'])
     && modelActions.includes(value.action as ModelAction) && isId(value.handle) && revision(value.expectedSelectionRevision)

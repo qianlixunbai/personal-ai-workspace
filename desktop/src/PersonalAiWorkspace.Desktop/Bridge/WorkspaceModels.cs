@@ -34,6 +34,17 @@ internal sealed class WorkspaceModels(RuntimeClient runtime, IModelConfirmation 
     { if (session != value || authority is null) throw new OperationCanceledException(); return authority; }
     private void Current(string value, Authority known, CancellationToken token)
     { token.ThrowIfCancellationRequested(); if (!ReferenceEquals(Require(value), known)) throw new OperationCanceledException(); }
+    internal async Task<ModelExecutionInspection> InspectExecutionsAsync(string value, CancellationToken token)
+    {
+        Authority known;
+        lock (sync) {
+            known = Require(value); token.ThrowIfCancellationRequested();
+            if (pending is not null) throw new DesktopException(DesktopError.ModelSwitchConflict);
+            known.Snapshot = null; // This diagnostic result cannot preserve or grant mutation authority.
+        }
+        var result = await runtime.InspectModelExecutionsAsync(token);
+        lock (sync) { Current(value, known, token); return result; }
+    }
     internal async Task<WorkspaceModelSnapshot> InspectAsync(string value, CancellationToken token, bool recovery = false)
     {
         Authority known;

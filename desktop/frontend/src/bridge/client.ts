@@ -14,10 +14,10 @@ import { isKnowledgeAnswerTask, isKnowledgeAnswerHistoryPage, isKnowledgeAnswerH
 import type { KnowledgeAnswerTask, KnowledgeAnswerHistoryPage, KnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
 import type { WebFetchOperation, WebFetchSubmission } from './webFetch'
-import { modelMethods, isModelRequest, isModelSnapshot, isModelOutcome } from './models'
+import { modelMethods, isModelRequest, isModelSnapshot, isModelOutcome, isModelExecutionInspection } from './models'
 import { visionMethods, isVisionReadiness, isVisionPick, isVisionTask, isVisionValidation } from './vision'
 import type { VisionReadiness, VisionPick, VisionTask, VisionValidation } from './vision'
-import type { ModelSnapshot, ModelOutcome, ModelRequest } from './models'
+import type { ModelSnapshot, ModelOutcome, ModelRequest, ModelExecutionInspection } from './models'
 import { isStorageStatus, isStorageStartupStatus } from './storage'
 import type { StorageStatus, StorageStartupStatus } from './storage'
 import { isFinanceOverview, isFinanceAccount, isFinanceAccountPage, isFinanceQuery, financeId, isFinanceBudgetAvailability } from './finance'
@@ -135,7 +135,8 @@ export class WorkspaceClient {
   visionTask(taskId: string, cancel = false) { return this.request(cancel ? 'vision.cancel' : 'vision.get', { taskId }) as Promise<VisionTask> }
   currentVisionTask() { return this.request('vision.get') as Promise<VisionTask> }
   clearVision() { return this.request('vision.clear') as Promise<{ cleared: true }> }
-  inspectModels(recovery = false) { return this.request(recovery ? 'models.inspectRecovery' : 'models.inspect') as Promise<ModelSnapshot> }
+  inspectModels() { return this.request('models.inspect') as Promise<ModelSnapshot> }
+  inspectModelExecutions() { return this.request('models.inspectRecovery') as Promise<ModelExecutionInspection> }
   mutateModel(payload: ModelRequest) {
     if (!isModelRequest(payload)) return Promise.reject(new BridgeError('InvalidRequest', '模型意图无效，请刷新。'))
     return this.request('models.mutate', payload) as Promise<ModelOutcome>
@@ -302,7 +303,8 @@ export class WorkspaceClient {
         : ['vision.submit', 'vision.get', 'vision.cancel'].includes(pending.method) ? isVisionTask(data.result) && (!pending.taskId || data.result.taskId === pending.taskId)
         : pending.method === 'vision.clear' ? isObject(data.result) && exactFields(data.result, ['cleared']) && data.result.cleared === true
         : pending.method === 'models.mutate' ? isModelOutcome(data.result)
-        : pending.method === 'models.inspect' || pending.method === 'models.inspectRecovery' ? isModelSnapshot(data.result)
+        : pending.method === 'models.inspect' ? isModelSnapshot(data.result)
+        : pending.method === 'models.inspectRecovery' ? isModelExecutionInspection(data.result)
         : pending.method === 'web.fetchSubmit' ? isWebFetchSubmission(data.result)
         : pending.method === 'web.saveKnowledge' || pending.method === 'web.knowledgeState' ? isKnowledgeImport(data.result) && data.result.outcome !== 'CANCELLED'
         : pending.method === 'web.fetchGet' || pending.method === 'web.fetchCancel' ? isWebFetchOperation(data.result) && data.result.operationId === pending.operationId

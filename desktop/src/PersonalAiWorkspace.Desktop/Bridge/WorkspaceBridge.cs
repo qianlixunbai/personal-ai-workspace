@@ -222,7 +222,8 @@ internal sealed class WorkspaceBridge : IDisposable
                 result = method == "models.mutate"
                     ? await models.MutateAsync(session, payload.GetProperty("action").GetString()!, payload.GetProperty("handle").GetString()!,
                         payload.GetProperty("expectedSelectionRevision").GetInt64(), payload.GetProperty("recoveryGeneration").ValueKind == JsonValueKind.Null ? null : payload.GetProperty("recoveryGeneration").GetString(), cancellation)
-                    : await models.InspectAsync(session, cancellation, method == "models.inspectRecovery");
+                    : method == "models.inspectRecovery" ? await models.InspectExecutionsAsync(session, cancellation)
+                    : await models.InspectAsync(session, cancellation);
             }
             else if (WebFetchMethods.Contains(method))
             {

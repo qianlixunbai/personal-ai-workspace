@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { WorkspaceClient } from '../bridge/client'
 import { Port, status } from '../test/fixtures'
-import type { ModelSnapshot } from '../bridge/models'
+import type { ModelSnapshot, ModelExecutionInspection } from '../bridge/models'
 import { SettingsPage } from './SettingsPage'
 import { App } from '../app/App'
 
@@ -11,6 +11,42 @@ const snapshot: ModelSnapshot = { status: { configuredModel: 'a:latest', configu
   selectionRevision: 1, installed: 'TRUE', loaded: 'UNKNOWN', ready: true, reserved: 0, queued: 0, executing: 0, draining: 0, switching: false, uncertain: false,
   recoveryGeneration: '44444444-4444-4444-8444-444444444444', validationRequired: false, error: null }, catalog: { selectionRevision: 1,
   models: [{ handle: '33333333-3333-4333-8333-333333333333', model: 'b:latest', runner: 'ggml', digest: 'b'.repeat(64), contextLimit: 32768, completion: true, localSourceVerified: true, providerDeclaredVision: true }] }, error: null }
+
+it('shows persisted blocking requests without model refresh, rejects invented recovery and discards stale observations', async () => {
+  const port = new Port(), bridge = new WorkspaceClient(port); port.session()
+  render(<SettingsPage bridge={bridge} status={status} busy={false} open={vi.fn()} refresh={vi.fn()} onRuntimeUnconfirmed={vi.fn()} />)
+  fireEvent.click(screen.getByText('高级模型操作与恢复'))
+  const inspect = () => fireEvent.click(screen.getByText('查看阻断请求（只读）'))
+  const report: ModelExecutionInspection = { recordState: 'CURRENT_SESSION', recoverySupported: false, requests: [
+    { requestId: '33333333-3333-4333-8333-333333333333', operation: 'chat', model: 'a:latest', runner: 'ggml', digest: 'a'.repeat(64), selectionRevision: 1, completion: 'COMPLETED' },
+    { requestId: '44444444-4444-4444-8444-444444444444', operation: 'unload', model: 'b:latest', runner: 'ggml', digest: 'b'.repeat(64), selectionRevision: 1, completion: 'UNKNOWN' },
+  ] }
+  inspect(); expect(port.sent).toHaveLength(1)
+  expect(port.sent[0]).toMatchObject({ method: 'models.inspectRecovery', payload: {} })
+  await act(async () => { port.reply(0, report) })
+  expect(screen.getByText(report.requests[0]!.requestId)).toBeTruthy()
+  expect(screen.getByText(report.requests[1]!.requestId)).toBeTruthy()
+  expect(screen.getByText('本次运行已收到可核验的协议完成响应')).toBeTruthy()
+  expect(screen.getByText('没有可核验的结束证明')).toBeTruthy()
+  expect((screen.getByText('恢复暂不可用') as HTMLButtonElement).disabled).toBe(true)
+  expect(screen.queryByRole('checkbox')).toBeNull()
+  inspect(); expect(screen.queryByText(report.requests[0]!.requestId)).toBeNull()
+  await act(async () => { port.reply(1, { recordState: 'INCOMPLETE', recoverySupported: false, requests: [] }) })
+  expect(screen.getByText(/执行记录写入未完成/)).toBeTruthy()
+  expect(screen.queryByText(/未发现模型执行阻断记录/)).toBeNull()
+  inspect()
+  await act(async () => { port.reply(2, { ...report, recoverySupported: true }) })
+  expect(screen.getByRole('alert').textContent).toBeTruthy()
+  expect(screen.queryByText(report.requests[0]!.requestId)).toBeNull()
+  inspect()
+  await act(async () => { port.reply(3, { ...report, recordState: 'PREVIOUS_SESSION' }) })
+  expect(screen.queryByText('本次运行已收到可核验的协议完成响应')).toBeNull()
+  inspect()
+  await act(async () => { port.session('22222222-2222-4222-8222-222222222222'); port.reply(4, report) })
+  expect(screen.queryByText(report.requests[0]!.requestId)).toBeNull()
+  expect(port.sent.every(request => request.method === 'models.inspectRecovery')).toBe(true)
+  bridge.dispose()
+})
 
 it('uses typed native model intents, preserves unknown residency and blocks replay or stale session responses', async () => {
   const port = new Port(), bridge = new WorkspaceClient(port); port.session()
