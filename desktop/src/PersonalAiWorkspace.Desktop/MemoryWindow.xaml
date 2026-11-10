@@ -23,10 +23,11 @@
       <TextBlock Text="Local Only · User Controlled · 显式保存" Foreground="#475569" Margin="0,4,0,12"/>
     </StackPanel>
     <Grid Grid.Row="1" Margin="0,0,0,10">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBox x:Name="SearchBox" KeyDown="SearchKeyDown" Margin="0,0,10,0" AutomationProperties.Name="Search Memory"/>
-      <Button Grid.Column="1" x:Name="SearchButton" Content="Search" Click="Search"/>
-      <Button Grid.Column="2" x:Name="RefreshButton" Content="Refresh" Click="Refresh"/>
+      <Button Grid.Column="1" x:Name="SearchButton" Content="原文查找" Click="Search"/>
+      <Button Grid.Column="2" x:Name="RecallButton" Content="查找相关记忆" Click="Recall" ToolTip="按词语匹配使用中的记忆；已归档记录请用原文查找"/>
+      <Button Grid.Column="3" x:Name="RefreshButton" Content="Refresh" Click="Refresh"/>
     </Grid>
     <WrapPanel Grid.Row="2" Margin="0,0,0,12">
       <TextBlock Text="Status" VerticalAlignment="Center" Margin="0,0,8,0"/>

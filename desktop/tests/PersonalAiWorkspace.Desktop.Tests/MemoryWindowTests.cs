@@ -79,6 +79,8 @@ public sealed class MemoryWindowTests
     {
         internal readonly Dictionary<Guid, MemoryItem> Items = [];
         internal int Reads, Mutations;
+        internal int Recalls;
+        internal string? RecallQuery;
         internal bool LoseNextWriteResponse;
         internal bool CorruptNextWriteReceipt;
         internal string? Failure;
@@ -109,6 +111,17 @@ public sealed class MemoryWindowTests
         }
         internal RuntimeClient Client() => new(new Handler(async (request, ct) =>
         {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/memory/recall")
+            {
+                Recalls++;
+                using var input = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                RecallQuery = input.RootElement.GetProperty("query").GetString();
+                string? type = input.RootElement.GetProperty("type").GetString();
+                var matches = Items.Values.Where(x => x.Status == MemoryStatus.ACTIVE && (type is null || x.Type.ToString() == type))
+                    .OrderByDescending(x => x.UpdatedAt).ThenBy(x => x.Id.ToString("D"), StringComparer.Ordinal).ToArray();
+                return Response("{\"hits\":[" + string.Join(",", matches.Take(20).Select(x =>
+                    "{\"item\":" + Json(x) + ",\"score\":1,\"matchedTerms\":[\"java\"]}")) + "],\"total\":" + matches.Length + ",\"limit\":20}");
+            }
             if (request.Method == HttpMethod.Get) Reads++; else Mutations++;
             if (Pending is not null) { PendingToken = ct; return await Pending.Task; }
             if (Failure is not null)
@@ -262,6 +275,48 @@ public sealed class MemoryWindowTests
         window.TitleBox.Text += " unsaved"; window.NewItem(); Assert.Empty(window.TitleBox.Text); Assert.Empty(window.ContentBox.Text);
         window.TitleBox.Text = PrivateTitle; window.ContentBox.Text = PrivateContent;
         await window.SaveAsync(); Assert.False(window.Dirty); Assert.True(window.TryClose());
+    });
+
+    [Fact]
+    public Task RelatedManagementSearchKeepsDraftThroughReviewSaveArchiveAndRestore() => StaAsync(async () =>
+    {
+        var store = new Store(); var original = store.Add(); using var runtime = store.Client();
+        var window = new MemoryWindow(runtime, _ => true);
+        const string draft = "Synthetic java draft retained exactly 😀";
+        try
+        {
+            window.TitleBox.Text = "Synthetic revised"; window.ContentBox.Text = draft;
+            window.SearchBox.Text = "java 测试";
+            await window.RefreshAsync(search: true); Assert.Empty(window.MemoryList.Items);
+            await window.RecallAsync(); Assert.Equal("java 测试", store.RecallQuery);
+            Assert.Equal(original, Assert.Single(window.MemoryList.Items.Cast<MemoryItem>()));
+            Assert.Equal(draft, window.ContentBox.Text); Assert.Equal(0, store.Mutations);
+            Assert.False(window.NextButton.IsEnabled); Assert.False(window.PreviousButton.IsEnabled);
+            Assert.Contains("词语匹配", window.StatusText.Text);
+            await window.ReviewItemAsync(original); Assert.Contains("java", window.ReviewMetadata.Text);
+            await window.AdoptReviewAsync(); Assert.Equal(0, store.Mutations);
+            await window.SaveAsync(); Assert.Equal(draft, store.Items[original.Id].Content);
+            Assert.Equal(1, store.Mutations); Assert.Equal(2, store.Recalls);
+            await window.ChangeStatusAsync(); Assert.Empty(window.MemoryList.Items);
+            Assert.Equal(MemoryStatus.ARCHIVED, store.Items[original.Id].Status);
+            window.SearchBox.Text = "";
+            window.StatusFilter.SelectedIndex = 1; await DrainAsync();
+            Assert.False(window.RecallButton.IsEnabled);
+            await window.RefreshAsync(search: true);
+            Assert.Single(window.MemoryList.Items.Cast<MemoryItem>());
+            await window.ChangeStatusAsync(); Assert.Empty(window.MemoryList.Items);
+            Assert.Equal(MemoryStatus.ACTIVE, store.Items[original.Id].Status);
+            window.StatusFilter.SelectedIndex = 0; await DrainAsync();
+            window.SearchBox.Text = "java";
+            for (int i = 0; i < 20; i++) store.Add();
+            await window.RecallAsync(); Assert.Equal(20, window.MemoryList.Items.Count);
+            Assert.Contains("前 20", window.StatusText.Text); Assert.False(window.NextButton.IsEnabled);
+            window.TypeFilter.SelectedIndex = 1; await DrainAsync();
+            Assert.Empty(window.MemoryList.Items); Assert.Contains("不代表", window.StatusText.Text);
+            Assert.Equal(3, store.Mutations); Assert.Equal(draft, window.ContentBox.Text);
+            await window.RefreshAsync(search: true); Assert.Contains("原文查找", window.StatusText.Text);
+        }
+        finally { window.TryClose(); }
     });
 
     [Fact]

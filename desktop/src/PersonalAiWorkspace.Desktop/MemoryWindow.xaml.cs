@@ -24,8 +24,9 @@ public partial class MemoryWindow : Window
     private MemoryItem? reviewed;
     private string? duplicateBody;
     private MemoryPage? results;
+    private MemoryRecallResult? recalled;
     private MemoryQuery view = new();
-    private bool busy, writing, closed, rendering, initialized, stale, missing, outcomeUnknown;
+    private bool busy, writing, closed, rendering, initialized, stale, missing, outcomeUnknown, recallMode;
     internal bool Dirty => initialized && (TitleBox.Text != (loaded?.Title ?? "")
         || ContentBox.Text != (loaded?.Content ?? "") || SelectedType != (loaded?.Type ?? MemoryType.PROJECT_NOTE));
     internal bool Stale => stale;
@@ -62,6 +63,7 @@ public partial class MemoryWindow : Window
         bool available = !busy;
         BackupButton.IsEnabled = available;
         SearchButton.IsEnabled = RefreshButton.IsEnabled = NewButton.IsEnabled = available;
+        RecallButton.IsEnabled = available && StatusFilter.SelectedIndex == 0;
         StatusFilter.IsEnabled = TypeFilter.IsEnabled = MemoryList.IsEnabled = available;
         SearchBox.IsReadOnly = TitleBox.IsReadOnly = ContentBox.IsReadOnly = busy;
         EditorType.IsEnabled = available;
@@ -105,7 +107,7 @@ public partial class MemoryWindow : Window
     private void SelectLoaded()
     {
         rendering = true;
-        MemoryList.SelectedItem = results?.Items.FirstOrDefault(x => x.Id == loaded?.Id);
+        MemoryList.SelectedItem = (recalled?.Hits.Select(x => x.Item) ?? results?.Items)?.FirstOrDefault(x => x.Id == loaded?.Id);
         rendering = false;
     }
     private async Task RunAsync(Func<Task> operation, bool affectsLoaded = true, bool mutation = false)
@@ -129,6 +131,18 @@ public partial class MemoryWindow : Window
     }
     private async Task FetchListAsync()
     {
+        if (recallMode)
+        {
+            var matches = await runtime.RecallMemoryAsync(view.Query, view.Type, lifetime.Token);
+            if (closed) return;
+            recalled = matches; results = null;
+            var items = matches.Hits.Select(x => x.Item).ToArray();
+            ReviewTarget.ItemsSource = items;
+            rendering = true; MemoryList.ItemsSource = items; rendering = false;
+            SelectLoaded();
+            PageText.Text = $"相关 {items.Length} / {matches.Total}";
+            return;
+        }
         var page = await runtime.ListMemoryAsync(view, lifetime.Token);
         if (closed) return;
         // Deleting/archiving the last row or concurrent deletion can make the requested page empty.
@@ -138,13 +152,17 @@ public partial class MemoryWindow : Window
             page = await runtime.ListMemoryAsync(view, lifetime.Token);
             if (closed) return;
         }
-        results = page;
+        results = page; recalled = null;
         ReviewTarget.ItemsSource = page.Items;
         rendering = true; MemoryList.ItemsSource = page.Items; rendering = false;
         SelectLoaded();
         PageText.Text = $"Page {page.Page + 1} / {Math.Max(1, (page.Total + page.Limit - 1) / page.Limit)} · {page.Total}";
     }
-    internal Task RefreshAsync(bool search = false, int? page = null) => RunAsync(async () =>
+    private string SearchSummary => !recallMode ? "原文查找：匹配标题和正文中的完整短语，区分大小写。" :
+        "相关查找：仅使用中记录，按词语匹配排序，并非语义判断。不会自动选用记忆。"
+        + (recalled?.Total == 0 ? "没有词语匹配，可换关键词或用原文查找；不代表没有相关记忆。" : "")
+        + (recalled?.Total > 20 ? "仅显示前 20 条，请细化关键词或筛选类型。" : "");
+    internal Task RefreshAsync(bool search = false, int? page = null, bool? related = null) => RunAsync(async () =>
     {
         var next = view with
         {
@@ -154,13 +172,15 @@ public partial class MemoryWindow : Window
             Page = search ? 0 : page ?? view.Page
         };
         next.Validate(); view = next;
+        recallMode = next.Status == MemoryStatus.ACTIVE && (related ?? (search ? false : recallMode));
         // Keep the editor, including dirty text, across list/search/filter refreshes.
-        results = null; rendering = true; MemoryList.ItemsSource = null; rendering = false;
+        results = null; recalled = null; PageText.Text = ""; rendering = true; MemoryList.ItemsSource = null; rendering = false;
         ReviewTarget.ItemsSource = null;
         await FetchListAsync();
         if (!closed) StatusText.Text = outcomeUnknown ? UnknownOutcomeMessage : stale ? ErrorText.For(DesktopError.MemoryRevisionConflict)
-            : missing ? MissingDraftMessage : "Memory 列表已刷新。";
+            : missing ? MissingDraftMessage : SearchSummary;
     }, affectsLoaded: false);
+    internal Task RecallAsync() => RefreshAsync(search: true, related: true);
     internal async Task SelectItemAsync(MemoryItem item)
     {
         if (busy || closed || item.Id == loaded?.Id) return;
@@ -297,6 +317,8 @@ public partial class MemoryWindow : Window
         reviewed = item;
         ReviewTitle.Text = item.Title; ReviewContent.Text = item.Content;
         ReviewMetadata.Text = $"{item.Id:D}\n{item.Type} · {item.Status} · Revision {item.Revision}\nUpdated {item.UpdatedAt:yyyy-MM-dd HH:mm:ss zzz}";
+        var hit = recalled?.Hits.FirstOrDefault(x => x.Item.Id == item.Id && x.Item.Revision == item.Revision);
+        if (hit is not null) ReviewMetadata.Text += "\n匹配词：" + string.Join("、", hit.MatchedTerms);
         if (item.Status == MemoryStatus.ARCHIVED) ReviewMetadata.Text += "\n已归档：仅供对照，不能采用为修订目标。";
         ReviewPicker.IsExpanded = false;
         ReviewTab.IsSelected = true;
@@ -344,13 +366,14 @@ public partial class MemoryWindow : Window
     { if (DuplicateMatches.SelectedItem is MemoryItem item) await ReviewItemAsync(item); }
     private async void Opened(object sender, RoutedEventArgs e) => await RefreshAsync();
     private async void Search(object sender, RoutedEventArgs e) => await RefreshAsync(search: true);
+    private async void Recall(object sender, RoutedEventArgs e) => await RecallAsync();
     private async void Refresh(object sender, RoutedEventArgs e) => await RefreshAsync();
     private async void Previous(object sender, RoutedEventArgs e)
     { if (results?.HasPrevious == true) await RefreshAsync(page: view.Page - 1); }
     private async void Next(object sender, RoutedEventArgs e)
     { if (results?.HasNext == true) await RefreshAsync(page: view.Page + 1); }
     private async void SearchKeyDown(object sender, KeyEventArgs e)
-    { if (e.Key == Key.Enter) { e.Handled = true; await RefreshAsync(search: true); } }
+    { if (e.Key == Key.Enter) { e.Handled = true; await RefreshAsync(search: true, related: recallMode); } }
     private async void FilterChanged(object sender, SelectionChangedEventArgs e)
     { if (initialized && !rendering) await RefreshAsync(page: 0); }
     private async void ItemSelected(object sender, SelectionChangedEventArgs e)
@@ -391,7 +414,7 @@ public partial class MemoryWindow : Window
         TitleBox.Clear(); ContentBox.Clear(); SearchBox.Clear(); MemoryList.ItemsSource = null;
         ReviewTarget.ItemsSource = null; ClearReview();
         ClearDuplicates(); DuplicateSummary.Text = "";
-        loaded = null; results = null; view = new(); stale = missing = outcomeUnknown = false;
+        loaded = null; results = null; recalled = null; view = new(); recallMode = stale = missing = outcomeUnknown = false;
         DraftValidationText.Text = MetadataText.Text = PageText.Text = StatusText.Text = "";
         lifetime.Dispose();
     }
