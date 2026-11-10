@@ -15,3 +15,11 @@ No real database, Profile, Runtime service, model, browser or product EXE was us
 ## Follow-up selected against the actual memory goal
 
 The completed [explicit memory system](MEMORY-SYSTEM-COMPLETION-REPORT.md) requires user review and explicit saves. Static inspection of `MemoryPage.tsx` found the same missing-record dead end in the normal web editor, whose hint recommended New even though it discarded the draft. Complete that same user operation there next; do not broaden response-validation experiments or repeat failed browser launches. Normal web behavior must still be labelled unaccepted on this machine until WebView2 works.
+
+## Web editor: complete the same recoverable user operation
+
+Native recovery is committed as `1f9a62b`. The web editor now has the same explicit two-step recovery: confirm **保留为新草稿**, retaining type/title/body, then separately Save to create a new ID. The missing-record hint describes this operation and does not recommend the destructive New route. Unknown writes continue to block this action, including when a later GET reports absence. A session reset clears the pending confirmation and draft as before.
+
+Two focused browser-component checks passed, 2/2 (24 unrelated cases intentionally filtered out), plus TypeScript: cancellation, exact draft preservation, zero write during conversion, explicit create/new ID, unknown update followed by absent read, and session reset during confirmation. Evidence: `.verification/web-memory-recover-draft-20261110/{Check.ps1,run.log,typecheck.log,test.log}`. Shared wrapper PID 34072 released at 08:20:32 UTC. These are simulated Bridge/component checks, not an actual WebView2 run. No store/schema/Native contract was changed; the single combined package remains pending.
+
+A second concrete editor gap remains: on version conflict, the normal web editor only offers destructive Reload. The native editor already supports compare/merge while retaining the draft. Bring that complete recovery operation to the normal web page next, retaining exact revision checks and explicit Save, rather than adding generic response checks or another startup experiment.

@@ -186,6 +186,18 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     setNotice('已将草稿用于修订所选记忆，尚未保存。点击保存才会更新这条记忆，不会另建一条。')
     focusNext.current = 'editor'
   }
+  const recoverDraftAsNew = () => {
+    if (!enabled || !visible || actionLock.current || confirmation || !loaded || !missing || unknown) return
+    const token = generation.current
+    setConfirmation({ title: '保留草稿，另存为新记忆？', confirmText: '保留为新草稿',
+      text: '保留当前类型、标题和正文，改为新记忆草稿。此操作不会写入；之后点击保存将创建新记录，不会恢复或覆盖原记录。', action: () => {
+        if (token !== generation.current || actionLock.current) return
+        const retained = { ...draft }
+        loadEditor(null); setDraft(retained)
+        setNotice('已保留为新记忆草稿，尚未保存。请检查内容，再点击保存创建新记录；原记录不会恢复。')
+        focusNext.current = 'editor'
+      } })
+  }
   const save = () => { if (revisionReview || blocked || !dirty || !validDraft(draft)) return; void run(async () => {
     const token = generation.current
     const item = loaded ? await bridge.updateMemory(loaded.id, loaded.revision, draft) : await bridge.createMemory(draft)
@@ -261,7 +273,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {loaded && <p className="hint">保存方式：由你确认保存（MANUAL），不代表内容已经核实。此记录不保留草稿中的来源角色、原会话、问答或引用关联。</p>}
         {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
-        {missing && <p className="error">Memory 已不存在。草稿保持原样；不会自动重新创建，请新建 或选择其他条目。</p>}
+        {missing && <p className="error">原记录当前不存在。草稿保持原样。{unknown ? '此前的写入结果仍待确认，不能据此另存。' : '可选择“保留草稿，另存为新记忆”，再点击保存创建新记录；原记录不会恢复。'}</p>}
         {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}
         <div className="memory-fields"><div><label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled || !!revisionReview} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
           <option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></div>
@@ -276,7 +288,8 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         <div className="operation-actions"><button className="primary" disabled={disabled || !!revisionReview || blocked || !dirty || !validDraft(draft)} onClick={save}>保存</button>
           <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
           <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>
-          <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>重新加载</button></div>
+          <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>重新加载</button>
+          {loaded && missing && !unknown && <button disabled={disabled} onClick={recoverDraftAsNew}>保留草稿，另存为新记忆</button>}</div>
         <details className="input-details"><summary>输入限制</summary><p className="hint">正文 {draft.content.length} / 2000 UTF-16 单位 · {new TextEncoder().encode(draft.content).length} / 8192 UTF-8 字节。不自动保存。</p></details>
         {dirty && !validDraft(draft) && <p className="hint">标题和正文不能为空，并须符合以上 Unicode 与长度限制；原文不会被截断。</p>}
         {loaded && <details className="input-details"><summary>记录详情</summary><dl className="memory-metadata"><div><dt>ID</dt><dd>{loaded.id}</dd></div><div><dt>创建时间</dt><dd>{loaded.createdAt}</dd></div><div><dt>更新时间</dt><dd>{loaded.updatedAt}</dd></div></dl></details>}
