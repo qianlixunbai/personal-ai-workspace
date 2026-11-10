@@ -537,16 +537,62 @@ it('archive and restore with dirty edits change only snapshot status/revision, a
   await click('保存'); expect((port.sent.find(x => x.method === 'memory.update')?.payload as { expectedRevision: string }).expectedRevision).toBe('9007199254740994')
   edit(content, 'Synthetic restored draft'); await click('恢复'); expect(content.value).toBe('Synthetic restored draft'); expect(port.items[0]?.content).toBe('Synthetic local')
 })
-it.each(['MemoryRevisionConflict'])('%s retains exact draft, blocks mutations and resolves only explicitly', async error => {
-  const { port, content } = await setup(); await click(/Synthetic Memory 1/); edit(content, '  Synthetic dirty\nexact  '); port.error = error
+it('compares and merges a conflicted draft before explicitly saving the same record at its reviewed version', async () => {
+  const { port, title, content } = await setup(); await click(/Synthetic Memory 1/)
+  edit(content, '  Synthetic dirty\nexact  ')
+  const original = port.items[0]!
+  port.items[0] = { ...original, revision: '9007199254740994', content: 'Synthetic latest' }
   await click('保存'); expect(content.value).toBe('  Synthetic dirty\nexact  ')
   for (const name of ['保存', '归档', '删除']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
   expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
-  if (error !== 'MemoryNotFound') {
-    port.error = null; port.items[0] = { ...port.items[0]!, content: 'Synthetic latest', revision: '9007199254740994' }
-    await click('重新加载'); await click('取消'); expect(content.value).toBe('  Synthetic dirty\nexact  ')
-    await click('重新加载'); await click('丢弃并继续'); expect(content.value).toBe('Synthetic latest')
-  }
+  await click('对照最新'); expect(screen.getByLabelText('当前记忆已存正文').textContent).toBe('Synthetic latest')
+  expect(content.value).toBe('  Synthetic dirty\nexact  ')
+  await click('保留草稿，以此版本继续编辑'); await click('取消')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  await click('保留草稿，以此版本继续编辑')
+  port.items[0] = { ...port.items[0]!, revision: '9007199254740995', content: 'Synthetic newer while reviewing' }
+  await click('保留草稿并继续编辑')
+  expect(screen.getByRole('status').textContent).toContain('请重新对照')
+  expect(screen.getByLabelText('当前记忆已存正文').textContent).toBe('Synthetic newer while reviewing')
+  expect(content.value).toBe('  Synthetic dirty\nexact  ')
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  edit(content, 'Synthetic newer while reviewing\nMerged local draft')
+  const merged = content.value
+  await click('保留草稿，以此版本继续编辑'); await click('保留草稿并继续编辑')
+  expect(content.value).toBe(merged)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(false)
+  port.items[0] = { ...port.items[0]!, revision: '9007199254740996', title: 'Synthetic latest title' }
+  await click('保存') // A later concurrent edit is still rejected by the expected revision.
+  expect(content.value).toBe(merged); expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  await click('对照最新'); edit(title, port.items[0]!.title)
+  await click('保留草稿，以此版本继续编辑'); await click('保留草稿并继续编辑'); await click('保存')
+  expect(port.items).toHaveLength(1)
+  expect(port.items[0]).toMatchObject({ id: original.id, content: merged, title: 'Synthetic latest title', revision: '9007199254740997' })
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
+  expect(port.sent.filter(x => x.method === 'memory.update').map(x => (x.payload as { expectedRevision: string }).expectedRevision))
+    .toEqual(['9007199254740993', '9007199254740995', '9007199254740996'])
+  expect(screen.queryByRole('region', { name: '当前记忆最新内容对照' })).toBeNull()
+})
+it('keeps archived and missing current comparisons read only and drops late hidden results', async () => {
+  const { port, bridge, view, content } = await setup(); await click(/Synthetic Memory 1 /)
+  edit(content, 'Synthetic retained comparison draft')
+  port.items[0] = { ...port.items[0]!, status: 'ARCHIVED', revision: '9007199254740994' }
+  await click('保存'); await click('对照最新')
+  expect(screen.getByRole('button', { name: '保留草稿，以此版本继续编辑' }).hasAttribute('disabled')).toBe(true)
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('对照最新')
+  view.rerender(<MemoryPage bridge={bridge} enabled visible={false} registerLeave={() => () => {}} openBackup={() => {}} />)
+  await act(async () => complete(port.items[0]!))
+  view.rerender(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => {}} />)
+  expect(screen.queryByRole('region', { name: '当前记忆最新内容对照' })).toBeNull()
+  expect(content.value).toBe('Synthetic retained comparison draft')
+  port.items = []; await click('对照最新')
+  expect(screen.getByText(/原记录当前不存在/)).toBeTruthy()
+  expect(screen.getByRole('button', { name: '保留草稿，另存为新记忆' })).toBeTruthy()
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
 })
 it('guards actual App sidebar and direct hash routing before changing visible route', async () => {
   history.replaceState(null, '', '#/memory'); const port = new MemoryService(), bridge = new WorkspaceClient(port); clients.push(bridge)
@@ -676,4 +722,10 @@ it('an ambiguous create freezes Save and requires explicit inspection and select
   await click(/Synthetic uncertain create PROJECT_NOTE/); await click('丢弃并继续')
   expect(screen.getByText(/使用中 · 版本/).textContent).not.toContain('操作结果待确认')
   expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(1)
+  edit(content, 'Synthetic unknown update draft'); port.error = 'OutcomeUnknown'; await click('保存')
+  await click('对照最新')
+  expect(content.value).toBe('Synthetic unknown update draft')
+  expect(screen.getByRole('button', { name: '保留草稿，以此版本继续编辑' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
 })

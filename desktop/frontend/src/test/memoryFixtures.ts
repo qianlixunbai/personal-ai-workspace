@@ -37,6 +37,7 @@ export class MemoryService extends Port {
       }
       const item = this.items.find(x => x.id === payload.memoryId)
       if (!item) { reject('MemoryNotFound'); return }
+      if (payload.expectedRevision !== item.revision) { reject('MemoryRevisionConflict'); return }
       if (method === 'memory.delete') { this.items = this.items.filter(x => x !== item); this.reply(index, { deleted: true }); return }
       const next: MemoryItem = { ...item, revision: String(BigInt(item.revision) + 1n),
         ...(method === 'memory.update' ? { type: payload.type, title: payload.title, content: payload.content } as Partial<MemoryItem> : { status: method === 'memory.archive' ? 'ARCHIVED' : 'ACTIVE' }) }

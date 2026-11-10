@@ -27,6 +27,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [fromConversation, setFromConversation] = useState<MemorySourceRole | null>(null)
   const [candidateEpoch, setCandidateEpoch] = useState(0)
   const [revisionReview, setRevisionReview] = useState<{ draft: MemoryDraft; target: MemoryItem | null } | null>(null)
+  const [currentReview, setCurrentReview] = useState<MemoryItem | null>(null)
   const [stale, setStale] = useState(false)
   const [missing, setMissing] = useState(false)
   const [unknown, setUnknown] = useState(false)
@@ -56,7 +57,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
     }
   }, [busy, confirmation, visible, revisionReview])
   const loadEditor = (item: MemoryItem | null) => {
-    revisionGeneration.current++; setRevisionReview(null)
+    revisionGeneration.current++; setRevisionReview(null); setCurrentReview(null)
     setCandidateEpoch(value => value + 1)
     setPreviewId(null)
     setLoaded(item); setDraft(item ? { type: item.type, title: item.title, content: item.content } : emptyMemory())
@@ -128,7 +129,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   }, [enabled, visible])
   useEffect(() => { if (!enabled || !visible) setPreviewId(null) }, [enabled, visible])
   useEffect(() => {
-    if (!enabled || !visible) { revisionGeneration.current++; setRevisionReview(null) }
+    if (!enabled || !visible) { revisionGeneration.current++; setRevisionReview(null); setCurrentReview(null) }
   }, [enabled, visible])
   useEffect(() => () => { generation.current++; listGeneration.current++ }, [])
   const run = async (operation: () => Promise<void>, mutation = false, affectsLoaded = true) => {
@@ -196,6 +197,42 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         loadEditor(null); setDraft(retained)
         setNotice('已保留为新记忆草稿，尚未保存。请检查内容，再点击保存创建新记录；原记录不会恢复。')
         focusNext.current = 'editor'
+      } })
+  }
+  const reviewCurrent = () => {
+    if (!enabled || !visible || actionLock.current || confirmation || !loaded) return
+    const token = ++revisionGeneration.current, session = generation.current
+    setCurrentReview(null)
+    void run(async () => {
+      let item: MemoryItem
+      try { item = await bridge.getMemory(loaded.id) }
+      catch (problem) { if (token === revisionGeneration.current && session === generation.current) throw problem; return }
+      if (token !== revisionGeneration.current || session !== generation.current) return
+      setCurrentReview(item)
+      setNotice('已读取当前保存内容，草稿保持原样。请将需要保留的内容手工合并到下方草稿，再确认继续编辑。')
+    })
+  }
+  const continueReviewed = () => {
+    if (!enabled || !visible || actionLock.current || confirmation || unknown || missing || !loaded
+      || !currentReview || loaded.id !== currentReview.id || currentReview.status !== 'ACTIVE') return
+    const expected = currentReview, token = revisionGeneration.current, session = generation.current
+    setConfirmation({ title: '保留草稿，以此版本继续编辑？', confirmText: '保留草稿并继续编辑',
+      text: '请先将要保留的最新内容合并到草稿。确认仅更新编辑所依据的版本，不会写入；之后点击保存将用当前草稿更新同一条记忆。', action: () => {
+        if (token !== revisionGeneration.current || session !== generation.current || actionLock.current) return
+        void run(async () => {
+          setCurrentReview(null)
+          let latest: MemoryItem
+          try { latest = await bridge.getMemory(expected.id) }
+          catch (problem) { if (token === revisionGeneration.current && session === generation.current) throw problem; return }
+          if (token !== revisionGeneration.current || session !== generation.current) return
+          setCurrentReview(latest)
+          if (Object.entries(expected).some(([key, value]) => latest[key as keyof MemoryItem] !== value)) {
+            setNotice('这条记忆已变更，请重新对照最新内容再确认。草稿保持原样。'); return
+          }
+          setLoaded(latest); setStale(false)
+          setNotice('已保留草稿并采用核对过的版本，尚未保存。点击保存才会更新同一条记忆。')
+          focusNext.current = 'editor'
+        })
       } })
   }
   const save = () => { if (revisionReview || blocked || !dirty || !validDraft(draft)) return; void run(async () => {
@@ -270,11 +307,18 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <div className="operation-actions"><button disabled={disabled || blocked || !revisionReview.target} onClick={adoptRevision}>采用修订到编辑器</button>
             <button disabled={disabled} onClick={() => { revisionGeneration.current++; setRevisionReview(null); setError(''); setNotice('已取消选择修订目标，原草稿保留。'); focusNext.current = 'editor' }}>取消选择修订目标</button></div>
         </section>}
-        <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请重新加载'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
+        <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请核对最新内容'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {loaded && <p className="hint">保存方式：由你确认保存（MANUAL），不代表内容已经核实。此记录不保留草稿中的来源角色、原会话、问答或引用关联。</p>}
-        {stale && <p className="error">Memory 已被其他客户端修改。草稿保持原样；请重新加载 或丢弃后选择其他条目。</p>}
+        {stale && <p className="error">Memory 已被其他客户端修改。可“对照最新”，手工合并到当前草稿，再确认继续编辑；重新加载会丢弃修改。</p>}
         {missing && <p className="error">原记录当前不存在。草稿保持原样。{unknown ? '此前的写入结果仍待确认，不能据此另存。' : '可选择“保留草稿，另存为新记忆”，再点击保存创建新记录；原记录不会恢复。'}</p>}
         {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}
+        {currentReview && <section className="memory-revision-review" aria-label="当前记忆最新内容对照">
+          <h3>已存标题：<bdi>{currentReview.title}</bdi></h3>
+          <p>{currentReview.type === 'PREFERENCE' ? '个人偏好' : '项目笔记'} · {currentReview.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 {currentReview.revision}</p>
+          <pre aria-label="当前记忆已存正文" dir="auto">{currentReview.content}</pre>
+          <p className="hint">下方草稿仍可编辑。请手工合并需要保留的内容；对照不会自动替换或保存草稿。{currentReview.status === 'ARCHIVED' && '已归档记录仅供对照，不能采用为继续编辑的版本。'}</p>
+          <button disabled={disabled || unknown || missing || currentReview.status !== 'ACTIVE'} onClick={continueReviewed}>保留草稿，以此版本继续编辑</button>
+        </section>}
         <div className="memory-fields"><div><label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled || !!revisionReview} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
           <option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></div>
           <div><label htmlFor="memory-title">记忆标题</label><input ref={editor} id="memory-title" value={draft.title} disabled={disabled || !!revisionReview} autoComplete="off" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} />
@@ -289,6 +333,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <button disabled={disabled || blocked || !loaded} onClick={lifecycle}>{loaded?.status === 'ARCHIVED' ? '恢复' : '归档'}</button>
           <button className="destructive" disabled={disabled || blocked || !loaded} onClick={remove}>删除</button>
           <button disabled={disabled || !loaded || missing} onClick={() => { if (loaded) requestDiscard(() => get(loaded.id), true) }}>重新加载</button>
+          {loaded && <button disabled={disabled} onClick={reviewCurrent}>对照最新</button>}
           {loaded && missing && !unknown && <button disabled={disabled} onClick={recoverDraftAsNew}>保留草稿，另存为新记忆</button>}</div>
         <details className="input-details"><summary>输入限制</summary><p className="hint">正文 {draft.content.length} / 2000 UTF-16 单位 · {new TextEncoder().encode(draft.content).length} / 8192 UTF-8 字节。不自动保存。</p></details>
         {dirty && !validDraft(draft) && <p className="hint">标题和正文不能为空，并须符合以上 Unicode 与长度限制；原文不会被截断。</p>}
