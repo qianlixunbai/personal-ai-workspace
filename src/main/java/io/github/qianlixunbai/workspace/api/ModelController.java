@@ -24,6 +24,7 @@ public final class ModelController {
     }
     @GetMapping("/catalog") ActiveModelManager.Catalog catalog(HttpServletRequest request) { nativeOnly(request); return models.catalog(); }
     @GetMapping({"/status", "/recovery"}) ActiveModelManager.ManagementStatus status(HttpServletRequest request) { nativeOnly(request); return models.managementStatus(); }
+    @GetMapping("/executions") ActiveModelManager.ExecutionInspection executions(HttpServletRequest request) { nativeOnly(request); return models.inspectExecutions(); }
     @PostMapping(value = {"/selection", "/release", "/validation", "/recovery"}, consumes = "application/json")
     ActiveModelManager.ManagementStatus mutate(HttpServletRequest request) throws IOException {
         nativeOnly(request);

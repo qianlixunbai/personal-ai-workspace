@@ -27,6 +27,13 @@ public final class ActiveModelManager implements AutoCloseable {
     private final ModelStateStore store;
     private final int capacity, contextBudget;
     private final Set<Reservation> leases = new HashSet<>();
+    // Display evidence only. Kept no longer than the bounded current guard, never persisted as authority.
+    private final Map<UUID, String> executionObservations = new HashMap<>(); // guarded by operations
+    public record ExecutionEntry(UUID requestId, String operation, String model, String runner,
+                                 String digest, long selectionRevision, String completion) {}
+    public record ExecutionInspection(String recordState, boolean recoverySupported, List<ExecutionEntry> requests) {
+        public ExecutionInspection { requests = List.copyOf(requests); }
+    }
     public enum Action { SWITCH, RELEASE_OLD_THEN_SWITCH, RELEASE, VALIDATE, RECOVER }
     public record CatalogEntry(String handle, String model, String runner, String digest, long contextLimit,
                                boolean completion, boolean localSourceVerified, boolean providerDeclaredVision) {}
@@ -340,6 +347,25 @@ public final class ActiveModelManager implements AutoCloseable {
         }
     }
 
+    /** No provider IO, catalog refresh, mutation or recovery. Useful even when Ollama is offline. */
+    public ExecutionInspection inspectExecutions() {
+        synchronized (operations) {
+            synchronized (gate) {
+                if (closed || store == null) return new ExecutionInspection("UNAVAILABLE", false, List.of());
+            }
+            try {
+                var guard = store.inspectGuard();
+                boolean current = guard.state().equals("CURRENT_SESSION");
+                var requests = guard.requests().stream().map(r -> new ExecutionEntry(r.requestId(), r.operation(),
+                    r.model(), r.runner(), r.digest(), r.selectionRevision(),
+                    current ? executionObservations.getOrDefault(r.requestId(), "UNKNOWN") : "UNKNOWN")).toList();
+                return new ExecutionInspection(guard.state(), false, requests);
+            } catch (IOException | RuntimeException unavailable) {
+                return new ExecutionInspection("UNAVAILABLE", false, List.of());
+            }
+        }
+    }
+
     /** Inspection is metadata-only, even while the uncertainty guard is closed. */
     public ManagementStatus managementStatus() {
         String model, digest, runner = null; long expected; ExecutionModel observed;
@@ -630,6 +656,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 if (pendingSend) {
                     pendingSend = false; pendingSends--;
                     markSendAttempt();
+                    executionObservations.put(expected.id, "IN_PROGRESS");
                 } else if (!sent || complete) throw unavailable();
                 checkedWriting = true;
             }
@@ -673,6 +700,7 @@ public final class ActiveModelManager implements AutoCloseable {
                     store.armGuard(new ModelStateStore.RequestBinding(request.id, reservationId,
                         request.http.uri().toString(), "/api/chat".equals(request.http.uri().getPath()) ? "chat" : "unload",
                         model.model(), model.runner(), model.digest(), model.revision()));
+                    executionObservations.put(request.id, "PREPARED");
                 }
                 catch (IOException failure) {
                     synchronized (gate) { storeFailed = true; ready = false; error = ErrorCode.MODEL_STATE_UNAVAILABLE; }
@@ -688,6 +716,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 if (!expected.attempted || !checkedTransport || checkedWriting || checkedExitRequested
                         || pendingSend || complete || released || closed || storeFailed) throw unavailable();
                 complete = true;
+                executionObservations.put(expected.id, "COMPLETED");
             }
         }
         public void admissionFailed(ErrorCode code) {
@@ -702,6 +731,8 @@ public final class ActiveModelManager implements AutoCloseable {
                     checkedTransport = false;
                 }
                 expected.exited = true;
+                if (expected.prepared && executionObservations.containsKey(expected.id))
+                    executionObservations.put(expected.id, !expected.attempted ? "NOT_SENT" : complete ? "COMPLETED" : "UNKNOWN");
                 reportUncertainty();
                 if (closeRequested) close();
             }
@@ -727,7 +758,7 @@ public final class ActiveModelManager implements AutoCloseable {
                 boolean safe;
                 synchronized (gate) { safe = !uncertain && !closed && !storeFailed; }
                 if (armed && outbound == 0 && pendingSends == 0 && safe) {
-                    try { store.clearGuard(); }
+                    try { store.clearGuard(); executionObservations.clear(); }
                     catch (IOException failure) {
                         synchronized (gate) {
                             uncertain = true; ready = false; error = ErrorCode.MODEL_EXECUTION_UNCERTAIN;

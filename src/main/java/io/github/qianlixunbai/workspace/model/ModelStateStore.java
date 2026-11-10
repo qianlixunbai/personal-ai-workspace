@@ -153,6 +153,29 @@ public final class ModelStateStore implements AutoCloseable {
     public synchronized Selection selection() throws IOException { checkSelection(); return selection; }
     public synchronized boolean unresolved() { return unresolved; }
 
+    record GuardInspection(String state, List<RequestBinding> requests) {
+        GuardInspection { requests = List.copyOf(requests); }
+        @Override public String toString() { return "GuardInspection[private]"; }
+    }
+    private record ParsedGuard(UUID owner, String stateBinding, List<RequestBinding> requests) {}
+
+    /** Local diagnostic read only. Parsed historical identities never become live capabilities. */
+    synchronized GuardInspection inspectGuard() throws IOException {
+        checkSelection();
+        Path file = root.resolve("execution-guard.json");
+        if (exists(root.resolve("execution-guard.pending"))) return new GuardInspection("INCOMPLETE", List.of());
+        if (!exists(file)) return new GuardInspection(unresolved ? "UNREADABLE" : "NONE", List.of());
+        try {
+            byte[] bytes = read(file, MAX_GUARD_BYTES);
+            var parsed = parseGuard(bytes);
+            if (!Arrays.equals(bytes, read(file, MAX_GUARD_BYTES))) throw new IOException("Guard changed during inspection");
+            if (guardBytes != null) checkLiveGuard(false);
+            if (parsed.owner() == null) return new GuardInspection("LEGACY", List.of());
+            boolean current = guardBytes != null && ownerSession.equals(parsed.owner()) && stateBinding.equals(parsed.stateBinding());
+            return new GuardInspection(current ? "CURRENT_SESSION" : "PREVIOUS_SESSION", parsed.requests());
+        } catch (IOException | RuntimeException invalid) { return new GuardInspection("UNREADABLE", List.of()); }
+    }
+
     /** Checks this actual writer, without discovering/loading a model or changing selection. */
     public synchronized void requireMaintenanceOwnership(Path expectedRoot) throws IOException {
         if (!root.equals(expectedRoot) || unresolved) throw new IOException("Model ownership unavailable");
@@ -364,9 +387,9 @@ public final class ModelStateStore implements AutoCloseable {
                 node.path("model").asString(), node.path("digest").asString()); }
         catch (IllegalArgumentException invalid) { throw new IOException("Invalid model selection values"); }
     }
-    private static void parseGuard(byte[] bytes) throws IOException {
+    private static ParsedGuard parseGuard(byte[] bytes) throws IOException {
         JsonNode node = parse(bytes);
-        if (node.path("version").isIntegralNumber() && node.path("version").asLong() == 2) {
+        if (node.path("version").isIntegralNumber() && node.path("version").canConvertToLong() && node.path("version").asLong() == 2) {
             exact(node, Set.of("version", "unresolved", "ownerSession", "stateBinding", "requests"));
             if (!node.path("unresolved").isBoolean() || !node.path("unresolved").asBoolean()
                     || !node.path("stateBinding").isString() || !validDigest(node.path("stateBinding").asString())
@@ -374,19 +397,22 @@ public final class ModelStateStore implements AutoCloseable {
                     || node.path("requests").isEmpty() || node.path("requests").size() > MAX_GUARD_REQUESTS)
                 throw new IOException("Invalid bound execution guard");
             try {
-                UUID.fromString(node.path("ownerSession").asString());
+                UUID owner = UUID.fromString(node.path("ownerSession").asString());
                 var ids = new HashSet<UUID>();
+                var requests = new ArrayList<RequestBinding>();
                 for (JsonNode entry : node.path("requests")) {
                     exact(entry, Set.of("requestId", "reservationId", "endpoint", "operation", "model", "runner", "digest", "selectionRevision"));
                     var binding = JSON.treeToValue(entry, RequestBinding.class);
                     if (!ids.add(binding.requestId())) throw new IOException("Repeated guard request");
+                    requests.add(binding);
                 }
+                return new ParsedGuard(owner, node.path("stateBinding").asString(), List.copyOf(requests));
             } catch (RuntimeException invalid) { throw new IOException("Invalid bound execution guard"); }
-            return; // Parsing never grants a live owner or permits recovery after restart.
         }
         exact(node, Set.of("version", "unresolved"));
         if (!node.path("version").isIntegralNumber() || !node.path("version").canConvertToLong() || node.path("version").asLong() != 1
                 || !node.path("unresolved").isBoolean() || !node.path("unresolved").asBoolean()) throw new IOException("Invalid execution guard");
+        return new ParsedGuard(null, null, List.of());
     }
     private static ValidationRequired parseValidation(byte[] bytes) throws IOException {
         JsonNode node = parse(bytes);
