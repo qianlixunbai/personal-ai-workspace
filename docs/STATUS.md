@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 已撤销上一条自行增加的“需用户确认端口独占”条件：旧 UNKNOWN 本身不是权限拒绝，持续开发授权已覆盖常规只读检查及安全合成验收。按更正执行了一次正常权限 `Get-NetTCPConnection -LocalPort 18765 -State Listen -ErrorAction Stop`，此次实际返回 `CimException / PermissionDenied / HRESULT 0x80041003`、消息“拒绝访问”，并非无监听项；已保存精确错误。遵照真实拒绝后停止的要求，没有换路线／提升权限重查，没有识别或终止进程，也未启动 EXE、Runtime、浏览器或准备 Profile。18765 仍为 UNKNOWN，完整联动验收仍受阻；此为系统 CIM 访问拒绝，不是自动审批拒绝，没有待审批或结果不明启动，未持重运行锁。[更正、确切错误及后续边界](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
+
 2026-11-10 完整桌面入口验收在启动前发现隔离阻塞：一次性开发入口的桌面客户端、Runtime 启动器和 Java 原生准入均固定 `127.0.0.1:18765`，没有已支持的新临时端点；新 Profile 只隔离数据。按交接要求保留旧端口 UNKNOWN，不重查、不启动或接触未知服务，也未准备 Profile、运行 EXE／Java／浏览器或操作数据库。现有新包及 Desktop／Runtime 哈希与交付回执一致。要继续，需用户确认旧 Workspace 正常退出且 18765 可独占，并明确允许一次新合成工作区在固定端点运行及应用自身准入检查；否则保持停止，不能靠绕过配置／准入解决。此为静态能力阻塞，不是新审批拒绝；没有待执行或结果不明动作，本轮未持重运行锁。完整网页／Runtime 联动、网页保存重开等仍未验收。[精确证据、边界及最小解阻步骤](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
 
 2026-11-10 WebView2 默认 InPrivate Profile 修正已提交 `64b33b2` 并交付 `artifacts/PersonalAiWorkspace-webview-default-profile-20261110.zip`：933 文件、实际解压与嵌入来源通过，ZIP SHA256 `BD29D41EED4F83C8D14FF5C539C0F64323918D536F7BAC05CE109D4A057AFEA9`。这是已有原生/WPF新合成对照支持的最小修正，未改安全条件；前端和 Runtime 字节不变，旧包、六份用户文档、main 保留，无推送。构建锁已释放，18765 保持 UNKNOWN。完整应用正常页面＋Runtime 联动、默认入口、维护迁移及发布仍待验收；无需先请求 EFS/ACL/沙箱变更，不继续添加假设记忆功能。[完整证据与接续](engineering/MEMORY-WEBVIEW2-FAILURE-INVESTIGATION.md)。
