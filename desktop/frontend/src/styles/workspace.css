@@ -282,6 +282,9 @@ input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .conversation-history { max-height: clamp(220px, calc(100vh - 510px), 420px); overflow-y: auto; overflow-wrap: anywhere; border-block: 1px solid var(--border); }
 .conversation-turn { border-bottom: 1px solid var(--border); padding: 10px 0; }
 .conversation-turn:last-child { border-bottom: 0; }
+.conversation-excerpt { margin-top: 8px; }
+.conversation-excerpt .memory-preview { margin-top: 8px; }
+.conversation-excerpt .memory-preview pre { max-height: 240px; overflow-y: auto; margin: 8px 0; }
 .conversation-turn h3 { font-size: 12px; margin-bottom: 8px; color: var(--muted); }
 .conversation-turn h4 { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
 .conversation-turn pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.65; margin: 0; }

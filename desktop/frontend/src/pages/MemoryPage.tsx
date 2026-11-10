@@ -303,7 +303,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
       </section>
       <section className="card memory-editor" aria-labelledby="memory-editor-title"><div className="card-heading"><h2 id="memory-editor-title">{loaded ? '编辑记忆' : revisionReview ? '修订已有记忆' : '新记忆'}</h2><button ref={newButton} disabled={disabled || !!revisionReview} onClick={() => requestDiscard(() => { loadEditor(null); setNotice('点击保存后才会创建记忆。'); editor.current?.focus() })}>新建</button></div>
         {fromSource === 'KNOWLEDGE' ? <p className="hint">已填入你选中的资料原文和出处，尚未保存。请填写标题、核对并编辑内容，再点击保存。出处是可编辑的文字记录，可以主动按记录回查，但不会自动同步资料更新或建立受信引用关联；此内容仍需你核实。</p>
-          : fromSource && <p className="hint">已从来源填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。来源角色仅用于本次草稿审阅；保存后标记为由你确认保存（MANUAL），不保留原会话、问答或引用关联。</p>}
+          : fromSource && <p className="hint">已从来源填入草稿；尚未保存，请检查内容。助手回复可能不准确，请审阅后再保存。来源角色仅用于本次草稿审阅；保存后标记为由你确认保存（MANUAL）。正文中的出处只是可编辑定位文字，不建立受信的会话、问答或引用关联。</p>}
         {fromSource && fromSource !== 'KNOWLEDGE' && !loaded && <MemoryCandidatePanel key={candidateEpoch} bridge={bridge} enabled={enabled && visible && !busy && !confirmation && !blocked} draft={draft} role={fromSource}
           apply={candidate => { if (blocked || actionLock.current) return; loadEditor(null); setDraft(candidate); setNotice('已采用模型候选，尚未保存。请检查内容后点击保存。' + (fromSource === 'ASSISTANT' ? '来源为助手回复，未经核实。' : '')); editor.current?.focus() }} />}
         {!loaded && !fromSource && !revisionReview && <div className="operation-actions">
@@ -321,7 +321,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
             <button disabled={disabled} onClick={() => { revisionGeneration.current++; setRevisionReview(null); setError(''); setNotice('已取消选择修订目标，原草稿保留。'); focusNext.current = 'editor' }}>取消选择修订目标</button></div>
         </section>}
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请核对最新内容'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
-        {loaded && <p className="hint">保存方式：由你确认保存（MANUAL），不代表内容已经核实。此记录不保留草稿中的来源角色、原会话、问答或引用关联。</p>}
+        {loaded && <p className="hint">保存方式：由你确认保存（MANUAL），不代表内容已经核实。草稿来源角色不会持久保存；正文中的出处仅为可编辑定位文字，不建立受信的会话、问答或引用关联。</p>}
         {stale && <p className="error">Memory 已被其他客户端修改。可“对照最新”，手工合并到当前草稿，再确认继续编辑；重新加载会丢弃修改。</p>}
         {missing && <p className="error">原记录当前不存在。草稿保持原样。{unknown ? '此前的写入结果仍待确认，不能据此另存。' : '可选择“保留草稿，另存为新记忆”，再点击保存创建新记录；原记录不会恢复。'}</p>}
         {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}

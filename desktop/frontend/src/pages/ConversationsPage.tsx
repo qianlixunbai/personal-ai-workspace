@@ -9,6 +9,7 @@ import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { AnswerContent } from '../components/AnswerContent'
 import { WorkspaceSearchDialog } from '../components/WorkspaceSearchDialog'
 import type { ConversationSearchHit } from '../bridge/conversations'
+import { ConversationExcerptMemory } from '../components/ConversationExcerptMemory'
 
 const failureText: Record<FailureCode, string> = {
   EXECUTION_INTERRUPTED: 'Runtime 重启中断了执行。', PROVIDER_UNAVAILABLE: '本机 Ollama 不可用。', MODEL_UNAVAILABLE: '本机模型不可用。',
@@ -402,8 +403,12 @@ export function ConversationsPage({ bridge, enabled, visible, onMemoryDraft }: {
           tabIndex={-1} data-turn-sequence={turn.sequence} aria-labelledby={`conversation-turn-${turn.turnId}`}>
           <h3 id={`conversation-turn-${turn.turnId}`}>第 {turn.sequence} 轮 · {({ PENDING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消', TIMED_OUT: '超时' })[turn.status]}</h3><h4>你</h4><pre dir="auto">{turn.userMessage.content}</pre>
           {onMemoryDraft && turn.status !== 'PENDING' && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.userMessage.messageId)}>保存为记忆草稿</button>}
+          {onMemoryDraft && turn.status !== 'PENDING' && <ConversationExcerptMemory bridge={bridge} conversation={detail.conversation} turn={turn} message={turn.userMessage}
+            enabled={enabled && visible && !busy && !historyLoading} onDraft={onMemoryDraft} />}
           {turn.assistantMessage && <><h4>助手</h4><AnswerContent key={turn.assistantMessage.messageId} text={turn.assistantMessage.content} />
-            {onMemoryDraft && <button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.assistantMessage!.messageId)}>保存为记忆草稿</button>}</>}
+            {onMemoryDraft && <><button disabled={!enabled || busy || historyLoading} onClick={() => saveMemoryDraft(turn.assistantMessage!.messageId)}>保存为记忆草稿</button>
+              <ConversationExcerptMemory bridge={bridge} conversation={detail.conversation} turn={turn} message={turn.assistantMessage}
+                enabled={enabled && visible && !busy && !historyLoading} onDraft={onMemoryDraft} /></>}</>}
           {turn.failureCode && <p>{turn.failureCode} · {failureText[turn.failureCode]}</p>}
           {turn.status === 'PENDING' && <p>正在本机执行…</p>}
           {admission?.conversationId === detail.conversation.id && admission.turnId === turn.turnId ? <div>

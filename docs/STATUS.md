@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-10 [历史对话摘录到可回查记忆](engineering/CONVERSATION-EXCERPT-MEMORY-REPORT.md)完成本会话第二项完整模块：长消息选段、含精确会话／轮次／消息位置的完整草稿预览、原消息核对后送入编辑器、明确保存后只读回查与整轮上下文。出处仍为可编辑文字，不增加模型上下文或受信关联。两项新合成流程及两项受影响旧流程通过，类型检查通过，未重跑状态总览检查。仅本地源码检查点；安全候选不变，无真实 Profile／原生准入／模型、打包或桌面验收；旧包不含本会话两模块，BLOCKED / productionGo=false 保持。
+
 2026-11-10 [工作区状态总览与功能入口](engineering/WORKSPACE-STATUS-OVERVIEW-REPORT.md)完成一个产品模块：五项既有检查快照、独立回执时间、失败／过期／会话失效与后续操作导航；不把 Runtime 可访问等同功能就绪，不改变准入。新增 3 项与受影响 5 项合成 UI 场景通过，复核后的执行记录失效处理仅补跑 2 项，类型检查通过。仅本地源码检查点，无新探针、真实 Profile／原生准入／模型流程、打包或 EXE 验收；旧包不含本增量，安全候选隔离不变，完整验收继续 BLOCKED / productionGo=false。
 
 2026-11-10 [模型状态绑定窄修经二次源码复核](engineering/MODEL-STATE-OWNER-CONTRACT-FIX.md#二次源码复核与本地-checkpoint)：`atomicWrite` 临时文件传固定 `windowsOwner`，构造顺序调整为 noLinks → 身份绑定 → createDirectories，后续校验和 NativeGate 保留。独立审阅者直接检查源码 diff，仅支持本地 checkpoint，未审阅 AST 检查器或运行检查；执行方新回执为 194 源编译、568 class、75 条警告及 5 个调用接线检查通过，未加载产品类／JNA。提交前后核对源码哈希，不重跑检查；原生行为、完整 token 约束、全程原子性和历史根因均未证明，无新包／部署／Profile 操作，完整验收继续 BLOCKED / productionGo=false。

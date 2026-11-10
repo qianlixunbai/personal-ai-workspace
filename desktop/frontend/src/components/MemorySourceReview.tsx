@@ -3,10 +3,14 @@ import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeDocument, KnowledgePreview } from '../bridge/knowledge'
 import { KnowledgeSourcePreview } from './KnowledgeSourcePreview'
 import { memorySourceHint, readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
+import { ConversationSourceReview } from './ConversationSourceReview'
 
 type Review = { content: string; source: MemoryKnowledgeSource; document: KnowledgeDocument; original: string; first: KnowledgePreview }
 
-export function MemorySourceReview({ bridge, content, enabled = true }: { bridge: WorkspaceClient; content: string; enabled?: boolean }) {
+export function MemorySourceReview(props: { bridge: WorkspaceClient; content: string; enabled?: boolean }) {
+  return <><KnowledgeMemorySourceReview {...props} /><ConversationSourceReview {...props} /></>
+}
+function KnowledgeMemorySourceReview({ bridge, content, enabled = true }: { bridge: WorkspaceClient; content: string; enabled?: boolean }) {
   const hint = useMemo(() => memorySourceHint(content), [content])
   const [review, setReview] = useState<Review | null>(null), [preview, setPreview] = useState<KnowledgePreview | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
