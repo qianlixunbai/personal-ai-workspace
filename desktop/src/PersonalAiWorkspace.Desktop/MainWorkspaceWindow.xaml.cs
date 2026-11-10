@@ -37,6 +37,7 @@ public partial class MainWorkspaceWindow : Window
 #endif
         Host = new WorkspaceWebViewHost(Browser, native, message =>
         {
+            BrowserZoomControls.IsEnabled = false;
             Browser.Visibility = Visibility.Collapsed;
             FallbackTitle.Text = "工作区暂时不可用";
             FallbackMessage.Text = message;
@@ -52,7 +53,11 @@ public partial class MainWorkspaceWindow : Window
         Loaded += async (_, _) =>
         {
             await Host.InitializeAsync();
-            if (Host.IsReady && !closed) Fallback.Visibility = Visibility.Collapsed;
+            if (Host.IsReady && !closed && !shuttingDown)
+            {
+                Fallback.Visibility = Visibility.Collapsed;
+                BrowserZoomControls.IsEnabled = true;
+            }
         };
         Closing += CloseSafely;
     }
@@ -82,10 +87,22 @@ public partial class MainWorkspaceWindow : Window
         }
     }
     private void FocusWorkspace(object sender, RoutedEventArgs e) => ReturnFocus();
-    private void ZoomIn(object sender, RoutedEventArgs e) => SetZoom(Math.Min(2, Browser.ZoomFactor + .25));
-    private void ZoomOut(object sender, RoutedEventArgs e) => SetZoom(Math.Max(.75, Browser.ZoomFactor - .25));
+    private bool CanZoom => !closed && !shuttingDown && Host.IsReady;
+    private void ZoomIn(object sender, RoutedEventArgs e) => ChangeZoom(.25);
+    private void ZoomOut(object sender, RoutedEventArgs e) => ChangeZoom(-.25);
     private void ResetZoom(object sender, RoutedEventArgs e) => SetZoom(1);
-    private void SetZoom(double factor) { Browser.ZoomFactor = factor; ZoomResetButton.Content = $"{factor:P0}"; }
+    private void ChangeZoom(double delta)
+    {
+        // A queued routed event can still arrive after the controls were disabled.
+        if (!CanZoom) return;
+        SetZoom(Math.Clamp(Browser.ZoomFactor + delta, .75, 2));
+    }
+    private void SetZoom(double factor)
+    {
+        if (!CanZoom) return;
+        Browser.ZoomFactor = factor;
+        ZoomResetButton.Content = $"{factor:P0}";
+    }
     internal void ReturnFocus() { if (!closed && Browser.Visibility == Visibility.Visible) { Activate(); Browser.Focus(); } }
     private async void CloseSafely(object? sender, CancelEventArgs e)
     {
@@ -94,6 +111,7 @@ public partial class MainWorkspaceWindow : Window
         if (shuttingDown) return;
         if (!TryDiscardEditor()) return;
         shuttingDown = true;
+        BrowserZoomControls.IsEnabled = false;
         await Host.CloseAsync();
         closed = true;
         Close();
@@ -102,9 +120,10 @@ public partial class MainWorkspaceWindow : Window
     {
         if (closed) return;
         shuttingDown = true;
+        BrowserZoomControls.IsEnabled = false;
         await Host.CloseAsync();
         closed = true; Close();
     }
     internal void DisposeImmediately()
-    { if (!closed) { Host.DisposeImmediately(); closed = true; Close(); } }
+    { if (!closed) { BrowserZoomControls.IsEnabled = false; Host.DisposeImmediately(); closed = true; Close(); } }
 }
