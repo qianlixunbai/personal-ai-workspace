@@ -21,6 +21,17 @@
 
 证据目录：`.verification/memory-native-delivery-20261110/`。`build.log` 为首轮失败，`build-restored.log` 为成功构建；`contract.log`、`package-result.json` 为初版合同与收据；`editor-build.log`、`editor-test.log`、`test-results/editor.trx` 为编辑提示验证。
 
+## 最终交付入口
+
+- [最终 ZIP](../../artifacts/PersonalAiWorkspace-memory-native-final-20261110.zip)：384,670,547 字节；完整解压后运行 `PersonalAiWorkspace.Desktop.exe`。本机已有[解压目录入口](../../artifacts/PersonalAiWorkspace-memory-native-final-20261110/PersonalAiWorkspace.Desktop.exe)。不上传或远程发布。
+- 产品来源：`0ad966521fed75701ab29dbef6395f325e032a1d`，包含本轮编辑提示；之前包说明提交为 `de5c1cec538006edd255af404a5e2c7ab24d22d7`。最终产品源码构建时无未提交修改，后续收尾只改文档。
+- ZIP SHA-256：`32518BBC44E9F2BB9E5ED063D62CC50ECAF4E6BFE2DD3D2429593CB55B3C1B2D`。
+- Desktop DLL SHA-256：`B18017560C853A6196979965F0A87A6D3351ACD49949C343E22C95CBCFF2E7EE`；Runtime JAR 仍为 `71F181BF8D991AA5484C9EFB83D548EC275644407B388CD68BE220421DF5DFFD`，Java owning source 自前已审查包以来无变化，无须重复 JVM 构建。
+- 最终发布使用已有恢复结果 `--no-restore`，前端重新构建，受信输入再次通过 420 项校验。实际 ZIP 解压到含中文和空格的新目录后，933 个产品文件完整性通过；只添加已有测试工具，不替换产品文件，运行实际包内 `TrustedDevelopmentRuntimeSources.Open()` 成功，并再次确认全部产品文件未变。这是最终包的独立正向验证；初版 7 项篡改矩阵未重复，也未宣称最终包重跑 7/7。
+- 最终证据：`build-final.log`、`final-sources.log`、`final-package-result.json`、`final-isolation.json`。验收副本只在忽略目录 `final-relocated/` 中保留，不作为运行入口；它包含测试工具。
+
+最终构建持锁 PID 14728，04:59:41–04:59:58 UTC。第一次最终核对因共享锁忙，8 秒后退出且没有启动任务；期间继续静态交接工作。随后 PID 20396 在 05:01:10–05:01:14 获锁并完成核对，finally 正常释放。没有绕过资源协调或终止锁持有者；以上六个自有包装进程均已确认退出。
+
 ## 回滚、资源与验收边界
 
 完整 Git 回滚：`.verification/memory-native-delivery-20261110/baseline-c0a8a09.bundle`，已验证精确基线及完整历史；SHA-256 `F09D20E96AC59EB548DF3E3F33292B38AE8F17C011BB50AB5FC7A3BDB64A99FD`。旧 ZIP 与解压目录保留；回滚应用不能覆盖或回退用户数据库。
@@ -30,3 +41,11 @@
 **仍未验收**：原 WebView2 保存／关闭／独立重开；真实失败页点击后原生窗口的交互、保存与独立重开；最终包的完整 EXE 启动、跨机器、PG 桌面、个人恢复、签名／安装／更新。合成 STA 和包合同不能替代上述验收。没有根因结论或重复浏览器启动实验。
 
 六份用户文档、真实 Profile／数据和 `main @ f5266bf4383f52a2293b0fe4bfe1964af958e64a` 保持；没有推送、远程发布、账户／凭据或许可条款变更。manifest 的 `sourceDirty=true` 记录六份未跟踪用户文档，产品构建以已提交源码为准，这些文档不进分发包。
+
+## 下一会话交接
+
+本轮完成本地包补齐、原生编辑反馈及最终同版本交付收尾；没有遗留待执行的构建、测试或提交结果。先核对 HEAD、索引和工作区，不重跑这里已通过的检查，不改六份用户文档、main 或其他仓库。
+
+下一真实关卡是**仅原生记忆的明确保存／取消与独立进程重开**。应复用现有运行时与原生窗口、最终包产品文件和有明确来源的合成 Profile；先精确核实端口与进程归属，18765 及旧浏览器后代仍未知，不得当作空闲或直接清理。当前 `RuntimeLifecycleProbe.MemoryDraft.cs` 的 save/reopen 模式会启动 WebView2，不能直接拿来冒充原生独立流程；若做最小适配，保留正常 Native Gate、Profile 校验与 Runtime 生命周期，并避免写上次工作区偏好。现有原生 STA 用例是合成 HTTP Store，不能替代实际 SQLite 持久化。不要为了这一步重跑默认／沙箱外 WebView2 startup 对照，或扩大诊断、恢复设施。
+
+需要保留的具体阻塞是 WebView2 controller 启动及 GPU／renderer 失败，根因仍未确定；当前新包没有解决它。原生保存／重开属于尚未执行的验收，而非已观察到原生持久化失败。构建首轮 NuGet 阻塞已解决，没有自动审批拒绝、待审批或结果不明的本轮写入。

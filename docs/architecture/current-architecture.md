@@ -79,6 +79,8 @@ flowchart TD
 
 默认配置为 SQLite，源码另有显式 Workspace PostgreSQL backend。PostgreSQL 使用独立 Workspace schema / Store 实现；不能把 SQLite 的 FTS5 描述套用于全部 backend。Knowledge 源文件仍有独立文件生命周期，不能把一个数据库 dump 当成完整 Knowledge 备份。
 
+[原生记忆备用入口与交付](../engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)在 WebView2 失败页复用既有 `NativeWorkspaceEntry.Memory` 路由及同一 Runtime，不增加存储或权限路径。原生编辑器复用 Core 输入校验，未知写入结果阻止重放，明确读取记录或放弃草稿后才解除该编辑状态；列表刷新不代表写入已确认。最终开发包已完成完整性与内嵌来源核对，真实原生保存／重开和 WebView2 闭环仍未验收。
+
 ## Finance：共享进程，独立数据与身份
 
 `workspace-application → finance-domain` 是真实模块依赖。Runtime 的 [FinanceModuleConfiguration](../../src/main/java/io/github/qianlixunbai/workspace/finance/FinanceModuleConfiguration.java) 显式装配专用 DataSource、MyBatis 与事务边界；默认 Finance / Flyway 均关闭，普通启动不跑 Finance migrations。

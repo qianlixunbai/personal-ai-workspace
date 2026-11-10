@@ -1,6 +1,6 @@
 # 当前状态
 
-2026-11-10 [原生记忆本地交付](engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)：独立开发包已包含备用入口与写入结果不明保护，现有分发合同 7/7 通过，旧包保留。另补齐原生编辑器保存前的长度／有效性提示，复用既有规则；必要编译及一条受影响回归通过，正在完成该增量的同版本交付。未启动桌面／JVM／模型，原 WebView2 及真实原生记忆保存／独立重开均未验收，仍为 Development-only。
+2026-11-10 [原生记忆本地交付](engineering/MEMORY-NATIVE-DELIVERY-REPORT.md)：最终本地 ZIP 已包含备用入口、写入结果不明保护及保存前长度／有效性提示，来源 `0ad9665`，旧包与完整 Git 回滚保留。初版分发合同 7/7、编辑增量必要编译与一条受影响回归通过；最终 ZIP 933 文件及换路径后的实际内嵌来源独立核对通过，未重复篡改矩阵。首轮 NuGet 缓存／网络失败已解决，原日志保留。共享短运行锁已释放，六份用户文档和 main 未变。未启动桌面／JVM／模型，原 WebView2 保存／重开未通过，真实原生记忆保存／独立重开尚未执行，仍为 Development-only。
 
 2026-11-10 [原生 Memory 备用入口](engineering/MEMORY-NATIVE-FALLBACK-REPORT.md)已提供 WebView2 失败页到既有记忆窗口的明确入口；[原生写入结果不明保护](engineering/MEMORY-NATIVE-OUTCOME-REPORT.md)防止已提交但响应丢失后重复保存，保留草稿与原有确认，允许只读核对。两个小阶段分别完成必要增量编译与单条 STA 用例，后一项先复现旧版失败；没有重跑前端回归或启动真实桌面／JVM／模型。共享短运行锁已采用并释放。分发包未更新，原 WebView2 保存／关闭／独立重开闭环仍未通过，继续为 Development-only。
 
