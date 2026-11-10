@@ -22,6 +22,7 @@ public final class BrowserClients implements AutoCloseable {
             .enable(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
     private final Path file, pending;
     private final Clock clock;
+    private final boolean enabled;
     private final Map<UUID, Session> sessions = new HashMap<>();
     private List<Registration> clients = new ArrayList<>();
     private Instant exchangeWindow;
@@ -31,12 +32,16 @@ public final class BrowserClients implements AutoCloseable {
 
     @org.springframework.beans.factory.annotation.Autowired
     public BrowserClients(RuntimeProperties properties) {
-        this(properties.security().tokenFile().toAbsolutePath().normalize().resolveSibling("browser-clients.json"), Clock.systemUTC());
+        this(properties.security().tokenFile().toAbsolutePath().normalize().resolveSibling("browser-clients.json"), Clock.systemUTC(), WindowsNativeGate.maintenanceRuntime()==null);
     }
 
-    BrowserClients(Path file, Clock clock) {
+    BrowserClients(Path file, Clock clock) { this(file,clock,true); }
+
+    private BrowserClients(Path file, Clock clock, boolean enabled) {
         this.file = file.toAbsolutePath().normalize(); this.pending = this.file.resolveSibling("browser-clients.pending");
-        this.clock = clock; this.exchangeWindow = clock.instant();
+        this.clock = clock; this.exchangeWindow = clock.instant(); this.enabled=enabled;
+        // Restricted native data sessions must neither open nor reconcile the separate browser registry.
+        if(!enabled)return;
         try {
             if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.directory(this.file.getParent());
             else Files.createDirectories(this.file.getParent());
@@ -88,6 +93,7 @@ public final class BrowserClients implements AutoCloseable {
     }
 
     private void save(List<Registration> next) {
+        requireEnabled();
         boolean created = false;
         try {
             byte[] bytes = json.writeValueAsBytes(new Registry(1, next));
@@ -111,6 +117,7 @@ public final class BrowserClients implements AutoCloseable {
     }
 
     public synchronized Pairing create(String origin, String displayName) {
+        requireEnabled();
         if (!validOrigin(origin) || !validName(displayName)) throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "PAIRING");
         expire();
         if (sessions.size() >= MAX_PAIRINGS || clients.size() + sessions.size() >= MAX_CLIENTS)
@@ -121,6 +128,7 @@ public final class BrowserClients implements AutoCloseable {
     }
 
     public synchronized Exchange exchange(UUID pairingId, String proof, String origin) {
+        requireEnabled();
         expire();
         Instant now = clock.instant();
         if (!now.isBefore(exchangeWindow.plusSeconds(60))) { exchangeWindow = now; exchangeAttempts = 0; }
@@ -149,6 +157,7 @@ public final class BrowserClients implements AutoCloseable {
 
     /** Authenticates the bearer secret only; HTTP admission must separately enforce Origin/metadata/routes. */
     public synchronized ClientIdentity authenticateCredential(String authorization) {
+        if(!enabled)return null;
         if (authorization == null || !authorization.matches("Bearer br1\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.[A-Za-z0-9_-]{43}")) return null;
         String credential = authorization.substring(7); String id = credential.substring(4, 40);
         for (Registration entry : clients) {
@@ -159,19 +168,22 @@ public final class BrowserClients implements AutoCloseable {
     }
 
     synchronized boolean allowsOrigin(String origin, boolean exchange) {
+        if(!enabled)return false;
         expire();
         return validOrigin(origin) && (exchange ? sessions.values().stream().anyMatch(s -> s.origin.equals(origin))
                 : clients.stream().anyMatch(c -> c.identity().origin().equals(origin)));
     }
 
-    public synchronized List<ClientIdentity> list() { return clients.stream().map(Registration::identity).toList(); }
+    public synchronized List<ClientIdentity> list() { requireEnabled(); return clients.stream().map(Registration::identity).toList(); }
 
     public synchronized void revoke(String clientId) {
+        requireEnabled();
         // Deleting a verifier is revocation and server-side forget; unknown IDs are idempotent.
         List<Registration> next = new ArrayList<>(clients);
         if (next.removeIf(c -> c.identity().clientId().equals(clientId))) save(next);
     }
 
+    private void requireEnabled() { if(!enabled)throw new WorkspaceException(ErrorCode.POLICY_DENIED,"BROWSER_SECURITY_DISABLED"); }
     private void expire() { sessions.values().removeIf(s -> !clock.instant().isBefore(s.expires)); }
     @jakarta.annotation.PreDestroy
     @Override public synchronized void close() {

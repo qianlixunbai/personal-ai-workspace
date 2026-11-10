@@ -20,6 +20,7 @@ public static partial class RuntimeLifecycleProbe
         if (args is ["--x1-execution-lifecycle-fixture"]) return RunX1ExecutionLifecycleFixture();
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         if(args is ["--restricted-writer-startup",var writerProfile,var writerPsql])return RunMigratedWorkspaceStartup(writerProfile,writerPsql,restrictedWriters:true);
+        if(args is ["--restricted-browser-startup",var browserProfile,var browserPsql])return RunMigratedWorkspaceStartup(browserProfile,browserPsql,restrictedBrowser:true);
         if(args is ["--migrated-workspace-startup",var migratedProfile,var migratedPsql])return RunMigratedWorkspaceStartup(migratedProfile,migratedPsql);
         if(args is ["--migration-confirmation",var confirmationProfile,var psql])return RunMaintenanceConfirmation(confirmationProfile,psql);
         if(args is ["--migration-confirmation-rejections",var rejectedProfile,var rejectionPsql])return RunMaintenanceConfirmationRejections(rejectedProfile,rejectionPsql);

@@ -12,7 +12,7 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public static partial class RuntimeLifecycleProbe
 {
-    private static int RunMigratedWorkspaceStartup(string id,string psql,bool restrictedWriters=false)
+    private static int RunMigratedWorkspaceStartup(string id,string psql,bool restrictedWriters=false,bool restrictedBrowser=false)
     {
         byte[] configuration=Encoding.UTF8.GetBytes(Console.In.ReadToEnd());string stage="PROFILE";
         try
@@ -23,6 +23,7 @@ public static partial class RuntimeLifecycleProbe
             using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(300));
             string source=Path.Combine(profile.Root,"data","memory.db"),sourceBefore=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source)));
             string? historyBefore=restrictedWriters?HistoryFingerprint(profile):null;
+            string? browserBefore=restrictedBrowser?BrowserFingerprint(profile):null;
             stage="PREPARE_MIGRATED_SOURCE";
             var migrationUi=Task.Run(()=>DriveMigrationDialog(profile,target,psql,true,deadline.Token));
             _=migrationUi.ContinueWith(t=>{if(t.IsFaulted)deadline.Cancel();},TaskScheduler.Default);
@@ -32,6 +33,7 @@ public static partial class RuntimeLifecycleProbe
                 migrationUi.GetAwaiter().GetResult();operation=migration.Operation;
                 migration.FinishAsync(deadline.Token).GetAwaiter().GetResult();Assert.True(migration.VerifiedStopped);
             }
+            if(restrictedBrowser)return VerifyRestrictedBrowserReopen(profile,target,deadline.Token,operation,browserBefore!);
             if(restrictedWriters)return VerifyRestrictedWriterReopen(profile,target,psql,deadline.Token,operation,sourceBefore,historyBefore!);
             string activation=Path.Combine(profile.Root,"evidence","sqlite-activation",operation);
             string savedConfiguration=Path.Combine(profile.Root,"data","database.dpapi");
@@ -105,6 +107,43 @@ public static partial class RuntimeLifecycleProbe
         }
         catch(Exception failure){Console.WriteLine("MIGRATED_STARTUP_STOP "+stage+" "+failure.GetType().Name);Console.WriteLine(failure.Message);Console.WriteLine(failure.StackTrace);return 10;}
         finally{CryptographicOperations.ZeroMemory(configuration);}
+    }
+    private static string BrowserFingerprint(Mmf3AcceptanceLaunch profile)
+    {
+        string root=Path.Combine(profile.Root,"credentials");
+        Assert.True(File.Exists(Path.Combine(root,"browser-clients.json")));
+        Assert.True(File.Exists(Path.Combine(root,"browser-clients.pending")));
+        return string.Join("\n",Directory.GetFiles(root,"browser-clients.*").Order().Select(path=>Path.GetFileName(path)+":"+Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))));
+    }
+    private static int VerifyRestrictedBrowserReopen(Mmf3AcceptanceLaunch profile,JsonElement target,
+        CancellationToken token,string operation,string before)
+    {
+        Assert.Equal(before,BrowserFingerprint(profile));
+        DevelopmentRuntimeOwner? owner=null;
+        using(var client=RuntimeClient.CreateMmf3Acceptance(()=>owner?.ReadCredential()))
+        using(owner=new DevelopmentRuntimeOwner(profile,client))
+        {
+            var ui=Task.Run(()=>DriveResumeDialog(profile,target,true,token,owner));
+            owner.Start(token);ui.GetAwaiter().GetResult();WaitOwner(owner,true,token);
+            Assert.Equal("POSTGRESQL",client.GetStorageStatusAsync(token).GetAwaiter().GetResult().Backend);
+            Assert.Equal(before,BrowserFingerprint(profile));
+            using var http=new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler{UseProxy=false})
+                {BaseAddress=client.OwnedDevelopmentEndpoint!,Timeout=TimeSpan.FromSeconds(5)};
+            using var request=new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get,"/api/v1/storage/status");
+            request.Headers.TryAddWithoutValidation("Authorization","Bearer br1.bd1d1be1-72cb-4908-a7d3-21ce80d9baed."+new string('z',43));
+            request.Headers.TryAddWithoutValidation("Sec-Fetch-Site","none");
+            request.Headers.TryAddWithoutValidation("Sec-Fetch-Mode","cors");
+            request.Headers.TryAddWithoutValidation("Sec-Fetch-Dest","empty");
+            using var response=http.SendAsync(request,token).GetAwaiter().GetResult();
+            Assert.Equal(System.Net.HttpStatusCode.Unauthorized,response.StatusCode);
+            Assert.Equal(before,BrowserFingerprint(profile));
+            owner.StopAsync().GetAwaiter().GetResult();Assert.True(owner.LastStopConfirmed);
+        }
+        Assert.Equal(before,BrowserFingerprint(profile));
+        Console.WriteLine(JsonSerializer.Serialize(new{passed=true,profile=profile.RunId,operation,
+            browserRegistryPreserved=true,pendingRegistryPreserved=true,browserCredentialRejected=true,
+            nativeCredentialAccepted=true,normalCloseObserved=true,visualAcceptance=false,productionGo=false}));
+        return 0;
     }
     private static string HistoryFingerprint(Mmf3AcceptanceLaunch profile)
     {

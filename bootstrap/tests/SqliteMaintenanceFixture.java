@@ -17,7 +17,7 @@ public final class SqliteMaintenanceFixture {
         var output = System.out; System.setOut(new PrintStream(OutputStream.nullOutputStream())); System.setErr(System.out);
         byte[] input = System.in.readNBytes(16385); String stage = "INPUT";
         try {
-            require((args.length == 0 || args.length == 1 && Set.of("--maintenance-binding","--maintenance-model-state","--restricted-writers").contains(args[0])) && input.length < 16385);
+            require((args.length == 0 || args.length == 1 && Set.of("--maintenance-binding","--maintenance-model-state","--restricted-writers","--restricted-browser").contains(args[0])) && input.length < 16385);
             var config = JsonMapper.builder().build().readTree(input);
             int port = config.path("port").asInt(); require(port >= 49152 && port <= 65535);
             Path cluster = Path.of(config.path("data").asString()).toAbsolutePath().normalize();
@@ -81,7 +81,7 @@ public final class SqliteMaintenanceFixture {
             Path modelLock = root.resolve("model-state/.lock");
             if (!Files.exists(modelLock)) io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(modelLock);
             require(Files.size(modelLock) == 0);
-            if(args.length==1 && Set.of("--maintenance-model-state","--restricted-writers").contains(args[0])) {
+            if(args.length==1 && Set.of("--maintenance-model-state","--restricted-writers","--restricted-browser").contains(args[0])) {
                 try(var models=new io.github.qianlixunbai.workspace.model.ModelStateStore(root.resolve("model-state"),token,data)) {
                     require(models.selection()==null);
                     // A local synthetic selection record, not an installed/loaded model claim.
@@ -96,6 +96,25 @@ public final class SqliteMaintenanceFixture {
                             new io.github.qianlixunbai.workspace.model.ModelProfile.PublicProfile("fixture","1",
                                     io.github.qianlixunbai.workspace.model.ModelProfile.Locality.LOCAL),"fixture");
                 }
+            }
+            if(args.length==1 && args[0].equals("--restricted-browser")) {
+                // Public fixed test credential, valid only in this fresh synthetic profile.
+                String id="bd1d1be1-72cb-4908-a7d3-21ce80d9baed";
+                String credential="br1."+id+"."+"z".repeat(43);
+                var identity=new io.github.qianlixunbai.workspace.security.ClientIdentity(id,"browser-extension",
+                        "Synthetic registry","chrome-extension://"+"a".repeat(32),java.time.Instant.EPOCH,Set.of("translate"));
+                String verifier=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(credential.getBytes(StandardCharsets.US_ASCII)));
+                Path registry=token.resolveSibling("browser-clients.json");
+                io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(registry);
+                Files.write(registry,JsonMapper.builder().build().writeValueAsBytes(Map.of("version",1,"clients",List.of(Map.of("identity",identity,"verifier",verifier)))));
+                var properties=new io.github.qianlixunbai.workspace.config.RuntimeProperties(
+                        new io.github.qianlixunbai.workspace.config.RuntimeProperties.Security(token),null,null,null,null,null);
+                try(var clients=new io.github.qianlixunbai.workspace.security.BrowserClients(properties)) {
+                    require(identity.equals(clients.authenticateCredential("Bearer "+credential)));
+                }
+                Path pending=token.resolveSibling("browser-clients.pending");
+                io.github.qianlixunbai.workspace.security.WindowsPrivateAcl.createFile(pending);
+                Files.writeString(pending,"Synthetic uncommitted registry bytes to preserve",StandardCharsets.UTF_8);
             }
             output.println("OWNER_FIXTURE_DOCUMENT " + documentId);
             output.println("OWNER_FIXTURE_PREPARED");
