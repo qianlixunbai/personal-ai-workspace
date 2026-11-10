@@ -144,7 +144,8 @@ internal sealed class WorkspaceWebViewHost
 #endif
             if (closing || failed) return;
             var options = environment.CreateCoreWebView2ControllerOptions();
-            options.ProfileName = "MainWorkspace";
+            // One profile per admitted UDF: keep its default name. Named-profile startup
+            // can stall in affected runtimes; InPrivate and the UDF isolation still apply.
             options.IsInPrivateModeEnabled = true;
             Stage("CONTROLLER_START");
             view.CoreWebView2InitializationCompleted += (_, e) =>
