@@ -14,7 +14,9 @@ internal static class MemoryRecallIntegrationProbe
         string stage = "INPUT";
         try
         {
-            if (args.Length is not (4 or 5)) return 2;
+            bool memoryUsage = args.Length == 6 && args[4] == "--scenario" && args[5] == "memory-usage";
+            if (args.Length is not (4 or 5) && !memoryUsage) return 2;
+            if (args.Length == 5 && args[4] == "--scenario") return 2;
             string java = Path.GetFullPath(args[0]), jna = Path.GetFullPath(args[1]),
                 classpath = File.ReadAllText(args[2]).Trim(), evidence = Path.GetFullPath(args[3]);
             var assembly = typeof(PersonalAiWorkspace.Desktop.MemorySelectionWindow).Assembly;
@@ -42,6 +44,7 @@ internal static class MemoryRecallIntegrationProbe
             // path, owning process and empty cluster before any database mutation.
             if (args.Length == 5) start.ArgumentList.Add("-Dmemory.postgresql.fixture=" + Path.GetFullPath(args[4]));
             start.ArgumentList.Add("MemoryRecallIntegrationProbe");
+            if (memoryUsage) start.ArgumentList.Add("memory-usage");
             stage = "JAVA";
             using var job = (IDisposable)Owner("RuntimeProcessJob").GetMethod("Create", Methods)!.Invoke(null, null)!;
             using var child = Process.Start(start) ?? throw new IOException();

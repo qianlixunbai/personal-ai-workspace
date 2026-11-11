@@ -20,12 +20,17 @@ public final class MemoryRecallIntegrationProbe {
         }
     }
     public static void main(String[] args) throws Exception {
+        boolean memoryUsage = args.length == 1 && args[0].equals("memory-usage");
+        boolean postgresql = System.getProperty("memory.postgresql.fixture") != null;
+        if ((args.length != 0 && !memoryUsage) || (memoryUsage && postgresql))
+            throw new IllegalArgumentException("Unsupported integration scenario");
         WindowsNativeGate.admit();
         WindowsNativeGate.profileRoot();
         System.out.println("MEMORY_RECALL_NATIVE_ADMITTED");
-        boolean postgresql = System.getProperty("memory.postgresql.fixture") != null;
         var builder = LauncherDiscoveryRequestBuilder.request();
-        if (postgresql) builder.selectors(selectMethod("io.github.qianlixunbai.workspace.backup.MemoryPostgresqlLifecycleTest",
+        if (memoryUsage) builder.selectors(selectMethod("io.github.qianlixunbai.workspace.conversation.ConversationStoreTest",
+                "memoryUsageFindsExactVersionsPagesAndArchivedTurnsWithoutChangingHistory"));
+        else if (postgresql) builder.selectors(selectMethod("io.github.qianlixunbai.workspace.backup.MemoryPostgresqlLifecycleTest",
                 "freshPostgresqlPreservesReviewedMemoryLifecycleAndConversationReferences"));
         else builder.selectors(selectMethod("io.github.qianlixunbai.workspace.memory.MemoryStoreTest",
                                 "recallRanksCurrentSourcesAndPreservesExplicitExactAdmission"),
@@ -48,6 +53,9 @@ public final class MemoryRecallIntegrationProbe {
             for (var frame : error.getStackTrace()) if (frame.getClassName().startsWith("io.github.qianlixunbai"))
                 System.out.println("FRAME " + frame); // No private assertion messages or values.
         }
-        System.exit(result.getTestsSucceededCount() == (postgresql ? 1 : 4) && result.getTotalFailureCount() == 0 ? 0 : 10);
+        boolean completeUsage = !memoryUsage || (result.getTestsFoundCount() == 1
+                && result.getTestsAbortedCount() == 0 && result.getTestsSkippedCount() == 0);
+        System.exit(completeUsage && result.getTestsSucceededCount() == (postgresql || memoryUsage ? 1 : 4)
+                && result.getTotalFailureCount() == 0 ? 0 : 10);
     }
 }
