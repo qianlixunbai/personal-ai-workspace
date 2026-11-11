@@ -68,5 +68,25 @@ it('rejects oversized, split-character and changed answers and drops reads after
   expect(screen.queryByLabelText('所记回答片段')).toBeNull()
   reader.rerender(<MemorySourceReview bridge={bridge} content={content + content} />)
   expect(screen.queryByRole('button', { name: '查看原问答与引用' })).toBeNull()
-  expect(port.sent.every(r => r.method === 'knowledge.answerHistoryGet')).toBe(true)
+  expect(port.sent.every(r => r.method === 'knowledge.answerHistoryGet' || r.method === 'knowledge.answerHistory')).toBe(true)
+})
+it('reacquires an answer history page from a saved Memory locator after reopening and never reads an absent ID', async () => {
+  const port = new AnswerHistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  port.enforceHistoryGrant = true; port.historySize = 21
+  const taskId = '00000000-0000-4000-8000-000000000020'
+  const content = formatAnswerSource({ taskId, excerpt: port.answerText.slice(0, 10), startOffset: 0, endOffset: 10 })
+  render(<MemorySourceReview bridge={bridge} content={content} />)
+  expect(port.historyGrant.size).toBe(0)
+  await click('查看原问答与引用')
+  expect(screen.getByLabelText('所记回答片段').textContent).toBe(port.answerText.slice(0, 10))
+  expect(port.sent.filter(r => r.method === 'knowledge.answerHistory').map(r => (r.payload as { page: number }).page)).toEqual([0, 1])
+  expect(port.sent.filter(r => r.method === 'knowledge.answerHistoryGet').map(r => r.payload)).toEqual([{ taskId }])
+  await act(async () => { port.historyGrant.clear(); port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') })
+  await click('查看原问答与引用'); expect(screen.getByLabelText('所记回答片段')).toBeTruthy()
+  port.missingHistory = true
+  const reads = port.sent.filter(r => r.method === 'knowledge.answerHistoryGet').length
+  await click('查看原问答与引用')
+  expect(screen.getByRole('alert').textContent).toContain('未改查相似问题')
+  expect(port.sent.filter(r => r.method === 'knowledge.answerHistoryGet')).toHaveLength(reads)
+  expect(port.sent.some(r => /answerSubmit|conversations.send|memory.create/.test(String(r.method)))).toBe(false)
 })

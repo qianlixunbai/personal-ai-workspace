@@ -7,6 +7,7 @@ import type { KnowledgeDocument } from '../bridge/knowledge'
 import { AnswerContent } from './AnswerContent'
 import { ConfirmationDialog } from './ConfirmationDialog'
 import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
+import { readAuthorizedAnswerHistory } from './memoryAnswerSource'
 
 export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined; onMemoryDraft?: ((content: string, role: 'ASSISTANT') => void) | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
@@ -92,7 +93,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
   const readHistory = async (id: string) => {
     if (!enabled || !visible || busy || active || actionLock.current) return
     const epoch = ++generation.current; actionLock.current = true; setBusy(true); setError(''); setDeleteId(null)
-    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { savedDraft.current = { question: result.question, query: result.query, scope: result.scope ?? null }; setAnswerInput(savedDraft.current); setQuestion(result.question); setQuery(result.query); setTask(result.task); setKnownTaskId(id); setCancelRequested(cancelledIds.current.has(id)); setScope(result.scope ?? null); setScopeTitle(result.task.result?.citations[0]?.title ?? '') } }
+    try { const result = await readAuthorizedAnswerHistory(bridge, id, () => { if (epoch !== generation.current) throw new Error('问答读取已失效') }); if (epoch === generation.current) { savedDraft.current = { question: result.question, query: result.query, scope: result.scope ?? null }; setAnswerInput(savedDraft.current); setQuestion(result.question); setQuery(result.query); setTask(result.task); setKnownTaskId(id); setCancelRequested(cancelledIds.current.has(id)); setScope(result.scope ?? null); setScopeTitle(result.task.result?.citations[0]?.title ?? '') } }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '读取历史回答失败。') }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }

@@ -5,7 +5,7 @@ import type { ConversationReference } from './conversationReferences'
 import { AnswerContent } from './AnswerContent'
 import { KnowledgeAnswerEvidence } from './KnowledgeAnswerEvidence'
 import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
-import { readAnswerSource } from './memoryAnswerSource'
+import { readAnswerSource, readAuthorizedAnswerHistory } from './memoryAnswerSource'
 
 export type AnswerSelection = { taskId: string; reference?: Extract<ConversationReference, { kind: 'answer' }> }
 export function WorkspaceAnswerHistory({ bridge, selected, choose, prepare, disabled }: {
@@ -58,7 +58,7 @@ function AnswerHistoryReader({ bridge, selected, prepare, disabled }: {
     setEntry(null); setError('')
     void (async () => {
       const reference = selected.reference
-      const value = reference ? (await readAnswerSource(bridge, reference.source, check)).entry : await bridge.getKnowledgeAnswerHistory(selected.taskId)
+      const value = reference ? (await readAnswerSource(bridge, reference.source, check)).entry : await readAuthorizedAnswerHistory(bridge, selected.taskId, check)
       check()
       if (value.task.taskId !== selected.taskId || reference && JSON.stringify(value) !== JSON.stringify(reference.entry))
         throw new Error('待插入的问答记录或引用已变化，请移除后重新选择。')

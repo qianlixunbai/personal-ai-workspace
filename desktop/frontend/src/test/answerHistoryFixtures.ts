@@ -9,6 +9,8 @@ export class AnswerHistoryService extends KnowledgeService {
   sourceText = '# 旧版资料\n仅用于本项目，旧预算五百元。'
   holdHistory = false; missingHistory = false; missingSource = false; holdPreview = false
   historySize = 1
+  historyGrant = new Set<string>()
+  enforceHistoryGrant = false
   constructor() { super(); this.memory.items = []; this.memory.sent = this.sent; this.memory.listener = event => this.emit(event.data); this.document.currentReadyRevision = '2' }
   entry(taskId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'): KnowledgeAnswerHistoryEntry {
     return { question: '原始问题：适用范围？', query: '本项目', scope: { documentId: this.document.documentId, sourceRevision: '1' }, task: {
@@ -30,10 +32,11 @@ export class AnswerHistoryService extends KnowledgeService {
           taskId: i === 0 ? this.entry().task.taskId : `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
           question: this.entry().question + (i > 0 ? ` ${i + 1}` : ''), status: 'SUCCEEDED', createdAt: '2026-11-11T00:00:00Z' }))
         const page = Number(payload.page)
+        this.historyGrant = new Set(rows.slice(page * 20, (page + 1) * 20).map(row => row.taskId))
         this.reply(index, { items: rows.slice(page * 20, (page + 1) * 20), total: rows.length, page, limit: 20 })
       }
       else if (method === 'knowledge.answerHistoryGet') {
-        if (this.missingHistory) { const request = this.sent[index]!; this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'KnowledgeNotFound', message: '原问答已删除或不可用。' } }) }
+        if (this.missingHistory || this.enforceHistoryGrant && !this.historyGrant.has(String(payload.taskId))) { const request = this.sent[index]!; this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'TaskNotFound', message: '原问答已删除或不在当前授权页。' } }) }
         else this.reply(index, this.entry(String(payload.taskId)))
       } else if (method === 'knowledge.answerSubmit' || method === 'knowledge.answerGet') this.reply(index, this.entry().task)
       else if (method === 'knowledge.preview') {

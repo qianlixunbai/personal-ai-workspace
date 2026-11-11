@@ -23,7 +23,7 @@ async function choose(port: AnswerHistoryService) {
 }
 const basket = () => screen.getByRole('region', { name: '待插入的会话参考' })
 it('browses saved answers across pages, reviews old citations and explicitly inserts only selected answer text into the current conversation', async () => {
-  const { port, draft } = await mount(); port.historySize = 21
+  const { port, draft } = await mount(); port.historySize = 21; port.enforceHistoryGrant = true
   await click('准备会话参考…'); await click('浏览已保存的问答'); await click('下一页问答浏览')
   await click('阅读问答：' + port.entry().question + ' 21')
   expect(port.sent.filter(r => r.method === 'knowledge.answerHistoryGet').at(-1)?.payload).toEqual({ taskId: '00000000-0000-4000-8000-000000000020' })
@@ -37,6 +37,8 @@ it('browses saved answers across pages, reviews old citations and explicitly ins
   await click('核对并加入回答参考'); await click('核对并加入回答参考')
   expect(within(basket()).getAllByRole('button', { name: '移除参考' })).toHaveLength(1)
   expect(draft.value).toBe('继续讨论适用范围。')
+  await click('上一页问答浏览')
+  expect(port.historyGrant.has('00000000-0000-4000-8000-000000000020')).toBe(false)
   await click('回查来源', basket()); expect(screen.getByLabelText('待插入回答片段').textContent).toBe(port.answerText.slice(0, 10))
   const final = screen.getByLabelText('完整消息预览').textContent!
   expect(final).toContain('未经事实核实'); expect(final).not.toContain(port.sourceText); expect(final).not.toContain('<script>')
