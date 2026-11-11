@@ -45,6 +45,7 @@ export function MemoryUsageReview({ bridge, memory, enabled }: { bridge: Workspa
   return <section className="memory-revision-review" aria-label="记忆使用记录" aria-busy={busy}>
     <h3>记忆使用记录</h3>
     <p className="hint">查找这条已存记忆在使用中及已归档会话里的选择记录，不改变编辑草稿。只显示已结束轮次；选择记录不证明模型实际采纳，也不覆盖文字参考或独立问答。</p>
+    <p className="hint">按会话创建时间从新到旧排列，同一会话按轮次先后排列。新增、删除记录或进行中的轮次结束后，分页可能变化，请重新查询。</p>
     <label><input type="checkbox" checked={onlyCurrent} disabled={!enabled || busy} onChange={event => { setOnlyCurrent(event.target.checked); clear() }} />仅查看已存版本 {memory.revision}</label>
     <div className="operation-actions"><button disabled={!enabled || busy} onClick={() => query(0, onlyCurrent ? memory.revision : null)}>查询使用记录</button>
       {(result || review || busy || error) && <button onClick={clear}>收起使用记录</button>}</div>
