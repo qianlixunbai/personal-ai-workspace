@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [资料新版回答复核](../engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)：React 从受控问答／资料列表取得原记录和当前版本，预览确认后重新核对，复用既有单资料问答接口。原、新任务各自保留源版本和引用，临时对照不新增持久关联；未知提交阻断重发、已知任务按原编号读取／单次取消。无 Java、C#、Bridge 合同、schema 或新依赖，真实整合运行仍未验收。
+
 2026-11-11 [记忆使用记录](../engineering/MEMORY-CONVERSATION-USAGE-REPORT.md)：新增 Native-only 只读查询，沿原 conversation_memory_selections 联结已结束轮次和会话，不新增存储或回填历史正文。Core／WebView 校验范围及 64 位版本；Native 仅授权返回的会话并拒绝失效 session；React 再核对准确轮次的记忆引用后显示原文。Java 数据库用例尚未越过临时 MemoryStore 初始化，不能扩大实际数据库／桌面验收结论。
 
 2026-11-11 [流水备注搜索](../engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)：React／Native 为既有交易查询传递可选字面关键词，Java 在原 Finance 身份检查和只读 RR 事务内，将参数化 substring 条件同时用于总数及分页。双账本用户过滤、账户关联与金额字符串保持；Native／React 校验回显及逐条匹配，无新存储结构、写接口、索引或模型能力。
