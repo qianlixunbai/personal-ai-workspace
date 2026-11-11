@@ -250,6 +250,7 @@ internal sealed class WorkspaceBridge : IDisposable
                     "knowledge.answerHistoryGet"=>await knowledge.AnswerHistoryGetAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
                     "knowledge.answerHistoryDelete"=>await knowledge.AnswerHistoryDeleteAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
                     "knowledge.answerExport"=>await knowledge.AnswerExportAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
+                    "knowledge.researchExport"=>await knowledge.ResearchExportAsync(session,payload.GetProperty("taskIds").EnumerateArray().Select(id=>id.GetString()!).ToArray(),cancellation),
                     "knowledge.search"=>await knowledge.SearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("limit").GetInt32(),cancellation,ReadKnowledgeScope(payload)),
                     "knowledge.searchStatus"=>await knowledge.SearchStatusAsync(session,cancellation),
                     "knowledge.rebuildSearchIndex"=>await knowledge.RebuildSearchAsync(session,cancellation),
@@ -486,9 +487,13 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistorySearch","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport","knowledge.saveSearchWorkset","knowledge.openSearchWorkset"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistorySearch","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport","knowledge.researchExport","knowledge.saveSearchWorkset","knowledge.openSearchWorkset"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
+        if(method=="knowledge.researchExport")return Fields(p,"taskIds")&&p.GetProperty("taskIds").ValueKind==JsonValueKind.Array
+            &&p.GetProperty("taskIds").GetArrayLength() is >=1 and <=10
+            &&p.GetProperty("taskIds").EnumerateArray().All(id=>id.ValueKind==JsonValueKind.String&&CanonicalId(id.GetString()!))
+            &&p.GetProperty("taskIds").EnumerateArray().Select(id=>id.GetString()).Distinct(StringComparer.Ordinal).Count()==p.GetProperty("taskIds").GetArrayLength();
         if(method=="knowledge.openSearchWorkset")return Fields(p);
         if(method=="knowledge.saveSearchWorkset")return Fields(p,"query","sources")&&p.GetProperty("query").ValueKind==JsonValueKind.String
             &&p.GetProperty("sources").ValueKind==JsonValueKind.Array&&p.GetProperty("sources").GetArrayLength() is >=1 and <=10

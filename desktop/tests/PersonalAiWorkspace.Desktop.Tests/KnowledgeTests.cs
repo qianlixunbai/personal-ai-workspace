@@ -24,6 +24,7 @@ public sealed class KnowledgeTests
         internal bool HistoryDeleted,HistoryMalformed;internal string AnswerPromptVersion="knowledge-answer-v2";
         internal JsonElement? LastScope;
         internal string? ExportSource;internal bool ExportWrongRevision,ExportMissing;internal List<int> ExportOffsets=[];
+        internal Dictionary<string,object> ResearchAnswers=[];internal int? ExportMissingAfter;
         internal string? BeforeInvalid;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
@@ -43,6 +44,11 @@ public sealed class KnowledgeTests
             Calls++;if(Hold is not null)await Hold.Task;
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
+            if(path=="/api/v1/knowledge/answer/tasks"&&request.Method==HttpMethod.Get&&ResearchAnswers.Count>0)
+                return Reply(new{items=ResearchAnswers.Keys.Select(id=>new{taskId=id,question="question",status="SUCCEEDED",createdAt="2026-10-06T00:00:00Z"}).ToArray(),total=ResearchAnswers.Count,page=0,limit=20});
+            if(path.StartsWith("/api/v1/knowledge/answer/tasks/",StringComparison.Ordinal)&&ResearchAnswers.TryGetValue(path.Split('/').Last(),out var researchEntry)){
+                if(AnswerReadHold is { } researchHold)await researchHold.Task;return Reply(researchEntry);
+            }
             if(path=="/api/v1/knowledge/answer/tasks"&&request.Method==HttpMethod.Get)
                 return Reply(new{items=HistoryDeleted?Array.Empty<object>():new object[]{new{taskId=AnswerTaskId,question="question",status=HistoryMalformed?"INVALID":AnswerState,createdAt="2026-10-06T00:00:00Z"}},total=HistoryDeleted?0:1,page=0,limit=20});
             if(path=="/api/v1/knowledge/answer/tasks/"+AnswerTaskId){
@@ -81,7 +87,7 @@ public sealed class KnowledgeTests
             if(path.EndsWith("/preview")&&ExportSource is { } source){
                 Assert.Contains("revision=1",request.RequestUri.Query);
                 int offset=int.Parse(request.RequestUri.Query.Split("offset=")[1]);ExportOffsets.Add(offset);
-                if(ExportMissing)return RuntimeClientTests.Response(HttpStatusCode.NotFound,"{\"code\":\"KNOWLEDGE_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
+                if(ExportMissing||ExportMissingAfter is { } after&&ExportOffsets.Count>after)return RuntimeClientTests.Response(HttpStatusCode.NotFound,"{\"code\":\"KNOWLEDGE_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
                 int end=offset==0?2048:source.Length;
                 if(end<source.Length&&char.IsLowSurrogate(source[end]))end--;
                 return Reply(new{documentId=Id,sourceRevision=ExportWrongRevision?"2":"1",offset,text=source[offset..end],nextOffset=end<source.Length?(int?)end:null,
@@ -273,8 +279,42 @@ public sealed class KnowledgeTests
     }
     private sealed class ExportFiles:IKnowledgeAnswerExport
     {
-        internal string? Text;internal int Calls;internal bool Cancel;
-        public Task<bool> SaveAsync(Guid id,string text,CancellationToken token){token.ThrowIfCancellationRequested();Calls++;Text=text;return Task.FromResult(!Cancel);}
+        internal string? Text;internal int Calls;internal bool Cancel,Research;
+        public Task<bool> SaveAsync(Guid id,string text,CancellationToken token,bool research=false){token.ThrowIfCancellationRequested();Calls++;Text=text;Research=research;return Task.FromResult(!Cancel);}
+    }
+    [Fact]public async Task ResearchExportRequiresDistinctAuthorizedIdsAndPreservesSelectedOrderAndOriginalText()
+    {
+        using var f=new Fixture();string first=f.Handler.AnswerTaskId,second=Guid.NewGuid().ToString("D");
+        f.Handler.ResearchAnswers[first]=new{question="first question",query="first query",task=f.Handler.AnswerTask()};
+        f.Handler.AnswerTaskId=second;
+        f.Handler.ResearchAnswers[second]=new{question="second question",query="second query",task=f.Handler.AnswerTask()};
+        string excerpt="```\n<script>source</script>\n";f.Handler.ExportSource=excerpt+new string('中',4096-excerpt.Length)+"EXCLUDED";
+        // Malformed renderer payloads never reach Runtime or a file chooser.
+        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first,first}}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
+        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first},path=@"C:\injected.md"}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
+        Assert.Equal("TaskNotFound",(await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
+        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=first});await f.Send("knowledge.answerHistoryGet",new{taskId=second});
+        Assert.Equal("SAVED",(await f.Send("knowledge.researchExport",new{taskIds=new[]{second,first}})).GetProperty("result").GetProperty("outcome").GetString());
+        Assert.Equal(1,f.Exports.Calls);Assert.True(f.Exports.Research);Assert.StartsWith("# 资料研究笔记",f.Exports.Text);
+        Assert.True(f.Exports.Text!.IndexOf(second,StringComparison.Ordinal)<f.Exports.Text.IndexOf(first,StringComparison.Ordinal));
+        Assert.Contains("### 问题\n\n```text\nsecond question\n```",f.Exports.Text);Assert.Contains("first query",f.Exports.Text);
+        Assert.Contains("````text\n```\n<script>source</script>",f.Exports.Text);Assert.DoesNotContain("EXCLUDED",f.Exports.Text);
+        Assert.Equal(new[]{0,2048,0,2048},f.Handler.ExportOffsets);Assert.Equal(0,f.Handler.Uploads);Assert.DoesNotContain("first question",f.Sent.Single());
+    }
+    [Fact]public async Task ResearchExportDoesNotSavePartialSourcesAndStopsOnSessionReplacement()
+    {
+        using var f=new Fixture();string first=f.Handler.AnswerTaskId,second=Guid.NewGuid().ToString("D");
+        f.Handler.ResearchAnswers[first]=new{question="first",query="budget",task=f.Handler.AnswerTask()};f.Handler.AnswerTaskId=second;
+        f.Handler.ResearchAnswers[second]=new{question="second",query="budget",task=f.Handler.AnswerTask()};f.Handler.ExportSource=new string('中',4096);
+        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=first});await f.Send("knowledge.answerHistoryGet",new{taskId=second});
+        f.Handler.ExportMissingAfter=2;
+        Assert.False((await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("ok").GetBoolean());Assert.Equal(0,f.Exports.Calls);
+        f.Handler.ExportMissingAfter=null;f.Exports.Cancel=true;
+        Assert.Equal("CANCELLED",(await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("result").GetProperty("outcome").GetString());Assert.Equal(1,f.Exports.Calls);
+        f.Handler.AnswerReadHold=new();var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first,second}}));
+        Assert.Equal("QueueFull",(await f.Send("knowledge.answerExport",new{taskId=first})).GetProperty("error").GetProperty("code").GetString());
+        int reads=f.Handler.ExportOffsets.Count;f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;
+        Assert.Empty(f.Sent);Assert.Equal(reads,f.Handler.ExportOffsets.Count);Assert.Equal(1,f.Exports.Calls);
     }
     [Fact]public async Task BatchSelectionNeedsExplicitUploadConsumesEachFileOnceAndDisposesOnDiscardOrRotation()
     {

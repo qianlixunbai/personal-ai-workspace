@@ -132,19 +132,46 @@ internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledg
         lock(sync){Current(session,known);known.HistoryPage.Remove(id);known.HistoryGeneration++;if(known.AnswerTasks.TryGetValue(id,out var access))ForgetAnswer(known,id,access);return new{deleted=true};}
     }
     internal async Task<object> AnswerExportAsync(string session,string taskId,CancellationToken ct)
+        =>await ExportAnswersAsync(session,[taskId],false,ct);
+    internal async Task<object> ResearchExportAsync(string session,string[] taskIds,CancellationToken ct)
+        =>await ExportAnswersAsync(session,taskIds,true,ct);
+    private async Task<object> ExportAnswersAsync(string session,string[] taskIds,bool research,CancellationToken ct)
     {
-        Guid id=Guid.ParseExact(taskId,"D");Authority known;AnswerAuthority access;
+        if(taskIds.Length is <1 or >10||taskIds.Any(id=>!WorkspaceBridge.CanonicalId(id))||taskIds.Distinct(StringComparer.Ordinal).Count()!=taskIds.Length)
+            throw new DesktopException(DesktopError.InvalidRequest);
+        var ids=taskIds.Select(Guid.Parse).ToArray();Authority known;AnswerAuthority[] grants;
         lock(sync){
             known=Require(session);
-            if(!known.AnswerTasks.TryGetValue(id,out access!))throw new DesktopException(DesktopError.TaskNotFound);
+            grants=ids.Select(id=>known.AnswerTasks.TryGetValue(id,out var access)?access:throw new DesktopException(DesktopError.TaskNotFound)).ToArray();
             if(answerExport is null)throw new DesktopException(DesktopError.KnowledgeExportFailed);
             if(exportingAnswer)throw new DesktopException(DesktopError.QueueFull);
             exportingAnswer=true;
         }
+        void Check(){ct.ThrowIfCancellationRequested();lock(sync)for(int i=0;i<ids.Length;i++)CurrentAnswer(session,known,ids[i],grants[i]);}
         try{
+            var notes=new List<KnowledgeAnswerNote>();
+            using(var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct)){
+                deadline.CancelAfter(TimeSpan.FromSeconds(30));
+                try{
+                    for(int i=0;i<ids.Length;i++){
+                        Check();notes.Add(await ReadAnswerNoteAsync(ids[i],grants[i].Scope,Check,deadline.Token));Check();
+                    }
+                }catch(OperationCanceledException)when(!ct.IsCancellationRequested&&deadline.IsCancellationRequested){throw new DesktopException(DesktopError.KnowledgeExportFailed);}
+            }
+            // One save dialog, only after every selected answer and exact excerpt is available.
+            // Renderer supplies IDs only; no partial notebook, paths or replacement text are accepted.
+            Check();var at=DateTimeOffset.UtcNow;
+            string note=research?KnowledgeAnswerMarkdown.FormatResearch(notes,at):KnowledgeAnswerMarkdown.Format(notes[0].Entry,notes[0].Excerpts,at);
+            bool saved=await answerExport.SaveAsync(research?Guid.NewGuid():ids[0],note,ct,research);
+            return new{outcome=saved?"SAVED":"CANCELLED"};
+        }
+        finally{lock(sync)exportingAnswer=false;}
+    }
+    private async Task<KnowledgeAnswerNote> ReadAnswerNoteAsync(Guid id,KnowledgeSourceScope? scope,Action check,CancellationToken ct)
+    {
             // Read the persisted question and result, never editable renderer fields.
             var entry=await runtime.GetKnowledgeAnswerHistoryAsync(id,ct);
-            lock(sync){CurrentAnswer(session,known,id,access);if(entry.Scope!=access.Scope)throw new DesktopException(DesktopError.InvalidResponse);}
+            check();if(entry.Scope!=scope)throw new DesktopException(DesktopError.InvalidResponse);
             if(entry.Task.Status!=TaskState.SUCCEEDED||entry.Task.Result is null)throw new DesktopException(DesktopError.KnowledgeExportFailed);
             var excerpts=new List<string>();
             foreach(var citation in entry.Task.Result.Citations){
@@ -152,8 +179,9 @@ internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledg
                 // Each admitted excerpt is <= 4096 UTF-16 units. Read only this revision;
                 // a structure boundary can split it into more than one preview page.
                 for(int reads=0;offset<citation.EndOffset&&reads<16;reads++){
-                    ct.ThrowIfCancellationRequested();lock(sync)CurrentAnswer(session,known,id,access);
+                    ct.ThrowIfCancellationRequested();check();
                     var page=await runtime.PreviewKnowledgeAsync(citation.DocumentId,citation.SourceRevision,offset,ct);
+                    check();
                     int take=Math.Min(page.Text.Length,citation.EndOffset-offset);
                     if(take==0||take<page.Text.Length&&char.IsHighSurrogate(page.Text[take-1]))throw new DesktopException(DesktopError.InvalidResponse);
                     text.Append(page.Text.AsSpan(0,take));offset+=take;
@@ -162,12 +190,7 @@ internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledg
                 if(offset!=citation.EndOffset)throw new DesktopException(DesktopError.KnowledgeExportFailed);
                 excerpts.Add(text.ToString());
             }
-            ct.ThrowIfCancellationRequested();lock(sync)CurrentAnswer(session,known,id,access);
-            string note=KnowledgeAnswerMarkdown.Format(entry,excerpts,DateTimeOffset.UtcNow);
-            bool saved=await answerExport.SaveAsync(id,note,ct);
-            return new{outcome=saved?"SAVED":"CANCELLED"};
-        }
-        finally{lock(sync)exportingAnswer=false;}
+            ct.ThrowIfCancellationRequested();check();return new(entry,excerpts);
     }
     private Authority Require(string session,string? document=null,string? request=null)
     {

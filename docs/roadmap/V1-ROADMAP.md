@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [研究结果汇编为可回查笔记](../engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)接通已保存问答的跨页选择、预览、排序及单份笔记输出，保留原问题、回答、资料范围与准确版本摘录。作为一个业务模块交付；必要合成流程与编译通过，未重新推理、打包或扩大桌面验收结论。跨资料综合推理仍未实现。
+
 2026-11-11 已提供[当前编译输出的审阅 ZIP 与一次真实资料出处联动计划](../engineering/COMPILED-REVIEW-AND-LIVE-LINK-PLAN.md)。审阅组装完成，普通 Debug／未打包 Java 的界限明确；真实联动必经原 Profile／NativeGate，不能通过新 Profile、参数或替代入口回避既有拒绝。下一最小动作是父任务判断针对原 model-state 对象的限定元数据诊断；本轮没有重复构建、产品运行或新增功能。
 
 2026-11-11 [当前 Java 源码完成实际编译](../engineering/JAVA-OFFLINE-COMPILE-REPORT.md)：经正常具体命令审批，原 Maven/JDK/依赖路径下的离线 reactor compile 全部成功，Finance 与应用模块均有独立输出，退出 0。前轮访问失败没有通过搬移依赖或修改权限处理；旧证据保留。纯编译缺口已闭合，后续仍需在既有权限边界内安排真实服务、桌面与打包验收；本轮未启动这些动作，也不扩大既有原生准入授权。

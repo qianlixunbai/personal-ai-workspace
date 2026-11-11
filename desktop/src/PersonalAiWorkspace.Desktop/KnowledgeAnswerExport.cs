@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,8 +14,11 @@ namespace PersonalAiWorkspace.Desktop;
 
 internal interface IKnowledgeAnswerExport
 {
-    Task<bool> SaveAsync(Guid taskId,string markdown,CancellationToken token);
+    Task<bool> SaveAsync(Guid taskId,string markdown,CancellationToken token,bool research=false);
 }
+
+internal sealed record KnowledgeAnswerNote(KnowledgeAnswerHistoryEntry Entry,IReadOnlyList<string> Excerpts)
+{ public override string ToString()=>"KnowledgeAnswerNote[redacted]"; }
 
 internal static class KnowledgeAnswerMarkdown
 {
@@ -26,16 +30,40 @@ internal static class KnowledgeAnswerMarkdown
         note.Append("导出时间（UTC）：").Append(exportedAt.ToUniversalTime().ToString("O",CultureInfo.InvariantCulture)).Append("\n\n")
             .Append("问答 ID：").Append(entry.Task.TaskId.ToString("D")).Append("\n\n")
             .Append("这是已保存问答及引用摘录的明文副本，不是完整资料备份。引用可定位不代表回答的事实已经核实。\n\n")
-            .Append("正文均按纯文本保留；代码块末尾的换行用于排版。偏移按规范化原文的 UTF-16 单位计数，起点包含、终点不包含。\n\n")
-            .Append("## 当时的资料范围\n\n");
+            .Append("正文均按纯文本保留；代码块末尾的换行用于排版。偏移按规范化原文的 UTF-16 单位计数，起点包含、终点不包含。\n\n");
+        AppendEntry(note,entry,excerpts,2);
+        return note.ToString();
+    }
+    internal static string FormatResearch(IReadOnlyList<KnowledgeAnswerNote> entries,DateTimeOffset exportedAt)
+    {
+        if(entries.Count is <1 or >10||entries.Select(x=>x.Entry.Task.TaskId).Distinct().Count()!=entries.Count)
+            throw new DesktopException(DesktopError.KnowledgeExportFailed);
+        var note=new StringBuilder("# 资料研究笔记\n\n");
+        note.Append("导出时间（UTC）：").Append(exportedAt.ToUniversalTime().ToString("O",CultureInfo.InvariantCulture)).Append("\n\n")
+            .Append("收录 ").Append(entries.Count).Append(" 条已完成问答，按所选顺序排列。每题保留原问题、关键词、资料范围、回答和引用原文。\n\n")
+            .Append("这是所选历史回答的汇编，没有重新生成或合并结论，也不代表所有资料均已研究。各题取证时间可能不同，引用可定位不代表事实已经核实。\n\n")
+            .Append("这是明文研究笔记，不是完整资料备份。正文按纯文本保留；代码块末尾的换行仅用于排版。偏移按规范化原文的 UTF-16 单位计数，起点包含、终点不包含。\n\n");
+        for(int i=0;i<entries.Count;i++){
+            var item=entries[i];
+            note.Append("## 问答 ").Append(i+1).Append("\n\n问答 ID：").Append(item.Entry.Task.TaskId.ToString("D")).Append("\n\n");
+            AppendEntry(note,item.Entry,item.Excerpts,3);
+        }
+        return note.ToString();
+    }
+    private static void AppendEntry(StringBuilder note,KnowledgeAnswerHistoryEntry entry,IReadOnlyList<string> excerpts,int depth)
+    {
+        var result=entry.Task.Result??throw new DesktopException(DesktopError.KnowledgeExportFailed);
+        if(entry.Task.Status!=TaskState.SUCCEEDED||excerpts.Count!=result.Citations.Count)throw new DesktopException(DesktopError.KnowledgeExportFailed);
+        string level=new('#',depth);
+        note.Append(level).Append(" 当时的资料范围\n\n");
         if(entry.Scope is { } scope)note.Append("指定文档：").Append(scope.DocumentId).Append(" · 源版本 ").Append(scope.SourceRevision).Append("\n\n");
         else note.Append("全部可用资料（未限定单份文档；以下仅列出实际引用）。\n\n");
-        Section(note,"问题",entry.Question);Section(note,"检索关键词",entry.Query);Section(note,"回答",result.Answer);
-        note.Append("## 引用原文\n\n");
+        Section(note,level,"问题",entry.Question);Section(note,level,"检索关键词",entry.Query);Section(note,level,"回答",result.Answer);
+        note.Append(level).Append(" 引用原文\n\n");
         for(int i=0;i<result.Citations.Count;i++){
             var citation=result.Citations[i];
             if(excerpts[i].Length!=citation.EndOffset-citation.StartOffset)throw new DesktopException(DesktopError.KnowledgeExportFailed);
-            note.Append("### 来源 ").Append(i+1).Append("\n\n");
+            note.Append(level).Append("# 来源 ").Append(i+1).Append("\n\n");
             Block(note,citation.Title);
             note.Append("文档 ID：").Append(citation.DocumentId).Append("\n\n源版本：").Append(citation.SourceRevision)
                 .Append(" · 类型：").Append(citation.SourceType).Append(" · 行：").Append(citation.StartLine).Append('–').Append(citation.EndLine)
@@ -43,21 +71,20 @@ internal static class KnowledgeAnswerMarkdown
             if(citation.Heading is { } heading){note.Append("章节标题：\n\n");Block(note,heading);}
             Block(note,excerpts[i]);
         }
-        return note.ToString();
     }
-    private static void Section(StringBuilder note,string heading,string text)
-    {note.Append("## ").Append(heading).Append("\n\n");Block(note,text);}
+    private static void Section(StringBuilder note,string level,string heading,string text)
+    {note.Append(level).Append(' ').Append(heading).Append("\n\n");Block(note,text);}
     private static void Block(StringBuilder note,string text)
         =>PlainTextMarkdown.Block(note,text);
 }
 
 internal sealed class NativeKnowledgeAnswerExport(Func<Window?> owner):IKnowledgeAnswerExport
 {
-    public async Task<bool> SaveAsync(Guid taskId,string markdown,CancellationToken token)
+    public async Task<bool> SaveAsync(Guid taskId,string markdown,CancellationToken token,bool research=false)
     {
         token.ThrowIfCancellationRequested();var window=owner()??throw new DesktopException(DesktopError.KnowledgeFileUnavailable);
-        var picker=new SaveFileDialog{Title="导出问答笔记 · 明文 · 请选择新文件",Filter="Markdown (*.md)|*.md",DefaultExt=".md",AddExtension=true,
-            FileName="knowledge-answer-"+taskId.ToString("D")+".md",OverwritePrompt=true};
+        var picker=new SaveFileDialog{Title=research?"导出研究笔记 · 明文 · 请选择新文件":"导出问答笔记 · 明文 · 请选择新文件",Filter="Markdown (*.md)|*.md",DefaultExt=".md",AddExtension=true,
+            FileName=(research?"knowledge-research-":"knowledge-answer-")+taskId.ToString("D")+".md",OverwritePrompt=true};
         bool selected=picker.ShowDialog(window)==true;token.ThrowIfCancellationRequested();window.Activate();
         if(!selected)return false;
         await SaveNewAsync(picker.FileName,markdown,token);return true;

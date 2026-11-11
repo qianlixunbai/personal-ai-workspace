@@ -9,13 +9,15 @@ import { ConfirmationDialog } from './ConfirmationDialog'
 import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
 import { readAuthorizedAnswerHistory } from './memoryAnswerSource'
 import { KnowledgeAnswerHistorySearch } from './KnowledgeAnswerHistorySearch'
+import { KnowledgeResearchNotebook } from './KnowledgeResearchNotebook'
 
 export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined; onMemoryDraft?: ((content: string, role: 'ASSISTANT') => void) | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
   const [knownTaskId, setKnownTaskId] = useState<string | null>(null), [cancelRequested, setCancelRequested] = useState(false)
   const cancelledIds = useRef(new Set<string>())
-  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [working, setBusy] = useState(false), [error, setError] = useState('')
+  const [researchBusy, setResearchBusy] = useState(false), busy = working || researchBusy
   const [exportNotice, setExportNotice] = useState('')
   const [history, setHistory] = useState<KnowledgeAnswerHistoryPage | null>(null), [deleteId, setDeleteId] = useState<string | null>(null)
   const [historySearch, setHistorySearch] = useState(''), [historyQuery, setHistoryQuery] = useState<string | null>(null)
@@ -154,6 +156,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
       <button disabled={!enabled || busy || active || (history.page + 1) * history.limit >= history.total} onClick={() => { void loadHistory(history.page + 1) }}>下一页问答</button>
       {deleteId && <div role="group" aria-label="确认删除问答"><p>删除这条问题、回答和引用记录？源文档会保留。</p><button disabled={!enabled || busy || active} onClick={() => { void removeHistory() }}>确认删除问答</button><button disabled={busy} onClick={() => setDeleteId(null)}>保留记录</button></div>}
     </section>}
+    <KnowledgeResearchNotebook bridge={bridge} rows={history?.items ?? []} enabled={enabled && !working && !active} visible={visible} onBusy={setResearchBusy} />
     {pendingHistory && <ConfirmationDialog title="替换尚未提交的问题草稿？" confirmText="读取历史并替换草稿" cancel={() => setPendingHistory(null)} confirm={() => { const id = pendingHistory; setPendingHistory(null); void readHistory(id) }}>
       <p>当前问题、检索关键词或资料范围有未提交的修改。读取历史成功后会替换这些内容；读取失败仍保留草稿。不会提交问题或重新生成回答。</p>
     </ConfirmationDialog>}
