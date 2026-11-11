@@ -47,6 +47,7 @@ export function KnowledgeAnswerRecheck({ bridge, taskId, enabled, visible, open,
   const [review, setReview] = useState<Review | null>(null), [run, setRun] = useState<Run | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [cancelled, setCancelled] = useState(false)
   const generation = useRef(0), view = useRef(0), lock = useRef(false), cancelSent = useRef(false)
+  const currentRun = useRef(run); currentRun.current = run
   const available = useRef(enabled && visible); available.current = enabled && visible
   const running = !!run && !terminal(run.task)
   const blocked = busy || !!review || running
@@ -60,7 +61,14 @@ export function KnowledgeAnswerRecheck({ bridge, taskId, enabled, visible, open,
     return () => { generation.current++; off(); onBlocked(false) }
   }, [bridge, onBlocked])
   useEffect(() => { if (!enabled || !visible) { view.current++; setReview(null) } }, [enabled, visible])
-  useEffect(() => { view.current++; setReview(null) }, [taskId])
+  useEffect(() => {
+    view.current++; setReview(null)
+    // A finished comparison belongs to the previously selected answer. An
+    // in-flight or uncertain submission must remain available for reconciliation.
+    if (terminal(currentRun.current?.task ?? null)) {
+      setRun(null); setError(''); setCancelled(false); cancelSent.current = false
+    }
+  }, [taskId])
   const readCheck = (epoch: number, page: number) => {
     const deadline = Date.now() + 30_000
     return () => {

@@ -135,3 +135,57 @@ it('blocks unknown submissions including the normal form, and ignores late recei
   expect(within(screen.getByRole('region', { name: '资料新版回答复核' })).queryByRole('article')).toBeNull()
   expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('')
 })
+
+it('clears a finished comparison when the user starts a new question', async () => {
+  const { port, bridge } = setup()
+  render(<KnowledgeAnswer bridge={bridge} enabled visible open={async () => {}} />)
+  await click('查看问答历史'); await click(port.entry().question)
+  await click('准备新版复核'); await click('确认版本并生成独立回答')
+  expect(screen.getByRole('article', { name: '原回答' })).toBeTruthy()
+  expect(screen.getByRole('article', { name: '新版回答' })).toBeTruthy()
+  await click('开始新问题'); await click('清空当前问题')
+  expect((screen.getByLabelText('想了解什么') as HTMLTextAreaElement).value).toBe('')
+  expect(screen.queryByRole('article', { name: '原回答' })).toBeNull()
+  expect(screen.queryByRole('article', { name: '新版回答' })).toBeNull()
+  expect(calls(port, 'knowledge.answerSubmit')).toHaveLength(1)
+  expect(calls(port, 'knowledge.answerHistoryDelete')).toHaveLength(0)
+})
+
+it('clears a finished comparison when another saved answer is opened', async () => {
+  const { port, bridge } = setup(); port.historySize = 2
+  render(<KnowledgeAnswer bridge={bridge} enabled visible open={async () => {}} />)
+  await click('查看问答历史'); await click(port.entry().question)
+  await click('准备新版复核'); await click('确认版本并生成独立回答')
+  expect(screen.getByRole('article', { name: '新版回答' })).toBeTruthy()
+  await click(`${port.entry().question} 2`)
+  expect(screen.queryByRole('article', { name: '原回答' })).toBeNull()
+  expect(screen.queryByRole('article', { name: '新版回答' })).toBeNull()
+  expect(calls(port, 'knowledge.answerSubmit')).toHaveLength(1)
+  expect(calls(port, 'knowledge.answerHistoryDelete')).toHaveLength(0)
+})
+
+it('keeps an in-flight recheck bound to its task if the selected original changes', async () => {
+  const { port, bridge } = setup(), onBlocked = vi.fn()
+  const props = { bridge, taskId: port.entry().task.taskId, enabled: true, visible: true, open: async () => {}, onBlocked }
+  port.state = 'RUNNING'
+  const view = render(<KnowledgeAnswerRecheck {...props} />)
+  await click('准备新版复核'); await click('确认版本并生成独立回答')
+  view.rerender(<KnowledgeAnswerRecheck {...props} taskId={null} />)
+  expect(screen.getByRole('button', { name: '核对新版任务状态' })).toBeTruthy()
+  expect((screen.getByRole('button', { name: '准备新版复核' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(onBlocked.mock.calls.at(-1)?.[0]).toBe(true)
+  expect(calls(port, 'knowledge.answerSubmit')).toHaveLength(1)
+})
+
+it('keeps an unknown recheck blocked if the selected original changes', async () => {
+  const { port, bridge } = setup(), onBlocked = vi.fn()
+  const props = { bridge, taskId: port.entry().task.taskId, enabled: true, visible: true, open: async () => {}, onBlocked }
+  port.submitUnknown = true
+  const view = render(<KnowledgeAnswerRecheck {...props} />)
+  await click('准备新版复核'); await click('确认版本并生成独立回答')
+  view.rerender(<KnowledgeAnswerRecheck {...props} taskId={null} />)
+  expect(screen.getByText(/提交结果未知，不能通过相似历史推断结果或再次提交/)).toBeTruthy()
+  expect((screen.getByRole('button', { name: '准备新版复核' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(onBlocked.mock.calls.at(-1)?.[0]).toBe(true)
+  expect(calls(port, 'knowledge.answerSubmit')).toHaveLength(1)
+})

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [新版回答复核的页面清理](engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)：开始新问题或切换所选问答时清除已结束的旧版／新版对照；运行中或结果未知的复核仍保留原任务核对及防重。定向合成前端 3/3、补充历史切换 1/1 和最终类型检查通过，未运行模型或产品。源码包含 `1c028840` 的记忆使用记录分页修复；该修复的实际 SQL 合成 SQLite／前端检查通过，修复后 JUnit 包装未重新编译或运行。现有诊断候选仍为 `d27ce7a` 阶段，不包含后续分页或本次前端更改。原内存查询被拒，未找到原阈值／有效期合同；本轮仅做独立前端工作。产品累计启动 **1/2**，首轮正常退出未证实，原 Round=2 与保存重开未通过，`productionGo=false`。
+
 2026-11-11 [旧监督历史与当前资源分层](engineering/SUPERVISOR-HISTORY-VS-CURRENT-RESOURCES.md)：后续独立构建／回归已在 Session 1 取得并释放准确共享锁，排除原监督一直持锁；历史正常退出和释放方式仍不能证明，但不再作为永久资源占用门槛。旧监督 OS 身份未保存，38632 实为组装 PID。原 Round=2 被第一轮正常退出回执条件阻挡，这是验收顺序问题；当前候选仍禁启、物理内存准入未有通过结果。未新开任何探针／锁／进程查询，未构建或启动，计数 **1/2**，`productionGo=false`。
 
 2026-11-11 [启动诊断编译、候选及定向回归](engineering/STARTUP-DIAGNOSTICS-BUILD-AND-REGRESSION-REPORT.md)完成：仅重编译 Desktop Profile Debug，复用同源 Core／Java／前端；新 `d27ce7a` 候选 933 文件、420 Runtime pins 核对通过，旧候选保留。四项纯逻辑回归实际通过，并补正测试 probe 的条件编译；没有运行产品、窗口、helper、JVM 或浏览器。源码诊断文件写入、真实事件与业务闭环仍待实际运行；旧监督终态／历史互斥释放未知，启动仍 **1/2**，`productionGo=false`。
