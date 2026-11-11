@@ -11,6 +11,7 @@ import { KnowledgeVersionComparison } from '../components/KnowledgeVersionCompar
 import { KnowledgeSourceFind } from '../components/KnowledgeSourceFind'
 import type { SourceMatch } from '../components/knowledgeSourceMatches'
 import { KnowledgeSourceLine } from '../components/KnowledgeSourceLine'
+import { KnowledgeSourceOutline } from '../components/KnowledgeSourceOutline'
 import { readSourceText } from '../components/knowledgeSourceText'
 import { unicode } from '../bridge/memory'
 import { formatMemorySource } from '../components/memoryKnowledgeSource'
@@ -257,6 +258,9 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           <div className="knowledge-reader-tools"><label htmlFor="knowledge-revision">已发布源版本<select id="knowledge-revision" value={revision} disabled={busy || !detail.revisions.length} onChange={e => { remember(); selection.current++; setRevision(e.target.value); setPreview(null); setSourceTarget(null); offsets.current = [] }}>{!detail.revisions.length && <option value="">尚无 READY 版本</option>}{detail.revisions.map(r => <option key={r.sourceRevision} value={r.sourceRevision}>版本 {r.sourceRevision} · {r.sourceType} · {r.byteLength} bytes</option>)}</select></label>
             <button disabled={!enabled || busy || !revision} onClick={() => { void showPreview(0, 'reset') }}>预览源文本</button></div>
           {preview && <KnowledgeSourcePreview preview={preview} target={sourceTarget} currentRevision={document.currentReadyRevision} disabled={!enabled || busy || !visible || stale} hasPrevious={offsets.current.length > 0} navigate={showPreview} saveExcerpt={onMemoryDraft ? draftExcerpt : undefined} />}
+          {detail.revisions.some(item => item.sourceRevision === revision && item.sourceType === 'MARKDOWN') && <KnowledgeSourceOutline
+            key={`outline/${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision}
+            enabled={enabled && visible} disabled={busy || stale} open={offset => openComparedSource(revision, offset)} />}
           {revision && visible && <KnowledgeSourceLine key={`line/${document.documentId}/${revision}`} disabled={!enabled || busy} open={openLine} />}
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />

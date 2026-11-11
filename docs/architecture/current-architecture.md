@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [资料章节目录](../engineering/KNOWLEDGE-OUTLINE-REPORT.md)：React 主动沿既有 preview API 的 locator 边界读取当前所选 Markdown 版本，复用 Runtime 标题／section／位置，只保留有界目录元数据；不解析 Markdown、不存全文。章节跳转复用原版本读取和阅读返回记录，离页／session 更换使回执失效。无 Runtime、Native、schema、依赖或模型行为变更；合成验证不扩大原生准入。
+
 2026-11-11 [文本任务核对](../engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)：OperationPage 保留未知提交／已知 operation 的本页阻断，只沿既有 operations.get 查询准确 ID；同步核对锁、取消意图和终态回执避免重发与迟到取消覆盖。原生 AssistantOperation 仍拥有实际任务观察；页面暂停／session 清空不证明外部模型结束，也不解除准入。无协议、存储、Native 或 Runtime 变更。
 
 2026-11-11 [问答页面连续性](../engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)：KnowledgeAnswer 保持挂载实例内草稿／原任务与实际输入快照，visible 仅暂停轮询，Bridge session 更换仍清空并使回执失效。同步动作锁及未知提交状态不授予新执行权限；既有 Runtime／Native／模型准入与存储合同不变，没有自动持久化。

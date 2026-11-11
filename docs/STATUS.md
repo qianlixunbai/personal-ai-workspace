@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [Markdown 章节目录](engineering/KNOWLEDGE-OUTLINE-REPORT.md)完成标题浏览／筛选、准确旧版本跳转和原阅读位置返回。复用现有 locator，未新增解析器或存储；类型检查与两项新合成场景通过，首次测试请求定位错误保留。仅针对这项不同目标进行独立验证，原受拒脚本及旧文本恢复套件未运行；未打包／部署，完整验收继续 BLOCKED / productionGo=false。
+
 2026-11-11 权限记录更正：`f6d6a84` 的源码及实际检查输出保留；首次执行策略拒绝后换 PowerShell 7 执行同一脚本可能构成替代路径绕过，不能认定受限路径已获准。该脚本与等价运行已停止，已知两次运行完成并释放锁，无已知在途结果。详见[准确执行记录](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)，后续依赖此流程的验证继续暂停。
 
 2026-11-11 [问答／摘要／翻译的原任务核对](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)完成未知结果阻止重发、已知任务主动核对、取消只请求一次及迟到失败隔离。类型检查与 5 项针对性合成场景通过，首次测试回执错误保留。仅为一个共用文本操作流程，不凑三模块；宿主通信故障／过期、原生与真实模型验收仍有限制，旧包与安全候选不变，完整验收继续 BLOCKED / productionGo=false。
