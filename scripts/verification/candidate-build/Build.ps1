@@ -398,7 +398,6 @@ function Build-Desktop {
     $emptyTargets=Resolve-Below $Root 'control/empty.targets';Write-NewText $emptyTargets '<Project />'
     $props=@('-p:Mmf3ProfileAcceptanceBuild=true','-p:Mmf3AcceptanceBuild=false','-p:MainWorkspaceDev=false','-p:FrontendSkipBuild=true',
         '-p:RuntimeFrameworkVersion=10.0.14','-p:SelfContained=true','-p:UseSharedCompilation=false','-p:MSBuildEnableWorkloadResolver=false',
-        '-p:DefineConstants=DEBUG%3BTRACE%3BMMF3_ACCEPTANCE%3BMMF3_PROFILE_ACCEPTANCE',
         ('-p:DirectoryBuildPropsPath='+(Resolve-Below $source 'desktop/Directory.Build.props')),('-p:DirectoryBuildTargetsPath='+$emptyTargets),
         ('-p:CustomBeforeMicrosoftCommonTargets='+$emptyTargets),('-p:CustomAfterMicrosoftCommonTargets='+$emptyTargets),'-m:1','-nodeReuse:false')
     $project=Resolve-Below $source 'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj'
@@ -490,8 +489,8 @@ function Assemble-Candidate {
         systemSandbox=$false;installedThisRun=$false;publishedThisRun=$false;productRevision=$script:Spec.productRevision;buildToolsRevision=$script:Spec.buildToolsRevision;
         inputsSha256=$ownership.inputSha256;baselineReuse=$script:BaselineProvenance;
         buildProperties=@{Mmf3ProfileAcceptanceBuild=$true;Mmf3AcceptanceBuild=$false};
-        acceptanceConstants=@('MMF3_ACCEPTANCE','MMF3_PROFILE_ACCEPTANCE');
-        acceptanceConstantsEvidence='Fixed Directory.Build.props plus explicit DefineConstants passed to restore/publish; not native acceptance';
+        acceptanceConstantsDeclaredByProps=@('MMF3_ACCEPTANCE','MMF3_PROFILE_ACCEPTANCE');
+        acceptanceConstantsEvidence='Declared by fixed desktop/Directory.Build.props; full effective compilation symbol set NOT_VERIFIED; native acceptance NOT_RUN';
         configuration='Debug';files=(Get-Inventory $payload)}
     Write-NewJson (Resolve-Below $payload 'candidate-manifest.json') $identity
     $envelope=Resolve-Below $Root 'work/review-envelope';[void][IO.Directory]::CreateDirectory($envelope)
