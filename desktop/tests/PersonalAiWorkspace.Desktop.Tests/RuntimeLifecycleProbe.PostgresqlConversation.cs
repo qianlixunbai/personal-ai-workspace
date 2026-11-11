@@ -1,4 +1,4 @@
-#if MMF3_PROFILE_ACCEPTANCE && DEBUG
+#if RUNTIME_LIFECYCLE_PROBE && MMF3_PROFILE_ACCEPTANCE && DEBUG
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;

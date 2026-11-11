@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [启动诊断已编译并完成纯逻辑回归](../engineering/STARTUP-DIAGNOSTICS-BUILD-AND-REGRESSION-REPORT.md)：最小 Desktop 构建与独立候选身份检查通过，随后继续完成四项首错保留／隐私回归，未追加全套测试。产品源码仍对应 `d27ce7a`，新增改动只在测试和报告。下一项决定性证据依赖真实受控启动，而当前禁止重启且旧监督安全条件未闭合；不自行使用剩余一次额度，保持 **1/2** 和 `productionGo=false`。
+
 2026-11-11 [固定启动诊断已落实到源码](../engineering/STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)：保存 Runtime 首个固定原始码与协议阶段、WebView ProcessFailed 枚举／数值；不改变准入、协议、Profile／迁移或关闭行为。仅语法与源码比对通过，后续先做受影响编译及候选 pins 核对，再按监督／互斥缺口和剩余一次启动范围决定实测，不以诊断补丁宣称根因已修复。启动仍 **1/2**，`productionGo=false`。
 
 2026-11-11 [首次候选的失败范围已收窄](../engineering/LIVE-STARTUP-FAILURE-PHASE-DIAGNOSIS.md)：Runtime 停在完整 READY 回执形成之前，WebView 在控制器创建后的 Profile 清理阶段收到丢失类型的进程事件。先补现有安全日志中的固定 Runtime 阶段／失败码及 WebView 事件枚举，保持 NativeGate、关闭链和日志隐私边界；不得用再启动、禁用沙箱或补猜测配置代替证据。此次仅源码／准确日志只读核对，计数 **1/2**，监督终态／互斥释放仍未知。

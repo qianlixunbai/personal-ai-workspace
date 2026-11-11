@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [启动诊断编译、候选及定向回归](engineering/STARTUP-DIAGNOSTICS-BUILD-AND-REGRESSION-REPORT.md)完成：仅重编译 Desktop Profile Debug，复用同源 Core／Java／前端；新 `d27ce7a` 候选 933 文件、420 Runtime pins 核对通过，旧候选保留。四项纯逻辑回归实际通过，并补正测试 probe 的条件编译；没有运行产品、窗口、helper、JVM 或浏览器。源码诊断文件写入、真实事件与业务闭环仍待实际运行；旧监督终态／历史互斥释放未知，启动仍 **1/2**，`productionGo=false`。
+
 2026-11-11 [启动诊断源码补齐](engineering/STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)：Runtime 新增固定协议阶段及首个白名单原始失败码，WebView 保留失败类型／原因／退出码，未知文本脱敏。NativeGate、失败状态映射、关闭与 fallback 行为不改；三个构建条件的语法解析及关键方法源码比对通过，尚未编译或实测。旧候选不含补丁，本轮无启动／UI 操作，计数仍 **1/2**；首次失败根因、监督终态／互斥释放和业务闭环仍未知，`productionGo=false`。
 
 2026-11-11 [首次启动失败阶段定位](engineering/LIVE-STARTUP-FAILURE-PHASE-DIAGNOSIS.md)：本次 Runtime 已创建并登记，但没有 READY／正常关闭回执，原始固定失败码未持久保存；WebView 日志确认控制器创建后在 PROFILE_CLEAR_START 收到未分类 ProcessFailed。源码丢弃事件类型，现有提示不能证明主浏览器退出；默认 SQLite 也排除了“仅因 database.dpapi 缺失就失败”的推断。根因仍未证实，下一步只建议补齐现有日志的固定阶段／枚举，不改准入或重跑产品。启动仍 **1/2**，无构建／测试，`productionGo=false`。
