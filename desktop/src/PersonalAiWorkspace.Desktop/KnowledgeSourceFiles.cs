@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -18,28 +19,52 @@ internal sealed class KnowledgeSourceFile(Stream stream,string filename):IDispos
     public override string ToString()=>"KnowledgeSourceFile[redacted]";
     public void Dispose()=>Stream.Dispose();
 }
-internal interface IKnowledgeSourceFiles { Task<KnowledgeSourceFile?> PickAsync(CancellationToken token); }
+internal interface IKnowledgeSourceFiles {
+    Task<KnowledgeSourceFile?> PickAsync(CancellationToken token);
+    Task<KnowledgeSourceFile[]> PickManyAsync(CancellationToken token)=>throw new DesktopException(DesktopError.KnowledgeFileUnavailable);
+}
 internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledgeSourceFiles
 {
+    internal const int MaximumSelectedFiles=10;
+    internal const long MaximumSelectedBytes=32*1024*1024;
     private int selecting;
     public async Task<KnowledgeSourceFile?> PickAsync(CancellationToken token)
     {
+        var result=await PickAsync(false,token);return result.Length==0?null:result[0];
+    }
+    public Task<KnowledgeSourceFile[]> PickManyAsync(CancellationToken token)=>PickAsync(true,token);
+    private async Task<KnowledgeSourceFile[]> PickAsync(bool many,CancellationToken token)
+    {
         if(Interlocked.CompareExchange(ref selecting,1,0)!=0)throw new DesktopException(DesktopError.QueueFull);
+        var result=new List<KnowledgeSourceFile>();bool transferred=false;
         try{
         token.ThrowIfCancellationRequested();var window=owner()??throw new DesktopException(DesktopError.KnowledgeFileUnavailable);
-        var picker=new OpenFileDialog{Title="导入资料 · TXT / Markdown / Word / PDF 正文",Filter="支持的资料 (*.txt;*.md;*.markdown;*.docx;*.pdf)|*.txt;*.md;*.markdown;*.docx;*.pdf|Word 正文摘录 (*.docx)|*.docx|PDF 文字层 (*.pdf)|*.pdf",Multiselect=false,CheckFileExists=true};
+        var picker=new OpenFileDialog{Title=many?"选择待导入资料 · 最多 10 份，正文合计 32 MiB":"导入资料 · TXT / Markdown / Word / PDF 正文",Filter="支持的资料 (*.txt;*.md;*.markdown;*.docx;*.pdf)|*.txt;*.md;*.markdown;*.docx;*.pdf|Word 正文摘录 (*.docx)|*.docx|PDF 文字层 (*.pdf)|*.pdf",Multiselect=many,CheckFileExists=true};
         bool selected=picker.ShowDialog(window)==true;token.ThrowIfCancellationRequested();window.Activate();
-        if(!selected)return null;
-        bool pdf=picker.FileName.EndsWith(".pdf",StringComparison.OrdinalIgnoreCase);
-        if(!pdf&&!picker.FileName.EndsWith(".docx",StringComparison.OrdinalIgnoreCase))return Open(picker.FileName);
-        using var file=OpenRegular(picker.FileName,RuntimeClient.MaximumKnowledgeSourceBytes);
+        if(!selected)return [];
+        if(picker.FileNames.Length>MaximumSelectedFiles)throw new DesktopException(DesktopError.KnowledgeLimitExceeded);
+        long total=0;
+        foreach(var path in picker.FileNames){
+            token.ThrowIfCancellationRequested();
+            var source=await ReadSelectedAsync(path,window,token);
+            if(source is null)return []; // Cancelling a Word/PDF preview cancels the whole selection, before upload.
+            result.Add(source);total+=source.Stream.Length;
+            if(total>MaximumSelectedBytes)throw new DesktopException(DesktopError.KnowledgeSourceTooLarge);
+        }
+        token.ThrowIfCancellationRequested();transferred=true;return result.ToArray();
+        }finally{if(!transferred)foreach(var file in result)file.Dispose();Volatile.Write(ref selecting,0);}
+    }
+    private static async Task<KnowledgeSourceFile?> ReadSelectedAsync(string path,Window window,CancellationToken token)
+    {
+        bool pdf=path.EndsWith(".pdf",StringComparison.OrdinalIgnoreCase);
+        if(!pdf&&!path.EndsWith(".docx",StringComparison.OrdinalIgnoreCase))return Open(path);
+        using var file=OpenRegular(path,RuntimeClient.MaximumKnowledgeSourceBytes);
         string text,filename;
-        if(pdf){var excerpt=await KnowledgePdf.ReadAsync(file,Path.GetFileName(picker.FileName),token);text=excerpt.Text;filename=excerpt.Filename;}
-        else{var excerpt=await Task.Run(()=>KnowledgeDocx.Read(file,Path.GetFileName(picker.FileName),token));text=excerpt.Text;filename=excerpt.Filename;}
+        if(pdf){var excerpt=await KnowledgePdf.ReadAsync(file,Path.GetFileName(path),token);text=excerpt.Text;filename=excerpt.Filename;}
+        else{var excerpt=await Task.Run(()=>KnowledgeDocx.Read(file,Path.GetFileName(path),token));text=excerpt.Text;filename=excerpt.Filename;}
         token.ThrowIfCancellationRequested();
         if(!KnowledgeExcerptPreview.Confirm(window,pdf?"PDF":"Word",pdf?KnowledgePdf.Notice:KnowledgeDocx.Notice,text,token))return null;
         return new KnowledgeSourceFile(new MemoryStream(new UTF8Encoding(false,true).GetBytes(text),false),filename);
-        }finally{Volatile.Write(ref selecting,0);}
     }
     internal static KnowledgeSourceFile Open(string path)
     {

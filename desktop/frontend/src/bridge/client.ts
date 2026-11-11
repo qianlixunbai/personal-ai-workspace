@@ -5,8 +5,8 @@ import { isFinanceHistoryQuery, isFinanceHistoryPage, isFinanceHistoryDetail, is
 import { isFinancePortfolio, type FinancePortfolio } from './financePortfolio'
 import { isFinanceMarketStatus, type FinanceMarketStatus } from './financeMarketData'
 import { businessMethods, conversationMethods, memoryMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
-import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob } from './knowledge'
-import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob } from './knowledge'
+import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob, isKnowledgeFileSelection } from './knowledge'
+import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob, KnowledgeFileSelection } from './knowledge'
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeScope } from './knowledgeScope'
@@ -39,7 +39,7 @@ import { StatusObservations } from './statusObservations'
 export class BridgeError extends Error { constructor(public code: string, message: string) { super(message) } }
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
-const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerHistoryDelete'].includes(method)
+const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.importSelected', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerHistoryDelete'].includes(method)
 const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
@@ -218,6 +218,9 @@ export class WorkspaceClient {
   rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
   getKnowledge(documentId: string) { return this.request('knowledge.get', { documentId }) as Promise<KnowledgeDetail> }
   importKnowledge(documentId: string | null = null, expectedMetadataVersion: string | null = null) { return this.request('knowledge.import', { documentId, expectedMetadataVersion }) as Promise<KnowledgeImport> }
+  selectKnowledgeFiles() { return this.request('knowledge.selectFiles', {}) as Promise<KnowledgeFileSelection> }
+  importSelectedKnowledge(requestId: string) { return this.request('knowledge.importSelected', { requestId }) as Promise<KnowledgeImport> }
+  discardSelectedKnowledgeFiles() { return this.request('knowledge.discardSelectedFiles', {}) as Promise<{ cleared: true }> }
   knowledgeImportState(requestId: string) { return this.request('knowledge.importState', { requestId }) as Promise<KnowledgeJob> }
   cancelKnowledgeImport(documentId: string, requestId: string) { return this.request('knowledge.cancelImport', { documentId, requestId }) as Promise<KnowledgeJob> }
   archiveKnowledge(documentId: string, expectedMetadataVersion: string) { return this.request('knowledge.archive', { documentId, expectedMetadataVersion }) as Promise<KnowledgeDocument> }
@@ -237,7 +240,7 @@ export class WorkspaceClient {
       this.statusObservations.invalidate(['model'], '模型相关请求使旧观察失效；请显式检查当前模型状态，任务结束以原任务回执为准。')
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.selectFiles' || method === 'knowledge.importSelected' || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(method === 'conversations.search' ? { searchQuery: payload.query as string, searchScope: payload.scope as string } : {}),
         ...(method === 'finance.annual' ? { year: payload.year as number } : {}),
@@ -347,6 +350,9 @@ export class WorkspaceClient {
         : pending.method === 'knowledge.get' ? isKnowledgeDetail(data.result) && data.result.document.documentId === pending.documentId
         : pending.method === 'knowledge.preview' ? isKnowledgePreview(data.result) && data.result.documentId === pending.documentId && data.result.sourceRevision === pending.sourceRevision && data.result.offset === pending.offset
         : pending.method === 'knowledge.previewBefore' ? isKnowledgePreview(data.result) && data.result.documentId === pending.documentId && data.result.sourceRevision === pending.sourceRevision && data.result.text.length > 0 && data.result.locators.length === 1 && data.result.offset + data.result.text.length === pending.offset
+        : pending.method === 'knowledge.selectFiles' ? isKnowledgeFileSelection(data.result)
+        : pending.method === 'knowledge.discardSelectedFiles' ? isObject(data.result) && exactFields(data.result, ['cleared']) && data.result.cleared === true
+        : pending.method === 'knowledge.importSelected' ? isKnowledgeImport(data.result) && data.result.outcome !== 'CANCELLED' && data.result.requestId === pending.requestId
         : pending.method === 'knowledge.import' ? isKnowledgeImport(data.result) && (!pending.documentId || data.result.job === null || data.result.job.documentId === pending.documentId)
         : pending.method === 'knowledge.importState' || pending.method === 'knowledge.cancelImport' ? isKnowledgeJob(data.result) && data.result.requestId === pending.requestId && (!pending.documentId || data.result.documentId === pending.documentId)
         : pending.method === 'knowledge.archive' || pending.method === 'knowledge.restore' ? isKnowledgeDocument(data.result) && data.result.documentId === pending.documentId && BigInt(data.result.metadataVersion) > BigInt(pending.expectedMetadataVersion!) && data.result.status === (pending.method === 'knowledge.archive' ? 'ARCHIVED' : 'ACTIVE')

@@ -1,6 +1,6 @@
 import { exactFields, isId, isObject } from './contracts'
 
-export const knowledgeMethods = ['knowledge.list', 'knowledge.get', 'knowledge.import', 'knowledge.importState', 'knowledge.cancelImport', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.preview', 'knowledge.previewBefore', 'knowledge.search', 'knowledge.searchStatus', 'knowledge.rebuildSearchIndex', 'knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel', 'knowledge.answerHistory', 'knowledge.answerHistoryGet', 'knowledge.answerHistoryDelete', 'knowledge.answerExport'] as const
+export const knowledgeMethods = ['knowledge.list', 'knowledge.get', 'knowledge.import', 'knowledge.selectFiles', 'knowledge.importSelected', 'knowledge.discardSelectedFiles', 'knowledge.importState', 'knowledge.cancelImport', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.preview', 'knowledge.previewBefore', 'knowledge.search', 'knowledge.searchStatus', 'knowledge.rebuildSearchIndex', 'knowledge.answerSubmit', 'knowledge.answerGet', 'knowledge.answerCancel', 'knowledge.answerHistory', 'knowledge.answerHistoryGet', 'knowledge.answerHistoryDelete', 'knowledge.answerExport'] as const
 export const knowledgeCodes = ['KnowledgeInvalidSource', 'KnowledgeUnsupportedType', 'KnowledgeInvalidUtf8', 'KnowledgeSourceTooLarge', 'KnowledgeDocxInvalid', 'KnowledgeDocxUnsupported', 'KnowledgePdfInvalid', 'KnowledgePdfUnsupported', 'KnowledgePdfLimit', 'KnowledgeLimitExceeded', 'KnowledgeDuplicateSource', 'KnowledgeRevisionConflict', 'KnowledgeNotFound', 'KnowledgeQueueFull', 'KnowledgeIngestionFailed', 'KnowledgeInterrupted', 'KnowledgeCancelled', 'KnowledgeStorageUnavailable', 'KnowledgeSchemaUnsupported', 'KnowledgeDeleteIncomplete', 'KnowledgeSearchInvalid', 'KnowledgeQueryTooComplex', 'KnowledgeIndexNotReady', 'KnowledgeIndexUnavailable', 'KnowledgeIndexLimitExceeded', 'KnowledgeIndexRebuildFailed'] as const
 export type KnowledgeState = 'PENDING' | 'PARSING' | 'READY' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'
 export interface KnowledgeDocument { documentId: string; title: string; status: 'ACTIVE' | 'ARCHIVED'; metadataVersion: string; currentReadyRevision: string | null; createdAt: string; updatedAt: string; processingState: KnowledgeState; requestId: string | null }
@@ -11,6 +11,8 @@ export interface KnowledgeDetail { document: KnowledgeDocument; revisions: Knowl
 export interface KnowledgeLocator { type: 'TXT_LINES' | 'MARKDOWN_SECTION_LINES'; startLine: number; endLine: number; startOffset: number; endOffset: number; section: string | null; heading: string | null }
 export interface KnowledgePreview { documentId: string; sourceRevision: string; offset: number; text: string; nextOffset: number | null; locators: KnowledgeLocator[]; parserVersion: 'text-1'; normalizationVersion: 'lf-1' }
 export interface KnowledgeImport { outcome: 'CANCELLED' | 'ACCEPTED' | 'UNKNOWN'; requestId: string | null; job: KnowledgeJob | null }
+export interface KnowledgeSelectedFile { requestId: string; filename: string; byteLength: number }
+export interface KnowledgeFileSelection { files: KnowledgeSelectedFile[] }
 const states = ['PENDING', 'PARSING', 'READY', 'FAILED', 'CANCELLED', 'INTERRUPTED']
 export const decimal = (v: unknown): v is string => typeof v === 'string' && /^[1-9][0-9]{0,18}$/.test(v) && BigInt(v) <= 9223372036854775807n
 const revision = (v: unknown): v is string => decimal(v) && BigInt(v) <= 10n
@@ -18,6 +20,13 @@ const integer = (v: unknown, min: number, max: number): v is number => typeof v 
 const unicode = (s: string) => !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(s)
 const filename = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && [...v].length <= 160 && unicode(v) && !/[\x00-\x1f\x7f-\x9f/\\:]/.test(v) && /\.(txt|md|markdown)$/i.test(v)
 const time = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v))
+export function isKnowledgeFileSelection(v: unknown): v is KnowledgeFileSelection {
+  if (!isObject(v) || !exactFields(v, ['files']) || !Array.isArray(v.files) || v.files.length > 10) return false
+  return v.files.every(f => isObject(f) && exactFields(f, ['requestId', 'filename', 'byteLength']) && isId(f.requestId)
+    && filename(f.filename) && integer(f.byteLength, 1, 8 * 1024 * 1024))
+    && new Set(v.files.map(f => f.requestId)).size === v.files.length
+    && v.files.reduce((sum, f) => sum + f.byteLength, 0) <= 32 * 1024 * 1024
+}
 export function isKnowledgeDocument(v: unknown): v is KnowledgeDocument {
   return isObject(v) && exactFields(v, ['documentId', 'title', 'status', 'metadataVersion', 'currentReadyRevision', 'createdAt', 'updatedAt', 'processingState', 'requestId']) && isId(v.documentId) && filename(v.title) && ['ACTIVE', 'ARCHIVED'].includes(String(v.status)) && decimal(v.metadataVersion) && (v.currentReadyRevision === null || revision(v.currentReadyRevision)) && time(v.createdAt) && time(v.updatedAt) && states.includes(String(v.processingState)) && (v.requestId === null || isId(v.requestId))
 }

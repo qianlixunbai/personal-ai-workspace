@@ -7,6 +7,7 @@ import { KnowledgeAnswer } from '../components/KnowledgeAnswer'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
 import { KnowledgeSourcePreview, type KnowledgeSourceTarget } from '../components/KnowledgeSourcePreview'
 import { KnowledgeWebCapture } from '../components/KnowledgeWebCapture'
+import { KnowledgeBatchImport } from '../components/KnowledgeBatchImport'
 import { KnowledgeVersionComparison } from '../components/KnowledgeVersionComparison'
 import { KnowledgeSourceFind } from '../components/KnowledgeSourceFind'
 import type { SourceMatch } from '../components/knowledgeSourceMatches'
@@ -33,6 +34,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   const trail = useRef<{ back: ReadingPosition[]; forward: ReadingPosition[] }>({ back: [], forward: [] })
   const filter = useRef<HTMLSelectElement>(null)
   const [corpusEpoch, setCorpusEpoch] = useState(0)
+  const [batchActive, setBatchActive] = useState(false)
   const document = detail?.document
   const processing = document?.processingState === 'PENDING' || document?.processingState === 'PARSING'
   const draftExcerpt = (start: number, end: number) => {
@@ -118,7 +120,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     await refreshList()
   }
   const importSource = (update: boolean) => run(async () => {
-    if (importReceipt) return
+    if (importReceipt || batchActive) return
     const epoch = generation.current
     const result = await bridge.importKnowledge(update && document ? document.documentId : null, update && document ? document.metadataVersion : null)
     if (epoch !== generation.current) return
@@ -227,11 +229,12 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   })
   return <section className="knowledge-page" aria-label="Knowledge 管理">
     <div className="card-heading memory-toolbar knowledge-toolbar"><div><h2>我的文档</h2><p className="hint">仅使用你主动导入的内容</p></div><div className="conversation-actions">
-      <button className="primary" disabled={!enabled || busy || !!importReceipt} onClick={() => { void importSource(false) }}>导入文档</button>
+      <button className="primary" disabled={!enabled || busy || !!importReceipt || batchActive} onClick={() => { void importSource(false) }}>导入文档</button>
       <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.open('native.openKnowledgeBackup') }) }}>知识库备份…</button></div></div>
     <p className="hint backup-warning">知识库需单独备份；源文件、数据库与备份均含明文内容，请妥善保管。</p>
     <p className="hint">支持 UTF-8 TXT、Markdown、Word（.docx）正文和 PDF 文字层摘录。Word / PDF 须先预览确认，不保存原文件、图片与版式；PDF 不进行 OCR，扫描件须先转为文字并核对。</p>
-    <details className="advanced-section"><summary>从网页添加资料</summary><KnowledgeWebCapture bridge={bridge} enabled={enabled && !busy} visible={visible} saved={refreshList} open={id => run(async () => { await load(id) })} /></details>
+    <details className="advanced-section"><summary>批量导入文件</summary><KnowledgeBatchImport bridge={bridge} enabled={enabled && !busy && !importReceipt} visible={visible} onActive={setBatchActive} changed={() => { void refreshList() }} open={id => { void run(async () => { await load(id) }) }} /></details>
+    <details className="advanced-section"><summary>从网页添加资料</summary><KnowledgeWebCapture bridge={bridge} enabled={enabled && !busy && !batchActive} visible={visible} saved={refreshList} open={id => run(async () => { await load(id) })} /></details>
     <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} currentDocument={document} />
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} currentDocument={document} onMemoryDraft={onMemoryDraft} /></details>
     <div className="knowledge-layout">
@@ -265,7 +268,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
           {revision && <KnowledgeSourceFind key={`${document.documentId}/${revision}`} bridge={bridge} documentId={document.documentId} revision={revision} enabled={enabled && visible} disabled={busy} open={openFoundSource} />}
           <KnowledgeVersionComparison key={`${document.documentId}/${document.metadataVersion}/${detail.revisions.length}`} bridge={bridge} detail={detail} enabled={enabled && visible} disabled={busy} open={openComparedSource} />
           <div className="conversation-actions"><button disabled={!enabled || busy} onClick={() => { void run(async () => { await load(document.documentId, false) }) }}>刷新详情</button>
-            <button disabled={!enabled || busy || processing || stale || !!importReceipt || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
+            <button disabled={!enabled || busy || processing || stale || !!importReceipt || batchActive || document.status !== 'ACTIVE'} onClick={() => { void importSource(true) }}>导入新源版本</button>
             <button disabled={!enabled || busy || processing || stale} onClick={() => { void mutation(document.status === 'ACTIVE' ? 'archive' : 'restore') }}>{document.status === 'ACTIVE' ? '归档' : '恢复'}</button>
             <button className="destructive" disabled={!enabled || busy || processing || stale} onClick={() => setConfirmDelete(true)}>物理删除…</button>
             {processing && document.requestId && <button disabled={!enabled || busy} onClick={() => { void run(async () => { await bridge.cancelKnowledgeImport(document.documentId, document.requestId!); await load(document.documentId) }) }}>取消导入</button>}</div>

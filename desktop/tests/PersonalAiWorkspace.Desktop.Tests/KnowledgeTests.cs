@@ -250,7 +250,14 @@ public sealed class KnowledgeTests
         Assert.Equal(0,f.Knowledge.AuthorizationCount(session));Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));
     }
     private sealed class Files:IKnowledgeSourceFiles
-    {internal MemoryStream? Selected;public Task<KnowledgeSourceFile?> PickAsync(CancellationToken ct){Selected=new(Encoding.UTF8.GetBytes("native text"));return Task.FromResult<KnowledgeSourceFile?>(new(Selected,"fixture.txt"));}}
+    {
+        internal MemoryStream? Selected;
+        internal MemoryStream[] Batch=[];
+        internal TaskCompletionSource<KnowledgeSourceFile[]>? SelectionHold;
+        public Task<KnowledgeSourceFile?> PickAsync(CancellationToken ct){Selected=new(Encoding.UTF8.GetBytes("native text"));return Task.FromResult<KnowledgeSourceFile?>(new(Selected,"fixture.txt"));}
+        public Task<KnowledgeSourceFile[]> PickManyAsync(CancellationToken ct)=>SelectionHold?.Task
+            ??Task.FromResult(Batch.Select((stream,index)=>new KnowledgeSourceFile(stream,$"fixture-{index}.txt")).ToArray());
+    }
     private sealed class Actions(WorkspaceKnowledge knowledge):IWorkspaceNativeActions
     {public WorkspaceKnowledge Knowledge=>knowledge;public Task<ShellStatus> StatusAsync(CancellationToken ct)=>Task.FromResult(new ShellStatus(1,"1.0.0",ShellRuntimeState.Available,ShellCredentialState.Ready,"Available",[]));public Task OpenAsync(NativeWorkspaceEntry entry,CancellationToken ct)=>Task.CompletedTask;}
     private sealed class Fixture:IDisposable
@@ -268,6 +275,36 @@ public sealed class KnowledgeTests
     {
         internal string? Text;internal int Calls;internal bool Cancel;
         public Task<bool> SaveAsync(Guid id,string text,CancellationToken token){token.ThrowIfCancellationRequested();Calls++;Text=text;return Task.FromResult(!Cancel);}
+    }
+    [Fact]public async Task BatchSelectionNeedsExplicitUploadConsumesEachFileOnceAndDisposesOnDiscardOrRotation()
+    {
+        using var f=new Fixture();f.Files.Batch=[new(Encoding.UTF8.GetBytes("first")),new(Encoding.UTF8.GetBytes("second"))];
+        var picked=(await f.Send("knowledge.selectFiles",new{})).GetProperty("result").GetProperty("files");
+        string first=picked[0].GetProperty("requestId").GetString()!,second=picked[1].GetProperty("requestId").GetString()!;
+        Assert.Equal(0,f.Handler.Calls);Assert.Equal(2,picked.GetArrayLength());
+        Assert.Equal(DesktopError.KnowledgeNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.ImportSelectedAsync(f.Bridge.SessionId,Guid.NewGuid().ToString("D"),default))).Error);
+        f.Handler.Lost=true;
+        var accepted=await f.Send("knowledge.importSelected",new{requestId=first});
+        Assert.Equal("ACCEPTED",accepted.GetProperty("result").GetProperty("outcome").GetString());
+        Assert.Equal(first,accepted.GetProperty("result").GetProperty("requestId").GetString());
+        Assert.Equal(1,f.Handler.Uploads);Assert.Equal(1,f.Handler.Lookups);Assert.Equal("first",Encoding.UTF8.GetString(f.Handler.Uploaded!));
+        Assert.False(f.Files.Batch[0].CanRead);Assert.True(f.Files.Batch[1].CanRead);
+        Assert.Equal("InvalidRequest",(await f.Send("knowledge.importSelected",new{requestId=first})).GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(1,f.Handler.Uploads);
+        f.Rotate();Assert.False(f.Files.Batch[1].CanRead);
+        Assert.Equal("KnowledgeNotFound",(await f.Send("knowledge.importSelected",new{requestId=second})).GetProperty("error").GetProperty("code").GetString());
+        f.Files.Batch=[new(Encoding.UTF8.GetBytes("unused"))];
+        await f.Send("knowledge.selectFiles",new{});await f.Send("knowledge.discardSelectedFiles",new{});
+        Assert.False(f.Files.Batch[0].CanRead);Assert.Equal(1,f.Handler.Uploads);
+    }
+    [Fact]public async Task LateBatchSelectionCannotSurviveSessionRotation()
+    {
+        using var f=new Fixture();f.Files.SelectionHold=new();
+        var pick=f.Knowledge.SelectFilesAsync(f.Bridge.SessionId,default);f.Rotate();
+        var stream=new MemoryStream(Encoding.UTF8.GetBytes("late selection"));
+        f.Files.SelectionHold.SetResult([new(stream,"late.txt")]);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>pick);
+        Assert.False(stream.CanRead);Assert.Equal(0,f.Handler.Calls);
     }
     [Fact]public async Task AnswerExportUsesStoredHistoryAndExactOldRevisionWithNoModelSubmission()
     {

@@ -255,6 +255,9 @@ internal sealed class WorkspaceBridge : IDisposable
                     "knowledge.preview"=>await knowledge.PreviewAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
                     "knowledge.previewBefore"=>await knowledge.PreviewBeforeAsync(session,id!,payload.GetProperty("sourceRevision").GetString()!,payload.GetProperty("offset").GetInt32(),cancellation),
                     "knowledge.import"=>await knowledge.ImportAsync(session,id,payload.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null?null:payload.GetProperty("expectedMetadataVersion").GetString(),cancellation),
+                    "knowledge.selectFiles"=>await knowledge.SelectFilesAsync(session,cancellation),
+                    "knowledge.importSelected"=>await knowledge.ImportSelectedAsync(session,payload.GetProperty("requestId").GetString()!,cancellation),
+                    "knowledge.discardSelectedFiles"=>knowledge.DiscardSelectedFiles(session),
                     "knowledge.importState"=>await knowledge.ImportStateAsync(session,payload.GetProperty("requestId").GetString()!,cancellation),
                     "knowledge.cancelImport"=>await knowledge.CancelAsync(session,id!,payload.GetProperty("requestId").GetString()!,cancellation),
                     _=>await knowledge.LifecycleAsync(session,id!,payload.GetProperty("expectedMetadataVersion").GetString()!,method,cancellation)
@@ -480,19 +483,19 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
         if(method=="knowledge.answerSubmit")return Fields(p,p.TryGetProperty("scope",out _)?["question","query","scope"]:["question","query"])&&ValidKnowledgeScope(p)&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
         if(method=="knowledge.answerHistory")return Fields(p,"page")&&Page(p)&&p.GetProperty("page").GetInt32()<50;
         if(method is "knowledge.answerGet" or "knowledge.answerCancel" or "knowledge.answerHistoryGet" or "knowledge.answerHistoryDelete" or "knowledge.answerExport")return Fields(p,"taskId")&&Text(p,"taskId",36,out var taskId)&&CanonicalId(taskId);
-        if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex")return Fields(p);
+        if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex" or "knowledge.selectFiles" or "knowledge.discardSelectedFiles")return Fields(p);
         if(method=="knowledge.search")return Fields(p,p.TryGetProperty("scope",out _)?["query","limit","scope"]:["query","limit"])&&ValidKnowledgeScope(p)&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128
             &&!query.Any(char.IsControl)&&p.GetProperty("limit").ValueKind==JsonValueKind.Number&&p.GetProperty("limit").TryGetInt32(out int limit)&&limit is >=1 and <=10;
         bool Id(string name)=>Text(p,name,36,out var id)&&CanonicalId(id);
         bool Version(string name)=>Text(p,name,19,out var v)&&v[0] is >= '1' and <= '9'&&v.All(x=>x is >= '0' and <= '9')&&long.TryParse(v,NumberStyles.None,CultureInfo.InvariantCulture,out _);
         if(method=="knowledge.list")return Fields(p,"status","page")&&Text(p,"status",8,out var s)&&s is "ACTIVE" or "ARCHIVED"&&Page(p)&&p.GetProperty("page").GetInt32()<25;
-        if(method=="knowledge.importState")return Fields(p,"requestId")&&Id("requestId");
+        if(method is "knowledge.importState" or "knowledge.importSelected")return Fields(p,"requestId")&&Id("requestId");
         if(method=="knowledge.import")return Fields(p,"documentId","expectedMetadataVersion")&&
             (p.GetProperty("documentId").ValueKind==JsonValueKind.Null?p.GetProperty("expectedMetadataVersion").ValueKind==JsonValueKind.Null:Id("documentId")&&Version("expectedMetadataVersion"));
         if(method=="knowledge.get")return Fields(p,"documentId")&&Id("documentId");

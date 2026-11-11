@@ -14,13 +14,15 @@ internal sealed record KnowledgeAnswerView(string TaskId,string Status,Knowledge
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
 internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryView[redacted]"; }
-internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files,IKnowledgeAnswerExport? answerExport=null)
+internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files,IKnowledgeAnswerExport? answerExport=null)
 {
     private const int MaximumAnswerTasks=64;
     private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;internal KnowledgeSourceScope? Scope;}
     private sealed class Authority {
         internal readonly HashSet<string> Documents=new(StringComparer.Ordinal);
         internal readonly HashSet<string> Imports=new(StringComparer.Ordinal);
+        internal readonly Dictionary<string,KnowledgeSourceFile> SelectedFiles=new(StringComparer.Ordinal);
+        internal bool SelectingFiles,ImportingFile;
         internal readonly Dictionary<Guid,AnswerAuthority> AnswerTasks=[];
         internal readonly LinkedList<Guid> CompletedAnswers=new();
         internal int AnswerSubmissions;
@@ -31,7 +33,7 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
     private readonly object sync=new();
     private bool exportingAnswer;
     internal void BeginSession(string session){lock(sync)sessions[session]=new();}
-    internal void EndSession(string session){lock(sync)sessions.Remove(session);}
+    internal void EndSession(string session){lock(sync){if(sessions.Remove(session,out var known))ClearSelectedFiles(known);}}
     internal int AuthorizationCount(string session){lock(sync)return Require(session).Documents.Count;}
     internal int AnswerAuthorizationCount(string session){lock(sync)return Require(session).AnswerTasks.Count;}
     private void Current(string session,Authority known)
@@ -199,8 +201,14 @@ internal sealed class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceF
         if(selected is null)return new("CANCELLED",null,null);
         lock(sync){if(!ReferenceEquals(Require(session,id),known))throw new OperationCanceledException();}
         string request=Guid.NewGuid().ToString("D");lock(sync){if(known.Imports.Count>=505)known.Imports.Remove(known.Imports.First());known.Imports.Add(request);}
+        return await UploadSelectedAsync(session,known,selected,request,id,expected,ct);
+    }
+    private async Task<KnowledgeImportResult> UploadSelectedAsync(string session,Authority known,KnowledgeSourceFile selected,string request,string? id,string? expected,CancellationToken ct)
+    {
         try {
-            var job=await runtime.UploadKnowledgeAsync(selected.Stream,selected.Filename,request,id,expected,ct);
+            Task<KnowledgeJob> upload;
+            lock(sync){Current(session,known);ct.ThrowIfCancellationRequested();upload=runtime.UploadKnowledgeAsync(selected.Stream,selected.Filename,request,id,expected,ct);}
+            var job=await upload;
             lock(sync)Authorize(session,known,job.DocumentId,request);return new("ACCEPTED",request,job);
         }catch(DesktopException e)when(e.Error is DesktopError.OutcomeUnknown or DesktopError.InvalidResponse or DesktopError.ClientTimeout or DesktopError.RuntimeUnavailable){
             // Read-only reconciliation is permitted; source bytes are never automatically replayed.
