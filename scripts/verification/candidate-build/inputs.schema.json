@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Reviewed candidate build inputs; not an execution authorization",
   "type": "object", "additionalProperties": false,
-  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "buildCodeReview", "jarEntries", "publishFiles", "runtimeFiles"],
+  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "buildCodeReview", "jarEntries", "publishFiles", "noticeFiles", "runtimeFiles"],
   "properties": {
-    "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V1"},
+    "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V2"},
     "repository": {"type": "string", "minLength": 3},
     "productRevision": {"$ref": "#/$defs/revision"},
     "buildToolsRevision": {"$ref": "#/$defs/revision"},
@@ -45,8 +45,13 @@
     "nugetPackages": {
       "type": "array", "minItems": 1,
       "items": {
-        "type": "object", "additionalProperties": false, "required": ["id", "version", "sha512", "archive"],
-        "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}, "version": {"type": "string", "pattern": "^[0-9][A-Za-z0-9_.+-]*$"}, "sha512": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}, "archive": {"$ref": "#/$defs/path"}}
+        "type": "object", "additionalProperties": false, "required": ["id", "version", "archiveSha512", "contentHash", "archive"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}, "version": {"type": "string", "pattern": "^[0-9][A-Za-z0-9_.+-]*$"},
+          "archiveSha512": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$", "description": "Base64 SHA512 of every original nupkg byte, including signature metadata."},
+          "contentHash": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$", "description": "NuGet signature-independent content hash used by locks/assets and freshly generated .nupkg.metadata; not the archive digest."},
+          "archive": {"$ref": "#/$defs/path"}
+        }
       }
     },
     "buildCodeReview": {
@@ -75,6 +80,17 @@
       "items": {
         "type": "object", "additionalProperties": false, "required": ["path", "origin"],
         "properties": {"path": {"$ref": "#/$defs/path"}, "origin": {"$ref": "#/$defs/origin"}}
+      }
+    },
+    "noticeFiles": {
+      "type": "array", "minItems": 7, "maxItems": 7,
+      "description": "Seven fixed third-party notices assembled after publish validation; exact rules are enforced by Build.ps1. They must not appear in publishFiles.",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "bytes", "origin"],
+        "properties": {
+          "path": {"$ref": "#/$defs/path"}, "bytes": {"type": "integer", "minimum": 1},
+          "origin": {"allOf": [{"$ref": "#/$defs/origin"}, {"properties": {"kind": {"enum": ["input-file", "package-entry"]}}}]}
+        }
       }
     },
     "runtimeFiles": {

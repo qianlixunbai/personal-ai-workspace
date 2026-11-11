@@ -303,7 +303,7 @@ function Assert-NuGetInputs {
         if(-not $script:InputHashes.ContainsKey($relative)){throw 'NuGet archive is not a frozen input'}
         $stream=[IO.File]::OpenRead((Resolve-Below $Root $relative))
         try{$hash=[Convert]::ToBase64String([Security.Cryptography.SHA512]::HashData($stream))}finally{$stream.Dispose()}
-        if($hash -cne $package.sha512){throw 'NuGet archive content hash differs'}
+        if($hash -cne $package.archiveSha512){throw 'NuGet original archive SHA512 differs'}
         $archive=[IO.Compression.ZipFile]::OpenRead((Resolve-Below $Root $relative))
         try{
             $nuspec=@($archive.Entries | Where-Object {$_.FullName -cmatch '^[^/]+\.nuspec$'})
@@ -320,6 +320,18 @@ function Assert-NuGetInputs {
     if($feedFiles.Count -ne $archives.Count){throw 'Private feed must contain exactly the reviewed packages'}
     foreach($file in $feedFiles){if(-not $archives.Contains($file.path)){throw 'Unclassified private feed input'}}
     $script:NuGetExpected=$wanted
+    # Real reviewed lock files are inputs, never synthesized from old assets/metadata.
+    foreach($name in @('Desktop','Core')){
+        $lock=Read-StrictJson (Resolve-Below $Root ('inputs/locks/'+$name+'.packages.lock.json'))
+        if($lock.version -notin @(1,2) -or $lock.dependencies -isnot [Collections.IDictionary]){throw 'Unsupported NuGet lock structure'}
+        foreach($framework in $lock.dependencies.Values){foreach($dependency in $framework.GetEnumerator()){
+            $value=$dependency.Value
+            if($value.type -ceq 'Project'){continue}
+            $key=$dependency.Key+'/'+$value.resolved
+            if($value.type -cnotin @('Direct','Transitive','CentralTransitive') -or -not $wanted.ContainsKey($key) -or
+                $value.contentHash -cne $wanted[$key].contentHash){throw 'Lock content hash differs from reviewed NuGet input'}
+        }}
+    }
 }
 function Assert-RestoredDependencies {
     $wanted=$script:NuGetExpected
@@ -330,7 +342,7 @@ function Assert-RestoredDependencies {
         if($assets.packageFolders.Count -ne 1 -or [IO.Path]::GetFullPath(@($assets.packageFolders.Keys)[0]).TrimEnd('\') -cne (Resolve-Below $Root 'cache/nuget/packages')){throw 'Restore escaped private NuGet cache'}
         foreach($item in $assets.libraries.GetEnumerator()){
             if($item.Value.type -ceq 'project'){continue}
-            if($item.Value.type -cne 'package' -or -not $wanted.ContainsKey($item.Key) -or $item.Value.sha512 -cne $wanted[$item.Key].sha512){throw 'Resolved dependency graph differs from reviewed graph'}
+            if($item.Value.type -cne 'package' -or -not $wanted.ContainsKey($item.Key) -or $item.Value.sha512 -cne $wanted[$item.Key].contentHash){throw 'Resolved dependency graph/content hash differs from reviewed graph'}
             [void]$seen.Add($item.Key)
         }
         # Generated assets/props/targets may only use private absolute paths, not the old cache.
@@ -339,8 +351,18 @@ function Assert-RestoredDependencies {
             Assert-StructuredPaths $Root $file.FullName
         }
     }
-    # Runtime/framework download dependencies can also be present in the lock/feed; extras are
-    # retained in the reviewed input inventory, not silently inferred from a machine cache.
+    # NuGet computes its signature-independent digest during extraction into this fresh cache.
+    # Check ALL reviewed packages, including runtime downloads absent from assets.libraries.
+    # Old machine-cache metadata is never copied or accepted as the verification result.
+    $hashReceipt=@(foreach($package in $wanted.Values){
+        $relative='cache/nuget/packages/'+$package.id.ToLowerInvariant()+'/'+$package.version.ToLowerInvariant()
+        $metadata=Read-StrictJson (Resolve-Below $Root ($relative+'/.nupkg.metadata'))
+        if($metadata.version -notin @(1,2) -or $metadata.contentHash -cne $package.contentHash){throw 'Fresh NuGet extraction content hash differs'}
+        $cachedArchive=Resolve-Below $Root ($relative+'/'+$package.id.ToLowerInvariant()+'.'+$package.version.ToLowerInvariant()+'.nupkg')
+        if((Get-Sha $cachedArchive) -cne $script:InputHashes['inputs/nuget-feed/'+$package.archive]){throw 'Restored archive differs from pinned original bytes'}
+        [ordered]@{id=$package.id;version=$package.version;archiveSha512=$package.archiveSha512;contentHash=$metadata.contentHash}
+    })
+    Write-NewJson (Resolve-Below $Root 'evidence/nuget-hashes.json') $hashReceipt
     Write-NewJson (Resolve-Below $Root 'evidence/restored-packages.json') @($seen | Sort-Object)
 }
 function Assert-BuildCodeReview {
@@ -404,6 +426,9 @@ function Build-Desktop {
     # Local archive extraction into R only. No remote audit/download/installation fallback.
     Assert-NuGetInputs
     Assert-BuildCodeReview
+    Assert-NoticeInputs
+    $packageCache=Resolve-Below $Root 'cache/nuget/packages'
+    if((Test-Path -LiteralPath $packageCache) -and @(Get-ChildItem -LiteralPath $packageCache -Force).Count){throw 'NuGet extraction cache must start empty'}
     [void](Invoke-BuildTool dotnet (@('restore',$project,'-r','win-x64','--locked-mode','--configfile',$nugetConfig,'-p:NuGetAudit=false','-p:Configuration=Debug')+$props) $source)
     Assert-RestoredDependencies
     $script:Publish=Resolve-Below $Root 'work/desktop-publish'
@@ -435,6 +460,52 @@ function Get-OriginHash($Origin) {
         $hash=Get-BytesSha (Read-ZipEntryBytes $matches[0])
         if($hash -cne $Origin.sha256){throw 'Package entry hash differs'};return $hash
     }finally{$zip.Dispose()}
+}
+function Read-NoticeBytes($Notice) {
+    # Recheck the pinned file/archive and entry every time; preserve all bytes/line endings.
+    [void](Get-OriginHash $Notice.origin)
+    $path=Resolve-Below $Root $Notice.origin.source
+    if($Notice.origin.kind -ceq 'input-file'){
+        if((Get-Item -LiteralPath $path).Length -ne $Notice.bytes){throw 'Notice input length differs'}
+        $bytes=[IO.File]::ReadAllBytes($path)
+    }else{
+        $zip=[IO.Compression.ZipFile]::OpenRead($path)
+        try{
+            $matches=@($zip.Entries | Where-Object FullName -IEQ $Notice.origin.entry)
+            if($matches.Count -ne 1 -or $matches[0].FullName -cne $Notice.origin.entry -or $matches[0].Length -ne $Notice.bytes){throw 'Notice archive entry differs'}
+            $bytes=Read-ZipEntryBytes $matches[0]
+        }finally{$zip.Dispose()}
+    }
+    if($bytes.Length -ne $Notice.bytes -or (Get-BytesSha $bytes) -cne $Notice.origin.sha256){throw 'Notice bytes differ'}
+    return ,$bytes
+}
+function Assert-NoticeInputs {
+    # Explicit sources from the 1676276 input audit; equal bytes in another package are not interchangeable.
+    $rules=@(
+        @('dotnet-desktop-LICENSE.txt','Microsoft.WindowsDesktop.App.Runtime.win-x64','10.0.14','LICENSE',1137,'a89886665765362eb77e0f8e26602c924520041d1711b2eedc136434fe4d01ab'),
+        @('dotnet-runtime-LICENSE.txt','Microsoft.NETCore.App.Runtime.win-x64','10.0.14','LICENSE.TXT',1139,'d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b'),
+        @('dotnet-runtime-NOTICES.txt','Microsoft.NETCore.App.Runtime.win-x64','10.0.14','THIRD-PARTY-NOTICES.TXT',78041,'6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21'),
+        @('WebView2-LICENSE.txt','Microsoft.Web.WebView2','1.0.4258.31','LICENSE.txt',1487,'0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55'),
+        @('WebView2-NOTICE.txt','Microsoft.Web.WebView2','1.0.4258.31','NOTICE.txt',3894,'106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90'),
+        @('react-LICENSE.txt','','','react/LICENSE',1088,'da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93'),
+        @('react-dom-LICENSE.txt','','','react-dom/LICENSE',1088,'da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93')
+    )
+    if($script:Spec.noticeFiles.Count -ne $rules.Count){throw 'Exactly seven fixed packaging notices required'}
+    foreach($rule in $rules){
+        $destination='ThirdPartyNotices/'+$rule[0]
+        $matches=@($script:Spec.noticeFiles | Where-Object path -IEQ $destination)
+        if($matches.Count -ne 1 -or $matches[0].path -cne $destination){throw 'Missing, duplicated or noncanonical notice path'}
+        $notice=$matches[0];$origin=$notice.origin
+        if($notice.bytes -ne $rule[4] -or $origin.sha256 -cne $rule[5]){throw 'Fixed notice size/hash changed'}
+        if($rule[1]){
+            $package=$script:NuGetExpected[$rule[1]+'/'+$rule[2]]
+            if(-not $package -or $origin.kind -cne 'package-entry' -or $origin.source -cne ('inputs/nuget-feed/'+$package.archive) -or $origin.entry -cne $rule[3]){throw 'Notice package/version/entry differs'}
+        }elseif($origin.kind -cne 'input-file' -or $origin.source -cne ('work/source/desktop/frontend/node_modules/'+$rule[3])){throw 'Notice frontend source differs'}
+        foreach($published in $script:Spec.publishFiles){
+            if($published.path -ieq $destination -or $published.path -ieq 'ThirdPartyNotices' -or $published.path.StartsWith($destination+'/',[StringComparison]::OrdinalIgnoreCase)){throw 'Packaging notice collides with publish whitelist'}
+        }
+        [void](Read-NoticeBytes $notice)
+    }
 }
 function Assemble-Candidate {
     $expected=@{}
@@ -468,6 +539,13 @@ function Assemble-Candidate {
         $framework=@($config.runtimeOptions.includedFrameworks | Where-Object name -CEQ $name)
         if($framework.Count -ne 1 -or $framework[0].version -cne '10.0.14'){throw 'Reviewed runtime pack version differs'}
     }
+    foreach($notice in $script:Spec.noticeFiles){
+        $target=Resolve-Below $payload $notice.path
+        Write-NewBytes $target (Read-NoticeBytes $notice) # CreateNew; never replace publish output.
+        if((Get-Sha $target) -cne $notice.origin.sha256 -or (Get-Item -LiteralPath $target).Length -ne $notice.bytes){throw 'Assembled notice differs'}
+        Record-Generated $target 'third-party-notice' $notice.origin
+    }
+    Write-NewJson (Resolve-Below $Root 'evidence/third-party-notices.json') $script:Spec.noticeFiles
     foreach($path in $script:RuntimeInputs.Keys){
         $from=$script:RuntimeInputs[$path];$target=Resolve-Below $payload $path
         Copy-PinnedFile $from $target (Get-Sha $from) (Get-Item -LiteralPath $from).Length
