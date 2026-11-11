@@ -46,7 +46,7 @@ internal static class MemoryRecallIntegrationProbe
             start.ArgumentList.Add("MemoryRecallIntegrationProbe");
             if (memoryUsage) start.ArgumentList.Add("memory-usage");
             stage = "JAVA";
-            using var job = (IDisposable)Owner("RuntimeProcessJob").GetMethod("Create", Methods)!.Invoke(null, null)!;
+            using var job = (IDisposable)Owner("RuntimeProcessJob").GetMethod("Create", Methods, Type.EmptyTypes)!.Invoke(null, null)!;
             using var child = Process.Start(start) ?? throw new IOException();
             try
             {
