@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [准确候选首次启动及失联恢复核对](engineering/LIVE-EXIT-FIRST-RUN-AND-RECOVERY.md)：原 b204 的固定 helper 实际根匹配，包含可见退出与当前前端的候选已组装；真实启动消耗 **1/2**，界面报启动／存储校验失败及 WebView 停止，未导入／重开。自有提示框“否”的 UIA 调用异常且结果未知，未重试、未调用退出按钮。恢复后 Desktop PID 已不存在，准确归属的 Runtime 回执为 **OWNER_CLEANUP／退出 1**，并非正常 CLOSE；旧监督会话不可读、Desktop 退出路径和互斥释放未知。未执行第二轮或强杀，`productionGo=false`。
+
 2026-11-11 [原产品身份与根绑定诊断](engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)更正前置判断：当前进程／有效 SID、解释器和 .NET LocalAppData 与旧原 Profile 元数据记录相同；没有换账户的证据。当前有效身份的 OS Known Folder 同样返回 `28421`，但产品还会按句柄绑定实际目录，不能以逻辑路径字符串判定最终根不同。本轮按只读指令没有查询应用目录／Profile、运行 helper 或新候选；正常准入必须继续精确匹配原绝对目标，尚未实测。产品启动 0 次，两次额度未消耗，无新权限拒绝；可见退出源码仍为 `42c7358`，`productionGo=false`。
 
 2026-11-11 [主窗口正常退出入口](engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)已接到托盘同一 `ExitAsync`，保留未保存编辑确认、任务／WebView／Runtime 清理。普通 WPF 编译 0 警告／错误；本机存在官方 UI Automation 组件，但没有调用 UIA、启动产品或枚举桌面。已列出仅绑定自有 PID／窗口的最小方案及人工退出步骤；原合成 Profile 查询拒绝与原产品 helper 历史通过事实严格区分，未解除任何具体拒绝。未生成正常候选包或实际退出验收，`productionGo=false`。

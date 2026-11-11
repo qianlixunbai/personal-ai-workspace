@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [首次真实启动失败及恢复边界](../engineering/LIVE-EXIT-FIRST-RUN-AND-RECOVERY.md)：准确候选已包含可见退出，原 Profile 绑定通过；启动计数 **1/2**。Runtime 的自有回执确认异常 OWNER_CLEANUP、退出码 1；Desktop 当前不存在但正常退出未证实。UIA“否”调用结果未知、未重试，旧监督终态／互斥释放仍未知。下一步先定位已有启动失败与 UIA 异常，不重开产品来补退出，不自动消耗第二轮，不用更多功能掩盖实测缺口。
+
 2026-11-11 [正常退出前置诊断](../engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)已确认当前有效主体和解释器与旧原 Profile 记录相同，无需据目录名要求换账户／重登。逻辑 Known Folder 与实际句柄绑定根必须分开；下一阶段仍需正常准入精确绑定原绝对目标，再做准确同源候选和自有窗口正常退出。本轮仅公开身份元数据／旧记录／源码，不查询 Profile、不构建候选或运行 helper／产品，启动额度仍为 0/2；不新增外围功能，也不放宽任何拒绝或 NativeGate。
 
 2026-11-11 优先处理实际使用关卡：[可见正常退出入口及官方 UI Automation 调查](../engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)。主窗口原生按钮与托盘共用安全关闭链，普通 WPF 编译通过；本轮严格不启动产品／测试窗口或调用 UIA。下一步只按准确候选、原准入和可人工退出兜底的条件进行一次实际验证，不继续累积业务功能、不用强杀关闭关卡。
