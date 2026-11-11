@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [多资料检索连续性](../engineering/KNOWLEDGE-SEARCH-CONTINUITY-REPORT.md)：KnowledgeSearch 在 App 保持挂载的页面实例内保存关键词、明确资料版本及分组结果，导航只中止后续读取并使在途回执失效。显式继续复用未完成组的原条件，成功组不重查；条件／corpus／索引失效清除旧结果，连接代次隔离索引状态回执。没有新的 Runtime／Native／存储合同或后台恢复，应用关闭不保留这些临时内容。
+
 2026-11-11 [所选资料逐份问答](../engineering/KNOWLEDGE-SOURCE-ANSWERS-REPORT.md)：React 将明确选择的最多 10 个 documentId/sourceRevision 复制为临时清单，沿既有单范围 answerSubmit/get/cancel 顺序驱动独立问答，复用原文核对与阅读定位。每项任务、错误与引用保留独立归属；未知提交不重发，原 ID 核对与取消不授予新准入，session 更换使旧回执失效。没有 Runtime／Native、协议、存储或依赖变更，也没有跨文档共同证据快照；真实桌面验收仍未执行。
 
 2026-11-11 [资料章节目录](../engineering/KNOWLEDGE-OUTLINE-REPORT.md)：React 主动沿既有 preview API 的 locator 边界读取当前所选 Markdown 版本，复用 Runtime 标题／section／位置，只保留有界目录元数据；不解析 Markdown、不存全文。章节跳转复用原版本读取和阅读返回记录，离页／session 更换使回执失效。无 Runtime、Native、schema、依赖或模型行为变更；合成验证不扩大原生准入。

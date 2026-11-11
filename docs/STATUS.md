@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [多资料检索连续性](engineering/KNOWLEDGE-SEARCH-CONTINUITY-REPORT.md)修复切页后关键词、明确版本清单和已完成分组丢失：页面返回不自动重查，可明确继续未完成部分；条件、资料集合、索引或 session 改变仍使旧结果失效。类型检查及三个直接相关合成场景通过。只保留当前连接内状态，不宣称重开恢复；未打包／实际桌面验收，旧运行与图形边界保留。
+
 2026-11-11 [所选资料逐份问答](engineering/KNOWLEDGE-SOURCE-ANSWERS-REPORT.md)补齐检索清单到同一问题逐份回答：最多 10 份固定版本，明确开始、串行任务、逐项结果与准确引用；失败暂停、未知提交阻止重发、原任务核对和单次取消。产品类型检查及四项针对性合成场景分别通过；连接恢复后仅复查三个受夹具修正影响的场景。未打包、未进行真实桌面／模型验收；图形后端目标主机无法确认，入口已停止。旧运行标记保留，productionGo=false。
 
 2026-11-11 [核心交付与原生候选验证方案](engineering/MODEL-STATE-NATIVE-VALIDATION-PLAN.md)已完成静态核对：分开纯 token 查询、独立 ACL 夹具、完整 NativeGate/Profile 准入、原对象构造和同包 EXE；不重跑 SeedReading，不补做 armGuard。下一决定可仅批准离线候选打包；原生范围还须明确历史拒绝目标和原 Profile 读写。旧包 source `b4ae52e` 缺少八项后续功能及两次安全候选提交。只准备方案，未原生运行／打包／部署，不计新增产品模块，完整验收继续 BLOCKED / productionGo=false。

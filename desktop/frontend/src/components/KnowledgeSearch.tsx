@@ -12,38 +12,53 @@ type SearchGroup = KnowledgeSearchSource & { hits: KnowledgeSearchHit[] | null; 
 export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, openCitation, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void>; openCitation?: ((citation: KnowledgeAnswerCitation) => Promise<void>) | undefined; currentDocument?: KnowledgeDocument | undefined }) {
   const [sources, setSources] = useState<KnowledgeSearchSource[] | null>(null), [groups, setGroups] = useState<SearchGroup[] | null>(null)
   const [query, setQuery] = useState(''), [status, setStatus] = useState<KnowledgeSearchStatus | null>(null), [result, setResult] = useState<KnowledgeSearchResult | null>(null)
-  const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const generation = useRef(0), input = useRef<HTMLInputElement>(null), results = useRef<HTMLHeadingElement>(null)
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
+  const [sessionVersion, setSessionVersion] = useState(0)
+  const generation = useRef(0), connection = useRef(0), actionLock = useRef(false), input = useRef<HTMLInputElement>(null), results = useRef<HTMLHeadingElement>(null)
   const available = useRef(enabled && visible); available.current = enabled && visible
-  const clear = () => { generation.current++; setQuery(''); setResult(null); setGroups(null); setStatus(null); setBusy(false); setError(''); setSources(null) }
+  const clear = () => { generation.current++; connection.current++; setSessionVersion(connection.current); actionLock.current = false; setQuery(''); setResult(null); setGroups(null); setStatus(null); setBusy(false); setError(''); setNotice(''); setSources(null) }
+  const pause = () => {
+    generation.current++; actionLock.current = false; setBusy(false)
+    setNotice('检索已暂停，保留关键词、明确版本与已完成结果。返回后请明确继续未完成查询，或重新检索全部所选资料。')
+  }
   useEffect(() => { const unsubscribe = bridge.onSession(clear); return () => { generation.current++; unsubscribe() } }, [bridge])
-  useEffect(() => { if (!visible) clear() }, [visible])
-  useEffect(() => { generation.current++; setResult(null); setGroups(null); setBusy(false) }, [corpusEpoch])
+  // Navigation pauses reads without dropping the explicit scope. Only connection
+  // replacement clears drafts; changing the corpus still invalidates old results.
+  useEffect(() => { if ((!enabled || !visible) && actionLock.current) pause() }, [enabled, visible])
+  useEffect(() => {
+    generation.current++; actionLock.current = false; setResult(null); setGroups(null); setBusy(false)
+    if (result || groups) setNotice('资料集合已刷新，旧结果已失效。关键词与所选版本保留，请明确重新检索；不会自动切换版本。')
+  }, [corpusEpoch])
   useEffect(() => {
     if (!enabled || !visible) return
+    const session = connection.current
     let disposed = false; let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
-      try { const s = await bridge.knowledgeSearchStatus(); if (disposed) return; setStatus(s); if (s.state !== 'READY') { generation.current++; setResult(null); setGroups(null); setBusy(false); timer = setTimeout(() => { void poll() }, 1000) } }
-      catch (e) { if (!disposed) { generation.current++; setResult(null); setGroups(null); setBusy(false); setError(e instanceof Error ? e.message : '索引状态暂时不可用。') } }
+      try { const s = await bridge.knowledgeSearchStatus(); if (disposed || session !== connection.current) return; setStatus(s); if (s.state !== 'READY') { generation.current++; actionLock.current = false; setResult(null); setGroups(null); setBusy(false); setNotice('索引已变化，旧结果已失效；索引就绪后请明确重新检索。'); timer = setTimeout(() => { void poll() }, 1000) } }
+      catch (e) { if (!disposed && session === connection.current) { generation.current++; actionLock.current = false; setResult(null); setGroups(null); setBusy(false); setError(e instanceof Error ? e.message : '索引状态暂时不可用。') } }
     }
     void poll(); return () => { disposed = true; clearTimeout(timer) }
-  }, [bridge, enabled, visible, corpusEpoch, status?.state])
-  const search = async () => {
-    if (busy || !available.current) return
+  }, [bridge, enabled, visible, corpusEpoch, status?.state, sessionVersion])
+  const search = async (resume = false) => {
+    if (busy || actionLock.current || !available.current) return
     if (!query.trim() || [...query].length > 128) { setError('请输入 1–128 个 Unicode 字符的关键词。'); return }
     if (sources?.length === 0) { setError('请先选择检索资料；空范围不会自动变为全部资料。'); return }
-    const epoch = ++generation.current; setBusy(true); setResult(null); setGroups(null); setError('')
+    if (resume && (!groups || sources === null || status?.state !== 'READY')) return
+    const epoch = ++generation.current; actionLock.current = true; setBusy(true); setResult(null); if (!resume) setGroups(null); setError(''); setNotice('')
     try {
       if (sources === null) {
         const hits = await bridge.searchKnowledge(query, null)
         if (epoch !== generation.current) return
         setResult(hits)
       } else {
-        let collected: SearchGroup[] = sources.map(source => ({ ...source, hits: null, error: null }))
+        let collected: SearchGroup[] = resume ? groups!.map(group => ({ ...group })) : sources.map(source => ({ ...source, hits: null, error: null }))
         setGroups(collected)
         for (let index = 0; index < collected.length; index++) {
           if (epoch !== generation.current || !available.current) break
           const source = collected[index]!
+          if (resume && source.hits !== null) continue
+          collected = collected.map((group, i) => i === index ? { ...group, error: null } : group)
+          setGroups(collected)
           try {
             const hits = await bridge.searchKnowledge(query, source.scope)
             if (epoch !== generation.current) return
@@ -54,7 +69,7 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, o
             if (epoch !== generation.current) return
             collected = collected.map((group, i) => i === index ? { ...group, error: e instanceof Error ? e.message : '本份资料检索失败。' } : group)
             if (e instanceof BridgeError && e.code.startsWith('KnowledgeIndex')) {
-              setGroups(collected); setError('索引暂不可用，后续资料未查询。请检查索引状态后显式检索。'); break
+              setGroups(collected); setError('索引暂不可用，后续资料未查询。请检查索引状态后显式检索。'); setStatus({ state: 'STALE', indexedDocuments: 0, indexedChunks: 0 }); break
             }
           }
           setGroups(collected)
@@ -63,9 +78,9 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, o
       setTimeout(() => { if (epoch === generation.current) results.current?.focus() }, 0)
     }
     catch (e) { if (epoch === generation.current) { setError(e instanceof Error ? e.message : '词法检索暂时不可用。'); if (e instanceof BridgeError && e.code.startsWith('KnowledgeIndex')) setStatus({ state: 'STALE', indexedDocuments: 0, indexedChunks: 0 }) } }
-    finally { if (epoch === generation.current) setBusy(false) }
+    finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
-  const rebuild = async () => { const epoch = ++generation.current; setBusy(true); setResult(null); setGroups(null); setError(''); try { const s = await bridge.rebuildKnowledgeSearch(); if (epoch === generation.current) setStatus(s) } catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '索引重建暂时不可用。') } finally { if (epoch === generation.current) setBusy(false) } }
+  const rebuild = async () => { if (actionLock.current || !available.current) return; const epoch = ++generation.current; actionLock.current = true; setBusy(true); setResult(null); setGroups(null); setError(''); setNotice(''); try { const s = await bridge.rebuildKnowledgeSearch(); if (epoch === generation.current) setStatus(s) } catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '索引重建暂时不可用。') } finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } } }
   const hitsList = (hits: KnowledgeSearchHit[], label: string) => <ol tabIndex={0} aria-label={label}>{hits.map(hit => <li key={`${hit.documentId}/${hit.sourceRevision}/${hit.startOffset}`}>
     <h4>{hit.title}</h4><p className="knowledge-location">{hit.sourceType} · 源版本 {hit.sourceRevision} · 行 {hit.startLine}–{hit.endLine} · 文本偏移 {hit.startOffset}–{hit.endOffset}{hit.heading ? ` · ${hit.heading}` : ''}</p>
     <p className="knowledge-snippet"><HighlightedText text={hit.snippet} ranges={hit.highlightRanges} /></p><button disabled={!enabled || busy} onClick={() => { void open(hit) }}>打开此位置</button>
@@ -73,9 +88,13 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, o
   return <section className="card knowledge-search" aria-labelledby="knowledge-search-title">
     <div className="knowledge-search-tools"><h2 id="knowledge-search-title">查找资料</h2><p id="knowledge-search-help" className="sr-only">输入关键词，查找使用中的文档。</p>
     <form onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault() }} onSubmit={e => { e.preventDefault(); void search() }}><label className="sr-only" htmlFor="knowledge-search-query">检索关键词</label>
-      <input id="knowledge-search-query" placeholder="检索关键词" aria-describedby="knowledge-search-help" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setGroups(null); setError('') }} />
+      <input id="knowledge-search-query" placeholder="检索关键词" aria-describedby="knowledge-search-help" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setGroups(null); setError(''); setNotice('') }} />
       <button type="submit" disabled={!enabled || busy || !query.trim() || sources?.length === 0}>检索</button></form></div>
-    <KnowledgeSearchScopePicker sources={sources} current={currentDocument} disabled={!enabled || busy} change={next => { generation.current++; setSources(next); setResult(null); setGroups(null); setError('') }} />
+    <KnowledgeSearchScopePicker sources={sources} current={currentDocument} disabled={!enabled || busy} change={next => { generation.current++; setSources(next); setResult(null); setGroups(null); setError(''); setNotice('') }} />
+    <p className="hint">切换页面保留本次关键词、所选版本和结果，暂停后续读取；不会自动刷新或扩展范围。保留的结果来自各次查询，返回后可重新检索核对最新状态。关闭应用或连接会话更换会清空这些临时内容。</p>
+    {busy && <button onClick={pause}>暂停后续检索</button>}
+    {!busy && groups?.some(group => group.hits === null) && <button disabled={!enabled || !visible || status?.state !== 'READY'} onClick={() => { void search(true) }}>继续未完成查询</button>}
+    {notice && <p role="status">{notice}</p>}
     <KnowledgeSourceAnswers bridge={bridge} enabled={enabled} visible={visible} sources={sources} searchQuery={query} open={openCitation} />
     <div className="knowledge-search-meta"><p role="status" aria-live="polite">索引：{status ? labels[status.state] : '等待状态'}{busy ? ' · 正在处理' : ''}</p>
     {status?.state === 'BUILDING' && <p role="progressbar" aria-label="关键词索引重建">索引正在重建，完成后请显式检索。</p>}

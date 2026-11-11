@@ -77,3 +77,68 @@ it('drops obsolete group responses and stops further reads on corpus or session 
   expect(port.searches()).toHaveLength(3); expect(screen.queryByRole('list', { name: '已选检索资料' })).toBeNull()
   expect((screen.getByLabelText('检索关键词') as HTMLInputElement).value).toBe('')
 })
+
+it('retains search scope and completed groups across navigation and resumes only unfinished reads at their original versions', async () => {
+  const { port, props, view } = setup()
+  for (const doc of docs.slice(0, 3)) { view.rerender(<KnowledgeSearch {...props} currentDocument={doc} />); await click('加入检索范围') }
+  fireEvent.change(screen.getByLabelText('检索关键词'), { target: { value: '预算' } })
+  port.holdSearch = true; await click('检索')
+  await act(async () => { port.reply(port.sent.length - 1, { hits: [{ ...port.hit(), documentId: docs[0]!.documentId, title: docs[0]!.title }] }) })
+  const interrupted = port.sent.length - 1
+  expect(port.searches()).toHaveLength(2)
+  view.rerender(<KnowledgeSearch {...props} visible={false} />)
+  await act(async () => { port.reply(interrupted, { hits: [] }) })
+  view.rerender(<KnowledgeSearch {...props} currentDocument={{ ...docs[1]!, currentReadyRevision: '2' }} />)
+  await act(async () => {})
+  expect((screen.getByLabelText('检索关键词') as HTMLInputElement).value).toBe('预算')
+  expect(screen.getByRole('list', { name: '已选检索资料' }).children).toHaveLength(3)
+  expect(screen.getByRole('heading', { name: '所选资料检索 · 1 / 3 份查询成功' })).toBeTruthy()
+  expect(port.searches()).toHaveLength(2)
+  port.holdSearch = false; await click('继续未完成查询')
+  expect(port.searches()).toEqual([docs[0]!, docs[1]!, docs[1]!, docs[2]!].map(doc => ({ query: '预算', limit: 10, scope: { documentId: doc.documentId, sourceRevision: '1' } })))
+  expect(screen.getByRole('heading', { name: '所选资料检索 · 2 / 3 份查询成功' })).toBeTruthy()
+  expect(within(screen.getByRole('region', { name: '检索分组：资料2.md' })).getByRole('alert').textContent).toContain('已更新')
+  await click('打开此位置'); expect(props.open.mock.calls[0]?.[0]).toMatchObject({ documentId: docs[0]!.documentId, sourceRevision: '1' })
+  view.rerender(<KnowledgeSearch {...props} visible={false} />)
+  view.rerender(<KnowledgeSearch {...props} />)
+  expect(screen.getByRole('heading', { name: '所选资料检索 · 2 / 3 份查询成功' })).toBeTruthy()
+  expect(port.searches()).toHaveLength(4)
+})
+
+it('pauses explicitly and invalidates resumable results on corpus, query, scope and session changes without losing drafts prematurely', async () => {
+  const { port, props, view } = setup()
+  await click('加入检索范围')
+  view.rerender(<KnowledgeSearch {...props} currentDocument={docs[1]!} />); await click('加入检索范围')
+  fireEvent.change(screen.getByLabelText('检索关键词'), { target: { value: '预算' } })
+  port.holdSearch = true; await click('检索'); const paused = port.sent.length - 1
+  await click('暂停后续检索')
+  await act(async () => { port.reply(paused, { hits: [] }) })
+  expect(screen.getByRole('heading', { name: '所选资料检索 · 0 / 2 份查询成功' })).toBeTruthy()
+  await click('继续未完成查询'); const obsolete = port.sent.length - 1
+  view.rerender(<KnowledgeSearch {...props} corpusEpoch={1} />)
+  await act(async () => { port.reply(obsolete, { hits: [] }) })
+  expect(screen.queryByRole('button', { name: '继续未完成查询' })).toBeNull()
+  expect(screen.getByText(/资料集合已刷新，旧结果已失效/)).toBeTruthy()
+  expect((screen.getByLabelText('检索关键词') as HTMLInputElement).value).toBe('预算')
+  expect(screen.getByRole('list', { name: '已选检索资料' }).children).toHaveLength(2)
+  await click('检索'); const edited = port.sent.length - 1
+  await click('暂停后续检索')
+  fireEvent.change(screen.getByLabelText('检索关键词'), { target: { value: '新预算' } })
+  await act(async () => { port.reply(edited, { hits: [] }) })
+  expect(screen.queryByRole('button', { name: '继续未完成查询' })).toBeNull()
+  await click('检索'); const rescoped = port.sent.length - 1
+  await click('暂停后续检索'); await click(`移出检索范围：${docs[1]!.title}`)
+  await act(async () => { port.reply(rescoped, { hits: [] }) })
+  expect(screen.queryByRole('button', { name: '继续未完成查询' })).toBeNull()
+  port.holdStatus = true
+  view.rerender(<KnowledgeSearch {...props} corpusEpoch={1} visible={false} />)
+  view.rerender(<KnowledgeSearch {...props} corpusEpoch={1} />)
+  await click('检索'); const oldSession = port.sent.length - 1
+  port.holdStatus = false
+  await act(async () => { port.session('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'); port.reply(oldSession, { hits: [] }) })
+  expect(screen.queryByRole('list', { name: '已选检索资料' })).toBeNull()
+  expect((screen.getByLabelText('检索关键词') as HTMLInputElement).value).toBe('')
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByText('索引：可用')).toBeTruthy()
+  expect(port.searches()).toHaveLength(5)
+})
