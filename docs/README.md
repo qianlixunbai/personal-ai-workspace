@@ -1,5 +1,7 @@
 # Documentation
 
+2026-11-11：[财务流水按备注查找](engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)记录全范围参数化查询、总数／分页一致、特殊字符与精度保留、Native／React 回显校验及最少合成验证；区分源码编译与尚未执行的真实数据库／桌面验收。
+
 2026-11-11：[多问答研究笔记](engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)记录跨页选择／排序、原记录与引用核对、整份 Markdown 导出和失败不部分保存；附 3 个前端、4 个 Native 场景及编译证据，并说明最终前端尚未重新整合进桌面包。
 
 2026-11-10：[工作区查找与原文阅读](engineering/WORKSPACE-SEARCH-REPORT.md)交接第三个完整模块 `9cb7e31`：从当前页面跨记忆／对话／资料查找、按需只读上下文并保留草稿；包含新场景检查、失败夹具修正、保护核对和三个模块尚未打包／桌面验收的准确边界。

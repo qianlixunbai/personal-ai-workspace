@@ -391,7 +391,20 @@ internal sealed class WorkspaceBridge : IDisposable
         payload.GetProperty("size").GetInt32(), payload.GetProperty("accountId").GetString()!, payload.GetProperty("startDate").GetString()!,
         payload.GetProperty("endDate").GetString()!, payload.GetProperty("type").GetString()!,
         payload.TryGetProperty("cashFlowMonth", out var month) ? month.GetString()! : "",
-        payload.TryGetProperty("cashFlowAsOf", out var asOf) ? asOf.GetString()! : "");
+        payload.TryGetProperty("cashFlowAsOf", out var asOf) ? asOf.GetString()! : "",
+        payload.TryGetProperty("query", out var query) ? query.GetString()! : "");
+
+    private static bool ValidTransactionPayload(JsonElement payload)
+    {
+        var fields=new List<string>{"page","size","accountId","startDate","endDate","type"};
+        if(payload.TryGetProperty("cashFlowMonth",out _))fields.AddRange(["cashFlowMonth","cashFlowAsOf"]);
+        if(payload.TryGetProperty("query",out _))fields.Add("query");
+        return Fields(payload,fields.ToArray())
+            && payload.GetProperty("page").ValueKind==JsonValueKind.Number&&payload.GetProperty("page").TryGetInt32(out _)
+            && payload.GetProperty("size").ValueKind==JsonValueKind.Number&&payload.GetProperty("size").TryGetInt32(out _)
+            && fields.Where(key=>key is not ("page" or "size")).All(key=>payload.GetProperty(key).ValueKind==JsonValueKind.String)
+            && RuntimeClient.ValidFinanceTransactionQuery(TransactionQuery(payload));
+    }
 
     private static bool ValidPayload(string method, JsonElement payload)
     {
@@ -449,13 +462,7 @@ internal sealed class WorkspaceBridge : IDisposable
             && RuntimeClient.ValidFinanceAssetQuery(AssetQuery(payload));
         if (method == "finance.transaction") return Fields(payload, "kind", "id") && Text(payload, "kind", 11, out var kind)
             && kind is "TRANSACTION" or "TRANSFER" && Text(payload, "id", 19, out var transactionId) && RuntimeClient.ValidFinanceId(transactionId);
-        if (method == "finance.transactions") return (Fields(payload, "page", "size", "accountId", "startDate", "endDate", "type")
-            || Fields(payload, "page", "size", "accountId", "startDate", "endDate", "type", "cashFlowMonth", "cashFlowAsOf")
-                && Text(payload, "cashFlowMonth", 7, out _) && Text(payload, "cashFlowAsOf", 29, out _))
-            && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out _)
-            && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out _)
-            && new[] { "accountId", "startDate", "endDate", "type" }.All(key => payload.GetProperty(key).ValueKind == JsonValueKind.String)
-            && RuntimeClient.ValidFinanceTransactionQuery(TransactionQuery(payload));
+        if (method == "finance.transactions") return ValidTransactionPayload(payload);
         if (method == "finance.list") return Fields(payload, "page", "size", "status", "sort")
             && payload.GetProperty("page").ValueKind == JsonValueKind.Number && payload.GetProperty("page").TryGetInt32(out int financePage)
             && payload.GetProperty("size").ValueKind == JsonValueKind.Number && payload.GetProperty("size").TryGetInt32(out int financeSize)

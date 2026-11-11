@@ -20,11 +20,11 @@ public final class FinanceTransactionController {
             @RequestParam(defaultValue = "10") int size, @RequestParam(defaultValue = "") String accountId,
             @RequestParam(defaultValue = "") String startDate, @RequestParam(defaultValue = "") String endDate,
             @RequestParam(defaultValue = "ALL") String type, @RequestParam(defaultValue = "") String cashFlowMonth,
-            @RequestParam(defaultValue = "") String cashFlowAsOf, HttpServletRequest request) {
+            @RequestParam(defaultValue = "") String cashFlowAsOf, @RequestParam(defaultValue = "") String query, HttpServletRequest request) {
         if (request.getParameterMap().entrySet().stream().anyMatch(entry ->
-                !Set.of("page", "size", "accountId", "startDate", "endDate", "type", "cashFlowMonth", "cashFlowAsOf").contains(entry.getKey()) || entry.getValue().length != 1))
+                !Set.of("page", "size", "accountId", "startDate", "endDate", "type", "cashFlowMonth", "cashFlowAsOf", "query").contains(entry.getKey()) || entry.getValue().length != 1))
             throw new WorkspaceException(ErrorCode.INVALID_REQUEST, "FINANCE");
-        return queries.list(page, size, accountId, startDate, endDate, type, cashFlowMonth, cashFlowAsOf);
+        return queries.list(page, size, accountId, startDate, endDate, type, cashFlowMonth, cashFlowAsOf, query);
     }
 
     @GetMapping("/{kind}/{id}")

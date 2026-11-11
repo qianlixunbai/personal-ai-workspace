@@ -92,6 +92,35 @@ public sealed class RuntimeClientTests
     }
 
     [Fact]
+    public async Task TransactionSearchEncodesLiteralTextAndRejectsUnfilteredOrMismatchedResponses()
+    {
+        const string text="订单😀 %_&'#--";
+        var query=new FinanceTransactionQuery(0,10,"","","","ALL",Query:text);
+        string valid=JsonSerializer.Serialize(new {page=0,size=10,total="1",accountId="",startDate="",endDate="",type="ALL",query=text,
+            items=new[]{new{kind="TRANSACTION",id="1",type="EXPENSE",amount="9007199254740993.10",currency="CNY",transactedAt="2026-10-01T12:00",
+                description="前文"+text+"后文",accountId="1",accountName="Synthetic",toAccountId=(string?)null,toAccountName=(string?)null}}});
+        string response=valid;int calls=0;
+        using var client=new RuntimeClient(new Handler((request,_)=>{
+            calls++;Assert.Equal(HttpMethod.Get,request.Method);
+            Assert.EndsWith("&query="+Uri.EscapeDataString(text),request.RequestUri!.GetComponents(UriComponents.PathAndQuery,UriFormat.UriEscaped));
+            return Task.FromResult(Response(HttpStatusCode.OK,response));
+        }),()=>Token);
+        var page=await client.ListFinanceTransactionsAsync(query,default);
+        Assert.Equal(text,page.Query);Assert.Equal("9007199254740993.10",page.Items[0].Amount);
+        foreach(string bad in new[]{" ","x\n","\ud800",new string('中',129)}){
+            Assert.Equal(DesktopError.InvalidRequest,(await Assert.ThrowsAsync<DesktopException>(()=>client.ListFinanceTransactionsAsync(query with {Query=bad},default))).Error);
+        }
+        Assert.Equal(1,calls);
+        foreach(string mutation in new[]{"missing","wrong","unmatched","null"}){
+            var node=System.Text.Json.Nodes.JsonNode.Parse(valid)!.AsObject();
+            if(mutation=="missing")node.Remove("query");else if(mutation=="wrong")node["query"]="other";
+            else node["items"]![0]!["description"]=mutation=="null"?null:"unrelated";
+            response=node.ToJsonString();
+            Assert.Equal(DesktopError.InvalidResponse,(await Assert.ThrowsAsync<DesktopException>(()=>client.ListFinanceTransactionsAsync(query,default))).Error);
+        }
+    }
+
+    [Fact]
     public async Task DashboardDrilldownRequiresEchoedScopeOrdinaryCnyAndExclusiveNanosecondBoundary()
     {
         var query = new FinanceTransactionQuery(0, 10, "", "2026-10-01", "", "INCOME", "2026-10", "2026-10-24T12:00:00.123456789");
@@ -110,6 +139,7 @@ public sealed class RuntimeClientTests
             Assert.Equal(HttpMethod.Get, request.Method);
             Assert.StartsWith("/api/v1/finance/transactions?", request.RequestUri!.PathAndQuery);
             Assert.Contains("cashFlowAsOf=" + query.CashFlowAsOf, request.RequestUri.Query);
+            Assert.DoesNotContain("&query=",request.RequestUri.Query);
             return Task.FromResult(Response(HttpStatusCode.OK, response));
         }), () => Token);
         Assert.Equal("9007199254740993.10", (await client.ListFinanceTransactionsAsync(query, CancellationToken.None)).Items[0].Amount);

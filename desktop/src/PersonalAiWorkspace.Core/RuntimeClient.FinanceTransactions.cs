@@ -7,9 +7,11 @@ namespace PersonalAiWorkspace.Core;
 public sealed record FinanceTransaction(string Kind, string Id, string Type, string Amount, string Currency,
     string TransactedAt, string? Description, string AccountId, string AccountName, string? ToAccountId, string? ToAccountName);
 public sealed record FinanceTransactionQuery(int Page, int Size, string AccountId, string StartDate, string EndDate, string Type,
-    string CashFlowMonth = "", string CashFlowAsOf = "");
+    string CashFlowMonth = "", string CashFlowAsOf = "", string Query = "")
+{ public override string ToString()=>"FinanceTransactionQuery[private]"; }
 public sealed record FinanceTransactionPage(FinanceTransaction[] Items, int Page, int Size, string Total,
-    string AccountId, string StartDate, string EndDate, string Type, string CashFlowMonth = "", string CashFlowAsOf = "");
+    string AccountId, string StartDate, string EndDate, string Type, string CashFlowMonth = "", string CashFlowAsOf = "", string Query = "")
+{ public override string ToString()=>"FinanceTransactionPage[private]"; }
 
 public sealed partial class RuntimeClient
 {
@@ -18,7 +20,12 @@ public sealed partial class RuntimeClient
         && ValidFinanceDate(query.StartDate) && ValidFinanceDate(query.EndDate)
         && (query.StartDate == "" || query.EndDate == "" || string.CompareOrdinal(query.StartDate, query.EndDate) <= 0)
         && query.Type is "ALL" or "INCOME" or "EXPENSE" or "ADJUSTMENT" or "TRANSFER" or "REFUND"
-        && ValidFinanceCashFlow(query);
+        && ValidFinanceCashFlow(query) && ValidFinanceTransactionSearch(query.Query);
+
+    public static bool ValidFinanceTransactionSearch(string text) => text is not null && text.Length<=256
+        && (text==""||!string.IsNullOrWhiteSpace(text)) && !text.Any(char.IsControl)
+        && !Regex.IsMatch(text,@"[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]")
+        && text.EnumerateRunes().Count()<=128;
 
     private static bool ValidFinanceCashFlow(FinanceTransactionQuery q)
     {
@@ -45,11 +52,17 @@ public sealed partial class RuntimeClient
     public async Task<FinanceTransactionPage> ListFinanceTransactionsAsync(FinanceTransactionQuery query, CancellationToken token)
     {
         if (!ValidFinanceTransactionQuery(query)) throw new DesktopException(DesktopError.InvalidRequest);
-        using var body = await FinanceJson(FormattableString.Invariant($"/transactions?page={query.Page}&size={query.Size}&accountId={query.AccountId}&startDate={query.StartDate}&endDate={query.EndDate}&type={query.Type}&cashFlowMonth={query.CashFlowMonth}&cashFlowAsOf={query.CashFlowAsOf}"), token);
+        string path=FormattableString.Invariant($"/transactions?page={query.Page}&size={query.Size}&accountId={query.AccountId}&startDate={query.StartDate}&endDate={query.EndDate}&type={query.Type}&cashFlowMonth={query.CashFlowMonth}&cashFlowAsOf={query.CashFlowAsOf}");
+        if(query.Query!="")path+="&query="+Uri.EscapeDataString(query.Query);
+        using var body = await FinanceJson(path, token);
         var root = body.RootElement;
         var scoped = root.TryGetProperty("cashFlowMonth", out _);
-        if (scoped) MemoryFields(root, "items", "page", "size", "total", "accountId", "startDate", "endDate", "type", "cashFlowMonth", "cashFlowAsOf");
-        else MemoryFields(root, "items", "page", "size", "total", "accountId", "startDate", "endDate", "type");
+        var searched = root.TryGetProperty("query", out _);
+        var fields = new List<string>{"items", "page", "size", "total", "accountId", "startDate", "endDate", "type"};
+        if (scoped) fields.AddRange(["cashFlowMonth", "cashFlowAsOf"]);
+        if (searched) fields.Add("query");
+        MemoryFields(root,fields.ToArray());
+        if ((searched ? String(root,"query") : "") != query.Query) throw Invalid();
         if ((scoped ? String(root, "cashFlowMonth") : "") != query.CashFlowMonth
             || (scoped ? String(root, "cashFlowAsOf") : "") != query.CashFlowAsOf) throw Invalid();
         if (MemoryInteger(root, "page") != query.Page || MemoryInteger(root, "size") != query.Size
@@ -60,12 +73,13 @@ public sealed partial class RuntimeClient
         var parsed = items.EnumerateArray().Select(ParseFinanceTransaction).ToArray();
         if (parsed.Select(x => (x.Kind, x.Id)).Distinct().Count() != parsed.Length
             || parsed.Any(x => query.Type != "ALL" && x.Type != query.Type
+                || query.Query != "" && (x.Description is null || !x.Description.Contains(query.Query,StringComparison.Ordinal))
                 || query.AccountId != "" && x.AccountId != query.AccountId && x.ToAccountId != query.AccountId
                 || query.StartDate != "" && string.CompareOrdinal(x.TransactedAt[..10], query.StartDate) < 0
                 || query.EndDate != "" && string.CompareOrdinal(x.TransactedAt[..10], query.EndDate) > 0
                 || query.CashFlowMonth != "" && (x.Kind != "TRANSACTION" || x.Currency != "CNY"
                     || string.CompareOrdinal(FinanceTimeKey(x.TransactedAt), FinanceTimeKey(FinanceCashFlowCutoff(query))) >= 0))) throw Invalid();
-        return new(parsed, query.Page, query.Size, FinanceCount(root, "total"), query.AccountId, query.StartDate, query.EndDate, query.Type, query.CashFlowMonth, query.CashFlowAsOf);
+        return new(parsed, query.Page, query.Size, FinanceCount(root, "total"), query.AccountId, query.StartDate, query.EndDate, query.Type, query.CashFlowMonth, query.CashFlowAsOf, query.Query);
     }
 
     public async Task<FinanceTransaction> GetFinanceTransactionAsync(string kind, string id, CancellationToken token)

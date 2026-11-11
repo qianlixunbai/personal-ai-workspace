@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [流水备注搜索](../engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)：React／Native 为既有交易查询传递可选字面关键词，Java 在原 Finance 身份检查和只读 RR 事务内，将参数化 substring 条件同时用于总数及分页。双账本用户过滤、账户关联与金额字符串保持；Native／React 校验回显及逐条匹配，无新存储结构、写接口、索引或模型能力。
+
 2026-11-11 [多问答研究笔记](../engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)：React 保留最多 10 条已完成问答的会话内选择及顺序，重新定位准确记录，再将有序 ID 交给新 `knowledge.researchExport`。Native 校验已有任务资格，重新读取历史和原版本摘录，全部成功才复用原生新文件保存链。没有新 Runtime API、持久化结构或模型调用；单题与研究笔记共用有界读取和导出互斥，真实桌面验收仍独立。
 
 2026-11-11 [检索工作集文件](../engineering/KNOWLEDGE-SEARCH-WORKSET-REPORT.md)：新增受限 saveSearchWorkset/openSearchWorkset Bridge 与 Native 文件选择，复用既有新文件保护写入及持有句柄读取。32 KiB 版本化文件仅保存检索输入与明确资料身份／版本，不保存正文或任务。文件 ID 不授予权限，前端先沿当前受控列表匹配身份再获取版本，预览确认与草稿条件核对后恢复；缺失／变化项保留阻断，恢复不启动查询或任务。无 Profile/schema/Runtime 改动；新增 C# 源码尚未编译或原生验收。

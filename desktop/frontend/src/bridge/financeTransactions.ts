@@ -2,9 +2,12 @@ import { exactFields, isObject } from './contracts'
 import { financeId } from './finance'
 
 export const transactionTypes = ['ALL', 'INCOME', 'EXPENSE', 'ADJUSTMENT', 'TRANSFER', 'REFUND'] as const
-export interface FinanceTransactionQuery { page: number; size: number; accountId: string; startDate: string; endDate: string; type: typeof transactionTypes[number]; cashFlowMonth?: string; cashFlowAsOf?: string }
+export interface FinanceTransactionQuery { page: number; size: number; accountId: string; startDate: string; endDate: string; type: typeof transactionTypes[number]; cashFlowMonth?: string; cashFlowAsOf?: string; query?: string }
 export interface FinanceTransaction { kind: 'TRANSACTION' | 'TRANSFER'; id: string; type: Exclude<FinanceTransactionQuery['type'], 'ALL'>; amount: string; currency: string; transactedAt: string; description: string | null; accountId: string; accountName: string; toAccountId: string | null; toAccountName: string | null }
 export interface FinanceTransactionPage extends FinanceTransactionQuery { items: FinanceTransaction[]; total: string }
+export const isFinanceTransactionSearchQuery = (value: unknown): value is string => typeof value === 'string'
+  && (value === '' || !!value.trim()) && [...value].length <= 128
+  && !/[\x00-\x1f\x7f-\x9f]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value)
 const date = (text: unknown): text is string => typeof text === 'string' && (text === '' || /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text)
   && !text.startsWith('0000') && !Number.isNaN(Date.parse(text)) && new Date(text).toISOString().slice(0, 10) === text)
 export const financeTimeKey = (text: string) => (text.length === 16 ? text + ':00' : text).padEnd(20, '.').padEnd(29, '0')
@@ -29,6 +32,7 @@ export function isFinanceTransactionQuery(value: unknown): value is FinanceTrans
     && Number.isInteger(value.size) && (value.size as number) >= 1 && (value.size as number) <= 20
     && (value.accountId === '' || financeId(value.accountId)) && date(value.startDate) && date(value.endDate)
     && (!value.startDate || !value.endDate || value.startDate <= value.endDate) && transactionTypes.includes(value.type as FinanceTransactionQuery['type']) && validCashFlow(value)
+    && (!Object.hasOwn(value, 'query') || isFinanceTransactionSearchQuery(value.query))
 }
 export function isFinanceTransaction(value: unknown): value is FinanceTransaction {
   return isObject(value) && exactFields(value, ['kind', 'id', 'type', 'amount', 'currency', 'transactedAt', 'description', 'accountId', 'accountName', 'toAccountId', 'toAccountName'])
@@ -45,11 +49,13 @@ export function isFinanceTransaction(value: unknown): value is FinanceTransactio
 }
 export function isFinanceTransactionPage(value: unknown): value is FinanceTransactionPage {
   const base = ['page', 'size', 'accountId', 'startDate', 'endDate', 'type', 'items', 'total']
+  if (isObject(value) && Object.hasOwn(value, 'query')) base.push('query')
   return isObject(value) && (exactFields(value, base) || exactFields(value, [...base, 'cashFlowMonth', 'cashFlowAsOf'])) && isFinanceTransactionQuery(value)
     && typeof value.total === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(value.total) && BigInt(value.total) <= 9223372036854775807n
     && Array.isArray(value.items) && value.items.length <= value.size && value.items.every(item => isFinanceTransaction(item)
       && (value.type === 'ALL' || item.type === value.type) && (!value.accountId || item.accountId === value.accountId || item.toAccountId === value.accountId)
       && (!value.startDate || item.transactedAt.slice(0, 10) >= value.startDate) && (!value.endDate || item.transactedAt.slice(0, 10) <= value.endDate)
+      && (!value.query || item.description !== null && item.description.includes(value.query))
       && (!value.cashFlowMonth || item.kind === 'TRANSACTION' && item.currency === 'CNY'
         && financeTimeKey(item.transactedAt) < financeTimeKey(cashFlowCutoff(value.cashFlowMonth, value.cashFlowAsOf!))))
     && new Set(value.items.map(item => `${item.kind}:${item.id}`)).size === value.items.length

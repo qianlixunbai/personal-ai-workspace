@@ -30,7 +30,9 @@ public final class FinanceTransactionQueries {
         @Override public String toString() { return "FinanceTransaction[private]"; }
     }
     public record TransactionPage(List<TransactionView> items, int page, int size, String total,
-            String accountId, String startDate, String endDate, String type, String cashFlowMonth, String cashFlowAsOf) { }
+            String accountId, String startDate, String endDate, String type, String cashFlowMonth, String cashFlowAsOf, String query) {
+        @Override public String toString() { return "FinanceTransactionPage[private]"; }
+    }
 
     // Distinct source keys are required: transactions.id and transfers.id can overlap.
     private static final String ROWS = """
@@ -53,8 +55,15 @@ public final class FinanceTransactionQueries {
 
     public TransactionPage list(int page, int size, String accountId, String startDate, String endDate, String type,
             String cashFlowMonth, String cashFlowAsOf) {
+        return list(page,size,accountId,startDate,endDate,type,cashFlowMonth,cashFlowAsOf,"");
+    }
+
+    public TransactionPage list(int page, int size, String accountId, String startDate, String endDate, String type,
+            String cashFlowMonth, String cashFlowAsOf, String query) {
         if (page < 0 || page > 100000 || size < 1 || size > 20 || type == null
                 || !Set.of("ALL", "INCOME", "EXPENSE", "ADJUSTMENT", "TRANSFER", "REFUND").contains(type)) throw invalid();
+        if(query==null||query.codePointCount(0,query.length())>128||!query.isEmpty()&&query.isBlank()
+                ||query.codePoints().anyMatch(c->Character.isISOControl(c)||c>=0xd800&&c<=0xdfff))throw invalid();
         Long account = null;
         if (!accountId.isEmpty()) {
             try {
@@ -96,12 +105,14 @@ public final class FinanceTransactionQueries {
             if (end != null) { where += " AND transacted_at<?"; args.add(end.plusDays(1).atStartOfDay()); }
             if (!type.equals("ALL")) { where += " AND type=?"; args.add(type); }
             if (exclusive != null) { where += " AND kind='TRANSACTION' AND currency='CNY' AND transacted_at<?"; args.add(exclusive); }
+            // Literal substring, not LIKE/regex syntax. Count and page share the same bound filter.
+            if (!query.isEmpty()) { where += " AND position(? in coalesce(description,''))>0"; args.add(query); }
             String sql = " FROM (" + ROWS + ") ledger" + where;
             long total = jdbc.queryForObject("SELECT count(*)" + sql, Long.class, args.toArray());
             args.add(size); args.add((long) page * size);
             var items = jdbc.query("SELECT *" + sql + " ORDER BY transacted_at DESC,id DESC,kind ASC LIMIT ? OFFSET ?",
                     FinanceTransactionQueries::view, args.toArray());
-            return new TransactionPage(items, page, size, Long.toString(total), accountId, startDate, endDate, type, cashFlowMonth, cashFlowAsOf);
+            return new TransactionPage(items, page, size, Long.toString(total), accountId, startDate, endDate, type, cashFlowMonth, cashFlowAsOf, query);
         });
     }
 

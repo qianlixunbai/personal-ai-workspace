@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [按备注定位历史交易](../engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)补齐财务只读流水的原文搜索，支持与现有筛选组合、完整结果计数、分页、详情和清除。作为研究笔记之后的独立业务模块交付；源码、针对性合成场景和三层编译完成，不包含账本写入或真实 PostgreSQL／桌面验收。
+
 2026-11-11 [研究结果汇编为可回查笔记](../engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)接通已保存问答的跨页选择、预览、排序及单份笔记输出，保留原问题、回答、资料范围与准确版本摘录。作为一个业务模块交付；必要合成流程与编译通过，未重新推理、打包或扩大桌面验收结论。跨资料综合推理仍未实现。
 
 2026-11-11 已提供[当前编译输出的审阅 ZIP 与一次真实资料出处联动计划](../engineering/COMPILED-REVIEW-AND-LIVE-LINK-PLAN.md)。审阅组装完成，普通 Debug／未打包 Java 的界限明确；真实联动必经原 Profile／NativeGate，不能通过新 Profile、参数或替代入口回避既有拒绝。下一最小动作是父任务判断针对原 model-state 对象的限定元数据诊断；本轮没有重复构建、产品运行或新增功能。

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [流水备注原文搜索](engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)：搜索全部符合账户／日期／类型条件的普通交易及转账，计数与分页同源过滤，结果直接展示备注。关键词严格回显并逐行校验，空搜索保留既有查询。前端、Java 与 Native 必要场景及编译通过；没有真实财务库查询、新包或桌面验收，`productionGo=false`。
+
 2026-11-11 [多问答研究笔记](engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)：跨页选择并排序最多 10 条已完成回答，核对原记录及准确版本引用后一次导出明文 Markdown；任一来源失效则整份停止，未知保存不重试。3 个前端场景、4 个 Native 场景与前端／普通 C# 编译通过，最终前端单独保留。未打包或运行真实桌面，原同机界面与正常退出控制缺口保持，`productionGo=false`。
 
 2026-11-11 [编译输出审阅包与真实联动方案](engineering/COMPILED-REVIEW-AND-LIVE-LINK-PLAN.md)：生成 9.6 MB REVIEW_ONLY ZIP，737 个条目逐项哈希通过，未重建／运行／加载产品程序集。它保留普通 Debug 与原 Java classes 的真实状态，不是可运行发行包。选定“资料出处重开后重新获得受控读取资格”的真实三层场景，但正常 Java 必经 NativeGate，现有普通桌面不带隔离 Profile；已列明原 model-state 目标的最小只读诊断及后续准入条件，未重演受拒动作。
