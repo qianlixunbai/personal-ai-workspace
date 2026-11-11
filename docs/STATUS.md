@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [启动诊断源码补齐](engineering/STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)：Runtime 新增固定协议阶段及首个白名单原始失败码，WebView 保留失败类型／原因／退出码，未知文本脱敏。NativeGate、失败状态映射、关闭与 fallback 行为不改；三个构建条件的语法解析及关键方法源码比对通过，尚未编译或实测。旧候选不含补丁，本轮无启动／UI 操作，计数仍 **1/2**；首次失败根因、监督终态／互斥释放和业务闭环仍未知，`productionGo=false`。
+
 2026-11-11 [首次启动失败阶段定位](engineering/LIVE-STARTUP-FAILURE-PHASE-DIAGNOSIS.md)：本次 Runtime 已创建并登记，但没有 READY／正常关闭回执，原始固定失败码未持久保存；WebView 日志确认控制器创建后在 PROFILE_CLEAR_START 收到未分类 ProcessFailed。源码丢弃事件类型，现有提示不能证明主浏览器退出；默认 SQLite 也排除了“仅因 database.dpapi 缺失就失败”的推断。根因仍未证实，下一步只建议补齐现有日志的固定阶段／枚举，不改准入或重跑产品。启动仍 **1/2**，无构建／测试，`productionGo=false`。
 
 2026-11-11 [准确候选首次启动及失联恢复核对](engineering/LIVE-EXIT-FIRST-RUN-AND-RECOVERY.md)：原 b204 的固定 helper 实际根匹配，包含可见退出与当前前端的候选已组装；真实启动消耗 **1/2**，界面报启动／存储校验失败及 WebView 停止，未导入／重开。自有提示框“否”的 UIA 调用异常且结果未知，未重试、未调用退出按钮。恢复后 Desktop PID 已不存在，准确归属的 Runtime 回执为 **OWNER_CLEANUP／退出 1**，并非正常 CLOSE；旧监督会话不可读、Desktop 退出路径和互斥释放未知。未执行第二轮或强杀，`productionGo=false`。

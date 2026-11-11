@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [固定启动诊断已落实到源码](../engineering/STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)：保存 Runtime 首个固定原始码与协议阶段、WebView ProcessFailed 枚举／数值；不改变准入、协议、Profile／迁移或关闭行为。仅语法与源码比对通过，后续先做受影响编译及候选 pins 核对，再按监督／互斥缺口和剩余一次启动范围决定实测，不以诊断补丁宣称根因已修复。启动仍 **1/2**，`productionGo=false`。
+
 2026-11-11 [首次候选的失败范围已收窄](../engineering/LIVE-STARTUP-FAILURE-PHASE-DIAGNOSIS.md)：Runtime 停在完整 READY 回执形成之前，WebView 在控制器创建后的 Profile 清理阶段收到丢失类型的进程事件。先补现有安全日志中的固定 Runtime 阶段／失败码及 WebView 事件枚举，保持 NativeGate、关闭链和日志隐私边界；不得用再启动、禁用沙箱或补猜测配置代替证据。此次仅源码／准确日志只读核对，计数 **1/2**，监督终态／互斥释放仍未知。
 
 2026-11-11 [首次真实启动失败及恢复边界](../engineering/LIVE-EXIT-FIRST-RUN-AND-RECOVERY.md)：准确候选已包含可见退出，原 Profile 绑定通过；启动计数 **1/2**。Runtime 的自有回执确认异常 OWNER_CLEANUP、退出码 1；Desktop 当前不存在但正常退出未证实。UIA“否”调用结果未知、未重试，旧监督终态／互斥释放仍未知。下一步先定位已有启动失败与 UIA 异常，不重开产品来补退出，不自动消耗第二轮，不用更多功能掩盖实测缺口。

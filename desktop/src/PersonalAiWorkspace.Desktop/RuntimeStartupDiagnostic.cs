@@ -8,6 +8,13 @@ internal sealed class RuntimeStartupDiagnostic
     private string? failure;
     private int records;
     internal string? Failure => Volatile.Read(ref failure);
+    // Unknown remote strings may contain sensitive data even when protocol framing is valid.
+    internal static string SafeRawCode(string value) => value is
+        "NATIVE_ADMISSION_REJECTED" or "POSTGRESQL_NOT_CONFIGURED" or "CONFIGURATION_UNTRUSTED"
+        or "CREDENTIAL_UNAVAILABLE" or "CONNECTION_FAILED" or "AUTHENTICATION_FAILED"
+        or "SCHEMA_INITIALIZATION_REQUIRED" or "SCHEMA_INCOMPATIBLE" or "ROLE_REJECTED"
+        or "RUNTIME_START_FAILED" ? value : "UNRECOGNIZED";
+
     internal void Accept(string line)
     {
         string? value = line switch

@@ -51,7 +51,8 @@ internal sealed class WorkspaceWebViewHost
         StartupStage = stage;
         Diagnose("OK");
     }
-    private void Diagnose(string code, int hresult = 0)
+    private void Diagnose(string code, int hresult = 0, int? processFailedKind = null,
+        int? processFailedReason = null, int? processExitCode = null, bool? processDetailsAvailable = null)
     {
 #if DEBUG
         if (diagnosticRecords++ >= 64) return;
@@ -59,9 +60,30 @@ internal sealed class WorkspaceWebViewHost
         string record = System.Text.Json.JsonSerializer.Serialize(new {
             contract = "WORKSPACE_UI_V1", stage = StartupStage, code, hresult,
             elapsedMs = elapsed.ElapsedMilliseconds, utc = DateTime.UtcNow,
-            sequence = diagnosticRecords, closing, failed });
+            sequence = diagnosticRecords, closing, failed,
+            processFailedKind, processFailedReason, processExitCode, processDetailsAvailable });
         Console.WriteLine(record);
         try { diagnostics?.WriteLine(record); } catch (IOException) { }
+#endif
+    }
+
+    private void DiagnoseProcessFailure(CoreWebView2ProcessFailedEventArgs args)
+    {
+#if DEBUG
+        int? kind = null, reason = null, exitCode = null;
+        int detailsHresult = 0;
+        bool available = false;
+        try
+        {
+            kind = (int)args.ProcessFailedKind;
+            reason = (int)args.Reason;
+            exitCode = args.ExitCode;
+            available = true;
+        }
+        catch (Exception error) { detailsHresult = error.HResult; }
+        // Reading event details must not prevent the existing fallback. No descriptions,
+        // module paths, frame information, URLs or exception text enter this record.
+        Diagnose("BROWSER_PROCESS_FAILED", detailsHresult, kind, reason, exitCode, available);
 #endif
     }
 
@@ -166,11 +188,11 @@ internal sealed class WorkspaceWebViewHost
             core.Profile.IsPasswordAutosaveEnabled = false;
             core.Profile.IsGeneralAutofillEnabled = false;
             // Observe browser failures during profile clearing, before navigation/bridge setup.
-            core.ProcessFailed += (_, _) =>
+            core.ProcessFailed += (_, args) =>
             {
                 if (closing || failed) return;
                 if (!ready.Task.IsCompleted) StartupFailureCode ??= "BROWSER_PROCESS_FAILED";
-                Diagnose("BROWSER_PROCESS_FAILED");
+                DiagnoseProcessFailure(args);
                 Fail("工作区浏览器进程已停止。原生功能仍可使用，请关闭后重新打开工作区。");
             };
             Stage("PROFILE_CLEAR_START");

@@ -15,8 +15,11 @@ namespace PersonalAiWorkspace.Desktop;
 // No PID lookup, saved READY, HTTP shutdown endpoint or reusable launch token.
 internal sealed class NativeRuntimeSession
 {
-    internal sealed class Failure(string code) : IOException("Native Runtime reported a fixed startup failure.")
-    { internal string Code { get; } = code; }
+    internal sealed class Failure(string code, string rawCode) : IOException("Native Runtime reported a fixed startup failure.")
+    {
+        internal string Code { get; } = code;
+        internal string RawCode { get; } = RuntimeStartupDiagnostic.SafeRawCode(rawCode);
+    }
     private readonly Process process;
     internal string Attempt { get; }
     internal string Challenge { get; private set; } = "";
@@ -26,18 +29,29 @@ internal sealed class NativeRuntimeSession
     private NativeRuntimeSession(Process process, string attempt) { this.process = process; Attempt = attempt; }
     internal bool Owns(Process value) => ReferenceEquals(process, value);
 
-    internal static async Task<NativeRuntimeSession> OpenAsync(Process process, string profile, string attempt, CancellationToken token)
+    internal static async Task<NativeRuntimeSession> OpenAsync(Process process, string profile, string attempt, CancellationToken token,
+        RuntimeStartupTrace? trace = null)
     {
+        trace?.At(RuntimeStartupPhase.ProtocolAttempt);
         if (!Regex.IsMatch(attempt, "\\A[a-f0-9]{32}\\z")) throw Stop();
         var session = new NativeRuntimeSession(process, attempt);
-        if (await session.Read(token) != "WORKSPACE_NATIVE_LIFECYCLE_V1" || await session.Read(token) != profile) throw Stop();
+        async Task<string> ReadAt(RuntimeStartupPhase phase)
+        {
+            trace?.At(phase);
+            return await session.Read(token);
+        }
+        if (await ReadAt(RuntimeStartupPhase.ProtocolHeader) != "WORKSPACE_NATIVE_LIFECYCLE_V1"
+            || await ReadAt(RuntimeStartupPhase.ProtocolProfile) != profile) throw Stop();
+        trace?.At(RuntimeStartupPhase.ProtocolPid);
         byte[] pid = new byte[8]; await process.StandardOutput.BaseStream.ReadExactlyAsync(pid, token);
         if (BinaryPrimitives.ReadInt64BigEndian(pid) != process.Id || process.HasExited) throw Stop();
-        session.Challenge = await session.Read(token);
+        session.Challenge = await ReadAt(RuntimeStartupPhase.ProtocolChallenge);
         if (!Regex.IsMatch(session.Challenge, "\\A[a-f0-9]{64}\\z")) throw Stop();
+        trace?.At(RuntimeStartupPhase.ProtocolReply);
         await session.Write(token, attempt, session.Challenge);
-        if (await session.Read(token) != "READY" || await session.Read(token) != attempt
-            || await session.Read(token) != session.Challenge) throw Stop();
+        if (await ReadAt(RuntimeStartupPhase.ProtocolReady) != "READY" || await ReadAt(RuntimeStartupPhase.ProtocolReadyAttempt) != attempt
+            || await ReadAt(RuntimeStartupPhase.ProtocolReadyChallenge) != session.Challenge) throw Stop();
+        trace?.At(RuntimeStartupPhase.ProtocolPort);
         byte[] port = new byte[4]; await process.StandardOutput.BaseStream.ReadExactlyAsync(port, token);
         session.Port = BinaryPrimitives.ReadInt32BigEndian(port);
         if (session.Port is < 1 or > 65535 or 18765 || process.HasExited) throw Stop();
@@ -64,8 +78,9 @@ internal sealed class NativeRuntimeSession
         string value = await ReadValue(token);
         if (value != "STOP") return value;
         var diagnostic = new RuntimeStartupDiagnostic();
-        diagnostic.Accept("WORKSPACE_STARTUP_V1\t" + await ReadValue(token));
-        throw new Failure(diagnostic.Failure ?? "STARTUP_CAUSE_UNAVAILABLE");
+        string rawCode = await ReadValue(token);
+        diagnostic.Accept("WORKSPACE_STARTUP_V1\t" + rawCode);
+        throw new Failure(diagnostic.Failure ?? "STARTUP_CAUSE_UNAVAILABLE", rawCode);
     }
     private async Task<string> ReadValue(CancellationToken token)
     {
