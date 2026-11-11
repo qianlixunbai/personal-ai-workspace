@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [整合与最小纯编译](../engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)先收敛未编译源码：`27db39f` 当前前端 production 与普通 Debug Core／Desktop 正式构建通过，无 restore、原生准入或产品运行。输出独立，旧中断标记按窄条件归档。Java 待明确的 Finance/Lombok 输入与独立目录条件；后续修已证实的接线缺口，保持真实桌面／后端／打包独立验收。
+
 2026-11-11 [已保存问答本地查找](../engineering/KNOWLEDGE-ANSWER-HISTORY-SEARCH-REPORT.md)补齐结果积累后的找回流程：问题／检索词／回答正文连续匹配，按原时间分页，选中后沿已有精确回查与会话草稿流程复用。源码与前端合成验证完成，Native／Runtime 编译和实际桌面未运行。三个模块已交接，下一轮优先资料／对话出处的跨重开授权断点或明确解锁后的真实验收，不重复造导航入口。
 
 2026-11-11 [问答出处授权恢复](../engineering/KNOWLEDGE-ANSWER-SOURCE-RECOVERY-REPORT.md)补上持久记忆到原问答、跨页问答参考到当前草稿的实际合同断点；复用历史列表恢复准确记录读取资格，不信任可编辑 ID、不扩大权限。仅源码和三项前端合成检查完成，Native 与实际应用验收保持独立。

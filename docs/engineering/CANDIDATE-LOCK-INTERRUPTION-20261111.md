@@ -1,6 +1,6 @@
 # Interrupted offline lock preparation — 2026-11-11
 
-Status: unresolved interruption during input copying. The source order and persisted evidence support that restore was not reached; the exit cause and normal cleanup are not proved. This is a recovery record, not a successful run receipt or authorization to retry.
+Status update, 2026-11-11 07:40 UTC: the single stale activity marker has been archived after the narrow reconciliation below. The original interruption observations remain unchanged. Input copying was incomplete; the exit cause and normal cleanup are not proved. This is not a successful run receipt or authorization to retry.
 
 ## Run identity and preserved evidence
 
@@ -37,8 +37,18 @@ At the read-only recovery observation on 2026-11-11 at approximately 05:35 UTC:
 
 Independent source-order review confirmed that before input-copy-complete is successfully written, the guardian performs only path checks, copying, hashing and JSON operations. Add-Type, Job construction and Git/Pwsh/dotnet child execution occur later. Together with the persisted phase evidence, this supports interruption during tool input copying before restore. Missing receipts are not absolute proof of runtime execution history, and no Job-cleanup success is asserted.
 
-## Scope and remaining blocker
+## Scope at the original recovery checkpoint
 
 Preserve L, the original activity marker, and all original receipts unchanged. Do not rerun/resume the entry, substitute another root, archive/clear the marker, or infer successful cleanup from a missing PID. Cause, exit code, and orderly cleanup remain unknown. The reported Codex restart does not establish a Windows reboot. The missing process-creation identity remains a limit on marker disposition; the marker blocks the related heavy entry points, not independent source development.
 
 The recovery checkpoint `fbf58a7` recorded the interruption and the reviewed certificate-suppression line only. Historical f611dfc reports and certificate-suppression.json retain their original scope and are not rewritten as run results. No tests, runner, restore, build, product/helper/native entry, certificate operation, or KAG work were performed in that recording/checkpoint round. Subsequent independent source development has its own report. `productionGo=false`; `nativeValidation=NOT_RUN`; generated locks are unavailable.
+
+## Narrow marker reconciliation — 2026-11-11
+
+The parent task's independent review corrected the earlier requirement for a Windows reboot: reboot is one possible sufficient condition, not a necessary condition for this copying-phase run. The original ordinary entry (executor session 94012, no `-Worker`) and saved operation history identify this run; no subsequent cleanup, replacement, restoration, or storage-failure evidence was reported. The copied runner cannot delete `control/dotnet-tree.json`, and creates it before any child process. Its continued absence therefore provides stronger phase evidence than missing exit logs alone.
+
+Read-only checks matched the original marker, ownership, private runner, input contract and Common.ps1 hashes. Common SHA256 was `ad86946901ac238ca8f63b66d712f3ce5bb60603d206a14169eb9df4d03a4e8f`. The pwsh/git inventories matched the contract. Explicit path lookups returned ItemNotFound for dotnet-tree and input-copy-complete, with no permission/I/O error. PID 40436 was absent. In Session 1, the original `Local\Dot_KAG_Workspace_HeavyRun` mutex was acquired exclusively; the same hashes, marker fields, PID absence and missing phase artifacts were checked again while holding it. No other active/synthetic marker existed.
+
+At `2026-11-11T07:40:00.4634305Z`, only `.verification/candidate-build-active.json` was moved to `L/activity-marker-archived-20261111.json`. Its original 216 bytes and SHA256 `b00e01e40b3074c703b3f0762529c614578cfb088f6e71a49b5f4f47765db244` were verified after the move; the original active path was absent. The record is `L/interruption-reconciled-20261111.json`. All earlier L contents and ownership remain unchanged; the mutex was released by the reconciliation command. An earlier attempt stopped before acquiring the mutex or moving anything because the proposed `L/evidence` directory did not exist; the final archive uses the existing L root.
+
+Conclusion: **abnormal termination, incomplete input copying; source order and persisted artifacts support worker/restore not reached; no normal cleanup receipt**. No `jobCleanupConfirmed=true`, guardian-success receipt or new run identity was fabricated. The old root is not reusable; the old entry was not rerun. Candidate input/Finance/locks review, native admission, helper/product launch, deployment and `productionGo=false` remain separate. Independent current-source compilation is recorded in [the integration report](WORKSPACE-INTEGRATION-COMPILE-REPORT.md).
