@@ -235,7 +235,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     <p className="hint">支持 UTF-8 TXT、Markdown、Word（.docx）正文和 PDF 文字层摘录。Word / PDF 须先预览确认，不保存原文件、图片与版式；PDF 不进行 OCR，扫描件须先转为文字并核对。</p>
     <details className="advanced-section"><summary>批量导入文件</summary><KnowledgeBatchImport bridge={bridge} enabled={enabled && !busy && !importReceipt} visible={visible} onActive={setBatchActive} changed={() => { void refreshList() }} open={id => { void run(async () => { await load(id) }) }} /></details>
     <details className="advanced-section"><summary>从网页添加资料</summary><KnowledgeWebCapture bridge={bridge} enabled={enabled && !busy && !batchActive} visible={visible} saved={refreshList} open={id => run(async () => { await load(id) })} /></details>
-    <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} currentDocument={document} />
+    <KnowledgeSearch bridge={bridge} enabled={enabled && !busy} visible={visible} corpusEpoch={corpusEpoch} open={openHit} openCitation={hit => openHit(hit, 'citation')} currentDocument={document} />
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} currentDocument={document} onMemoryDraft={onMemoryDraft} /></details>
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>

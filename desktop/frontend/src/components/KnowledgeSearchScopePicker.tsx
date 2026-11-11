@@ -28,7 +28,7 @@ export function KnowledgeSearchScopePicker({ sources, current, disabled, change 
       <bdi>{item.title}</bdi> · 源版本 {item.scope.sourceRevision}
       <button type="button" aria-label={`移出检索范围：${item.title}`} disabled={disabled} onClick={() => change(sources.filter(value => value.scope.documentId !== item.scope.documentId))}>移除</button>
     </li>)}</ul>}
-    <p className="hint">从文档列表打开资料，再加入范围；每份固定到明确选择的版本。更新、归档或删除后须重新选择，不会自动改用其他版本或全部资料。知识问答的范围仍单独选择。</p>
+    <p className="hint">从文档列表打开资料，再加入范围；每份固定到明确选择的版本。更新、归档或删除后须重新选择，不会自动改用其他版本或全部资料。可将清单用于逐份问答；下方单独问答的范围仍独立选择。</p>
     {sources?.length === 0 && <p>范围已清空。请加入资料，或明确选择“使用全部资料”后再检索。</p>}
   </div>
 }

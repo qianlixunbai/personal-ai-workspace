@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [所选资料逐份问答](engineering/KNOWLEDGE-SOURCE-ANSWERS-REPORT.md)补齐检索清单到同一问题逐份回答：最多 10 份固定版本，明确开始、串行任务、逐项结果与准确引用；失败暂停、未知提交阻止重发、原任务核对和单次取消。产品类型检查及四项针对性合成场景分别通过；连接恢复后仅复查三个受夹具修正影响的场景。未打包、未进行真实桌面／模型验收；图形后端目标主机无法确认，入口已停止。旧运行标记保留，productionGo=false。
+
 2026-11-11 [核心交付与原生候选验证方案](engineering/MODEL-STATE-NATIVE-VALIDATION-PLAN.md)已完成静态核对：分开纯 token 查询、独立 ACL 夹具、完整 NativeGate/Profile 准入、原对象构造和同包 EXE；不重跑 SeedReading，不补做 armGuard。下一决定可仅批准离线候选打包；原生范围还须明确历史拒绝目标和原 Profile 读写。旧包 source `b4ae52e` 缺少八项后续功能及两次安全候选提交。只准备方案，未原生运行／打包／部署，不计新增产品模块，完整验收继续 BLOCKED / productionGo=false。
 
 2026-11-11 [Markdown 章节目录](engineering/KNOWLEDGE-OUTLINE-REPORT.md)完成标题浏览／筛选、准确旧版本跳转和原阅读位置返回。复用现有 locator，未新增解析器或存储；类型检查与两项新合成场景通过，首次测试请求定位错误保留。仅针对这项不同目标进行独立验证，原受拒脚本及旧文本恢复套件未运行；未打包／部署，完整验收继续 BLOCKED / productionGo=false。

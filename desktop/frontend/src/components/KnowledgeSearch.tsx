@@ -4,10 +4,12 @@ import type { KnowledgeSearchHit, KnowledgeSearchResult, KnowledgeSearchStatus }
 import { HighlightedText } from './HighlightedText'
 import { KnowledgeSearchScopePicker, type KnowledgeSearchSource } from './KnowledgeSearchScopePicker'
 import type { KnowledgeDocument } from '../bridge/knowledge'
+import type { KnowledgeAnswerCitation } from '../bridge/knowledgeAnswer'
+import { KnowledgeSourceAnswers } from './KnowledgeSourceAnswers'
 
 const labels = { READY: '可用', BUILDING: '正在重建', STALE: '等待重建', FAILED: '重建失败' }
 type SearchGroup = KnowledgeSearchSource & { hits: KnowledgeSearchHit[] | null; error: string | null }
-export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void>; currentDocument?: KnowledgeDocument | undefined }) {
+export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, openCitation, currentDocument }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; corpusEpoch: number; open: (hit: KnowledgeSearchHit) => Promise<void>; openCitation?: ((citation: KnowledgeAnswerCitation) => Promise<void>) | undefined; currentDocument?: KnowledgeDocument | undefined }) {
   const [sources, setSources] = useState<KnowledgeSearchSource[] | null>(null), [groups, setGroups] = useState<SearchGroup[] | null>(null)
   const [query, setQuery] = useState(''), [status, setStatus] = useState<KnowledgeSearchStatus | null>(null), [result, setResult] = useState<KnowledgeSearchResult | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -74,6 +76,7 @@ export function KnowledgeSearch({ bridge, enabled, visible, corpusEpoch, open, c
       <input id="knowledge-search-query" placeholder="检索关键词" aria-describedby="knowledge-search-help" ref={input} value={query} disabled={!enabled || busy} autoComplete="off" spellCheck={false} onChange={e => { generation.current++; setQuery(e.target.value); setResult(null); setGroups(null); setError('') }} />
       <button type="submit" disabled={!enabled || busy || !query.trim() || sources?.length === 0}>检索</button></form></div>
     <KnowledgeSearchScopePicker sources={sources} current={currentDocument} disabled={!enabled || busy} change={next => { generation.current++; setSources(next); setResult(null); setGroups(null); setError('') }} />
+    <KnowledgeSourceAnswers bridge={bridge} enabled={enabled} visible={visible} sources={sources} searchQuery={query} open={openCitation} />
     <div className="knowledge-search-meta"><p role="status" aria-live="polite">索引：{status ? labels[status.state] : '等待状态'}{busy ? ' · 正在处理' : ''}</p>
     {status?.state === 'BUILDING' && <p role="progressbar" aria-label="关键词索引重建">索引正在重建，完成后请显式检索。</p>}
     <details className="input-details"><summary>检索说明与索引维护</summary><p className="hint">所有关键词需出现在同一片段中；只检索当前可用版本，关键词仅保留在本页。</p><button disabled={!enabled || busy} onClick={() => { void rebuild() }}>重建关键词索引</button></details></div>
