@@ -1,5 +1,7 @@
 # 记忆使用记录：单场景原生测试执行与宿主修复
 
+最新：父任务明确授权同一 Profile 的一次续跑后，`run-2` 也在 Java 启动前退出 10；此次为 INPUT 阶段通用 IOException。仅已保存回执复核将疑点收窄到根路径字符串比对，但实际返回根路径未记录，不能当作已证实根因。未放松检查或再次执行，详见末节。
+
 2026-11-11。运行来源 `a8b68a123da9de8210a09e0a305d5fd14e24dfcb`，分支 `codex/knowledge-version-compare`。[审阅方案](MEMORY-USAGE-NATIVE-TEST-PLAN.md)随后得到父任务明确授权：新建专用合成 Profile、私有 SQLite、固定 helper/JNA，以及正常自有测试进程与限定超时清理；不外推原产品启动许可。
 
 ## 结果
@@ -44,3 +46,19 @@ Prepare、Provision 和 Profile pin 已返回后才进入 JAVA 阶段，因此�
 清理修复 `5f3f8e6`、单条选择 `a8b68a1` 保留。当前宿主重载修复已具备纯编译结果；再次动态执行仍须遵守既定“一次运行、失败保留、不自行轮换 Profile”边界，由父任务明确后续方案，不能悄悄重用失败目录或创建另一 ID 碰运气。没有未退出的本次宿主或在途工具任务，查询仍为未验收，`productionGo=false`。
 
 所有修改只在功能分支本地 Git 保存，不推送；main、六份原始未跟踪文档和旧证据不改动。源码回滚不删除已保留的新合成 Profile。
+
+## 同一 Profile 获准续跑：run-2
+
+父任务在 `d26d2da` 后明确指示只使用已准备 Profile `2fd8ddc494cb45b5a7c8db284fbe386c` 再运行一次，不新建其他 Profile。旧宿主固定创建新 ID，无法原样满足这个指令；因此只给同一测试宿主加显式 `--scenario memory-usage --resume-prepared <run-1>`，读取首次 synthetic/owned、JAVA/AmbiguousMatchException、自然退出回执及无 Java 回执，要求新旧证据目录为同级不同目录，并核对原记录根路径与当前 Root 返回值。通过后只会执行 State.Verify/Pin，跳过 Prepare/Provision；全部 NativeGate/owner 检查仍在。还增加自有 child-start/cleanup 回执用于区分自然退出和强制清理；本轮没有到达这些写入。
+
+这是一处测试入口调整，不是修改产品的 Profile、ACL 或身份规则。`resume-host-build.log` / `resume-host-build-exit.json` 记录只编译宿主、0 警告/错误、退出 0；没有重编依赖或 Java/前端。此前修复版的宿主五文件保存在 `host-after-overload-fix/` 并核对 hash，首次失败字节与回执仍在 run-1 原处。
+
+运行参数是同一 Java、JNA、classpath，输出新 `run-2`，附 `--resume-prepared` 指向原 `run-1`。`run-2/inputs.json` 记录精确目标、宿主/源码 SHA-256，确认固定 helper、Java launcher/test classes、Desktop 与 classpath 保持前轮字节。没有改环境变量、另换身份或通过其他 Shell 尝试准入。
+
+- `run-2/host-result.json`：PID 32608，2026-11-11 12:59:14 UTC 自行退出 10，约 0.118 秒，外部未强制结束；`failure.json` 仅记录 INPUT / IOException / MemoryRecallIntegrationProbe.Main。
+- `run-2/receipt-recheck.json`：只读重核首次已保存回执；同级不同目录、synthetic、原异常类型、退出状态、无 Java 回执等条件均符合。新 owned-profile、child-start、integration 和 child-result 回执均不存在。
+- 根据源码顺序，停止在新 owned-profile 写入之前，尚未到 VERIFY_PREPARED、helper 获取、Job 创建或 Java Process.Start。没有启动 JVM，NativeGate/MemoryStore/数据库查询均未进入。
+- 当前余下疑点为 `root != preparedRoot` 字符串比对。首次 Root 在新 ID 尚不存在时返回创建意图；现在 Root 对既有目录会通过 BindRoot 取 OS 绑定结果，两次语义不同。**这是结合代码和事后回执排除后的推断；当次实际 root/比较结果未保存，不能报告某个具体重定向路径或断言原因已完全证实。** 没有通过执行 helper/产品或改用其他路径获取新结果，也没有降低此检查。
+- `run-2/post-run-observation.json`：只检查本次已记录根下固定位置；runtime-admission.lock、data/memory.db、credentials/client-token 仍不存在。本次未创建另一 Profile、未重复 provision，无 Java 子进程/租约需要清理；宿主退出已确认，无在途动作。
+
+本轮无自动审批拒绝。INPUT 检查未通过是已知失败，不能误报为 Java NativeGate/OS 拒绝，也不能说通过了原生数据库验证。单次续跑已停止；如继续，需先明确当前根绑定与原准备回执之间的实际对应，保持同一 Profile 及全部原生验证，不以第三次碰运气执行或放宽路径条件替代诊断。旧 Surefire 根因、SQLite 查询断言和完整桌面闭环继续未解决。

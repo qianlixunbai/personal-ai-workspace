@@ -3,7 +3,8 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 
-// Always creates a fresh synthetic Profile. Optional PostgreSQL input is a fresh fixture
+// Creates a fresh synthetic Profile, or explicitly resumes a prepared memory-usage
+// fixture whose recorded host failed before starting Java. Optional PostgreSQL input is a fresh fixture
 // whose private path, cluster and process ownership are checked before database mutation.
 internal static class MemoryRecallIntegrationProbe
 {
@@ -14,7 +15,8 @@ internal static class MemoryRecallIntegrationProbe
         string stage = "INPUT";
         try
         {
-            bool memoryUsage = args.Length == 6 && args[4] == "--scenario" && args[5] == "memory-usage";
+            bool resume = args.Length == 8 && args[6] == "--resume-prepared";
+            bool memoryUsage = (args.Length == 6 || resume) && args[4] == "--scenario" && args[5] == "memory-usage";
             if (args.Length is not (4 or 5) && !memoryUsage) return 2;
             if (args.Length == 5 && args[4] == "--scenario") return 2;
             string java = Path.GetFullPath(args[0]), jna = Path.GetFullPath(args[1]),
@@ -22,15 +24,45 @@ internal static class MemoryRecallIntegrationProbe
             var assembly = typeof(PersonalAiWorkspace.Desktop.MemorySelectionWindow).Assembly;
             Type Owner(string name) => assembly.GetType("PersonalAiWorkspace.Desktop." + name, true)!;
             var state = Owner("Mmf3ProfileState");
-            if (File.Exists(Path.Combine(evidence, "owned-profile.json"))) throw new IOException(); // No failed-fixture replay.
-            string id = Guid.NewGuid().ToString("N");
+            if (File.Exists(Path.Combine(evidence, "owned-profile.json"))) throw new IOException(); // Never overwrite a run.
+            string id;
+            string? preparedRoot = null;
+            if (resume)
+            {
+                string previous = Path.GetFullPath(args[7]);
+                if (previous == evidence || Directory.GetParent(previous)?.FullName != Directory.GetParent(evidence)?.FullName)
+                    throw new IOException();
+                using var owned = JsonDocument.Parse(File.ReadAllText(Path.Combine(previous, "owned-profile.json")));
+                using var failure = JsonDocument.Parse(File.ReadAllText(Path.Combine(previous, "failure.json")));
+                using var ended = JsonDocument.Parse(File.ReadAllText(Path.Combine(previous, "host-result.json")));
+                if (!owned.RootElement.GetProperty("synthetic").GetBoolean()
+                    || failure.RootElement.GetProperty("stage").GetString() != "JAVA"
+                    || failure.RootElement.GetProperty("type").GetString() != nameof(AmbiguousMatchException)
+                    || !ended.RootElement.GetProperty("hostExited").GetBoolean()
+                    || ended.RootElement.GetProperty("externallyForced").GetBoolean()
+                    || ended.RootElement.GetProperty("exitCode").GetInt32() != 10
+                    || File.Exists(Path.Combine(previous, "integration.log"))
+                    || File.Exists(Path.Combine(previous, "child-start.json"))
+                    || File.Exists(Path.Combine(previous, "child-result.json"))) throw new IOException();
+                id = owned.RootElement.GetProperty("id").GetString() ?? throw new IOException();
+                preparedRoot = owned.RootElement.GetProperty("root").GetString() ?? throw new IOException();
+            }
+            else id = Guid.NewGuid().ToString("N");
             string root = (string)state.GetMethod("Root", Methods)!.Invoke(null, [id])!;
-            if (Path.Exists(root)) throw new IOException();
-            File.WriteAllText(Path.Combine(evidence, "owned-profile.json"), JsonSerializer.Serialize(new { id, root, synthetic = true }));
-            stage = "PREPARE";
-            state.GetMethod("Prepare", Methods)!.Invoke(null, [id]);
-            stage = "PROVISION";
-            Owner("Mmf3ProfileNative").GetMethod("Provision", Methods)!.Invoke(null, [id, jna]);
+            if (resume ? root != preparedRoot : Path.Exists(root)) throw new IOException();
+            File.WriteAllText(Path.Combine(evidence, "owned-profile.json"), JsonSerializer.Serialize(new { id, root, synthetic = true, resumedPrepared = resume }));
+            if (resume)
+            {
+                stage = "VERIFY_PREPARED";
+                if ((string)state.GetMethod("Verify", Methods)!.Invoke(null, [id])! != root) throw new IOException();
+            }
+            else
+            {
+                stage = "PREPARE";
+                state.GetMethod("Prepare", Methods)!.Invoke(null, [id]);
+                stage = "PROVISION";
+                Owner("Mmf3ProfileNative").GetMethod("Provision", Methods)!.Invoke(null, [id, jna]);
+            }
             using var pin = (IDisposable)state.GetMethod("Pin", Methods)!.Invoke(null, [id])!;
             string helper = (string)Owner("Mmf3ProfileNative").GetProperty("Helper", Methods)!.GetValue(null)!;
             var start = new ProcessStartInfo(java) { UseShellExecute = false, CreateNoWindow = true,
@@ -50,6 +82,7 @@ internal static class MemoryRecallIntegrationProbe
             using var child = Process.Start(start) ?? throw new IOException();
             try
             {
+                File.WriteAllText(Path.Combine(evidence, "child-start.json"), JsonSerializer.Serialize(new { id, childPid = child.Id }));
                 Owner("RuntimeProcessJob").GetMethod("Assign", Methods, [typeof(Process)])!.Invoke(job, [child]);
                 using var stdout = File.Create(Path.Combine(evidence, "integration.log"));
                 using var stderr = File.Create(Path.Combine(evidence, "integration-errors.log"));
@@ -62,7 +95,13 @@ internal static class MemoryRecallIntegrationProbe
                 Console.WriteLine("MEMORY_RECALL_INTEGRATION_EXIT=" + child.ExitCode);
                 return child.ExitCode;
             }
-            finally { if (!child.HasExited) { child.Kill(entireProcessTree: true); child.WaitForExit(5000); } }
+            finally
+            {
+                bool forced = !child.HasExited;
+                if (forced) { child.Kill(entireProcessTree: true); child.WaitForExit(5000); }
+                File.WriteAllText(Path.Combine(evidence, "child-cleanup.json"), JsonSerializer.Serialize(new {
+                    id, childPid = child.Id, childExited = child.HasExited, forced }));
+            }
         }
         catch (Exception error)
         {
