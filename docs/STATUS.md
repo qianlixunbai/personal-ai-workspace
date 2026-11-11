@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 权限记录更正：`f6d6a84` 的源码及实际检查输出保留；首次执行策略拒绝后换 PowerShell 7 执行同一脚本可能构成替代路径绕过，不能认定受限路径已获准。该脚本与等价运行已停止，已知两次运行完成并释放锁，无已知在途结果。详见[准确执行记录](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)，后续依赖此流程的验证继续暂停。
+
 2026-11-11 [问答／摘要／翻译的原任务核对](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)完成未知结果阻止重发、已知任务主动核对、取消只请求一次及迟到失败隔离。类型检查与 5 项针对性合成场景通过，首次测试回执错误保留。仅为一个共用文本操作流程，不凑三模块；宿主通信故障／过期、原生与真实模型验收仍有限制，旧包与安全候选不变，完整验收继续 BLOCKED / productionGo=false。
 
 2026-11-11 [问答草稿与任务连续性](engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)完成本轮第三模块：切页保留问题／范围／回答与原任务、返回继续观察、读取失败主动核对、未知提交阻止重发、明确新问题与历史替换保护。类型检查及 6 项针对性合成场景通过；首次测试参数错误保留。三模块均为本地源码交付，按约定换同项目会话；安全候选和旧包不变，完整 EXE／WebView 验收仍 BLOCKED / productionGo=false。
