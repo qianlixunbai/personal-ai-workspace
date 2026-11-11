@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [核心交付与原生候选验证方案](engineering/MODEL-STATE-NATIVE-VALIDATION-PLAN.md)已完成静态核对：分开纯 token 查询、独立 ACL 夹具、完整 NativeGate/Profile 准入、原对象构造和同包 EXE；不重跑 SeedReading，不补做 armGuard。下一决定可仅批准离线候选打包；原生范围还须明确历史拒绝目标和原 Profile 读写。旧包 source `b4ae52e` 缺少八项后续功能及两次安全候选提交。只准备方案，未原生运行／打包／部署，不计新增产品模块，完整验收继续 BLOCKED / productionGo=false。
+
 2026-11-11 [Markdown 章节目录](engineering/KNOWLEDGE-OUTLINE-REPORT.md)完成标题浏览／筛选、准确旧版本跳转和原阅读位置返回。复用现有 locator，未新增解析器或存储；类型检查与两项新合成场景通过，首次测试请求定位错误保留。仅针对这项不同目标进行独立验证，原受拒脚本及旧文本恢复套件未运行；未打包／部署，完整验收继续 BLOCKED / productionGo=false。
 
 2026-11-11 权限记录更正：`f6d6a84` 的源码及实际检查输出保留；首次执行策略拒绝后换 PowerShell 7 执行同一脚本可能构成替代路径绕过，不能认定受限路径已获准。该脚本与等价运行已停止，已知两次运行完成并释放锁，无已知在途结果。详见[准确执行记录](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)，后续依赖此流程的验证继续暂停。
