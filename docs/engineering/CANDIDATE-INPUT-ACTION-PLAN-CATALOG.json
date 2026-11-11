@@ -1,0 +1,69 @@
+{
+  "format": "WORKSPACE_ACTION_PLAN_CATALOG_NOT_EXECUTION_INPUTS_V1",
+  "baseCommit": "e77780b794e8dec65fc9448c1e4d553b9e8c08b3",
+  "productRevision": "2ca50415cc6752288110fb31aa0abff6af7d4ed9",
+  "tests": 0,
+  "restoreBuildProcessorProductRuns": 0,
+  "inputsApproved": false,
+  "report": {
+    "sha256": "8b52d2ba73d20f7af4cc4a4b8a791cb4d99117758fda735511666f082a9c287b",
+    "path": "docs/engineering/CANDIDATE-INPUT-ACTION-PLAN.md",
+    "bytes": 26565
+  },
+  "evidenceFiles": [
+    {
+      "sha256": "d7cc1c36cb6e485d21576f9ceb3a10820330dc8ca7ffaeac1a9cead6a815c06c",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/Inspect-BootMarker.ps1",
+      "bytes": 4054
+    },
+    {
+      "sha256": "31cfe38b21e17383b5e74ec63ef1e5d3b17f22e3c91174421f4e4879b80dd359",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/boot-marker-byte-inspection.json",
+      "bytes": 48231
+    },
+    {
+      "sha256": "fd081be85a0d6a1dbfb248239ceac7e7ea1920de5a1910adb1d68873b83f50cc",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/sdk-xml-action-surface.json",
+      "bytes": 660530
+    },
+    {
+      "sha256": "c77cb3d14ed7f668335a4c8586ed0701f22a2ee6cdd66aeb854fbfafed1fd4ab",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/sdk-analyzer-inventory.json",
+      "bytes": 52204
+    },
+    {
+      "sha256": "d948184ceaa3dcfd55d959a486cc522bda3ab92e16b016f0d0e5a7dd2e84e2f0",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/jdk21-JarFile.java.txt",
+      "bytes": 40999
+    },
+    {
+      "sha256": "03ea42f299602eb21e59ec67915498d512df545c09316e2ab3d04d63a9537fbf",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/ordered-jar-inputs-and-signature-metadata.json",
+      "bytes": 25804
+    },
+    {
+      "sha256": "cb72178dc7dce0e130ffbde74ecbddcd6d4aa3e4fe745661c7c078c61b0b2ae7",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/lombok-processor-entry-pins.json",
+      "bytes": 1112
+    },
+    {
+      "sha256": "c562dc5786a2a517a058601205d7da0e26104d6184420789da63c1d988202e5d",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/planned-input-pins.json",
+      "bytes": 64288
+    },
+    {
+      "sha256": "f4d089d2b6d004d5a7b88fa0fbd93b129c0a7b7f693999e08a315887306558cf",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/historical-restore-graph-summary.json",
+      "bytes": 2536
+    },
+    {
+      "sha256": "61f6ac8cf4018dfa1d592f7a19e27902b5cd4b2b35e9f1288cb2e2e384eb06bb",
+      "path": ".verification/candidate-action-plan-20261111-e77780b/plan-review-receipt.json",
+      "bytes": 1814
+    }
+  ],
+  "priorCatalog": {
+    "path": "docs/engineering/ISOLATED-CANDIDATE-INPUT-AUDIT-CATALOG.json",
+    "sha256": "d9f6092731d39a8611fdb2df8ba1f80f9d27fa65ff4ae2a3a9f33e37dc74fe55"
+  }
+}
