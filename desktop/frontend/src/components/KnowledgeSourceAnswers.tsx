@@ -11,12 +11,15 @@ type AnswerRow = KnowledgeSearchSource & {
   taskId: string | null; task: KnowledgeAnswerTask | null; error: string; cancelRequested: boolean
 }
 type AnswerBatch = { question: string; query: string; rows: AnswerRow[] }
+type Preparation = { sources: KnowledgeSearchSource[]; query: string } & ({ kind: 'selected' } | { kind: 'failed'; question: string })
 const active = (task: KnowledgeAnswerTask | null) => task?.status === 'QUEUED' || task?.status === 'RUNNING'
 const awaiting = (row: AnswerRow) => row.phase === 'submitted' && (!row.task || active(row.task))
+const failed = (row: AnswerRow) => row.phase === 'rejected' || row.task?.status === 'FAILED' || row.task?.status === 'CANCELLED' || row.task?.status === 'TIMED_OUT'
 const labels = { QUEUED: '已排队', RUNNING: '正在回答', SUCCEEDED: '回答完成', FAILED: '回答失败', CANCELLED: '已取消', TIMED_OUT: '已超时' }
 
-// Each row owns one existing, single-source answer request. Never resubmit a row,
-// infer a task ID from history, or combine independent answers into one citation set.
+// Each row owns one existing, single-source answer request. Retrying confirmed
+// failures requires preparing and explicitly submitting a new batch. Never infer
+// a task ID from history or combine independent answers into one citation set.
 export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, searchQuery, open }: {
   bridge: WorkspaceClient; enabled: boolean; visible: boolean; sources: KnowledgeSearchSource[] | null; searchQuery: string
   open?: ((citation: KnowledgeAnswerCitation) => Promise<void>) | undefined
@@ -25,7 +28,7 @@ export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, sear
   const [question, setQuestion] = useState(''), [query, setQuery] = useState('')
   const [batch, setBatch] = useState<AnswerBatch | null>(null), batchRef = useRef<AnswerBatch | null>(null)
   const [busy, setBusy] = useState(false), [running, setRunning] = useState(false), [notice, setNotice] = useState('')
-  const [replacement, setReplacement] = useState<{ sources: KnowledgeSearchSource[]; query: string } | null>(null)
+  const [replacement, setReplacement] = useState<Preparation | null>(null)
   const generation = useRef(0), lock = useRef(false), continuing = useRef(false), composing = useRef(false)
   const availability = useRef(enabled && visible); availability.current = enabled && visible
   const update = (value: AnswerBatch | null) => { batchRef.current = value; setBatch(value) }
@@ -43,9 +46,15 @@ export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, sear
   }, [bridge])
   useEffect(() => { if (!enabled || !visible) { pause(); setReplacement(null) } }, [enabled, visible])
   const unresolved = batch?.rows.some(row => row.phase === 'unknown' || row.phase === 'submitting' || awaiting(row)) ?? false
+  const pending = batch?.rows.some(row => row.phase === 'waiting' || awaiting(row)) ?? false
+  const failedRows = batch?.rows.filter(failed) ?? []
   const eligible = sources !== null && sources.length > 0 && sources.length <= maximumSearchSources && !sources.some(source => source.unavailableReason)
-  const prepare = (next: { sources: KnowledgeSearchSource[]; query: string }) => {
+  const prepare = (next: Preparation) => {
     if (lock.current || unresolved || !availability.current) return
+    if (next.kind === 'failed') {
+      if (!batchRef.current || pending) return
+      setQuestion(next.question)
+    }
     generation.current++; update(null); setSelection(next.sources); setQuery(next.query); setNotice(''); setReplacement(null)
   }
   const validate = (task: KnowledgeAnswerTask, row: AnswerRow) => {
@@ -127,17 +136,20 @@ export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, sear
       if (epoch === generation.current) patchRow(index, { error: problem instanceof Error ? problem.message : '原任务状态暂时无法确认。' })
     } finally { if (epoch === generation.current) { lock.current = false; setBusy(false) } }
   }
-  const pending = batch?.rows.some(row => row.phase === 'waiting' || awaiting(row)) ?? false
   const unknown = batch?.rows.some(row => row.phase === 'unknown') ?? false
   return <section aria-label="所选资料逐份问答">
     <button disabled={!enabled || !visible || busy || unresolved || !eligible} onClick={() => {
       if (!eligible || !sources) return
-      const next = { sources: sources.map(source => ({ title: source.title, scope: { ...source.scope } })), query: searchQuery }
+      const next: Preparation = { kind: 'selected', sources: sources.map(source => ({ title: source.title, scope: { ...source.scope } })), query: searchQuery }
       if (selection) setReplacement(next); else prepare(next)
     }}>准备用所选资料逐份提问</button>
     <p className="hint">先在检索范围中明确选择资料，再核对问题与版本。每份独立检索和回答，最多 10 次模型请求；不会合成为一份跨资料结论。</p>
-    {replacement && <ConfirmationDialog title="重新准备所选资料？" confirmText="替换清单并保留问题" cancel={() => setReplacement(null)} confirm={() => prepare(replacement)}>
-      <p>将替换本轮清单、关键词和页面结果，保留问题正文；已保存问答历史不变。此操作不会提交问题。</p>
+    {replacement && <ConfirmationDialog title={replacement.kind === 'failed' ? '重新准备失败的资料？' : '重新准备所选资料？'} confirmText="替换清单并保留问题" cancel={() => setReplacement(null)} confirm={() => prepare(replacement)}>
+      {replacement.kind === 'failed' ? <>
+        <p>仅准备以下 {replacement.sources.length} 份已失败、取消、超时或未受理的资料，保留原问题、关键词和源版本。成功项不会加入新清单。</p>
+        <ul aria-label="待重试资料">{replacement.sources.map(source => <li key={source.scope.documentId}><bdi>{source.title}</bdi> · 源版本 {source.scope.sourceRevision}</li>)}</ul>
+        <p>将替换本轮清单和页面结果，已保存问答历史不变。此操作不会提交问题；核对后还需明确点击“确认清单并逐份回答”。</p>
+      </> : <p>将替换本轮清单、关键词和页面结果，保留问题正文；已保存问答历史不变。此操作不会提交问题。</p>}
     </ConfirmationDialog>}
     {selection && <>
       <h3>逐份问答清单 · {selection.length} 份</h3>
@@ -156,6 +168,10 @@ export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, sear
       {batch.rows.some(row => row.task?.status !== 'SUCCEEDED') && <p className="hint">结果不完整不等于所有资料均无证据。请逐项查看未受理、失败、取消或尚未提交的资料。</p>}
       {running && <button onClick={() => { pause(); setNotice('已暂停后续请求；在途请求仍可能返回，未宣称取消。') }}>暂停本轮</button>}
       {!running && pending && !unknown && <button disabled={!enabled || !visible || busy} onClick={() => { void drive() }}>继续尚未完成的资料</button>}
+      {!running && !pending && !unresolved && failedRows.length > 0 && <button disabled={!enabled || !visible || busy} onClick={() => setReplacement({
+        kind: 'failed', question: batch.question, query: batch.query,
+        sources: failedRows.map(row => ({ title: row.title, scope: { ...row.scope } })),
+      })}>仅重新准备失败项</button>}
       {notice && <p role={unknown ? 'alert' : 'status'}>{notice}</p>}
       {batch.rows.map((row, index) => <section key={row.scope.documentId} aria-label={`逐份回答：${row.title}`}>
         <h4>{row.title} · 源版本 {row.scope.sourceRevision}</h4>
