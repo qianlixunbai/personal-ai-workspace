@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [问答出处回查](../engineering/KNOWLEDGE-ANSWER-MEMORY-REPORT.md)：React 记忆正文中的问答 ID／偏移沿现有 answerHistoryGet 读取原记录，引用原文沿既有 get／preview 读取精确源版本。没有新增持久关系、API、schema 或权限；出处可编辑，字面比对不等于事实核验，模型与安全准入边界未变。
+
 2026-11-10 [知识／记忆／会话整合包](../engineering/KNOWLEDGE-CONVERSATION-DELIVERY-REPORT.md)：来源 `b4ae52e`，以已审计 r2 工具链和未变依赖离线重编译完整 Java、Desktop 和 React，实际资源与 420 条内嵌 Runtime pin 核对通过。未调整架构、准入／权限、Profile 或持久化合同；当前累计五项流程首次纳入同一新开发包。包完整性不等于完整 EXE／WebView 或真实模型验收，productionGo=false。
 
 2026-11-10 [会话草稿文件](../engineering/CONVERSATION-DRAFT-FILES-REPORT.md)：显式 saveDraft／openDraft Bridge 入口复用原有 Native 安全新文件写入／持有句柄读取，文件仅含用户消息及用于核对的会话信息；无 Profile 自动落盘、领域 schema 或 Runtime 新 API。Native 只核对当前 session 已知会话的 ID／创建时间，导入文件不授予其他会话权限；React 对照确认、清除现有记忆选择并核对原草稿后才替换。消息与出处保持可编辑文本，无发送／自动记忆或隐式写入。

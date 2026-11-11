@@ -6,6 +6,7 @@ import type { KnowledgeScope } from '../bridge/knowledgeScope'
 import type { KnowledgeDocument } from '../bridge/knowledge'
 import { AnswerContent } from './AnswerContent'
 import { ConfirmationDialog } from './ConfirmationDialog'
+import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
 
 export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined; onMemoryDraft?: ((content: string, role: 'ASSISTANT') => void) | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
@@ -117,6 +118,7 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
       <p className="hint">保存原问题、回答和引用原文为明文 Markdown。以已保存的问答为准，不包含编辑框中的后续修改；仅保存到新文件。这不是完整资料备份。</p>
       {exportNotice && <p role="status">{exportNotice}</p>}
       {onMemoryDraft && task.status === 'SUCCEEDED' && <div>
+        <KnowledgeAnswerExcerpt bridge={bridge} task={task} enabled={enabled && visible && !busy} onDraft={onMemoryDraft} />
         <button disabled={!enabled || !visible || busy} onClick={draftMemory}>整理为记忆草稿</button>
         <p className="hint">仅将回答原文送入记忆编辑器，不会自动保存或调用模型。回答未经核实，请先核对引用来源；引用链接不会随草稿保存，后续来源变化也不会自动更新记忆。</p>
       </div>}

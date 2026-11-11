@@ -4,11 +4,12 @@ import type { KnowledgeDocument, KnowledgePreview } from '../bridge/knowledge'
 import { KnowledgeSourcePreview } from './KnowledgeSourcePreview'
 import { memorySourceHint, readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
 import { ConversationSourceReview } from './ConversationSourceReview'
+import { KnowledgeAnswerSourceReview } from './KnowledgeAnswerSourceReview'
 
 type Review = { content: string; source: MemoryKnowledgeSource; document: KnowledgeDocument; original: string; first: KnowledgePreview }
 
 export function MemorySourceReview(props: { bridge: WorkspaceClient; content: string; enabled?: boolean }) {
-  return <><KnowledgeMemorySourceReview {...props} /><ConversationSourceReview {...props} /></>
+  return <><KnowledgeMemorySourceReview {...props} /><ConversationSourceReview {...props} /><KnowledgeAnswerSourceReview {...props} /></>
 }
 function KnowledgeMemorySourceReview({ bridge, content, enabled = true }: { bridge: WorkspaceClient; content: string; enabled?: boolean }) {
   const hint = useMemo(() => memorySourceHint(content), [content])
