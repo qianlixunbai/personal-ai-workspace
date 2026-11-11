@@ -1,0 +1,475 @@
+{
+  "format": "WORKSPACE_CANDIDATE_INPUT_AUDIT_NOT_EXECUTION_INPUTS_V1",
+  "date": "2026-11-11",
+  "productRevision": "2ca50415cc6752288110fb31aa0abff6af7d4ed9",
+  "buildToolsRevision": "f6bdb9100226961c89e583527ef8a49f4e57cfa9",
+  "testsRun": 0,
+  "productRuns": 0,
+  "restoreBuildRuns": 0,
+  "readDenials": 0,
+  "inputsApproved": false,
+  "treeSummary": [
+    {
+      "bytes": 256666658,
+      "evidence": "../pwsh-tree.json",
+      "source": "C:\\Users\\28421\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell",
+      "status": "COMPLETE_SELECTED_SCOPE",
+      "id": "pwsh",
+      "skipped": 0,
+      "files": 658
+    },
+    {
+      "bytes": 415322610,
+      "source": "C:\\Program Files\\Git",
+      "status": "COMPLETE_SELECTED_SCOPE",
+      "id": "git",
+      "skipped": 6,
+      "files": 9305
+    },
+    {
+      "bytes": 104706123,
+      "source": "C:\\Program Files\\nodejs",
+      "status": "COMPLETE_SELECTED_SCOPE",
+      "id": "node",
+      "skipped": 0,
+      "files": 1940
+    },
+    {
+      "bytes": 1206200841,
+      "source": "C:\\Program Files\\dotnet",
+      "status": "COMPLETE_SELECTED_SCOPE",
+      "id": "dotnet",
+      "skipped": 0,
+      "files": 6778
+    },
+    {
+      "bytes": 109306697,
+      "source": "D:\\IDEA\\Daima\\personal-ai-workspace\\desktop\\frontend\\node_modules",
+      "status": "COMPLETE_SELECTED_SCOPE",
+      "id": "frontend",
+      "skipped": 0,
+      "files": 5214
+    }
+  ],
+  "javaPhysical": {
+    "source": "D:\\IDEA\\Daima\\personal-ai-workspace\\artifacts\\PersonalAiWorkspace-knowledge-conversation-workflows-20261110",
+    "method": "Exact names from SHA256-pinned ZIP; no directory enumeration; no unknown file read",
+    "complete": true,
+    "mismatchCount": 0
+  },
+  "nugetPackages": [
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\documentformat.openxml\\3.5.1\\documentformat.openxml.3.5.1.nupkg",
+      "bytes": 15375355,
+      "sha256": "71375a11a53eeb554005477ce6ca127909aebed474900e92298360b49a68307f",
+      "id": "DocumentFormat.OpenXml",
+      "version": "3.5.1",
+      "sha512": "KujkUMySBytPfAHwwXnU0z8LvCLWUjG3kGqeO8xMb2fSmVaOcF7IAnUNXMrjvxiAO5DvCEpxAUUEVzJxBiYG9g==",
+      "assetsSha512": "zxdOf5VVCe/uNklbRhj8dVBzQGj3DoqkUuqOp9cAZVuN8mNYDjof1lvSQA2OQNr8Ptc9d7pbA7Azq/ReaI3FpA==",
+      "matchesAssetsSha512": false,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\documentformat.openxml.framework\\3.5.1\\documentformat.openxml.framework.3.5.1.nupkg",
+      "bytes": 1683829,
+      "sha256": "d317d974986a90d8f6de1832a48fb1052d771ea475a37a2f4e3be85c497fa9c5",
+      "id": "DocumentFormat.OpenXml.Framework",
+      "version": "3.5.1",
+      "sha512": "E81n0A49xjgEtdTlQyBJ9VWEe2oqYyUwV+GCuEMNZYVi1vBMkxwyO+HdH2YM/obXQtwQa6L5bmllYe3Fpvlz+A==",
+      "assetsSha512": "U5txtc3ORno73xQx9Lf2gWzfaSZnZwKHfLkTAslhlew9lxe5XbUiCt0dY1fHeAf8yRqszUAe5i/+xLC9R/Xfsw==",
+      "matchesAssetsSha512": false,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.14\\microsoft.aspnetcore.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 12784020,
+      "sha256": "91638ac8382c437e71c0739a0e3123290f9bf48bcd01e616352a86add5571089",
+      "id": "Microsoft.AspNetCore.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "sha512": "1k8096BmENepiqExfgA3ndME94v7RqMqTqLrNMyN+FpqD7WD6jKL9tYrYWi4WKNCAgvRMFVlAidzA3s/FDmIQg==",
+      "assetsSha512": null,
+      "matchesAssetsSha512": null,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\10.0.14\\microsoft.netcore.app.host.win-x64.10.0.14.nupkg",
+      "bytes": 5791948,
+      "sha256": "2a4547b0e6cf0dd15e723531daa5450d99d4e151105aec0d31f2b0c7cfb286db",
+      "id": "Microsoft.NETCore.App.Host.win-x64",
+      "version": "10.0.14",
+      "sha512": "Kn602fS/n6hsgpCW8HzykOu31D/oNrxhETNlgoou5yj7Zvvw9KWX3GnG7hevtm9R3VKdP1kPEfQ0Y3eo83YafQ==",
+      "assetsSha512": null,
+      "matchesAssetsSha512": null,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.14\\microsoft.netcore.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 39979900,
+      "sha256": "a3ea61b4a2da6d28e562dd1cdacf80eb4dd6b9727b0a2b47f9d6aba90dbbcb1f",
+      "id": "Microsoft.NETCore.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "sha512": "mLWGagTP5n7nMfJQI2XpXRYgvPcnyYvAc8ZiDfum8ShM0UcrPDyfW4Lqo45UtlCHCucERUHQuMTI6ybVweCN9A==",
+      "assetsSha512": null,
+      "matchesAssetsSha512": null,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\microsoft.web.webview2\\1.0.4258.31\\microsoft.web.webview2.1.0.4258.31.nupkg",
+      "bytes": 9801922,
+      "sha256": "56f7f4b8bf9aee4b8efefbbdd4f67d5f74ebd1b100ed0806da71bf76af481aa9",
+      "id": "Microsoft.Web.WebView2",
+      "version": "1.0.4258.31",
+      "sha512": "HlGVwvyP/IWiXAU8K57Vmg59khY3DWMOxMnH4AHusFRy0/vDAjKItXUIVNXiXXaq4CLfSZyNUic1wOIlnPLsPQ==",
+      "assetsSha512": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg==",
+      "matchesAssetsSha512": false,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.14\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 39195036,
+      "sha256": "a6dba3ca8b8b5b7945399545d881e0ac294746a7571f2209981934d49ecfe8cc",
+      "id": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "sha512": "Hxj4llZzFIss9eBt/EKnxessXLi3/wj6Cwrqp2ZL1j74Pmg8VM+IZd9B7bWGt8flKre7z6cJwoRY5YpwJqX44Q==",
+      "assetsSha512": null,
+      "matchesAssetsSha512": null,
+      "status": "ARCHIVE_READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\28421\\.nuget\\packages\\pdfpig\\0.1.16\\pdfpig.0.1.16.nupkg",
+      "bytes": 16710625,
+      "sha256": "d67171846ea8c28f50359137065fec4514266d7a32b23eae6c5f2ebed8ffcfc4",
+      "id": "PdfPig",
+      "version": "0.1.16",
+      "sha512": "clPAR660u7oGMGO0+I4JAq3olrsbIcKO2m3JtAuOow+IbS62Pyfh00GFnG10Ngl2nizTS5+DsCSlndW6sLvNBQ==",
+      "assetsSha512": "qQcbsNMYVY+K5ELptax2S8thNMk0+rSQq3H/KdYj3LLcko8yTCz8y5KIvsKxIyAuTN0ZYNnfsZkM+0EvxTwHVA==",
+      "matchesAssetsSha512": false,
+      "status": "ARCHIVE_READ_ONLY"
+    }
+  ],
+  "reviewSummary": {
+    "baselineEntries": 934,
+    "manifestFiles": 933,
+    "manifestMismatches": [],
+    "manifestExtraPaths": [
+      "development-bundle.json"
+    ],
+    "runtimeFiles": 419,
+    "javaFiles": 418,
+    "javaBytes": 331142144,
+    "publishProposalFiles": 508,
+    "publishRoles": [
+      {
+        "Name": "BYTE_MATCH_SOURCE_CHOICES_NOT_APPROVED",
+        "Count": 490
+      },
+      {
+        "Name": "FIXED_BASELINE_PIN_NO_EXECUTION",
+        "Count": 4
+      },
+      {
+        "Name": "REBUILD_FROM_PRODUCT_REVISION",
+        "Count": 5
+      },
+      {
+        "Name": "UNRESOLVED",
+        "Count": 9
+      }
+    ],
+    "publishUnmatched": [
+      "ThirdPartyNotices/jsdiff.txt",
+      "ThirdPartyNotices/markdown.txt",
+      "ThirdPartyNotices/Open-XML-SDK.txt",
+      "ThirdPartyNotices/PdfPig-LICENSE.txt",
+      "ThirdPartyNotices/PdfPig-NOTICES.txt",
+      "ThirdPartyNotices/PdfPig-PROVENANCE.txt",
+      "ThirdPartyNotices/react-dom-LICENSE.txt",
+      "ThirdPartyNotices/react-error-boundary.txt",
+      "ThirdPartyNotices/react-LICENSE.txt"
+    ],
+    "javaDependencyJars": 78,
+    "financeEntries": 109,
+    "financeClasses": 85,
+    "dotnetBuildCodeFiles": 5355,
+    "nugetBuildCodeFiles": 755,
+    "frontendReadErrors": 0,
+    "frontendVersionMismatches": 0,
+    "frontendMissing": 44
+  },
+  "evidenceFiles": [
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/audit-receipt.json",
+      "bytes": 310,
+      "sha256": "03100988edd72141b11f9e48ea0efb7ecc5f212b33530abe2cfda7c10c72fd51"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/AuditInputs.initial.ps1",
+      "bytes": 11614,
+      "sha256": "feb59df8f739c09700db4cd1c1ccba78d5f33f00692c7f34fd555e7c298b30a6"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/AuditInputs.ps1",
+      "bytes": 12225,
+      "sha256": "6b03b5f9eb53c96a7b8579a84f268ce39638f04ae71914709981c39823f177fe"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/commands.txt",
+      "bytes": 2908,
+      "sha256": "f0ca28c36130f475d783daab61ff369175da5bddae33bcde53d60e6676caef70"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/application-jar-entries.json",
+      "bytes": 138897,
+      "sha256": "f1c19be21206d9777ded603c7a8ccb757f27315b8ff05ae28f8ca329ae01ceab"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/application-jar-provenance.json",
+      "bytes": 8215,
+      "sha256": "6a097af0649e7e5dfb884fff7256d7f6dcc6e13cd91a0113f45abfd86b61b4bd"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/audit-receipt.json",
+      "bytes": 310,
+      "sha256": "b73ccc22493ae62c3355d0b3267f0d1d2060672df4e33420df4ffa77d7dbbdab"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/baseline-entries.json",
+      "bytes": 128656,
+      "sha256": "fc7c92c9eba0162b8de6bcf71a599cb8e05a8ad2d8cbe731b310d9b71eb23080"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/baseline-manifest.json",
+      "bytes": 128887,
+      "sha256": "bc349eb525d97ba7725b773f79ade8120ece1ce3bf00054236ee51fa875f27da"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/baseline-selected-physical-files.json",
+      "bytes": 70028,
+      "sha256": "e90556e26bdce980c22e22ebccc64527d05c8007daede8b591ae4062a744bea5"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/baseline-zip.json",
+      "bytes": 222,
+      "sha256": "752565692da708a18242ecc8e0ba7be355ebaa94996f720cbebe8835a407e9a6"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/contracts.json",
+      "bytes": 236,
+      "sha256": "48df6944d3ccd4bb2f37172dde0cf2b37705330c6b4c7162d13657ce88ddcb06"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/dotnet-build-code-inventory.json",
+      "bytes": 981565,
+      "sha256": "393804397fca8d38599a879d542ff80b8b443b989c1e628c37de7fbdb7f3ae0e"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/dotnet-tree.json",
+      "bytes": 1266121,
+      "sha256": "de85a10b4d5a4a7b8f0d776a139a1b62db274ba248dab997b92b7cde738c1078"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/executable-metadata.json",
+      "bytes": 1425,
+      "sha256": "03c4f14f874ca673d40832da8efe1dcf6e45ba8a81409acfce4529e6bb915b7f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/finance-jar-entries.json",
+      "bytes": 19109,
+      "sha256": "4f512d2ee6ab393429c5eb1ae904b75fa6bd68ac59758cd22ee8b1c66881b04c"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/finance-jar-metadata.json",
+      "bytes": 3744,
+      "sha256": "139bce80ac3a3eb7140a6b799cd83b1123f0157c8650cd6b8fa288c120e2444f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/finance-source-facts.json",
+      "bytes": 18564,
+      "sha256": "d2ae30ffb79c8fcf3aa3cd91319f3b5b836f4d08493434cb1a00d4f12b9036bb"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/frontend-package-review.json",
+      "bytes": 123026,
+      "sha256": "452312420613d741b2c6ba13713ca6f746e7fe537d62e92e75fb4d5263e5eb91"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/frontend-tree.json",
+      "bytes": 727328,
+      "sha256": "3f1565845d44978db2fefc03a6096460347ce4ca5af9b5c94434957df2e98ebb"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/git-tree.json",
+      "bytes": 1313504,
+      "sha256": "bb932b0f90181a79f6416f2bda5a726b7d92ae81d5fa9400a169a1f10ce9d459"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/jar-role-proposal.json",
+      "bytes": 166328,
+      "sha256": "63040c9a089c82b58e3d22cd40f958c3c0b8f93e31d2ceb05fa363bc15d678a1"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/java-archive-tree.json",
+      "bytes": 58641,
+      "sha256": "c9acc39c25271fae0b3af7b4af7911e9fcd12e505505273d5c1efa73ed36a95f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/java-LICENSE.json",
+      "bytes": 6367,
+      "sha256": "8899cd388a4c546ea8a2adce9cb956d5b843b5fbbe7264df05124394da8aa107"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/java-release.json",
+      "bytes": 1361,
+      "sha256": "d135e7abbdf13dd4fb61276a68d2a06478bc2bc6b2bd933b5c40706e722a95b5"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/node-tree.json",
+      "bytes": 304878,
+      "sha256": "e361535fc6a7baee020d14947000f030e300d3c7de9c387a80c40ae735669d05"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/notice-source-facts.json",
+      "bytes": 2956,
+      "sha256": "d952d017d531081d69cc912cd2b16c23e8a477c34cb0d51e335a1784b466e6cd"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-archive-facts.json",
+      "bytes": 1980,
+      "sha256": "e7268fb0eb98055e03503ce8bd45fe23eddbd18d0ad8743077693b8f432ee858"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-build-code.json",
+      "bytes": 234855,
+      "sha256": "2b0d252d347c57f868f30207f9b840266d8a7b42e14c6e26a4506d95b86570b5"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-documentformat.openxml.3.5.1-entries.json",
+      "bytes": 2589,
+      "sha256": "268abcc6fe50f2f79fbf4f568c8ee2f08f2947af3ac170b9fd423deea6d2c73f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-documentformat.openxml.framework.3.5.1-entries.json",
+      "bytes": 3001,
+      "sha256": "065f30d4038acbd852773cb9182bd9c16f50130883d61b7b63d6177160ba109b"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-hash-comparison.json",
+      "bytes": 4449,
+      "sha256": "e3f582c16d61962a06b5ab6472f4178b3e49d965eda6b2f6c64cb8d38ce6cdec"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-microsoft.aspnetcore.app.runtime.win-x64.10.0.14-entries.json",
+      "bytes": 26288,
+      "sha256": "059e1b62d4a064a0aa08f4125cd6777d5d04cf35fad6164ab2956be56be2a202"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-microsoft.netcore.app.host.win-x64.10.0.14-entries.json",
+      "bytes": 3052,
+      "sha256": "ab9e12c8c8d2c66e0237730ab8265485299707f1046539a535f1ac0b79321c82"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-microsoft.netcore.app.runtime.win-x64.10.0.14-entries.json",
+      "bytes": 31687,
+      "sha256": "02543fd056dd1dc817fbb6959f5a85b3b938f1d67c00d8cd00ad08cf8f5ab549"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-microsoft.web.webview2.1.0.4258.31-entries.json",
+      "bytes": 12921,
+      "sha256": "97195a51b953cf460a2e6fa69e89d9f4f21358c3c808970341e98000d934a7e1"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-microsoft.windowsdesktop.app.runtime.win-x64.10.0.14-entries.json",
+      "bytes": 49332,
+      "sha256": "082d447913169135c5cba2f3833aff6f8abbca6048eec85c5abb776e5d7d6ea9"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-packages.json",
+      "bytes": 4015,
+      "sha256": "61744f6f8e259be993fa4e9cb16d8fcd52969945fcca8532d1a2cca4080a082d"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-pdfpig.0.1.16-entries.json",
+      "bytes": 21926,
+      "sha256": "2a498915e3050547b8368403c0b904ab32a51fc0faa70105c5319a7e814de78f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-targets-action-surface.json",
+      "bytes": 4139,
+      "sha256": "695699f3d7a21493eb7d5918681f07773614aafc7fa0c557c0f4bbbfe53372ac"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/nuget-text-inputs.json",
+      "bytes": 116601,
+      "sha256": "2ca8e9eeaeda15d100f94a03c89a45e5ac5be105afcf028af592a8d66e69b343"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/project-input-metadata.json",
+      "bytes": 3769,
+      "sha256": "ef7475e1577cc2e0a090e383ced6111a4727a3ee9eaf02aa45c815a192be0a1c"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/publish-origin-proposal.json",
+      "bytes": 324224,
+      "sha256": "bf463957c6a57715bcd5a89a0e59b1c46eef43e1b60093cebd1912882d089f2a"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/publish-scope-proposal.json",
+      "bytes": 326310,
+      "sha256": "bac2ff22843130579f0b434d46902d5fd64c3f39e9d3b49fd46635c1dc6f23a2"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/read-errors.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/review-summary.json",
+      "bytes": 976,
+      "sha256": "eb342112cc2e82a00912ba72c89b843bc781010b7e68d7aa9c9b6c9d457bea6d"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/runtime-proposal.json",
+      "bytes": 58771,
+      "sha256": "fee176dee92f392e42839787b5a64aa73e3496860073e9cf76eb1056d31d4a14"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/tree-summary.json",
+      "bytes": 798,
+      "sha256": "43d28f8bf29eda080e2d116f6a408bfd62fe0532446d9775135f918b481fde8c"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/FinishReview.ps1",
+      "bytes": 4007,
+      "sha256": "015b22d170f42e72557e4b31f1f30fedbd3f122bd68158740b108df181b116e8"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/pwsh-tree.json",
+      "bytes": 92257,
+      "sha256": "29c634fa41db939bf66657b1439bda369af905fce0a2835c8034f5f370a6fd2f"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/read-errors.json",
+      "bytes": 284,
+      "sha256": "9f0af6d89c4f4f3c1888bbb3cc34ad057ed4aa618154fcb03999b40b0244a4a1"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/SummarizeInputs.initial.ps1",
+      "bytes": 8387,
+      "sha256": "ed55d10ede167e6b7ab45d61ad0b9c5d05fd1969995926126056b3d13f89c4e0"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/SummarizeInputs.ps1",
+      "bytes": 8388,
+      "sha256": "7d19dd03f9ca126f4ec26f2e2461b831471fc6efe899e73ad0fb6c1373a128da"
+    },
+    {
+      "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/tree-summary.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    }
+  ],
+  "report": {
+    "sha256": "0a5832bcaa030cba07b7f2072f2216cd6ba870c7a2be4e02c12026ba58e386e3",
+    "path": "docs/engineering/ISOLATED-CANDIDATE-INPUT-AUDIT.md"
+  }
+}
