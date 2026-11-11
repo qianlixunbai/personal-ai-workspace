@@ -1,5 +1,7 @@
 # 当前源码整合与最小纯编译
 
+最新更新：当前源码的 [Java 完整 reactor 离线编译](JAVA-OFFLINE-COMPILE-REPORT.md)已通过正常具体命令审批完成，Finance／workspace-application 均 SUCCESS，退出 0，75 条内部 API 警告；原依赖路径不变，前轮失败输出保留。前端、普通 C# 与 Java 均有实际编译证据，真实服务、桌面及新包仍未验收。下述 Java 失败／未执行说明是历史状态。
+
 后续更新：Java 正式构建的输入与独立输出已闭合，并执行了一次离线 Maven compile；Finance 生成 class 后在 JDK 关闭 JAR 时的 `toRealPath` 操作遭访问拒绝，应用模块跳过。详见 [Java 实际构建记录](JAVA-OFFLINE-COMPILE-REPORT.md)。下文“Java 未执行”保留为此前整合阶段的历史状态。
 
 日期：2026-11-11。首次实际编译源码：`27db39f1636ab63795e716bcd3fe228e3ac603b3`，分支 `codex/knowledge-version-compare`。未发现仓库或上级目录的 AGENTS.md；保留 main 和六份用户原有未跟踪文档。

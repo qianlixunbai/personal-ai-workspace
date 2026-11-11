@@ -1,4 +1,37 @@
-# 正式 Maven 离线编译：输入闭合与实际失败
+# 正式 Maven 离线编译：失败诊断与审批后通过
+
+## 最新结果：当前源码的完整 reactor 编译通过
+
+2026-11-11，源码快照对应 `0b7d9690e43d54daac31cf7717fe0cfdffd01afe`。经正常 `exec_command` 的 `sandbox_permissions="require_escalated"` 路径，一次实际 Maven 离线 `compile` 完成，**BUILD SUCCESS，退出码 0**。根项目、finance-domain、workspace-application 全部 SUCCESS；没有只用失败 Finance 中间产物跳过该模块。原代码和 POM 无须修改。
+
+| 模块 | 本次实际编译 Java 源文件 | 输出 class | 复制资源 | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| finance-domain | 54 | 85 | 21 | SUCCESS |
+| workspace-application | 194 | 569 | 7 | SUCCESS |
+
+日志有 75 条 `com.sun.nio.file.ExtendedOpenOption` 内部 API 警告，以及已弃用 API 的提示，不能称为零警告。没有编译错误或新的 AccessDeniedException。未为消除这些警告修改现有文件保护实现，也未追加测试或再次编译。
+
+本次独立根 R2：`D:\IDEA\Daima\personal-ai-workspace\artifacts\java-compile-20261111-0b7d969-scoped`。280 个已跟踪输入从当前源码按原相对路径逐字节复制到 `R2/source`；当前 tracked 文件集合、逐项大小与 SHA256 均与前轮清单相符。`source-inputs.json` SHA256 仍为 `c84e71454a58c35cc5a51f21dfda026906e93ba3a04eed818888e3a918be7d44`，说明前轮之后的提交只更新报告，编译输入未变。`snapshot-receipt.json` 记录当前／前轮版本对应关系；本次没有复制旧 target 或失败 class。
+
+保持原 Maven 3.9.16、Oracle JDK 21.0.7、三个原 POM、原 `C:\Users\28421\.m2\repository` 和 Lombok 1.18.46；执行前在正式审批命令内逐项核对工具及依赖哈希。尤其 jackson-core 仍直接来自 `C:\Users\28421\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.21.5\jackson-core-2.21.5.jar`，未复制／改名／移动依赖，未更换入口、ACL、身份、代理或全局配置。与前轮相同的 Maven 参数为 `-o -B -ntp -X -s <R2>/settings.xml -gs <R2>/settings.xml -l <R2>/maven-compile.log -Dmaven.test.skip=true compile`，cwd 为 `R2/source`。只有独立输出根随本次执行变化。settings 仍固定原本地仓库且 offline=true；未联网或下载。
+
+### 这一次的权限、命令及退出回执
+
+本次完整工具参数在 `R2/exec-command-request-corrected.json`，明确保存 require_escalated、受限任务说明、工作目录、完整命令和 shell 选择；未申请永久命令前缀。工具返回执行会话 `13663`，随后返回退出码 0，原始结果分别保存在 `exec-command-initial-result.json` 和 `exec-command-final-result.json`。这是正常审批路径已允许该具体执行的证据；接口未另行提供审核决定对象，记录没有虚构 approval ID。旧构建的权限字段依然未知，本次成功不能倒推出旧访问错误必然由沙盒造成。
+
+提交前曾把 shell 参数写成解释器绝对路径，平台立即返回 `environment only supports powershell`，未创建启动回执、日志或模块输出。随后仅将 API 的 shell 选择改为支持的 `powershell`，正文命令不变；这是执行前参数校验修正，不是另一次 Maven 构建。原请求、错误和修正请求均保留。实际启动回执确认解释器仍为 `C:\Users\28421\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe`。
+
+- `maven-compile-start.json`：UTC `08:30:42.2402382Z`，host PID 19860、Session 1、require_escalated、全部 Maven 参数与 Java 环境。
+- `maven-compile-exit.json`：UTC `08:30:49.1355902Z`，exitCode=0；Maven 自报 5.626 秒。
+- `maven-compile-cleanup.json`：UTC `08:30:49.1385213Z`，本轮持有的 `Local\Dot_KAG_Workspace_HeavyRun` 已释放并 Dispose。构建仅在实际执行期间占锁，工具会话已结束。
+- `compile-output-manifest.json`：本次 682 个 class／资源输出的相对路径、大小和 SHA256；`compile-summary.json` 汇总计数及主要回执哈希。
+- 新日志 SHA256：`1512b9b4378e5e80a83c7f5d135db0bb67cd0e139394b33c54c72015a8be07db`；退出回执：`31979614cce453c9850d7267186f64a94b8837ffe4ceda7ffbf0f060941d1445`；锁释放回执：`c55aaf8b47f063be9af0e4e2eb212114da15611ce7fcc3a07baef64591655929`。
+
+正式生命周期日志只进入两个模块各自的 resources／compiler；没有 test、package、install、deploy、clean 或产品入口。原失败根中的 85 个 class、21 份资源及日志保留，原日志与退出回执 SHA256 仍分别为 `1176422d63800e0741d47caa552917dd4be1169bcc7648ef322d15bb9cc0883e`、`46aea82f172ff6bc8d6e40ac30f355b1df26f7ae68a0f5a2453057da9008ac22`。原 target/classes、旧包、用户资料和旧中断证据未用作本次输出。
+
+当前已取得前端、普通 Core／Desktop 及 Java 源码的实际编译证据。**仍未验收真实 Java 服务、桌面交互或重新打包**；没有启动后端、模型、helper、原生准入、Profile 构建或候选 EXE，没有部署。`productionGo=false`、`nativeValidation=NOT_RUN`。下文保留前轮失败及针对性诊断的历史记录，其中“未申请／未成功”仅描述当时状态。
+
+## 前轮失败与诊断历史
 
 日期：2026-11-11。产品源码 `fec92229a6b2b62a1bb19a5425ca2361243d33c0`（产品行为与 `7e7332e` 相同）。本轮没有产品源码或 POM 改动，没有重跑前端、C# 或历史测试。
 

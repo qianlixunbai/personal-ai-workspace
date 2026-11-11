@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [当前 Java 源码完成实际编译](../engineering/JAVA-OFFLINE-COMPILE-REPORT.md)：经正常具体命令审批，原 Maven/JDK/依赖路径下的离线 reactor compile 全部成功，Finance 与应用模块均有独立输出，退出 0。前轮访问失败没有通过搬移依赖或修改权限处理；旧证据保留。纯编译缺口已闭合，后续仍需在既有权限边界内安排真实服务、桌面与打包验收；本轮未启动这些动作，也不扩大既有原生准入授权。
+
 2026-11-11 [正式 Java 最小构建](../engineering/JAVA-OFFLINE-COMPILE-REPORT.md)从输入待定推进到实际执行：原 POM 在独立源码快照中离线编译，Finance 出现 85 个 class 后因 JDK 关闭 JAR 时的真实路径解析访问拒绝而失败，应用模块未执行。下一步仅核实精确 jackson-core JAR 的 toRealPath 访问条件，不扩建旧候选工具、不改权限或换路径绕过；旧回执完整保留。
 
 2026-11-11 `7e7332e` 的[最终整合构建](../engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)通过，资料出处资格修复已编入当前前端并经正式桌面资源校验。下一步集中 Java 正式纯编译输入／独立输出及实际运行链路；对话出处资格仍未修复，真实桌面／打包／候选部署边界保持。

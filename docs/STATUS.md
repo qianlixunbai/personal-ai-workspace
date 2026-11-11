@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 最新：[Java 完整 reactor 离线编译通过](engineering/JAVA-OFFLINE-COMPILE-REPORT.md)。源码 `0b7d969` 的 280 个输入与前轮一致，通过正常 require_escalated 审批路径实际编译 Finance 54 个／应用 194 个 Java 文件，退出 0，输出 85／569 个 class；75 条既有内部 API 警告。保持原 Maven/JDK/依赖路径，独立输出、未改 ACL，锁已释放；前轮失败证据保留。前端／普通 C# 既有通过结果保持，真实服务／桌面／新包仍未验收。
+
 2026-11-11 [Java 正式离线构建](engineering/JAVA-OFFLINE-COMPILE-REPORT.md)已完成当前 POM／依赖／Lombok 和独立源快照输出核对，并实际执行一次 compile。Finance 生成 85 个 class、复制 21 份资源后，JDK 关闭 jackson-core JAR 时 `toRealPath` 返回 AccessDeniedException，Maven 退出 1，应用模块 SKIPPED；保留失败输出，未换路重试。这是具体文件系统访问拒绝，不是缺依赖或新审批拒绝。前端／普通 C# 既有通过结果保持，真实后端／桌面未验收。
 
 2026-11-11 最终整合基线为 `7e7332e`：[资料出处修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)已进入独立前端资源与正式 Core／Desktop 普通 Debug 构建，0 警告／0 错误。没有产品运行、打包或原生准入；Java 的 Finance/Lombok 输入／独立输出和对话出处重开资格仍是明确缺口。详见 [整合回执](engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)。
