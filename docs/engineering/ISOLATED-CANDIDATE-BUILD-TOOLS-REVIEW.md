@@ -1,4 +1,6 @@
-# 隔离候选构建工具：源码独立审阅材料
+# 隔离候选构建工具：a298f15 历史审阅材料
+
+> 以下保留首版设计及当时验证范围，用于核对历史，不再是当前执行说明。当前读取边界、Git 对象导出、持久清理标记、manifest 字段、实际合成检查及剩余阻塞，以 [二审修订报告](ISOLATED-CANDIDATE-BUILD-TOOLS-REVISION-REPORT.md) 和修订源码为准。旧文中的 Git diff/archive、Java wildcard、旧目录普通 inventory 和“本轮未执行合成检查”均已被修订。真实 Guard/Build 仍未运行，不得按历史命令执行。
 
 日期：2026-11-11。状态：SOURCE PREPARATION ONLY / NOT EXECUTION AUTHORIZATION。
 

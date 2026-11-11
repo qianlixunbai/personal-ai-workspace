@@ -13,6 +13,9 @@ Write-NewText (Resolve-Below $Root 'evidence/worker-claim') $ownership.token
 $script:Spec=Read-Inputs (Resolve-Below $Root 'control/inputs.json') (Resolve-Below $Root 'control/inputs.schema.json')
 if ((Get-Sha (Resolve-Below $Root 'control/inputs.json')) -cne $ownership.inputSha256) { throw 'Input manifest changed after guardian admission' }
 $script:InputHashes=@{}; $script:Step=0
+# Bind reused toolchain bytes to the fixed ZIP BEFORE copying any Java input.
+$script:TrustedBaseline=Read-PinnedArchiveManifest $script:Spec.baseline.zip $script:BaselineZipHash $script:Spec.baseline.manifestSha256
+Assert-BaselineJavaTree $script:Spec $script:TrustedBaseline.manifest
 foreach ($tree in $script:Spec.trees) {
     foreach ($file in $tree.files) {
         $relative=$script:TreeDestinations[$tree.id]+'/'+$file.path
@@ -40,53 +43,59 @@ function Assert-SourceStable {
     }
 }
 function Export-SourceSnapshot {
-    $head=Invoke-BuildTool git @('-C',$repository,'rev-parse','HEAD') $Root
-    if ([IO.File]::ReadAllText($head.Stdout).Trim() -cne $script:Spec.buildToolsRevision) { throw 'Build tooling revision must be current reviewed HEAD' }
-    [void](Invoke-BuildTool git @('-C',$repository,'diff','--quiet','HEAD','--','scripts/verification/candidate-build','scripts/distribution/README-candidate.txt') $Root)
+    $gitReader=New-PrivateGitReader $repository $Root
+    $gitArgs=@('--no-replace-objects',('--git-dir='+$gitReader),'-c','core.fsmonitor=false','-c','core.attributesFile=',
+        '-c','diff.external=','-c','core.hooksPath=', '-c','gc.auto=0')
     foreach ($file in $script:Spec.controlFiles) {
         $relative=if($file.name -ceq 'README-candidate.txt'){'scripts/distribution/README-candidate.txt'}else{'scripts/verification/candidate-build/'+$file.name}
-        $blob=Invoke-BuildTool git @('-C',$repository,'show',($script:Spec.buildToolsRevision+':'+$relative)) $Root
+        $blob=Invoke-BuildTool git ($gitArgs+@('cat-file','blob',($script:Spec.buildToolsRevision+':'+$relative))) $Root
         if ((Get-Sha $blob.Stdout) -cne (Get-Sha (Resolve-Below $Root ('control/'+$file.name)))) { throw 'Control bytes differ from build-tools commit' }
     }
-    # The reused internal module/dependency graph must be unchanged, including its resources.
-    [void](Invoke-BuildTool git @('-C',$repository,'diff','--quiet',$script:BaselineRevision,$script:ProductRevision,'--',
+    # Compare raw tree records. No worktree diff, textconv, external diff, archive,
+    # export-ignore/subst, or attributes processing occurs, even before blob validation.
+    $contracts=@(
         'finance-domain','pom.xml','workspace-application/pom.xml','desktop/frontend/package.json','desktop/frontend/package-lock.json',
         'bootstrap/Shared','bootstrap/PersonalAiWorkspace.NativeBootstrap','desktop/Directory.Build.props',
-        'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj','desktop/src/PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj') $Root)
-    $treeResult=Invoke-BuildTool git @('-C',$repository,'ls-tree','-r','-z','--full-tree',$script:ProductRevision) $Root
+        'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj','desktop/src/PersonalAiWorkspace.Core/PersonalAiWorkspace.Core.csproj')
+    $old=Invoke-BuildTool git ($gitArgs+@('ls-tree','-r','-z','--full-tree',$script:BaselineRevision,'--')+$contracts) $Root
+    $new=Invoke-BuildTool git ($gitArgs+@('ls-tree','-r','-z','--full-tree',$script:ProductRevision,'--')+$contracts) $Root
+    if((Get-Sha $old.Stdout) -cne (Get-Sha $new.Stdout)){throw 'Reused module/build contract changed'}
+    $treeResult=Invoke-BuildTool git ($gitArgs+@('ls-tree','-r','-z','--full-tree',$script:ProductRevision)) $Root
     $entries=@{}
     foreach ($record in ([IO.File]::ReadAllText($treeResult.Stdout,[Text.UTF8Encoding]::new($false,$true))).Split([char]0,[StringSplitOptions]::RemoveEmptyEntries)) {
         if ($record -cnotmatch '^(100644|100755) blob ([a-f0-9]{40})\t(.+)$') { throw 'Unsupported Git tree mode/path' }
         $path=$Matches[3]; Assert-RelativePath $path
         if ($entries.ContainsKey($path)) { throw 'Case-colliding snapshot paths' }; $entries[$path]=$Matches[2]
     }
-    $archivePath=Resolve-Below $Root 'tmp/source.zip'
-    [void](Invoke-BuildTool git @('-C',$repository,'archive','--format=zip',('--output='+$archivePath),$script:ProductRevision) $Root)
+    $paths=@($entries.Keys | Sort-Object -CaseSensitive)
+    $requests=Resolve-Below $Root 'tmp/blob-requests.txt'
+    Write-NewText $requests ((($paths | ForEach-Object {$entries[$_]}) -join "`n")+"`n")
+    $blobs=Invoke-BuildTool git ($gitArgs+@('cat-file','--batch')) $Root @(0) $requests
     if(Test-Path -LiteralPath $source){throw 'Snapshot must be fresh'}
     [void][IO.Directory]::CreateDirectory($source)
     $script:SourceFiles=[Collections.Generic.List[object]]::new()
-    $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    $zip=[IO.Compression.ZipFile]::OpenRead($archivePath)
+    $stream=[IO.File]::OpenRead($blobs.Stdout)
     try {
-        foreach ($entry in $zip.Entries) {
-            if ($entry.FullName.EndsWith('/')) { continue }
-            $path=$entry.FullName; Assert-RelativePath $path
-            if (-not $seen.Add($path) -or -not $entries.ContainsKey($path)) { throw 'Unexpected/duplicate exported source' }
-            $bytes=Read-ZipEntryBytes $entry
-            if ([WorkspaceCandidateBuild.ArtifactReader]::GitBlobId($bytes) -cne $entries[$path]) { throw 'Git export attribute/filter changed source bytes' }
+        foreach ($path in $paths) {
+            $header=[Text.StringBuilder]::new()
+            while(($next=$stream.ReadByte()) -ne 10){if($next -lt 0 -or $header.Length -gt 100){throw 'Invalid Git batch header'};[void]$header.Append([char]$next)}
+            if($header.ToString() -cnotmatch '^([a-f0-9]{40}) blob ([0-9]+)$' -or $Matches[1] -cne $entries[$path]){throw 'Unexpected Git batch object'}
+            $length=[long]$Matches[2];if($length -gt 256MB){throw 'Oversized source blob'}
+            $bytes=[byte[]]::new([int]$length);$stream.ReadExactly($bytes,0,$bytes.Length)
+            if($stream.ReadByte() -ne 10 -or [WorkspaceCandidateBuild.ArtifactReader]::GitBlobId($bytes) -cne $entries[$path]){throw 'Raw source blob differs'}
             Write-NewBytes (Resolve-Below $source $path) $bytes
             $script:SourceFiles.Add([ordered]@{path=$path;sha256=(Get-BytesSha $bytes);bytes=$bytes.Length;gitBlob=$entries[$path]})
         }
-    } finally { $zip.Dispose() }
-    if ($seen.Count -ne $entries.Count) { throw 'Incomplete source snapshot' }
+        if($stream.ReadByte() -ne -1){throw 'Unexpected extra Git batch output'}
+    } finally { $stream.Dispose() }
     Write-NewJson (Resolve-Below $Root 'evidence/source-inputs.json') @($script:SourceFiles | Sort-Object path -CaseSensitive)
     if ((Get-Sha (Resolve-Below $source 'src/main/java/io/github/qianlixunbai/workspace/model/ModelStateStore.java')) -cne
         '2e2a097f34a5aae5381dbA2d125b6f64cda48bc9747bd2a3c5106453ae6b28ae'.ToLowerInvariant()) { throw 'Frozen safety candidate differs' }
 }
 function Prepare-BaselineInputs {
-    $manifestPath=Join-Path $baseline 'development-bundle.json'
-    if ((Get-Sha $manifestPath) -cne $script:Spec.baseline.manifestSha256) { throw 'Baseline manifest changed' }
-    $manifest=Read-StrictJson $manifestPath
+    $trusted=$script:TrustedBaseline
+    $manifest=$trusted.manifest
+    Assert-AllowedInventory $baseline $trusted.inventory
     if ($manifest.commit -cne $script:BaselineRevision -or $manifest.productionGo -ne $false -or $manifest.trust -cne 'DEVELOPMENT_ONLY') { throw 'Wrong baseline identity' }
     if(-not $manifest.ContainsKey('sourceDirty') -or $manifest.sourceDirty -isnot [bool]){throw 'Baseline source status must be stated, never inferred clean'}
     $script:BaselineProvenance=[ordered]@{manifestCommit=$manifest.commit;manifestSourceDirty=$manifest.sourceDirty;
@@ -94,13 +103,6 @@ function Prepare-BaselineInputs {
         reusedClassSourceAttestation='NOT_ESTABLISHED';financeResources='checked against fixed snapshot';
         meaning='Pinned historical bytes; unchanged Git module does not prove the historical compiled class source'}
     Write-NewJson (Resolve-Below $Root 'evidence/baseline-provenance.json') $script:BaselineProvenance
-    $javaTree=@($script:Spec.trees | Where-Object id -CEQ 'java')[0]
-    $baselineJava=@($manifest.files | Where-Object {$_.path.StartsWith('runtime/java/')})
-    if($javaTree.files.Count -ne $baselineJava.Count){throw 'Java toolchain must be the complete pinned baseline tree'}
-    foreach($file in $javaTree.files){
-        $matches=@($baselineJava | Where-Object path -CEQ ('runtime/java/'+$file.path))
-        if($matches.Count -ne 1 -or $matches[0].sha256 -cne $file.sha256 -or $matches[0].bytes -ne $file.bytes){throw 'Java toolchain differs from reviewed baseline'}
-    }
     $paths=@('runtime/personal-ai-workspace.jar','runtime/jna-5.17.0.jar')+
         @($script:BootstrapPins.Keys | ForEach-Object {'NativeBootstrap/PersonalAiWorkspace.NativeBootstrap'+$_})
     foreach ($path in $paths) {
@@ -174,8 +176,11 @@ function Prepare-JarReuse {
         $oldOrder=@(([Text.Encoding]::UTF8.GetString((Read-ZipEntryBytes $index))).Split("`n",[StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
             if($_ -cnotmatch '^- "(BOOT-INF/lib/[A-Za-z0-9_.+-]+\.jar)"\r?$'){throw 'Unknown classpath index syntax'};$Matches[1]
         })
-        $newOrder=@($script:JarReuse | Where-Object { $_.role -cin @('dependency','finance-module') } | ForEach-Object path)
+        $newOrder=@($script:Spec.jarEntries | Where-Object { $_.role -cin @('dependency','finance-module') } | ForEach-Object path)
         if(($oldOrder -join "`n") -cne ($newOrder -join "`n")){throw 'Reviewed dependency order differs from baseline'}
+        $script:JavaLibraries=@($newOrder | ForEach-Object {Resolve-Below $Root ('work/java-libraries/'+$_.Substring('BOOT-INF/lib/'.Length))})
+        $script:JarReuse=[Collections.Generic.List[object]]::new()
+        foreach($rule in $script:Spec.jarEntries){$script:JarReuse.Add($rule)}
     } finally {$zip.Dispose()}
     if($reuseSeen.Count -ne $wanted.Count -or @($script:JarReuse | Where-Object role -CEQ 'finance-module').Count -ne 1){throw 'Incomplete/mismatched explicit JAR reuse inventory'}
     Write-NewJson (Resolve-Below $Root 'evidence/jar-reuse.json') $script:JarReuse.ToArray()
@@ -194,7 +199,7 @@ function Build-RuntimeJar {
     Write-NewText $argsFile (($javaSources | ForEach-Object {'"'+$_.path+'"'}) -join "`n")
     [void](Invoke-BuildTool javac @('-J-Xmx384m','-J-XX:ActiveProcessorCount=2',('-J-Djava.io.tmpdir='+(Resolve-Below $Root 'tmp/general')),
         '--release','21','-parameters','-encoding','UTF-8','-proc:none','-implicit:none','-sourcepath','',
-        '-cp',((Resolve-Below $Root 'work/java-libraries')+'\*'),'-d',$classes,('@'+$argsFile)) $source)
+        '-cp',($script:JavaLibraries -join ';'),'-d',$classes,('@'+$argsFile)) $source)
     $classFiles=@(Get-Inventory $classes)
     if(-not $classFiles.Count -or @($classFiles | Where-Object { -not $_.path.EndsWith('.class') }).Count){throw 'Unexpected compiler output'}
     foreach($file in $classFiles){
@@ -331,16 +336,51 @@ function Assert-RestoredDependencies {
         # Generated assets/props/targets may only use private absolute paths, not the old cache.
         foreach($file in Get-ChildItem -LiteralPath ([IO.Path]::GetDirectoryName($assetPath)) -File){
             if($file.Extension -notin @('.json','.props','.targets')){continue}
-            $text=[IO.File]::ReadAllText($file.FullName).Replace('\\','\')
-            foreach($match in [regex]::Matches($text,'[A-Za-z]:\\[^"<>\r\n]+')){
-                $absolute=$match.Value.Replace('/','\').TrimEnd('\')
-                if(-not $absolute.StartsWith($Root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Generated restore file contains an external absolute path'}
-            }
+            Assert-StructuredPaths $Root $file.FullName
         }
     }
     # Runtime/framework download dependencies can also be present in the lock/feed; extras are
     # retained in the reviewed input inventory, not silently inferred from a machine cache.
     Write-NewJson (Resolve-Below $Root 'evidence/restored-packages.json') @($seen | Sort-Object)
+}
+function Assert-BuildCodeReview {
+    # A reviewed file/entry hash inventory, NOT an approval switch. Required before
+    # MSBuild evaluates any SDK/NuGet imports; output auditing cannot replace this.
+    $wanted=@{};$seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach($item in $script:Spec.buildCodeReview){
+        Assert-RelativePath $item.source
+        $key=$item.source
+        if($item.ContainsKey('entry')){Assert-RelativePath $item.entry;$key+='!'+$item.entry}
+        if($wanted.ContainsKey($key)){throw 'Duplicate build-code review'};$wanted[$key]=$item
+    }
+    function Check-BuildCode([string]$Key,[string]$Hash){
+        if(-not $wanted.ContainsKey($Key) -or $wanted[$Key].sha256 -cne $Hash){throw 'Unreviewed build input; restore/publish not started'}
+        [void]$seen.Add($Key)
+    }
+    foreach($key in $script:InputHashes.Keys){
+        if($key.StartsWith('tools/dotnet/',[StringComparison]::OrdinalIgnoreCase) -and $key -imatch '\.(props|targets|dll|exe|ps1|cmd|bat|tasks|overridetasks|json)$'){
+            Check-BuildCode $key $script:InputHashes[$key]
+        }
+    }
+    foreach($file in $script:SourceFiles){
+        if($file.path.StartsWith('desktop/',[StringComparison]::OrdinalIgnoreCase) -and $file.path -imatch '\.(csproj|props|targets)$'){
+            Check-BuildCode ('work/source/'+$file.path) $file.sha256
+        }
+    }
+    foreach($package in $script:Spec.nugetPackages){
+        $relative='inputs/nuget-feed/'+$package.archive
+        $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Below $Root $relative))
+        $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        try{foreach($entry in $zip.Entries){
+            if($entry.FullName.EndsWith('/')){continue};Assert-RelativePath $entry.FullName
+            if(-not $names.Add($entry.FullName)){throw 'Ambiguous NuGet build input'}
+            if($entry.FullName -imatch '(^|/)(build|buildTransitive|buildMultiTargeting|analyzers|tools)/|\.(props|targets|dll|exe|ps1|cmd|bat|tasks|overridetasks)$'){
+                Check-BuildCode ($relative+'!'+$entry.FullName) (Get-ZipEntrySha $entry)
+            }
+        }}finally{$zip.Dispose()}
+    }
+    if($seen.Count -ne $wanted.Count){throw 'Build-code review contains unmatched entries'}
+    Write-NewJson (Resolve-Below $Root 'evidence/build-code-review.json') $script:Spec.buildCodeReview
 }
 function Build-Desktop {
     $sdkTree=@($script:Spec.trees | Where-Object id -CEQ 'dotnet')[0]
@@ -358,11 +398,13 @@ function Build-Desktop {
     $emptyTargets=Resolve-Below $Root 'control/empty.targets';Write-NewText $emptyTargets '<Project />'
     $props=@('-p:Mmf3ProfileAcceptanceBuild=true','-p:Mmf3AcceptanceBuild=false','-p:MainWorkspaceDev=false','-p:FrontendSkipBuild=true',
         '-p:RuntimeFrameworkVersion=10.0.14','-p:SelfContained=true','-p:UseSharedCompilation=false','-p:MSBuildEnableWorkloadResolver=false',
+        '-p:DefineConstants=DEBUG%3BTRACE%3BMMF3_ACCEPTANCE%3BMMF3_PROFILE_ACCEPTANCE',
         ('-p:DirectoryBuildPropsPath='+(Resolve-Below $source 'desktop/Directory.Build.props')),('-p:DirectoryBuildTargetsPath='+$emptyTargets),
         ('-p:CustomBeforeMicrosoftCommonTargets='+$emptyTargets),('-p:CustomAfterMicrosoftCommonTargets='+$emptyTargets),'-m:1','-nodeReuse:false')
     $project=Resolve-Below $source 'desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj'
     # Local archive extraction into R only. No remote audit/download/installation fallback.
     Assert-NuGetInputs
+    Assert-BuildCodeReview
     [void](Invoke-BuildTool dotnet (@('restore',$project,'-r','win-x64','--locked-mode','--configfile',$nugetConfig,'-p:NuGetAudit=false','-p:Configuration=Debug')+$props) $source)
     Assert-RestoredDependencies
     $script:Publish=Resolve-Below $Root 'work/desktop-publish'
@@ -397,17 +439,13 @@ function Get-OriginHash($Origin) {
 }
 function Assemble-Candidate {
     $expected=@{}
-    $products=@('PersonalAiWorkspace.Desktop.exe','PersonalAiWorkspace.Desktop.dll','PersonalAiWorkspace.Desktop.deps.json',
-        'PersonalAiWorkspace.Desktop.runtimeconfig.json','PersonalAiWorkspace.Core.dll','PersonalAiWorkspace.Core.deps.json')
     foreach($file in $script:Spec.publishFiles){
-        Assert-RelativePath $file.path
-        if($expected.ContainsKey($file.path) -or $file.path.StartsWith('MainWorkspace/')){throw 'Duplicate or improperly classified publish path'}
-        if($file.path -cmatch '(^|/)(data|credentials|model-state|webview2-profile|evidence|\.git|\.verification|node_modules)(/|$)|\.(pdb|log|trx|db|sqlite|lnk|cmd|bat|ps1|msi)$'){throw 'Disallowed publish payload'}
-        if(($file.path -cin $products) -ne ($file.origin.kind -ceq 'generated-product')){throw 'Product DLL/EXE must come from this fresh build'}
+        Assert-PublishRule $file.path $file.origin.kind
+        if($expected.ContainsKey($file.path)){throw 'Duplicate publish path'}
         $hash=if($file.origin.kind -ceq 'generated-product'){$null}else{Get-OriginHash $file.origin}
-        $expected[$file.path]=@{hash=$hash;origin=$file.origin}
+        $expected[$file.path]=@{path=$file.path;hash=$hash;origin=$file.origin}
     }
-    foreach($file in $script:FrontendFiles){$expected['MainWorkspace/'+$file.path]=@{hash=$file.sha256;origin=@{kind='generated-frontend';productRevision=$script:ProductRevision;source='desktop/frontend/dist/'+$file.path}}}
+    foreach($file in $script:FrontendFiles){$expected['MainWorkspace/'+$file.path]=@{path='MainWorkspace/'+$file.path;hash=$file.sha256;origin=@{kind='generated-frontend';productRevision=$script:ProductRevision;source='desktop/frontend/dist/'+$file.path}}}
     foreach($required in @('PersonalAiWorkspace.Desktop.exe','PersonalAiWorkspace.Desktop.dll','PersonalAiWorkspace.Core.dll','PersonalAiWorkspace.Desktop.deps.json','PersonalAiWorkspace.Desktop.runtimeconfig.json')){
         if(-not $expected.ContainsKey($required)){throw 'Required current product payload missing'}
     }
@@ -420,7 +458,7 @@ function Assemble-Candidate {
     $payload=Resolve-Below $Root 'work/payload'
     if(Test-Path -LiteralPath $payload){throw 'Payload must start empty'};[void][IO.Directory]::CreateDirectory($payload)
     foreach($file in $actual){
-        if(-not $expected.ContainsKey($file.path) -or ($expected[$file.path].hash -and $file.sha256 -cne $expected[$file.path].hash)){throw "Unexpected publish file or bytes: $($file.path)"}
+        if(-not $expected.ContainsKey($file.path) -or $file.path -cne $expected[$file.path].path -or ($expected[$file.path].hash -and $file.sha256 -cne $expected[$file.path].hash)){throw "Unexpected publish file or bytes: $($file.path)"}
         $target=Resolve-Below $payload $file.path
         Copy-PinnedFile (Resolve-Below $script:Publish $file.path) $target $file.sha256 $file.bytes
         Record-Generated $target 'candidate-publish-payload' $expected[$file.path].origin
@@ -449,9 +487,12 @@ function Assemble-Candidate {
     $readme=[IO.File]::ReadAllText((Resolve-Below $Root 'control/README-candidate.txt'))
     Write-NewText (Resolve-Below $payload 'README-CANDIDATE.txt') $readme
     $identity=[ordered]@{format='WORKSPACE_CANDIDATE_V1';artifactRole='CANDIDATE';usage='NOT_FOR_USE';productionGo=$false;nativeValidation='NOT_RUN';fullDesktopAcceptance=$false;
-        systemSandbox=$false;installer=$false;updatesEnabled=$false;productRevision=$script:Spec.productRevision;buildToolsRevision=$script:Spec.buildToolsRevision;
+        systemSandbox=$false;installedThisRun=$false;publishedThisRun=$false;productRevision=$script:Spec.productRevision;buildToolsRevision=$script:Spec.buildToolsRevision;
         inputsSha256=$ownership.inputSha256;baselineReuse=$script:BaselineProvenance;
-        profileAcceptanceBuild=$true;legacyAcceptanceBuild=$false;configuration='Debug';files=(Get-Inventory $payload)}
+        buildProperties=@{Mmf3ProfileAcceptanceBuild=$true;Mmf3AcceptanceBuild=$false};
+        acceptanceConstants=@('MMF3_ACCEPTANCE','MMF3_PROFILE_ACCEPTANCE');
+        acceptanceConstantsEvidence='Fixed Directory.Build.props plus explicit DefineConstants passed to restore/publish; not native acceptance';
+        configuration='Debug';files=(Get-Inventory $payload)}
     Write-NewJson (Resolve-Below $payload 'candidate-manifest.json') $identity
     $envelope=Resolve-Below $Root 'work/review-envelope';[void][IO.Directory]::CreateDirectory($envelope)
     $innerName='payload-CANDIDATE-NOT_FOR_USE.zip';$inner=Resolve-Below $envelope $innerName
@@ -465,6 +506,10 @@ function Assemble-Candidate {
     $script:ReviewArchive=Resolve-Below $Root 'review/PersonalAiWorkspace-CANDIDATE-NOT_FOR_USE-2ca5041.review.zip'
     [IO.Compression.ZipFile]::CreateFromDirectory($envelope,$script:ReviewArchive,[IO.Compression.CompressionLevel]::Fastest,$false)
     Assert-ZipMatches $script:ReviewArchive (Get-Inventory $envelope)
+    Write-NewJson (Resolve-Below $Root 'evidence/final-archive.json') @{
+        path=[IO.Path]::GetRelativePath($Root,$script:ReviewArchive);sha256=(Get-Sha $script:ReviewArchive);
+        bytes=(Get-Item -LiteralPath $script:ReviewArchive).Length;productionGo=$false;nativeValidation='NOT_RUN'
+    }
 }
 
 $failure=$null

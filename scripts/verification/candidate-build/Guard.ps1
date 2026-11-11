@@ -26,10 +26,23 @@ if ($spec.executables.pwsh -cne 'tools/pwsh/pwsh.exe' -or
 $mutex=[Threading.Mutex]::new($false,'Local\Dot_KAG_Workspace_HeavyRun')
 $acquired=$false; $ownedRoot=$false; $job=$null; $failure=$null; $exitCode=$null; $unchanged=$false; $cleanupConfirmed=$false
 $baselineBeforeComplete=$false; $baselinePostflight='NOT_RUN'
+$latch=Join-Path $repository '.verification/candidate-build-active.json'
+$latchCreated=$false;$abandoned=$false;$jobConstructionAttempted=$false;$lockReleased=$false;$reentryBlocked=$true
 try {
     try { $acquired=$mutex.WaitOne([TimeSpan]::FromSeconds(60)) }
-    catch [Threading.AbandonedMutexException] { $acquired=$true; throw 'Abandoned heavy lock: previous outcome must be reconciled first' }
+    catch [Threading.AbandonedMutexException] {
+        $acquired=$true;$abandoned=$true
+        if(-not (Test-Path -LiteralPath $latch)){Write-NewJson $latch @{state='ABANDONED_LOCK_UNRECONCILED';root=$Root};$latchCreated=$true}
+        throw 'Abandoned heavy lock: previous outcome must be reconciled first'
+    }
     if (-not $acquired) { throw 'Heavy window busy; no build started' }
+    Assert-PlainPath $latch
+    if(Test-Path -LiteralPath $latch){throw 'Persistent unresolved build marker exists; do not infer cleanup from lock acquisition'}
+    $syntheticLatch=Join-Path $repository '.verification/candidate-tools-synthetic-active.json'
+    Assert-PlainPath $syntheticLatch
+    if(Test-Path -LiteralPath $syntheticLatch){throw 'Independent synthetic check has an unresolved marker'}
+    Write-NewJson $latch @{state='ACTIVE_OR_UNRECONCILED';root=$Root;guardianPid=$PID;session=1}
+    $latchCreated=$true
     # New-Item without Force rejects an existing directory; the exclusive claim below also rejects reuse.
     [void](New-Item -ItemType Directory -Path $Root -ErrorAction Stop)
     $ownedRoot=$true
@@ -47,14 +60,15 @@ try {
         Copy-PinnedFile (Resolve-Below $repository $relative) (Resolve-Below $Root ('control/'+$file.name)) $file.sha256 $file.bytes
     }
     Copy-InputTree $pwshTree $Root
-    if ((Get-Sha ($baseline+'.zip')) -cne $script:BaselineZipHash -or
-        (Get-Sha (Join-Path $baseline 'development-bundle.json')) -cne $spec.baseline.manifestSha256) { throw 'Baseline hash mismatch' }
-    $before=Get-Inventory $baseline
+    $trusted=Read-PinnedArchiveManifest ($baseline+'.zip') $script:BaselineZipHash $spec.baseline.manifestSha256
+    $before=$trusted.inventory
+    Assert-AllowedInventory $baseline $before
     Write-NewJson (Resolve-Below $Root 'evidence/baseline-before.json') $before
     $baselineBeforeComplete=$true
     Set-BuildEnvironment $Root
     Write-NewText (Resolve-Below $Root 'control/empty.gitconfig') ''
     Add-Type -Path (Resolve-Below $Root 'control/BuildSupport.cs')
+    $jobConstructionAttempted=$true
     $job=[WorkspaceCandidateBuild.OwnedBuildJob]::new()
     [Environment]::SetEnvironmentVariable('WORKSPACE_CANDIDATE_JOB_TOKEN',$token,'Process')
     $worker=Resolve-Below $Root 'tools/pwsh/pwsh.exe'
@@ -68,8 +82,12 @@ try {
 finally {
   try {
     if ($job) {
-        try { $job.Finish(); $cleanupConfirmed=($job.ActiveProcesses -eq 0 -and $job.UnassignedCleanupConfirmed) }
+        try { $job.Finish(); $cleanupConfirmed=($job.ActiveProcesses -eq 0 -and $job.UnassignedCleanupConfirmed -and $job.AuxiliaryHandlesClosed) }
         catch { $failure=(@($failure,$_.Exception.Message) | Where-Object { $_ }) -join '; ' }
+        try { $job.Dispose() } catch { $failure=(@($failure,$_.Exception.Message) | Where-Object { $_ }) -join '; ' }
+        $cleanupConfirmed=$cleanupConfirmed -and $job.JobCloseConfirmed
+    } elseif(-not $jobConstructionAttempted -and -not $abandoned) {
+        $cleanupConfirmed=$true # No process or Job creation was attempted.
     }
     if ($ownedRoot) {
         # A failed worker may have encountered an access denial. Do not accidentally re-read
@@ -77,7 +95,7 @@ finally {
         if(-not $failure -and $exitCode -eq 0 -and $baselineBeforeComplete -and $cleanupConfirmed){
             try {
                 $baselinePostflight='STARTED'
-                Assert-SameInventory $before (Get-Inventory $baseline)
+                Assert-AllowedInventory $baseline $before
                 if ((Get-Sha ($baseline+'.zip')) -cne $script:BaselineZipHash) { throw 'Baseline ZIP changed' }
                 $unchanged=$true;$baselinePostflight='PASS'
             } catch { $failure=$_.Exception.Message;$baselinePostflight='FAILED_NO_RETRY' }
@@ -89,13 +107,27 @@ finally {
             baselineUnchanged=$unchanged;jobCleanupConfirmed=$cleanupConfirmed;forcedCleanup=$forced
             baselinePostflight=$baselinePostflight
             unassignedChildCleanupConfirmed=$(if($job){$job.UnassignedCleanupConfirmed}else{$null})
+            assignmentAttempted=$(if($job){$job.AssignmentAttempted}else{$false})
+            assignmentConfirmed=$(if($job){$job.AssignmentConfirmed}else{$false})
+            workerResumed=$(if($job){$job.WorkerResumed}else{$false})
+            jobCloseAttempted=$(if($job){$job.JobCloseAttempted}else{$false})
+            jobCloseConfirmed=$(if($job){$job.JobCloseConfirmed}else{$false})
             productionGo=$false;nativeValidation='NOT_RUN';fullDesktopAcceptance=$false;systemSandbox=$false
         })
     }
+    # Only this invocation's marker may be removed, while holding the shared lock,
+    # after successful cleanup/handle confirmation and durable result (when R exists).
+    # An uncertain result, crash, or abandoned lock leaves the marker across new R's.
+    if($latchCreated -and $cleanupConfirmed -and -not $abandoned){
+        Remove-Item -LiteralPath $latch -ErrorAction Stop
+        $reentryBlocked=$false
+    }
   } finally {
-    try { if ($job) { $job.Dispose() } }
-    finally { try { if ($acquired) { $mutex.ReleaseMutex() } } finally { $mutex.Dispose() } }
+    try { if ($acquired) { $mutex.ReleaseMutex();$lockReleased=$true } } finally { $mutex.Dispose() }
   }
-  if($ownedRoot){Write-NewJson (Resolve-Below $Root 'evidence/guardian-released.json') @{jobHandleClosed=$true;lockReleased=$acquired;workerCleanupConfirmed=$cleanupConfirmed}}
+  if($ownedRoot){Write-NewJson (Resolve-Below $Root 'evidence/guardian-released.json') @{
+      jobCloseAttempted=$(if($job){$job.JobCloseAttempted}else{$false});jobCloseConfirmed=$(if($job){$job.JobCloseConfirmed}else{$false});
+      lockReleased=$lockReleased;workerCleanupConfirmed=$cleanupConfirmed;reentryBlocked=$reentryBlocked
+  }}
 }
 if ($failure) { throw $failure }

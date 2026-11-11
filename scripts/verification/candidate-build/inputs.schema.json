@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Reviewed candidate build inputs; not an execution authorization",
   "type": "object", "additionalProperties": false,
-  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "jarEntries", "publishFiles", "runtimeFiles"],
+  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "buildCodeReview", "jarEntries", "publishFiles", "runtimeFiles"],
   "properties": {
     "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V1"},
     "repository": {"type": "string", "minLength": 3},
@@ -47,6 +47,16 @@
       "items": {
         "type": "object", "additionalProperties": false, "required": ["id", "version", "sha512", "archive"],
         "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}, "version": {"type": "string", "pattern": "^[0-9][A-Za-z0-9_.+-]*$"}, "sha512": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}, "archive": {"$ref": "#/$defs/path"}}
+      }
+    },
+    "buildCodeReview": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["source", "sha256", "reason"],
+        "properties": {
+          "source": {"$ref": "#/$defs/path"}, "entry": {"$ref": "#/$defs/path"},
+          "sha256": {"$ref": "#/$defs/hash"}, "reason": {"type": "string", "minLength": 20}
+        }
       }
     },
     "jarEntries": {

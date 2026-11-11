@@ -52,7 +52,7 @@ namespace WorkspaceCandidateBuild
 
         // Binary stdout preserves git's NUL records; arguments are never interpreted by a shell.
         public static int RunTool(string executable, string[] arguments, string cwd,
-            string stdout, string stderr, string receiptPrefix, int timeoutSeconds)
+            string stdout, string stderr, string receiptPrefix, int timeoutSeconds, string stdinFile = "")
         {
             var start = new ProcessStartInfo(executable) {
                 WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true,
@@ -65,7 +65,13 @@ namespace WorkspaceCandidateBuild
             {
                 if (!process.Start()) throw new IOException("Tool did not start");
                 WriteReceipt(receiptPrefix + "-started.json", "{\"pid\":" + process.Id + "}");
-                process.StandardInput.Close();
+                var copyInput = Task.Run(async () => {
+                    try {
+                        if (!string.IsNullOrEmpty(stdinFile))
+                            using (var input = File.OpenRead(stdinFile))
+                                await input.CopyToAsync(process.StandardInput.BaseStream);
+                    } finally { process.StandardInput.Close(); }
+                });
                 var copyOut = process.StandardOutput.BaseStream.CopyToAsync(output);
                 var copyErr = process.StandardError.BaseStream.CopyToAsync(errors);
                 if (!process.WaitForExit(checked(timeoutSeconds * 1000)))
@@ -74,7 +80,7 @@ namespace WorkspaceCandidateBuild
                     throw new TimeoutException("Tool deadline exceeded; guardian must close its Job");
                 }
                 WriteReceipt(receiptPrefix + "-process-exited.json", "{\"pid\":" + process.Id + ",\"exitCode\":" + process.ExitCode + "}");
-                if (!Task.WaitAll(new[] { copyOut, copyErr }, 10000))
+                if (!Task.WaitAll(new[] { copyOut, copyErr, copyInput }, 10000))
                     throw new TimeoutException("Tool output drain incomplete");
                 return process.ExitCode;
             }
@@ -94,17 +100,28 @@ namespace WorkspaceCandidateBuild
         public bool ForcedCleanup { get; private set; }
         public uint ActiveBeforeCleanup { get; private set; }
         public bool UnassignedCleanupConfirmed { get; private set; } = true;
-        public OwnedBuildJob()
+        public bool AssignmentAttempted { get; private set; }
+        public bool AssignmentConfirmed { get; private set; }
+        public bool WorkerResumed { get; private set; }
+        public bool JobCloseAttempted { get; private set; }
+        public bool JobCloseConfirmed { get; private set; }
+        public bool AuxiliaryHandlesClosed { get; private set; } = true;
+        private bool workerAttempted;
+        public OwnedBuildJob() : this(12, 768, 2048) { }
+        public OwnedBuildJob(int maxProcesses, uint processMiB, uint jobMiB)
         {
+            // Independent synthetic harness may only tighten these production maxima.
+            if (maxProcesses < 1 || maxProcesses > 12 || processMiB < 1 || processMiB > 768 ||
+                jobMiB < processMiB || jobMiB > 2048) throw new ArgumentOutOfRangeException("Job limits");
             job = CreateJobObjectW(IntPtr.Zero, null);
             if (job == IntPtr.Zero) throw Error("CreateJobObject");
             var limits = new ExtendedLimits();
             limits.Basic.LimitFlags = 0x2000 | 0x100 | 0x200 | 0x8;
-            limits.Basic.ActiveProcessLimit = 12;
-            limits.ProcessMemoryLimit = new UIntPtr(768UL * 1024 * 1024);
-            limits.JobMemoryLimit = new UIntPtr(2UL * 1024 * 1024 * 1024);
+            limits.Basic.ActiveProcessLimit = (uint)maxProcesses;
+            limits.ProcessMemoryLimit = new UIntPtr(processMiB * 1024UL * 1024);
+            limits.JobMemoryLimit = new UIntPtr(jobMiB * 1024UL * 1024);
             if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf<ExtendedLimits>()))
-            { Dispose(); throw Error("SetInformationJobObject"); }
+            { var error = Error("SetInformationJobObject"); Dispose(); throw error; }
         }
 
         public uint ActiveProcesses
@@ -136,6 +153,9 @@ namespace WorkspaceCandidateBuild
         public int RunWorker(string executable, string[] arguments, string cwd,
             string stdout, string stderr, string startedReceipt, int deadlineSeconds)
         {
+            if (workerAttempted || job == IntPtr.Zero || JobCloseAttempted) throw new InvalidOperationException("Job worker is single use");
+            if (deadlineSeconds < 1 || deadlineSeconds > 660) throw new ArgumentOutOfRangeException(nameof(deadlineSeconds));
+            workerAttempted = true;
             var security = new SecurityAttributes { Length = Marshal.SizeOf<SecurityAttributes>(), Inherit = true };
             var handles = new List<IntPtr>();
             IntPtr attributes = IntPtr.Zero, handleList = IntPtr.Zero;
@@ -173,8 +193,9 @@ namespace WorkspaceCandidateBuild
                     0x4 | 0x80000 | 0x08000000, IntPtr.Zero, cwd, ref startup, out process))
                     throw Error("Create suspended build worker");
                 WorkerPid = process.ProcessId;
+                AssignmentAttempted = true;
                 if (!AssignProcessToJobObject(job, process.Process)) throw Error("Assign build Job");
-                assigned = true;
+                assigned = true; AssignmentConfirmed = true;
                 using (var receipt = new FileStream(startedReceipt, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 using (var writer = new StreamWriter(receipt, new UTF8Encoding(false)))
                 {
@@ -182,6 +203,7 @@ namespace WorkspaceCandidateBuild
                     writer.Flush(); receipt.Flush(true);
                 }
                 if (ResumeThread(process.Thread) == uint.MaxValue) throw Error("Resume owned worker");
+                WorkerResumed = true;
                 uint waited = WaitForSingleObject(process.Process, checked((uint)deadlineSeconds * 1000));
                 if (waited == 258) throw new TimeoutException("Build guardian deadline exceeded");
                 if (waited != 0) throw Error("Wait owned worker");
@@ -196,13 +218,14 @@ namespace WorkspaceCandidateBuild
                 if (!assigned && process.Process != IntPtr.Zero)
                     stopFailed = !TerminateProcess(process.Process, 125) || WaitForSingleObject(process.Process, 5000) != 0;
                 UnassignedCleanupConfirmed = !stopFailed;
-                if (process.Thread != IntPtr.Zero) CloseHandle(process.Thread);
-                if (process.Process != IntPtr.Zero) CloseHandle(process.Process);
-                foreach (var handle in handles) CloseHandle(handle);
+                if (process.Thread != IntPtr.Zero && !CloseHandle(process.Thread)) AuxiliaryHandlesClosed = false;
+                if (process.Process != IntPtr.Zero && !CloseHandle(process.Process)) AuxiliaryHandlesClosed = false;
+                foreach (var handle in handles) if (!CloseHandle(handle)) AuxiliaryHandlesClosed = false;
                 if (attributesInitialized) DeleteProcThreadAttributeList(attributes);
                 if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
                 if (handleList != IntPtr.Zero) Marshal.FreeHGlobal(handleList);
                 if (stopFailed) throw new IOException("Cleanup of exact unassigned child is unconfirmed");
+                if (!AuxiliaryHandlesClosed) throw new IOException("Worker handle close unconfirmed");
             }
         }
 
@@ -216,7 +239,18 @@ namespace WorkspaceCandidateBuild
             while (ActiveProcesses != 0 && watch.Elapsed.TotalSeconds < 10) System.Threading.Thread.Sleep(50);
             if (ActiveProcesses != 0) throw new IOException("Owned build Job cleanup unconfirmed");
         }
-        public void Dispose() { if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; } }
+        public void Dispose()
+        {
+            if (JobCloseAttempted) {
+                if (!JobCloseConfirmed) throw new IOException("Previous Job close unconfirmed; no retry");
+                return;
+            }
+            if (job == IntPtr.Zero) return;
+            JobCloseAttempted = true;
+            JobCloseConfirmed = CloseHandle(job);
+            if (!JobCloseConfirmed) throw Error("Close owned Job handle");
+            job = IntPtr.Zero;
+        }
 
         [StructLayout(LayoutKind.Sequential)] private struct SecurityAttributes { internal int Length; internal IntPtr Descriptor; [MarshalAs(UnmanagedType.Bool)] internal bool Inherit; }
         [StructLayout(LayoutKind.Sequential)] private struct BasicLimits { internal long ProcessTime, JobTime; internal uint LimitFlags; internal UIntPtr MinimumWorkingSet, MaximumWorkingSet; internal uint ActiveProcessLimit; internal UIntPtr Affinity; internal uint PriorityClass, SchedulingClass; }
@@ -239,6 +273,6 @@ namespace WorkspaceCandidateBuild
         [DllImport("kernel32.dll", SetLastError = true)] private static extern uint ResumeThread(IntPtr thread);
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetExitCodeProcess(IntPtr process, out uint code);
         [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
-        [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
     }
 }
