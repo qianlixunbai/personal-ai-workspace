@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [问答历史查找](engineering/KNOWLEDGE-ANSWER-HISTORY-SEARCH-REPORT.md)接通本地问题／检索词／回答正文的字面查找、分页和现有引用／会话参考流程；Native-only 新只读接口保持当前历史页授权，未变更存储格式。前端类型及针对性合成检查完成，Java／C# 仅静态核对，未编译／真实桌面／打包验收。本会话三个实质模块到此交接，资料与对话出处重开授权仍是明确后续缺口，productionGo=false。
+
 2026-11-11 [问答出处恢复](engineering/KNOWLEDGE-ANSWER-SOURCE-RECOVERY-REPORT.md)修复重开后记忆回查和跨历史页参考失去读取授权的问题：先通过受控分页列表定位原 ID，再读原问答，不扩展 Native 准入。3 项直接相关合成场景和类型检查通过，真实原生／桌面未验收。资料和对话出处的独立授权缺口仍需后续处理，原运行边界保持。
 
 2026-11-11 [单份知识问答原任务恢复](engineering/KNOWLEDGE-ANSWER-TASK-RECOVERY-REPORT.md)：引用范围核对失败仍保留已知任务编号与原输入；取消只发送一次，未知回执及切页后仅核对原任务。类型检查和两个新增合成流程通过，未重跑旧套件，未编译后端／原生、打包或实际桌面验收。原运行和恢复限制保持，productionGo=false。

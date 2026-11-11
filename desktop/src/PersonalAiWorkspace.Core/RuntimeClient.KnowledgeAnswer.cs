@@ -16,6 +16,8 @@ public sealed record KnowledgeAnswerTask(Guid TaskId,TaskState Status,KnowledgeA
 public sealed record KnowledgeAnswerSummary(string TaskId,string Question,string Status,string CreatedAt)
 { public override string ToString()=>"KnowledgeAnswerSummary[redacted]"; }
 public sealed record KnowledgeAnswerHistoryPage(IReadOnlyList<KnowledgeAnswerSummary> Items,int Total,int Page,int Limit);
+public sealed record KnowledgeAnswerSearchPage(string Query,KnowledgeAnswerHistoryPage Results)
+{ public override string ToString()=>"KnowledgeAnswerSearchPage[redacted]"; }
 public sealed record KnowledgeAnswerHistoryEntry(string Question,string Query,KnowledgeAnswerTask Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryEntry[redacted]"; }
 
@@ -25,7 +27,18 @@ public sealed partial class RuntimeClient
     {
         if(page is <0 or >=50)throw new DesktopException(DesktopError.InvalidRequest);
         using var body=await SendAsync(HttpMethod.Get,$"/api/v1/knowledge/answer/tasks?page={page}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
-        var r=body.RootElement;MemoryFields(r,"items","total","page","limit");
+        return ParseKnowledgeAnswerPage(body.RootElement,page);
+    }
+    public async Task<KnowledgeAnswerSearchPage> SearchKnowledgeAnswersAsync(string query,int page,CancellationToken token)
+    {
+        ValidateKnowledgeQuery(query);if(page is <0 or >=50)throw new DesktopException(DesktopError.InvalidRequest);
+        using var body=await SendAsync(HttpMethod.Get,$"/api/v1/knowledge/answer/tasks/search?query={Uri.EscapeDataString(query)}&page={page}",null,true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeAnswerError,maximumResponse:65536);
+        var r=body.RootElement;MemoryFields(r,"query","results");if(String(r,"query")!=query)throw Invalid();
+        return new(query,ParseKnowledgeAnswerPage(Property(r,"results"),page));
+    }
+    private static KnowledgeAnswerHistoryPage ParseKnowledgeAnswerPage(JsonElement r,int page)
+    {
+        MemoryFields(r,"items","total","page","limit");
         if(KNumber(r,"page",0,49)!=page||KNumber(r,"limit",20,20)!=20)throw Invalid();int total=(int)KNumber(r,"total",0,1000);
         var items=Property(r,"items");if(items.ValueKind!=JsonValueKind.Array||items.GetArrayLength()!=Math.Clamp(total-page*20,0,20))throw Invalid();
         var rows=items.EnumerateArray().Select(row=>{

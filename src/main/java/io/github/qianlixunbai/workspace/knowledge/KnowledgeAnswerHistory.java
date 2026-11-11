@@ -36,6 +36,9 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
         @Override public String toString() { return "KnowledgeAnswerHistorySummary[redacted]"; }
     }
     public record Page(List<Summary> items, long total, int page, int limit) {}
+    public record SearchPage(String query, Page results) {
+        @Override public String toString() { return "KnowledgeAnswerSearchPage[redacted]"; }
+    }
 
     // Restricted data sessions must not open, create, upgrade or reconcile this independent
     // SQLite domain. The existing data methods fail closed when no connection is held.
@@ -149,6 +152,36 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
             if (get(id).task().status() == TaskStatus.QUEUED) throw failure(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
             execute("DELETE FROM answer_scopes WHERE id=?",id.toString());
             execute("DELETE FROM answers WHERE id=?", id.toString()); return null;
+        });
+    }
+    /** Bounded literal search of saved user-facing text, never prompts or serialized citation metadata. */
+    public synchronized SearchPage search(String query, int page) {
+        if (query == null || query.isBlank() || query.codePointCount(0, query.length()) > 128
+                || query.chars().anyMatch(Character::isISOControl) || page < 0 || page >= LIMIT / PAGE_SIZE)
+            throw failure(ErrorCode.INVALID_REQUEST);
+        for (int i = 0; i < query.length(); i++) {
+            char c = query.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (++i >= query.length() || !Character.isLowSurrogate(query.charAt(i))) throw failure(ErrorCode.INVALID_REQUEST);
+            } else if (Character.isLowSurrogate(c)) throw failure(ErrorCode.INVALID_REQUEST);
+        }
+        return read(() -> {
+            List<Summary> matches = new ArrayList<>(); int scanned = 0;
+            try (var s = prepare("SELECT id,question,query,status,result,created FROM answers ORDER BY created DESC,id DESC"); var r = s.executeQuery()) {
+                while (r.next()) {
+                    if (++scanned > LIMIT) throw failure(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
+                    String question = r.getString("question"), keywords = r.getString("query");
+                    boolean match = question.contains(query) || keywords.contains(query);
+                    String result = r.getString("result");
+                    if (!match && result != null) match = JSON.readValue(result, TaskResult.KnowledgeAnswer.class).answer().contains(query);
+                    if (match) {
+                        question = question.strip();
+                        int end = question.offsetByCodePoints(0, Math.min(120, question.codePointCount(0, question.length())));
+                        matches.add(new Summary(UUID.fromString(r.getString("id")), question.substring(0, end), TaskStatus.valueOf(r.getString("status")), Instant.parse(r.getString("created"))));
+                    }
+                }
+            }
+            return new SearchPage(query, new Page(matches.stream().skip((long) page * PAGE_SIZE).limit(PAGE_SIZE).toList(), matches.size(), page, PAGE_SIZE));
         });
     }
     /** Fixed joint lock order: KnowledgeStore then history. Never reconcile or edit source records here. */

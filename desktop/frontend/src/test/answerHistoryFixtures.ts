@@ -7,7 +7,7 @@ export class AnswerHistoryService extends KnowledgeService {
   memory = new MemoryService()
   answerText = '仅用于😀本项目。\n<script>回答仍需核实。</script>'
   sourceText = '# 旧版资料\n仅用于本项目，旧预算五百元。'
-  holdHistory = false; missingHistory = false; missingSource = false; holdPreview = false
+  holdHistory = false; missingHistory = false; missingSource = false; holdPreview = false; holdSearch = false
   historySize = 1
   historyGrant = new Set<string>()
   enforceHistoryGrant = false
@@ -25,15 +25,18 @@ export class AnswerHistoryService extends KnowledgeService {
     if (method.startsWith('memory.') || method.startsWith('shell.')) { this.memory.postMessage(value); return }
     if (!method.startsWith('knowledge.answer') && method !== 'knowledge.preview' && !method.startsWith('conversations.')) { super.postMessage(value); return }
     this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
-    if (method === 'knowledge.answerHistoryGet' && this.holdHistory || method === 'knowledge.preview' && this.holdPreview) return
+    if (method === 'knowledge.answerHistoryGet' && this.holdHistory || method === 'knowledge.preview' && this.holdPreview || method === 'knowledge.answerHistorySearch' && this.holdSearch) return
     queueMicrotask(() => {
-      if (method === 'knowledge.answerHistory') {
-        const rows = Array.from({ length: this.missingHistory ? 0 : this.historySize }, (_, i) => ({
+      if (method === 'knowledge.answerHistory' || method === 'knowledge.answerHistorySearch') {
+        const searching = method === 'knowledge.answerHistorySearch'
+        const entry = this.entry(), matches = !searching || [entry.question, entry.query, entry.task.result!.answer].some(text => text.includes(String(payload.query)))
+        const rows = Array.from({ length: this.missingHistory || !matches ? 0 : this.historySize }, (_, i) => ({
           taskId: i === 0 ? this.entry().task.taskId : `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
           question: this.entry().question + (i > 0 ? ` ${i + 1}` : ''), status: 'SUCCEEDED', createdAt: '2026-11-11T00:00:00Z' }))
         const page = Number(payload.page)
         this.historyGrant = new Set(rows.slice(page * 20, (page + 1) * 20).map(row => row.taskId))
-        this.reply(index, { items: rows.slice(page * 20, (page + 1) * 20), total: rows.length, page, limit: 20 })
+        const results = { items: rows.slice(page * 20, (page + 1) * 20), total: rows.length, page, limit: 20 }
+        this.reply(index, searching ? { query: payload.query, results } : results)
       }
       else if (method === 'knowledge.answerHistoryGet') {
         if (this.missingHistory || this.enforceHistoryGrant && !this.historyGrant.has(String(payload.taskId))) { const request = this.sent[index]!; this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'TaskNotFound', message: '原问答已删除或不在当前授权页。' } }) }

@@ -246,6 +246,7 @@ internal sealed class WorkspaceBridge : IDisposable
                     "knowledge.answerGet"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,false,cancellation),
                     "knowledge.answerCancel"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,true,cancellation),
                     "knowledge.answerHistory"=>await knowledge.AnswerHistoryAsync(session,payload.GetProperty("page").GetInt32(),cancellation),
+                    "knowledge.answerHistorySearch"=>await knowledge.AnswerHistorySearchAsync(session,payload.GetProperty("query").GetString()!,payload.GetProperty("page").GetInt32(),cancellation),
                     "knowledge.answerHistoryGet"=>await knowledge.AnswerHistoryGetAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
                     "knowledge.answerHistoryDelete"=>await knowledge.AnswerHistoryDeleteAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
                     "knowledge.answerExport"=>await knowledge.AnswerExportAsync(session,payload.GetProperty("taskId").GetString()!,cancellation),
@@ -485,7 +486,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport","knowledge.saveSearchWorkset","knowledge.openSearchWorkset"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistorySearch","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport","knowledge.saveSearchWorkset","knowledge.openSearchWorkset"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
         if(method=="knowledge.openSearchWorkset")return Fields(p);
@@ -496,6 +497,8 @@ internal sealed class WorkspaceBridge : IDisposable
             &&KnowledgeWorksetFormat.ValidInput(p.GetProperty("query").GetString(),ReadWorksetScopes(p));
         if(method=="knowledge.answerSubmit")return Fields(p,p.TryGetProperty("scope",out _)?["question","query","scope"]:["question","query"])&&ValidKnowledgeScope(p)&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
         if(method=="knowledge.answerHistory")return Fields(p,"page")&&Page(p)&&p.GetProperty("page").GetInt32()<50;
+        if(method=="knowledge.answerHistorySearch")return Fields(p,"query","page")&&Page(p)&&p.GetProperty("page").GetInt32()<50
+            &&Text(p,"query",256,out var historyQuery)&&historyQuery.EnumerateRunes().Count()<=128&&!historyQuery.Any(char.IsControl);
         if(method is "knowledge.answerGet" or "knowledge.answerCancel" or "knowledge.answerHistoryGet" or "knowledge.answerHistoryDelete" or "knowledge.answerExport")return Fields(p,"taskId")&&Text(p,"taskId",36,out var taskId)&&CanonicalId(taskId);
         if(method is "knowledge.searchStatus" or "knowledge.rebuildSearchIndex" or "knowledge.selectFiles" or "knowledge.discardSelectedFiles")return Fields(p);
         if(method=="knowledge.search")return Fields(p,p.TryGetProperty("scope",out _)?["query","limit","scope"]:["query","limit"])&&ValidKnowledgeScope(p)&&Text(p,"query",256,out var query)&&query.EnumerateRunes().Count()<=128

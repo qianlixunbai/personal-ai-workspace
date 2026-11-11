@@ -101,6 +101,12 @@ internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledg
         var result=await runtime.ListKnowledgeAnswersAsync(page,ct);
         lock(sync){Current(session,known);if(generation!=known.HistoryGeneration)throw new OperationCanceledException();known.HistoryPage=result.Items.Select(x=>Guid.Parse(x.TaskId)).ToHashSet();return result;}
     }
+    internal async Task<KnowledgeAnswerSearchPage> AnswerHistorySearchAsync(string session,string query,int page,CancellationToken ct)
+    {
+        Authority known;int generation;lock(sync){known=Require(session);generation=++known.HistoryGeneration;known.HistoryPage.Clear();}
+        var result=await runtime.SearchKnowledgeAnswersAsync(query,page,ct);
+        lock(sync){Current(session,known);if(generation!=known.HistoryGeneration)throw new OperationCanceledException();known.HistoryPage=result.Results.Items.Select(x=>Guid.Parse(x.TaskId)).ToHashSet();return result;}
+    }
     internal async Task<KnowledgeAnswerHistoryView> AnswerHistoryGetAsync(string session,string taskId,CancellationToken ct)
     {
         Guid id=Guid.ParseExact(taskId,"D");Authority known;int generation;

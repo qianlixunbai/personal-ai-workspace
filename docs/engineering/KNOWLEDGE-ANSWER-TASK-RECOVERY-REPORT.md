@@ -10,6 +10,8 @@
 
 沿用既有任务 API、Bridge 身份校验、固定版本和历史持久化；没有新后端、自动重发、模型调用或安全准入变化。原有无编号的未知提交仍阻止重发，历史相似记录不能解除它。
 
+进一步核对 Native 后的证据界定：`RuntimeClient.SubmitKnowledgeAnswerAsync` 和 `WorkspaceKnowledge.AnswerView` 已在更早位置拒绝越界引用。因此“组件已拿到 ID 后范围异常”是本次合成场景覆盖的前端防御路径，不能称为真实 Native 已复现故障，也不能宣称本次修复能恢复 Native 在更早位置拒绝的提交编号。取消缺少单次标记是直接可达的页面行为；无编号未知提交继续保持原阻断。
+
 ## 本次验证
 
 - `node --max-old-space-size=384 node_modules/typescript/bin/tsc --noEmit` 退出 0。

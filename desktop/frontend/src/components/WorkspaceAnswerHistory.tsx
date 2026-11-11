@@ -6,6 +6,7 @@ import { AnswerContent } from './AnswerContent'
 import { KnowledgeAnswerEvidence } from './KnowledgeAnswerEvidence'
 import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
 import { readAnswerSource, readAuthorizedAnswerHistory } from './memoryAnswerSource'
+import { KnowledgeAnswerHistorySearch } from './KnowledgeAnswerHistorySearch'
 
 export type AnswerSelection = { taskId: string; reference?: Extract<ConversationReference, { kind: 'answer' }> }
 export function WorkspaceAnswerHistory({ bridge, selected, choose, prepare, disabled }: {
@@ -13,30 +14,33 @@ export function WorkspaceAnswerHistory({ bridge, selected, choose, prepare, disa
   prepare?: ((reference: ConversationReference) => void) | undefined; disabled: boolean
 }) {
   const [list, setList] = useState<KnowledgeAnswerHistoryPage | null>(null)
+  const [query, setQuery] = useState(''), [submitted, setSubmitted] = useState<string | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const generation = useRef(0), lock = useRef(false)
   useEffect(() => {
-    const off = bridge.onSession(() => { generation.current++; lock.current = false; setList(null); setBusy(false); setError('') })
+    const off = bridge.onSession(() => { generation.current++; lock.current = false; setList(null); setBusy(false); setError(''); setQuery(''); setSubmitted(null) })
     return () => { generation.current++; off() }
   }, [bridge])
-  const load = async (page: number) => {
+  const load = async (page: number, search: string | null = submitted) => {
     if (disabled || lock.current) return
     const token = ++generation.current
-    lock.current = true; setBusy(true); setError('')
+    lock.current = true; setBusy(true); setError(''); setList(null); choose(null)
+    const read = async (target: number) => search === null ? bridge.knowledgeAnswerHistory(target) : (await bridge.searchKnowledgeAnswers(search, target)).results
     try {
-      let value = await bridge.knowledgeAnswerHistory(page)
+      let value = await read(page)
       if (token !== generation.current) return
-      if (page > 0 && !value.items.length) value = await bridge.knowledgeAnswerHistory(Math.max(0, Math.ceil(value.total / 20) - 1))
-      if (token === generation.current) setList(value)
+      if (page > 0 && !value.items.length) value = await read(Math.max(0, Math.ceil(value.total / 20) - 1))
+      if (token === generation.current) { setList(value); setSubmitted(search) }
     } catch (problem) { if (token === generation.current) setError(problem instanceof Error ? problem.message : '问答历史暂时不可用。') }
     finally { if (token === generation.current) { lock.current = false; setBusy(false) } }
   }
   return <section aria-label="工作区问答历史" aria-busy={busy}>
-    <h3>知识问答历史</h3><p className="hint">按保存时间逐页浏览，独立于上方关键词查找。阅读不会改变资料页的问题草稿或重新生成回答。</p>
-    <button disabled={disabled || busy} onClick={() => { void load(0) }}>{list ? '刷新问答浏览' : '浏览已保存的问答'}</button>
+    <h3>知识问答历史</h3><p className="hint">按时间浏览，或独立查找原问题、检索词和回答正文。阅读不会改变资料页的问题草稿或重新生成回答。</p>
+    <button disabled={disabled || busy} onClick={() => { void load(0, null) }}>{list ? '刷新问答浏览' : '浏览已保存的问答'}</button>
+    <KnowledgeAnswerHistorySearch id="workspace-answer-query" value={query} change={setQuery} disabled={disabled || busy} run={value => { void load(0, value) }} />
     {error && <p role="alert">{error}</p>}
-    {list && <><p>共 {list.total} 条 · 第 {list.page + 1} 页</p>
-      {!list.items.length && <p>没有已保存的问答。</p>}
+    {list && <><p>{submitted !== null ? `匹配“${submitted}” · ` : ''}共 {list.total} 条 · 第 {list.page + 1} 页</p>
+      {!list.items.length && <p>{submitted !== null ? '没有匹配的问答。' : '没有已保存的问答。'}</p>}
       <ul className="workspace-search-results">{list.items.map(row => <li key={row.taskId}><button aria-label={`阅读问答：${row.question}`} disabled={disabled || busy} onClick={() => choose({ taskId: row.taskId })}>
         阅读问答：{row.question}<small>{new Date(row.createdAt).toLocaleString()} · {row.status === 'SUCCEEDED' ? '已完成' : '未成功完成'}</small></button></li>)}</ul>
       <div className="pagination"><button disabled={disabled || busy || list.page === 0} onClick={() => { void load(list.page - 1) }}>上一页问答浏览</button>

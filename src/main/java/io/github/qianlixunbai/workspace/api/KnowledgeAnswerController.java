@@ -17,6 +17,9 @@ public final class KnowledgeAnswerController {
     public KnowledgeAnswerController(KnowledgeAnswerService service,io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory history,
             io.github.qianlixunbai.workspace.task.TaskManager tasks){this.service=service;this.history=history;this.tasks=tasks;}
     @GetMapping public Object list(@RequestParam(defaultValue="0") int page) { KnowledgeController.nativeOnly();return history.list(page); }
+    @GetMapping("/search") public Object search(@RequestParam String query,@RequestParam(defaultValue="0") int page) {
+        KnowledgeController.nativeOnly();return history.search(query,page);
+    }
     @GetMapping("/{id}") public Object history(@PathVariable java.util.UUID id) {
         KnowledgeController.nativeOnly();var entry=history.get(id);
         try { return new io.github.qianlixunbai.workspace.knowledge.KnowledgeAnswerHistory.Entry(entry.question(),entry.query(),tasks.get(id),entry.scope()); }

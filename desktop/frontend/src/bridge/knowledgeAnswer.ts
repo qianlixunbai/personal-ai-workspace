@@ -25,6 +25,12 @@ export function isKnowledgeAnswerTask(v: unknown): v is KnowledgeAnswerTask {
 }
 export interface KnowledgeAnswerHistoryEntry { question: string; query: string; task: KnowledgeAnswerTask; scope?: KnowledgeScope | null }
 export interface KnowledgeAnswerHistoryPage { items: { taskId: string; question: string; status: string; createdAt: string }[]; total: number; page: number; limit: number }
+export interface KnowledgeAnswerSearchPage { query: string; results: KnowledgeAnswerHistoryPage }
+export const isKnowledgeAnswerSearchQuery = (value: unknown): value is string => typeof value === 'string' && !!value.trim()
+  && [...value].length <= 128 && unicode(value) && !/[\x00-\x1f\x7f-\x9f]/.test(value)
+export function isKnowledgeAnswerSearchPage(value: unknown): value is KnowledgeAnswerSearchPage {
+  return isObject(value) && exactFields(value, ['query', 'results']) && isKnowledgeAnswerSearchQuery(value.query) && isKnowledgeAnswerHistoryPage(value.results)
+}
 export function isKnowledgeAnswerHistoryEntry(v: unknown): v is KnowledgeAnswerHistoryEntry {
   if (!isObject(v) || !exactFields(v, 'scope' in v ? ['question', 'query', 'task', 'scope'] : ['question', 'query', 'task']) || !isKnowledgeScope(v.scope === undefined ? null : v.scope)) return false
   const scope = v.scope as KnowledgeScope | null | undefined
