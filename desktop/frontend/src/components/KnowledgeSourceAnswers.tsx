@@ -43,7 +43,7 @@ export function KnowledgeSourceAnswers({ bridge, enabled, visible, sources, sear
   }, [bridge])
   useEffect(() => { if (!enabled || !visible) { pause(); setReplacement(null) } }, [enabled, visible])
   const unresolved = batch?.rows.some(row => row.phase === 'unknown' || row.phase === 'submitting' || awaiting(row)) ?? false
-  const eligible = sources !== null && sources.length > 0 && sources.length <= maximumSearchSources
+  const eligible = sources !== null && sources.length > 0 && sources.length <= maximumSearchSources && !sources.some(source => source.unavailableReason)
   const prepare = (next: { sources: KnowledgeSearchSource[]; query: string }) => {
     if (lock.current || unresolved || !availability.current) return
     generation.current++; update(null); setSelection(next.sources); setQuery(next.query); setNotice(''); setReplacement(null)

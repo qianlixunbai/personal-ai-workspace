@@ -77,6 +77,11 @@ internal sealed class NativeKnowledgeSourceFiles(Func<Window?> owner):IKnowledge
         if (!path.EndsWith(".workspace-draft.md", StringComparison.OrdinalIgnoreCase)) throw ConversationDraftFormat.Invalid();
         return OpenRegular(path, ConversationDraftFormat.MaximumBytes);
     }
+    internal static FileStream OpenSearchWorkset(string path)
+    {
+        if (!path.EndsWith(".workspace-search.md", StringComparison.OrdinalIgnoreCase)) throw KnowledgeWorksetFormat.Invalid();
+        return OpenRegular(path, KnowledgeWorksetFormat.MaximumBytes);
+    }
     internal static FileStream OpenVisionImage(string path)
     {
         try { return OpenRegular(path,4*1024*1024); }

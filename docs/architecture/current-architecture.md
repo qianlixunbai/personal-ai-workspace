@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [检索工作集文件](../engineering/KNOWLEDGE-SEARCH-WORKSET-REPORT.md)：新增受限 saveSearchWorkset/openSearchWorkset Bridge 与 Native 文件选择，复用既有新文件保护写入及持有句柄读取。32 KiB 版本化文件仅保存检索输入与明确资料身份／版本，不保存正文或任务。文件 ID 不授予权限，前端先沿当前受控列表匹配身份再获取版本，预览确认与草稿条件核对后恢复；缺失／变化项保留阻断，恢复不启动查询或任务。无 Profile/schema/Runtime 改动；新增 C# 源码尚未编译或原生验收。
+
 2026-11-11 [多资料检索连续性](../engineering/KNOWLEDGE-SEARCH-CONTINUITY-REPORT.md)：KnowledgeSearch 在 App 保持挂载的页面实例内保存关键词、明确资料版本及分组结果，导航只中止后续读取并使在途回执失效。显式继续复用未完成组的原条件，成功组不重查；条件／corpus／索引失效清除旧结果，连接代次隔离索引状态回执。没有新的 Runtime／Native／存储合同或后台恢复，应用关闭不保留这些临时内容。
 
 2026-11-11 [所选资料逐份问答](../engineering/KNOWLEDGE-SOURCE-ANSWERS-REPORT.md)：React 将明确选择的最多 10 个 documentId/sourceRevision 复制为临时清单，沿既有单范围 answerSubmit/get/cancel 顺序驱动独立问答，复用原文核对与阅读定位。每项任务、错误与引用保留独立归属；未知提交不重发，原 ID 核对与取消不授予新准入，session 更换使旧回执失效。没有 Runtime／Native、协议、存储或依赖变更，也没有跨文档共同证据快照；真实桌面验收仍未执行。

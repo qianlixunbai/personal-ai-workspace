@@ -10,6 +10,7 @@ import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePrevie
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeScope } from './knowledgeScope'
+import { isKnowledgeWorksetOpen, validWorksetInput, type KnowledgeWorksetOpen } from './knowledgeWorkset'
 import { isKnowledgeAnswerTask, isKnowledgeAnswerHistoryPage, isKnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import type { KnowledgeAnswerTask, KnowledgeAnswerHistoryPage, KnowledgeAnswerHistoryEntry } from './knowledgeAnswer'
 import { webFetchMethods, isWebFetchOperation, isWebFetchSubmission } from './webFetch'
@@ -40,7 +41,7 @@ export class BridgeError extends Error { constructor(public code: string, messag
 const submission = (method: Method) => method === 'assistant.submit' || method === 'assistant.proposeMemory' || method === 'translate.submit' || method === 'conversations.send' || method === 'knowledge.answerSubmit'
 const memoryMutation = (method: Method) => ['memory.create', 'memory.update', 'memory.archive', 'memory.restore', 'memory.delete'].includes(method)
 const knowledgeMutation = (method: Method) => ['knowledge.import', 'knowledge.importSelected', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerHistoryDelete'].includes(method)
-const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
+const uncertain = (method: Method) => submission(method) || memoryMutation(method) || knowledgeMutation(method) || method === 'knowledge.answerExport' || method === 'knowledge.saveSearchWorkset' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'web.fetchSubmit' || method === 'web.saveKnowledge' || method === 'models.mutate' || method === 'vision.submit' || method === 'vision.validate'
 const unknownOutcome = () => new BridgeError('OutcomeUnknown', 'Outcome unknown：可能已提交成功。请检查 Runtime；不会自动重发。')
 
 interface Pending { method: Method; searchQuery?: string; searchScope?: string; year?: number; transactionPage?: number; accountImpactPage?: number; historyQuery?: FinanceHistoryQuery; positionQuery?: FinancePositionQuery; assetQuery?: FinanceAssetQuery; transactionQuery?: FinanceTransactionQuery; kind?: string; id?: string; accountId?: string; size?: number; sort?: string; taskId?: string; documentId?: string; requestId?: string; sourceRevision?: string; expectedMetadataVersion?: string; offset?: number; operationId?: string; conversationId?: string; memoryCount?: number; memoryId?: string; expectedRevision?: string; type?: string | null; page?: number; status?: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -214,6 +215,11 @@ export class WorkspaceClient {
   deleteKnowledgeAnswerHistory(taskId: string) { return this.request('knowledge.answerHistoryDelete', { taskId }) as Promise<{ deleted: true }> }
   exportKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerExport', { taskId }) as Promise<{ outcome: 'SAVED' | 'CANCELLED' }> }
   searchKnowledge(query: string, scope: KnowledgeScope | null = null) { return this.request('knowledge.search', scope ? { query, limit: 10, scope } : { query, limit: 10 }) as Promise<KnowledgeSearchResult> }
+  saveKnowledgeSearchWorkset(query: string, sources: KnowledgeScope[]) {
+    if (!validWorksetInput(query, sources)) return Promise.reject(new BridgeError('KnowledgeWorksetInvalid', '请选择 1–10 份明确版本，并检查关键词长度。'))
+    return this.request('knowledge.saveSearchWorkset', { query, sources }) as Promise<{ outcome: 'SAVED' | 'CANCELLED' }>
+  }
+  openKnowledgeSearchWorkset() { return this.request('knowledge.openSearchWorkset') as Promise<KnowledgeWorksetOpen> }
   knowledgeSearchStatus() { return this.request('knowledge.searchStatus') as Promise<KnowledgeSearchStatus> }
   rebuildKnowledgeSearch() { return this.request('knowledge.rebuildSearchIndex') as Promise<KnowledgeSearchStatus> }
   getKnowledge(documentId: string) { return this.request('knowledge.get', { documentId }) as Promise<KnowledgeDetail> }
@@ -240,7 +246,7 @@ export class WorkspaceClient {
       this.statusObservations.invalidate(['model'], '模型相关请求使旧观察失效；请显式检查当前模型状态，任务结束以原任务回执为准。')
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId); reject(uncertain(method) ? unknownOutcome()
-        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.selectFiles' || method === 'knowledge.importSelected' || method === 'knowledge.answerExport' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
+        : new BridgeError('ClientTimeout', '操作等待超时，请检查原生窗口。')) }, method.startsWith('finance.') ? 40_000 : method.startsWith('storage.') ? 30_000 : method === 'vision.validate' ? 230_000 : method === 'vision.submit' ? 50_000 : method === 'vision.pick' ? 300_000 : method.startsWith('models.') ? 400_000 : method === 'web.fetchSubmit' ? 80_000 : method.startsWith('native.') || method.endsWith('.selectMemories') || method === 'knowledge.import' || method === 'knowledge.selectFiles' || method === 'knowledge.importSelected' || method === 'knowledge.answerExport' || method === 'knowledge.saveSearchWorkset' || method === 'knowledge.openSearchWorkset' || method === 'conversations.export' || method === 'conversations.saveDraft' || method === 'conversations.openDraft' ? 300_000 : 15_000)
       this.pending.set(requestId, { method, ...(isObject(payload) ? {
         ...(method === 'conversations.search' ? { searchQuery: payload.query as string, searchScope: payload.scope as string } : {}),
         ...(method === 'finance.annual' ? { year: payload.year as number } : {}),
@@ -342,7 +348,8 @@ export class WorkspaceClient {
         : pending.method === 'knowledge.answerHistory' ? isKnowledgeAnswerHistoryPage(data.result) && data.result.page === pending.page
         : pending.method === 'knowledge.answerHistoryGet' ? isKnowledgeAnswerHistoryEntry(data.result) && data.result.task.taskId === pending.taskId
         : pending.method === 'knowledge.answerHistoryDelete' ? isObject(data.result) && exactFields(data.result, ['deleted']) && data.result.deleted === true
-        : pending.method === 'knowledge.answerExport' || pending.method === 'conversations.export' || pending.method === 'conversations.saveDraft' ? isObject(data.result) && exactFields(data.result, ['outcome']) && ['SAVED', 'CANCELLED'].includes(data.result.outcome as string)
+        : pending.method === 'knowledge.answerExport' || pending.method === 'knowledge.saveSearchWorkset' || pending.method === 'conversations.export' || pending.method === 'conversations.saveDraft' ? isObject(data.result) && exactFields(data.result, ['outcome']) && ['SAVED', 'CANCELLED'].includes(data.result.outcome as string)
+        : pending.method === 'knowledge.openSearchWorkset' ? isKnowledgeWorksetOpen(data.result)
         : pending.method === 'conversations.openDraft' ? isConversationDraftOpen(data.result) && (data.result.outcome === 'CANCELLED' || data.result.draft.conversationId === pending.conversationId)
         : pending.method === 'knowledge.search' ? isKnowledgeSearchResult(data.result)
         : pending.method === 'knowledge.searchStatus' || pending.method === 'knowledge.rebuildSearchIndex' ? isKnowledgeSearchStatus(data.result)
@@ -384,7 +391,7 @@ export class WorkspaceClient {
       }
     } else if (data.ok === false && exactFields(data, ['version', 'sessionId', 'requestId', 'ok', 'error'])
       && isSafeError(data.error)) {
-      pending.reject((pending.method === 'knowledge.answerSubmit' || memoryMutation(pending.method) || knowledgeMutation(pending.method)) && ['RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(data.error.code) ? unknownOutcome() : new BridgeError(data.error.code, data.error.message)); return
+      pending.reject((pending.method === 'knowledge.answerSubmit' || pending.method === 'knowledge.saveSearchWorkset' || memoryMutation(pending.method) || knowledgeMutation(pending.method)) && ['RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(data.error.code) ? unknownOutcome() : new BridgeError(data.error.code, data.error.message)); return
     }
     pending.reject(uncertain(pending.method) ? unknownOutcome() : new BridgeError('InvalidResponse', '工作区返回了无效响应，请重新打开。'))
   }

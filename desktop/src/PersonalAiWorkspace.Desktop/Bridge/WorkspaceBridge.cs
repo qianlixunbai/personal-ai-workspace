@@ -240,6 +240,8 @@ internal sealed class WorkspaceBridge : IDisposable
                 if(knowledge is null)throw new WorkspaceOperationException("NATIVE_UNAVAILABLE","Knowledge 暂时不可用。");
                 string? id=payload.TryGetProperty("documentId",out var documentId)&&documentId.ValueKind==JsonValueKind.String?documentId.GetString():null;
                 result=method switch {
+                    "knowledge.saveSearchWorkset"=>await knowledge.WorksetFileAsync(session,payload.GetProperty("query").GetString()!,ReadWorksetScopes(payload),cancellation),
+                    "knowledge.openSearchWorkset"=>await knowledge.WorksetFileAsync(session,null,null,cancellation),
                     "knowledge.answerSubmit"=>await knowledge.AnswerSubmitAsync(session,payload.GetProperty("question").GetString()!,payload.GetProperty("query").GetString()!,cancellation,ReadKnowledgeScope(payload)),
                     "knowledge.answerGet"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,false,cancellation),
                     "knowledge.answerCancel"=>await knowledge.AnswerTaskAsync(session,payload.GetProperty("taskId").GetString()!,true,cancellation),
@@ -483,9 +485,15 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> ModelMethods = new HashSet<string>(StringComparer.Ordinal)
     { "models.inspect", "models.inspectRecovery", "models.mutate" };
     internal static readonly IReadOnlySet<string> KnowledgeMethods=new HashSet<string>(StringComparer.Ordinal)
-    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport"};
+    {"knowledge.list","knowledge.get","knowledge.import","knowledge.selectFiles","knowledge.importSelected","knowledge.discardSelectedFiles","knowledge.importState","knowledge.cancelImport","knowledge.archive","knowledge.restore","knowledge.delete","knowledge.preview","knowledge.previewBefore","knowledge.search","knowledge.searchStatus","knowledge.rebuildSearchIndex","knowledge.answerSubmit","knowledge.answerGet","knowledge.answerCancel","knowledge.answerHistory","knowledge.answerHistoryGet","knowledge.answerHistoryDelete","knowledge.answerExport","knowledge.saveSearchWorkset","knowledge.openSearchWorkset"};
     private static bool ValidKnowledgePayload(string method,JsonElement p)
     {
+        if(method=="knowledge.openSearchWorkset")return Fields(p);
+        if(method=="knowledge.saveSearchWorkset")return Fields(p,"query","sources")&&p.GetProperty("query").ValueKind==JsonValueKind.String
+            &&p.GetProperty("sources").ValueKind==JsonValueKind.Array&&p.GetProperty("sources").GetArrayLength() is >=1 and <=10
+            &&p.GetProperty("sources").EnumerateArray().All(source=>Fields(source,"documentId","sourceRevision")&&Text(source,"documentId",36,out var id)&&CanonicalId(id)
+                &&Text(source,"sourceRevision",2,out var revision)&&revision is "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10")
+            &&KnowledgeWorksetFormat.ValidInput(p.GetProperty("query").GetString(),ReadWorksetScopes(p));
         if(method=="knowledge.answerSubmit")return Fields(p,p.TryGetProperty("scope",out _)?["question","query","scope"]:["question","query"])&&ValidKnowledgeScope(p)&&Text(p,"question",3000,out _)&&Text(p,"query",256,out var answerQuery)&&answerQuery.EnumerateRunes().Count()<=128&&!answerQuery.Any(char.IsControl);
         if(method=="knowledge.answerHistory")return Fields(p,"page")&&Page(p)&&p.GetProperty("page").GetInt32()<50;
         if(method is "knowledge.answerGet" or "knowledge.answerCancel" or "knowledge.answerHistoryGet" or "knowledge.answerHistoryDelete" or "knowledge.answerExport")return Fields(p,"taskId")&&Text(p,"taskId",36,out var taskId)&&CanonicalId(taskId);
@@ -512,6 +520,8 @@ internal sealed class WorkspaceBridge : IDisposable
     }
     private static KnowledgeSourceScope? ReadKnowledgeScope(JsonElement payload)=>!payload.TryGetProperty("scope",out var scope)||scope.ValueKind==JsonValueKind.Null
         ?null:new(scope.GetProperty("documentId").GetString()!,scope.GetProperty("sourceRevision").GetString()!);
+    private static KnowledgeSourceScope[] ReadWorksetScopes(JsonElement payload)=>payload.GetProperty("sources").EnumerateArray()
+        .Select(source=>new KnowledgeSourceScope(source.GetProperty("documentId").GetString()!,source.GetProperty("sourceRevision").GetString()!)).ToArray();
     private static MemoryQuery ReadMemoryQuery(JsonElement payload) => new(payload.GetProperty("query").GetString()!,
         Enum.Parse<MemoryStatus>(payload.GetProperty("status").GetString()!),
         payload.GetProperty("type").ValueKind == JsonValueKind.Null ? null : ReadMemoryType(payload), payload.GetProperty("page").GetInt32(), WorkspaceMemory.PageSize);

@@ -1,7 +1,7 @@
 import type { KnowledgeDocument } from '../bridge/knowledge'
 import type { KnowledgeScope } from '../bridge/knowledgeScope'
 
-export interface KnowledgeSearchSource { scope: KnowledgeScope; title: string }
+export interface KnowledgeSearchSource { scope: KnowledgeScope; title: string; unavailableReason?: string }
 export const maximumSearchSources = 10
 
 export function KnowledgeSearchScopePicker({ sources, current, disabled, change }: {
@@ -17,7 +17,7 @@ export function KnowledgeSearchScopePicker({ sources, current, disabled, change 
       : `检索范围：${sources === null ? '全部可用资料' : `已选择 ${sources.length} / ${maximumSearchSources} 份资料`}`}</p>
     <div className="conversation-actions">
       <button type="button" disabled={disabled || !available} onClick={() => { const next = source(); if (next) change([next]) }}>限定为当前文档</button>
-      <button type="button" disabled={disabled || !available || chosen?.scope.sourceRevision === current?.currentReadyRevision
+      <button type="button" disabled={disabled || !available || chosen?.scope.sourceRevision === current?.currentReadyRevision && !chosen?.unavailableReason
         || !chosen && (sources?.length ?? 0) >= maximumSearchSources} onClick={() => {
         const next = source(); if (!next) return
         change(chosen ? sources!.map(item => item.scope.documentId === next.scope.documentId ? next : item) : [...(sources ?? []), next])
@@ -26,6 +26,7 @@ export function KnowledgeSearchScopePicker({ sources, current, disabled, change 
     </div>
     {sources !== null && <ul aria-label="已选检索资料">{sources.map(item => <li key={item.scope.documentId}>
       <bdi>{item.title}</bdi> · 源版本 {item.scope.sourceRevision}
+      {item.unavailableReason && <p role="alert">{item.unavailableReason} 请从文档列表明确更新此项或移除；不会自动改用其他资料。</p>}
       <button type="button" aria-label={`移出检索范围：${item.title}`} disabled={disabled} onClick={() => change(sources.filter(value => value.scope.documentId !== item.scope.documentId))}>移除</button>
     </li>)}</ul>}
     <p className="hint">从文档列表打开资料，再加入范围；每份固定到明确选择的版本。更新、归档或删除后须重新选择，不会自动改用其他版本或全部资料。可将清单用于逐份问答；下方单独问答的范围仍独立选择。</p>

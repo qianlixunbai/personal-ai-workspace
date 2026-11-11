@@ -14,7 +14,7 @@ internal sealed record KnowledgeAnswerView(string TaskId,string Status,Knowledge
 { public override string ToString()=>"KnowledgeAnswerView[redacted]"; }
 internal sealed record KnowledgeAnswerHistoryView(string Question,string Query,KnowledgeAnswerView Task,KnowledgeSourceScope? Scope=null)
 { public override string ToString()=>"KnowledgeAnswerHistoryView[redacted]"; }
-internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files,IKnowledgeAnswerExport? answerExport=null)
+internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledgeSourceFiles files,IKnowledgeAnswerExport? answerExport=null,IKnowledgeSearchWorksetFiles? worksetFiles=null)
 {
     private const int MaximumAnswerTasks=64;
     private sealed class AnswerAuthority {internal LinkedListNode<Guid>? Completed;internal KnowledgeSourceScope? Scope;}
