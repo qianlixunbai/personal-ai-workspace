@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [Java 正式离线构建](engineering/JAVA-OFFLINE-COMPILE-REPORT.md)已完成当前 POM／依赖／Lombok 和独立源快照输出核对，并实际执行一次 compile。Finance 生成 85 个 class、复制 21 份资源后，JDK 关闭 jackson-core JAR 时 `toRealPath` 返回 AccessDeniedException，Maven 退出 1，应用模块 SKIPPED；保留失败输出，未换路重试。这是具体文件系统访问拒绝，不是缺依赖或新审批拒绝。前端／普通 C# 既有通过结果保持，真实后端／桌面未验收。
+
 2026-11-11 最终整合基线为 `7e7332e`：[资料出处修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)已进入独立前端资源与正式 Core／Desktop 普通 Debug 构建，0 警告／0 错误。没有产品运行、打包或原生准入；Java 的 Finance/Lombok 输入／独立输出和对话出处重开资格仍是明确缺口。详见 [整合回执](engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)。
 
 2026-11-11 [资料出处重开接线修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)：记忆回查与会话参考核对先用当前受控列表找到准确 ID，再读取原文档／版本，补上 Native 临时资格要求。类型检查及 3 个直接场景通过；普通 C# 整合编译已有独立记录，真实重开／桌面未验收。

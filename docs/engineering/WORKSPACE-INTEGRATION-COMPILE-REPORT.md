@@ -1,5 +1,7 @@
 # 当前源码整合与最小纯编译
 
+后续更新：Java 正式构建的输入与独立输出已闭合，并执行了一次离线 Maven compile；Finance 生成 class 后在 JDK 关闭 JAR 时的 `toRealPath` 操作遭访问拒绝，应用模块跳过。详见 [Java 实际构建记录](JAVA-OFFLINE-COMPILE-REPORT.md)。下文“Java 未执行”保留为此前整合阶段的历史状态。
+
 日期：2026-11-11。首次实际编译源码：`27db39f1636ab63795e716bcd3fe228e3ac603b3`，分支 `codex/knowledge-version-compare`。未发现仓库或上级目录的 AGENTS.md；保留 main 和六份用户原有未跟踪文档。
 
 ## 本轮已取得的证据
