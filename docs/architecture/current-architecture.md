@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [可见正常退出](../engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)：WPF 主窗口顶部 Button 通过应用注入回调调用现有 `AssistantApp.ExitAsync`，与托盘共用未保存确认、异步清理和 Runtime ownership。只增加标准 AutomationId／可见 Click 入口，不向 WebView Bridge、HTTP 或外部进程公开退出协议。UI Automation 只完成官方能力与本机组件调查，实际句柄／输入桌面／调用权限未验证；不涉及 Profile 或 NativeGate 变更。
+
 2026-11-11 [资料新版回答复核](../engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)：React 从受控问答／资料列表取得原记录和当前版本，预览确认后重新核对，复用既有单资料问答接口。原、新任务各自保留源版本和引用，临时对照不新增持久关联；未知提交阻断重发、已知任务按原编号读取／单次取消。无 Java、C#、Bridge 合同、schema 或新依赖，真实整合运行仍未验收。
 
 2026-11-11 [记忆使用记录](../engineering/MEMORY-CONVERSATION-USAGE-REPORT.md)：新增 Native-only 只读查询，沿原 conversation_memory_selections 联结已结束轮次和会话，不新增存储或回填历史正文。Core／WebView 校验范围及 64 位版本；Native 仅授权返回的会话并拒绝失效 session；React 再核对准确轮次的记忆引用后显示原文。Java 数据库用例尚未越过临时 MemoryStore 初始化，不能扩大实际数据库／桌面验收结论。

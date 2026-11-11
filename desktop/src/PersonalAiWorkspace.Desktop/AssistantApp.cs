@@ -199,7 +199,7 @@ internal sealed class AssistantApp : Application, IAssistantController, IWorkspa
         if (exitRequested) return;
         if (workspace is null)
         {
-            workspace = new MainWorkspaceWindow(this
+            workspace = new MainWorkspaceWindow(this, requestExit: () => ExitAsync()
 #if MMF3_ACCEPTANCE && DEBUG
                 , acceptance: acceptance
 #endif

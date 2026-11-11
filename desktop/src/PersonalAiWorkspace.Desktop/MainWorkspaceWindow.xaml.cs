@@ -14,21 +14,25 @@ public partial class MainWorkspaceWindow : Window
     private bool shuttingDown;
     private bool closed;
     private bool openingNativeMemory;
+    private bool requestingExit;
+    private readonly Func<Task>? requestExit;
     private readonly Func<bool> confirmDiscard;
     internal bool TryDiscardEditor() => !Host.HasDirtyEditor || confirmDiscard();
     internal WorkspaceWebViewHost Host { get; }
     internal bool FallbackVisible => Fallback.Visibility == Visibility.Visible;
-    internal MainWorkspaceWindow(IWorkspaceNativeActions native, string? assetFolder = null, Func<bool>? confirmation = null
+    internal MainWorkspaceWindow(IWorkspaceNativeActions native, string? assetFolder = null, Func<bool>? confirmation = null, Func<Task>? requestExit = null
 #if MMF3_ACCEPTANCE && DEBUG
         , Mmf3AcceptanceLaunch? acceptance = null
 #endif
         )
     {
         this.native = native;
+        this.requestExit = requestExit;
         confirmDiscard = confirmation ?? (() => MessageBox.Show(this,
             "丢弃 Memory 未保存的修改并继续？", "Memory", MessageBoxButton.YesNo,
             MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         InitializeComponent();
+        ExitWorkspaceButton.IsEnabled = requestExit is not null;
 #if MMF3_ACCEPTANCE && DEBUG
         if (acceptance is not null) Title += " · " + Mmf3AcceptanceLaunch.Label;
 #if MMF3_PROFILE_ACCEPTANCE
@@ -87,6 +91,29 @@ public partial class MainWorkspaceWindow : Window
         }
     }
     private void FocusWorkspace(object sender, RoutedEventArgs e) => ReturnFocus();
+    private async void ExitWorkspace(object sender, RoutedEventArgs e)
+    {
+        if (closed || shuttingDown || requestingExit || requestExit is null) return;
+        requestingExit = true;
+        ExitWorkspaceButton.IsEnabled = false;
+        ExitWorkspaceButton.Content = "正在退出…";
+        try
+        {
+            // The application owns draft confirmation, task draining and Runtime
+            // shutdown. Use precisely the same entry point as the tray menu.
+            await requestExit();
+        }
+        finally
+        {
+            requestingExit = false;
+            if (!closed && !shuttingDown)
+            {
+                // Cancelling an existing unsaved-editor confirmation keeps the UI usable.
+                ExitWorkspaceButton.Content = "退出工作区";
+                ExitWorkspaceButton.IsEnabled = true;
+            }
+        }
+    }
     private bool CanZoom => !closed && !shuttingDown && Host.IsReady;
     private void ZoomIn(object sender, RoutedEventArgs e) => ChangeZoom(.25);
     private void ZoomOut(object sender, RoutedEventArgs e) => ChangeZoom(-.25);
@@ -108,10 +135,11 @@ public partial class MainWorkspaceWindow : Window
     {
         if (closed) return;
         e.Cancel = true;
-        if (shuttingDown) return;
+        if (shuttingDown || requestingExit) return;
         if (!TryDiscardEditor()) return;
         shuttingDown = true;
         BrowserZoomControls.IsEnabled = false;
+        ExitWorkspaceButton.IsEnabled = false;
         await Host.CloseAsync();
         closed = true;
         Close();
@@ -121,9 +149,10 @@ public partial class MainWorkspaceWindow : Window
         if (closed) return;
         shuttingDown = true;
         BrowserZoomControls.IsEnabled = false;
+        ExitWorkspaceButton.IsEnabled = false;
         await Host.CloseAsync();
         closed = true; Close();
     }
     internal void DisposeImmediately()
-    { if (!closed) { BrowserZoomControls.IsEnabled = false; Host.DisposeImmediately(); closed = true; Close(); } }
+    { if (!closed) { BrowserZoomControls.IsEnabled = false; ExitWorkspaceButton.IsEnabled = false; Host.DisposeImmediately(); closed = true; Close(); } }
 }
