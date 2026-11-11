@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [原产品退出验证前置停止](engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)：当前普通执行通道的 LocalApplicationData 为 `C:\Users\28421\AppData\Local`，已批准原目标在 `C:\Users\CodexSandboxOffline\...`；原 SID 和实际 canonical 绑定尚未证实相同，不能仅按同一 ID 启动。遵照目录范围变化即停的要求，在 Profile 访问／helper／新候选整合之前停止，产品实际启动 0 次、两次额度未消耗；不是新的权限拒绝或运行失败。可见退出源码仍为 `42c7358`，真实正常退出尚未验证。
+
 2026-11-11 [主窗口正常退出入口](engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)已接到托盘同一 `ExitAsync`，保留未保存编辑确认、任务／WebView／Runtime 清理。普通 WPF 编译 0 警告／错误；本机存在官方 UI Automation 组件，但没有调用 UIA、启动产品或枚举桌面。已列出仅绑定自有 PID／窗口的最小方案及人工退出步骤；原合成 Profile 查询拒绝与原产品 helper 历史通过事实严格区分，未解除任何具体拒绝。未生成正常候选包或实际退出验收，`productionGo=false`。
 
 2026-11-11 [新版资料回答复核](engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)已接入原问答页：固定原问题和关键词、确认新版、独立回答并保留两版引用对照及当前草稿。四项新前端场景与类型检查通过；最终编号保护只复查受影响场景。没有新分发包或真实模型／数据库／桌面运行，原合成 Profile 查询拒绝与正常退出控制缺口仍未解除，`productionGo=false`。

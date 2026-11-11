@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [正常退出实测的范围前置条件](../engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)尚未闭合：普通执行通道当前逻辑用户目录与批准原 Profile 绝对目标不同，且未取得原主体／canonical 对应证据。新候选构建、helper 和产品均未启动；不得换身份／路径或创建 Profile 绕过。下一步先恢复／确认原执行范围，再做准确候选与一次正常退出，不新增外围功能。
+
 2026-11-11 优先处理实际使用关卡：[可见正常退出入口及官方 UI Automation 调查](../engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)。主窗口原生按钮与托盘共用安全关闭链，普通 WPF 编译通过；本轮严格不启动产品／测试窗口或调用 UIA。下一步只按准确候选、原准入和可人工退出兜底的条件进行一次实际验证，不继续累积业务功能、不用强杀关闭关卡。
 
 2026-11-11 [资料更新后的回答复核](../engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)完成一个核心业务模块：按原问题／关键词明确确认新版本，重新核对后独立生成答案，保留旧回答和新草稿，并排查看两版准确引用。四项新场景及类型检查通过，最终只复查受旧编号保护影响的一项；未打包或进行真实数据库／模型／桌面验收。原权限与正常退出阻塞保持，`productionGo=false`。
