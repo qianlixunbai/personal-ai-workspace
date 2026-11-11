@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [记忆使用记录](engineering/MEMORY-CONVERSATION-USAGE-REPORT.md)补齐从已存记忆反查历史会话的链路：按所有／指定版本分页，展开准确轮次原文并保留编辑草稿。类型检查、2 个前端场景、1 个 Native 场景及 Java／C# 编译完成；唯一 Java 数据库用例在临时 MemoryStore 初始化失败，查询断言未执行。没有新前端包、产品运行或桌面验收，C# 输出仍嵌入上一模块前端，`productionGo=false`。本对话三个业务模块到此交接。
+
 2026-11-11 [流水备注原文搜索](engineering/FINANCE-TRANSACTION-SEARCH-REPORT.md)：搜索全部符合账户／日期／类型条件的普通交易及转账，计数与分页同源过滤，结果直接展示备注。关键词严格回显并逐行校验，空搜索保留既有查询。前端、Java 与 Native 必要场景及编译通过；没有真实财务库查询、新包或桌面验收，`productionGo=false`。
 
 2026-11-11 [多问答研究笔记](engineering/KNOWLEDGE-RESEARCH-NOTEBOOK-REPORT.md)：跨页选择并排序最多 10 条已完成回答，核对原记录及准确版本引用后一次导出明文 Markdown；任一来源失效则整份停止，未知保存不重试。3 个前端场景、4 个 Native 场景与前端／普通 C# 编译通过，最终前端单独保留。未打包或运行真实桌面，原同机界面与正常退出控制缺口保持，`productionGo=false`。

@@ -290,11 +290,13 @@ internal sealed class WorkspaceBridge : IDisposable
             else if (ConversationMethods.Contains(method))
             {
                 if (conversations is null) throw new WorkspaceOperationException("NATIVE_UNAVAILABLE", "Conversation 暂时不可用，请打开原生窗口。");
-                var id = method is "conversations.list" or "conversations.create" or "conversations.search" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
+                var id = method is "conversations.list" or "conversations.create" or "conversations.search" or "conversations.memoryUsage" ? Guid.Empty : Guid.ParseExact(payload.GetProperty("conversationId").GetString()!, "D");
                 result = method switch
                 {
                     "conversations.list" => await conversations.ListAsync(session, Enum.Parse<ConversationStatus>(payload.GetProperty("status").GetString()!), payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.search" => await conversations.SearchAsync(session, payload.GetProperty("query").GetString()!, payload.GetProperty("scope").GetString()!, payload.GetProperty("page").GetInt32(), cancellation),
+                    "conversations.memoryUsage" => await conversations.MemoryUsageAsync(session, Guid.ParseExact(payload.GetProperty("memoryId").GetString()!, "D"),
+                        payload.GetProperty("revision").ValueKind == JsonValueKind.Null ? null : long.Parse(payload.GetProperty("revision").GetString()!, CultureInfo.InvariantCulture), payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.get" => await conversations.GetAsync(session, id, payload.GetProperty("page").GetInt32(), cancellation),
                     "conversations.export" => await conversations.ExportAsync(session, id, cancellation),
                     "conversations.saveDraft" => await conversations.DraftFileAsync(session, id, payload.GetProperty("message").GetString()!, cancellation),
@@ -380,7 +382,7 @@ internal sealed class WorkspaceBridge : IDisposable
     internal static readonly IReadOnlySet<string> BusinessMethods = new HashSet<string>(StringComparer.Ordinal)
     { "assistant.selectMemories", "assistant.submit", "assistant.proposeMemory", "translate.submit", "operations.get", "operations.cancel", "operations.copyResult" };
     internal static readonly IReadOnlySet<string> ConversationMethods = new HashSet<string>(StringComparer.Ordinal)
-    { "conversations.search", "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
+    { "conversations.memoryUsage", "conversations.search", "conversations.list", "conversations.get", "conversations.create", "conversations.rename", "conversations.archive",
       "conversations.unarchive", "conversations.delete", "conversations.selectMemories", "conversations.clearMemories",
       "conversations.send", "conversations.cancelPending", "conversations.export", "conversations.saveDraft", "conversations.openDraft" };
     internal static readonly IReadOnlySet<string> MemoryMethods = new HashSet<string>(StringComparer.Ordinal)
@@ -578,6 +580,13 @@ internal sealed class WorkspaceBridge : IDisposable
     }
     private static bool ValidConversationPayload(string method, JsonElement payload)
     {
+        if (method == "conversations.memoryUsage") return Fields(payload, "memoryId", "revision", "page")
+            && Text(payload, "memoryId", 36, out var memoryId) && CanonicalId(memoryId)
+            && (payload.GetProperty("revision").ValueKind == JsonValueKind.Null || Text(payload, "revision", 19, out var selectedRevision)
+                && long.TryParse(selectedRevision, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0
+                && number.ToString(CultureInfo.InvariantCulture) == selectedRevision)
+            && payload.GetProperty("page").ValueKind == JsonValueKind.Number
+            && payload.GetProperty("page").TryGetInt32(out var usagePage) && usagePage is >= 0 and <= 99999;
         if (method == "conversations.search") return Fields(payload, "query", "scope", "page")
             && Text(payload, "query", 200, out var query) && Text(payload, "scope", 8, out var scope)
             && payload.GetProperty("page").ValueKind == JsonValueKind.Number

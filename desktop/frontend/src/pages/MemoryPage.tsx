@@ -8,6 +8,7 @@ import { MemoryPreview } from '../components/MemoryPreview'
 import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
 import { MemoryDraftDuplicateCheck } from '../components/MemoryDraftDuplicateCheck'
 import { MemorySourceReview } from '../components/MemorySourceReview'
+import { MemoryUsageReview } from '../components/MemoryUsageReview'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
 export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void, role: MemoryDraftSource) => boolean
@@ -339,6 +340,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         <label htmlFor="memory-content">记忆内容</label><textarea id="memory-content" value={draft.content} readOnly={disabled || !!revisionReview} autoComplete="off" spellCheck={false} onChange={event => setDraft(previous => ({ ...previous, content: event.target.value }))} />
         <p className="hint">{[...draft.content].length} / 2000 字符 · 手动保存</p>
         <MemorySourceReview key={candidateEpoch} bridge={bridge} content={draft.content} enabled={enabled && visible && !busy && !confirmation && !revisionReview} />
+        {loaded && <MemoryUsageReview key={`${loaded.id}:${loaded.revision}`} bridge={bridge} memory={loaded} enabled={enabled && visible && !busy && !confirmation && !revisionReview} />}
         {fromSource && !validContent(draft.content) && <p role="alert" className="error">来源原文已完整保留，但不符合 Memory 正文限制（2000 UTF-16 单位、8192 UTF-8 字节及有效 Unicode，且不能为空）。请修改至合法内容后保存。</p>}
         {!loaded && !revisionReview && validContent(draft.content) && <MemoryDraftDuplicateCheck key={`draft-duplicates-${candidateEpoch}`} bridge={bridge}
           enabled={enabled && visible && !busy && !confirmation && !blocked} content={draft.content}

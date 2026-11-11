@@ -96,6 +96,19 @@ internal sealed class WorkspaceConversations(RuntimeClient runtime,
         }
         return new { value.Query, value.Scope, value.Items, value.HasMore, value.Page, value.Limit };
     }
+    internal async Task<object> MemoryUsageAsync(string session, Guid memoryId, long? revision, int page, CancellationToken ct)
+    {
+        Session state; lock (sync) state = Require(session);
+        var value = await runtime.GetConversationMemoryUsageAsync(memoryId, revision, page, ct);
+        lock (sync)
+        {
+            if (!Current(session, state)) throw Denied();
+            foreach (var item in value.Items) Authorize(state, item.Conversation.Id);
+        }
+        return new { value.MemoryId, revision = value.Revision?.ToString(CultureInfo.InvariantCulture),
+            items = value.Items.Select(item => new { conversation = ConversationView(item.Conversation), item.TurnId, item.Sequence,
+                item.Status, revision = item.Revision.ToString(CultureInfo.InvariantCulture) }).ToArray(), value.HasMore, value.Page, value.Limit };
+    }
     internal async Task<object> GetAsync(string session, Guid id, int page, CancellationToken ct)
     {
         Session state; lock (sync) state = Require(session, id);

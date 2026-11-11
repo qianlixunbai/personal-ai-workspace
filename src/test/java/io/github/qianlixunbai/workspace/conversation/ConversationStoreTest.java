@@ -27,6 +27,32 @@ class ConversationStoreTest {
         var failure = assertThrows(WorkspaceException.class, op);
         assertEquals(expected, failure.error().code()); assertNull(failure.getCause()); assertEquals(expected.name(), failure.getMessage());
     }
+    @Test void memoryUsageFindsExactVersionsPagesAndArchivedTurnsWithoutChangingHistory() throws Exception {
+        var item = memory.create(MemoryItem.Type.PROJECT_NOTE, "合成记忆", "保存正文");
+        var active = store.create("使用记忆"); var archived = store.create("归档会话");
+        for (int i = 0; i < 11; i++) {
+            var turn = store.createTurnWithUserMessage(active.id(), "问题", null, List.of(new MemoryReference(item.id(), i == 10 ? Long.MAX_VALUE : 1)));
+            store.completeTurnWithAssistantMessage(active.id(), turn.id(), "回答");
+        }
+        var cancelled = store.createTurnWithUserMessage(archived.id(), "取消的问题", null, List.of(new MemoryReference(item.id(), 1)));
+        store.markTurnTerminated(archived.id(), cancelled.id(), TurnStatus.CANCELLED); store.archive(archived.id());
+        store.createTurnWithUserMessage(active.id(), "尚未结束", null, List.of(new MemoryReference(item.id(), 1)));
+        var unrelated = store.createTurnWithUserMessage(active.id(), "未选择记忆");
+        store.markTurnTerminated(active.id(), unrelated.id(), TurnStatus.CANCELLED);
+        var before = store.detail(active.id(), 1, 10);
+        var first = store.memoryUsage(new ConversationMemoryUsage.Request(item.id(), null, 0));
+        var second = store.memoryUsage(new ConversationMemoryUsage.Request(item.id(), null, 1));
+        assertEquals(10, first.items().size()); assertTrue(first.hasMore()); assertEquals(2, second.items().size()); assertFalse(second.hasMore());
+        assertEquals(12, java.util.stream.Stream.concat(first.items().stream(), second.items().stream()).map(ConversationMemoryUsage.Hit::turnId).distinct().count());
+        assertTrue(java.util.stream.Stream.concat(first.items().stream(), second.items().stream()).anyMatch(hit -> hit.conversation().status() == Status.ARCHIVED && hit.status() == TurnStatus.CANCELLED));
+        var exact = new ConversationMemoryUsage.Request(item.id(), Long.MAX_VALUE, 0);
+        assertEquals(11, store.memoryUsage(exact).items().getFirst().sequence()); assertEquals(1, store.memoryUsage(exact).items().size());
+        assertTrue(store.memoryUsage(new ConversationMemoryUsage.Request(UUID.randomUUID(), null, 0)).items().isEmpty());
+        code(ErrorCode.CONVERSATION_INVALID, () -> store.memoryUsage(new ConversationMemoryUsage.Request(item.id(), 0L, 0)));
+        assertEquals(before, store.detail(active.id(), 1, 10));
+        store.close(); store = new ConversationStore(memory.databaseFile()); assertEquals(first, store.memoryUsage(new ConversationMemoryUsage.Request(item.id(), null, 0)));
+        store.delete(archived.id()); assertEquals(1, store.memoryUsage(new ConversationMemoryUsage.Request(item.id(), null, 1)).items().size());
+    }
     @Test void literalSearchPagesTerminalMessagesAndSurvivesReopenWithoutWrites() throws Exception {
         var active = store.create("合成查找会话"); var archived = store.create("合成归档会话");
         String query = "特征😀%_", text = "😀".repeat(75) + query + "<script>仅原文</script>" + "尾".repeat(80);

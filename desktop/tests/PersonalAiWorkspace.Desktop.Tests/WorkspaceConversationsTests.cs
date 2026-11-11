@@ -24,6 +24,8 @@ public sealed class WorkspaceConversationsTests
     {
         internal int Posts, Cancels, Deletes, Gets, Searches;
         internal bool InvalidSearchMatch;
+        internal int UsageReads;
+        internal bool WrongUsageRevision;
         internal TaskCompletionSource? HoldSearch;
         internal string Status = "ACTIVE", State = "PENDING", Title = "Synthetic conversation";
         internal bool Stale, Unknown, Large, ChangedTask, Deleted, GenericUnknown;
@@ -36,6 +38,16 @@ public sealed class WorkspaceConversationsTests
         {
             Assert.Equal(new string('t', 43), request.Headers.Authorization?.Parameter);
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/v1/conversations/memory-usage")
+            {
+                Assert.Equal(HttpMethod.Post, request.Method); Assert.Empty(request.RequestUri.Query); UsageReads++;
+                using var query = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                Assert.Equal(MemoryId, query.RootElement.GetProperty("memoryId").GetGuid());
+                long? revision = query.RootElement.GetProperty("revision").ValueKind == JsonValueKind.Null ? null : query.RootElement.GetProperty("revision").GetInt64();
+                if (HoldSearch is not null) await HoldSearch.Task;
+                return Reply(new { memoryId = MemoryId, revision, page = 0, limit = 10, hasMore = false,
+                    items = new[] { new { conversation = Metadata(), turnId = TurnId, sequence = 1, status = "SUCCEEDED", revision = WrongUsageRevision ? 1 : long.MaxValue } } });
+            }
             if (path == "/api/v1/conversations/search")
             {
                 Assert.Equal(HttpMethod.Post, request.Method); Assert.Empty(request.RequestUri.Query); Searches++;
@@ -128,6 +140,25 @@ public sealed class WorkspaceConversationsTests
         var pending = f.Call("conversations.search", new { query = "x", scope = "ALL", page = 0 });
         Assert.Equal(1, f.Handler.Searches); f.Rotate(); f.Handler.HoldSearch.SetResult(); await pending;
         await f.Get(); Assert.Equal("ConversationNotFound", f.Code); Assert.Equal(0, f.Handler.Gets);
+    }
+    [Fact]
+    public async Task MemoryUsageProjectsExactRevisionAuthorizesResultsAndRejectsWrongOrLateScope()
+    {
+        using var f = new Fixture(); await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
+        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = long.MaxValue.ToString(), page = 0 });
+        Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        Assert.Equal(long.MaxValue.ToString(), f.Last.GetProperty("result").GetProperty("items")[0].GetProperty("revision").GetString());
+        await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
+        await f.Call("conversations.get", new { conversationId = Other, page = 0 }); Assert.Equal("ConversationNotFound", f.Code);
+        f.Handler.WrongUsageRevision = true;
+        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = long.MaxValue.ToString(), page = 0 });
+        Assert.Equal("InvalidResponse", f.Code); Assert.Equal(0, f.Handler.Posts);
+        f.Rotate(); int reads = f.Handler.UsageReads;
+        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = "01", page = 0 }); Assert.Empty(f.Sent); Assert.Equal(reads, f.Handler.UsageReads);
+        f.Handler.WrongUsageRevision = false; f.Handler.HoldSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = (string?)null, page = 0 });
+        Assert.Equal(reads + 1, f.Handler.UsageReads); f.Rotate(); f.Handler.HoldSearch.SetResult(); await pending;
+        await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
     }
     private sealed class Fixture : IDisposable
     {

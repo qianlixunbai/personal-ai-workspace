@@ -40,6 +40,10 @@ public class ConversationController {
     ConversationSearch.Page search(@RequestBody ConversationSearch.Request body) {
         nativeOnly(); return store.search(body);
     }
+    @PostMapping("/memory-usage")
+    ConversationMemoryUsage.Page memoryUsage(@RequestBody ConversationMemoryUsage.Request body) {
+        nativeOnly(); return store.memoryUsage(body);
+    }
     @PostMapping("/{conversationId}/turns")
     ResponseEntity<ConversationExecution.Accepted> send(@PathVariable String conversationId, @RequestBody ConversationExecution.Request body) {
         nativeOnly(); var result = execution.submit(id(conversationId), body);

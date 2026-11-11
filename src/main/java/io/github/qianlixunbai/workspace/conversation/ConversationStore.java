@@ -106,6 +106,29 @@ public final class ConversationStore implements AutoCloseable {
             return new ConversationSearch.Page(request.query(), request.scope(), items.subList(0, Math.min(10, items.size())), more, request.page(), 10);
         });
     }
+    public synchronized ConversationMemoryUsage.Page memoryUsage(ConversationMemoryUsage.Request request) {
+        if (request == null) throw error(ErrorCode.CONVERSATION_INVALID);
+        request.validate();
+        return transaction(false, () -> {
+            var items = new ArrayList<ConversationMemoryUsage.Hit>();
+            var values = new ArrayList<Object>(); values.add(request.memoryId().toString());
+            String revision = request.revision() == null ? "" : " AND s.revision=?";
+            if (request.revision() != null) values.add(request.revision());
+            values.add((long) request.page() * 10);
+            // Existing selection rows survive memory revisions/deletion. Never join a
+            // current memory body and present it as a historical snapshot.
+            try (var s = prepare("SELECT c.*,t.id AS turn_id,t.sequence,t.status AS turn_status,s.revision "
+                    + "FROM conversation_memory_selections s JOIN conversation_turns t ON t.id=s.turn_id "
+                    + "JOIN conversations c ON c.id=t.conversation_id WHERE s.memory_id=? AND t.status<>'PENDING'" + revision
+                    + " ORDER BY c.updated_at DESC,c.id ASC,t.sequence ASC LIMIT 11 OFFSET ?", values.toArray());
+                 var r = s.executeQuery()) {
+                while (r.next()) items.add(new ConversationMemoryUsage.Hit(conversation(r), UUID.fromString(r.getString("turn_id")),
+                        r.getLong("sequence"), TurnStatus.valueOf(r.getString("turn_status")), r.getLong("revision")));
+            }
+            return new ConversationMemoryUsage.Page(request.memoryId(), request.revision(), items.subList(0, Math.min(10, items.size())),
+                    items.size() > 10, request.page(), 10);
+        });
+    }
     public synchronized Detail detail(UUID id, int page, int limit) {
         id(id); page(page, limit);
         return transaction(false, () -> {
