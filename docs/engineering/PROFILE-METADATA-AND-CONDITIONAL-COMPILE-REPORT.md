@@ -1,5 +1,7 @@
 # 原 Profile 元数据与条件源码编译复核
 
+后续更新：已在新增明确授权内完成 [同源候选包和精确启动范围](SAME-SOURCE-CANDIDATE-AND-STARTUP-SCOPE.md)，包括当前 Runtime JAR 和 420 项内嵌 pins；未运行产品。下文缺清单／未打包描述本报告阶段的历史状态。一次临时空白窗口的 CUA 标题比对无匹配，主机关联仍未确认。
+
 2026-11-11；输入 HEAD `7ef181f1519829953fd638bf62c20bbafac57639`，分支 `codex/knowledge-version-compare`；产品代码仍与 `7e7332e` 相同。仓库及已核对上级未发现 AGENTS.md。本次只完成准确目标的限定只读检查、Profile 条件源码纯编译和下一步静态审阅，没有新增产品功能、重跑普通构建或启动产品。
 
 ## 准确目标与历史动作

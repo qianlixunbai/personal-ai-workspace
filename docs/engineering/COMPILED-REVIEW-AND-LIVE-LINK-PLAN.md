@@ -1,5 +1,7 @@
 # 当前编译产物审阅与最小真实联动计划
 
+最新交付：基于来源提交 `933bb20` 的同源候选包已离线生成并通过 Runtime／内嵌 pins／ZIP 校验，见 [候选包与准确启动范围](SAME-SOURCE-CANDIDATE-AND-STARTUP-SCOPE.md)。它与下文 REVIEW_ONLY ZIP 是不同工件，仍未运行、安装或部署。
+
 后续复核：原 Profile 的准确目标在 `C:\Users\CodexSandboxOffline\AppData\Local` 下，早期按当前环境推导的 `C:\Users\28421\AppData\Local` 不是已证实的原目标。2026-11-11 已在普通权限下完成原根目录和 model-state 的限定元数据读取，并通过一次独立 Profile 条件源码编译（0 警告／0 错误）；未启动产品或 helper。见 [准确目标、编译回执与准入边界](PROFILE-METADATA-AND-CONDITIONAL-COMPILE-REPORT.md)。下文“本轮未读取／未编译”描述前一轮审阅组装，不覆盖该后续结果。
 
 日期：2026-11-11。产品源码基线 `5a57ff76a133a4e42e90a4582c76df64af2ad6a1`；产品代码与 `7e7332e` 相同，此后仅更新构建与诊断文档。本轮不重建前端／C#／Java，不运行产品、helper 或旧拒绝入口，不读真实用户数据。
