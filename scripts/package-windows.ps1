@@ -1,7 +1,7 @@
 ﻿# Build-time tooling only. The produced release launcher never builds source.
 [CmdletBinding()]
 param([string]$OutputName = 'PersonalAiWorkspace-win-x64', [switch]$FrontendPrebuilt, [switch]$RuntimePrebuilt,
-    [string]$AuditRuntimeJar, [string]$WriteRuntimeIdentity,
+    [string]$AuditRuntimeJar, [string]$WriteRuntimeIdentity, [string]$RuntimeBuildRoot,
     [ValidateSet('default', 'v1-isolated-development')][string]$ExpectedRuntimeKind = 'default')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -13,6 +13,10 @@ $buildIdentityEntry = 'META-INF/workspace-runtime.properties'
 $instanceId = 'V1_OLLAMA_0401_ISOLATED'
 $pinsSha = '17b14bc0c4390b94ebf4aaedc684291eea02531821c0633e087bfd470c3e2d21'
 $owners = @('provider/ollama/OllamaProvider', 'provider/ollama/OllamaVisionEnvironment', 'security/WindowsNativeGate')
+
+# An explicit isolated build root changes only generated metadata's destination.
+# Source enumeration and owner-byte checks still use this repository and exact classes.
+if ($RuntimeBuildRoot -and -not $WriteRuntimeIdentity) { throw 'RuntimeBuildRoot requires WriteRuntimeIdentity.' }
 
 function Assert-PlainPath([string]$Path) {
     for ($part = [IO.Path]::GetFullPath($Path); $part; $part = [IO.Path]::GetDirectoryName($part)) {
@@ -169,8 +173,16 @@ function Get-SourcePaths([string]$Root) {
 if ($WriteRuntimeIdentity) {
     if ($AuditRuntimeJar -or $RuntimePrebuilt -or $FrontendPrebuilt) { throw 'Mixed Runtime build modes.' }
     $classes = [IO.Path]::GetFullPath($WriteRuntimeIdentity)
-    $expectedClasses = Join-Path $repo $(if ($ExpectedRuntimeKind -eq 'default') { 'target/classes' } else { 'target/v1-isolated-development/classes' })
+    $identityRoot = $repo
+    if ($RuntimeBuildRoot) {
+        $identityRoot = [IO.Path]::GetFullPath($RuntimeBuildRoot).TrimEnd('\')
+        if ([IO.Path]::GetDirectoryName($identityRoot) -cne (Join-Path $repo 'artifacts') -or
+            [IO.Path]::GetFileName($identityRoot) -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]+$') { throw 'Repository-local isolated Runtime build root required.' }
+        Assert-PlainPath $identityRoot
+    }
+    $expectedClasses = Join-Path $identityRoot $(if ($ExpectedRuntimeKind -eq 'default') { 'target/classes' } else { 'target/v1-isolated-development/classes' })
     if ($classes -cne [IO.Path]::GetFullPath($expectedClasses)) { throw 'Unexpected Runtime output directory.' }
+    Assert-PlainPath $classes
     $paths = @(Get-SourcePaths $repo)
     $sources = @($paths | ForEach-Object { [ordered]@{Path=$_;Sha256=(Get-FileHash -LiteralPath (Join-Path $repo $_)).Hash.ToLowerInvariant()} })
     $sourceBytes = [Text.Encoding]::UTF8.GetBytes(($sources | ConvertTo-Json -Depth 4 -Compress) + "`n")
