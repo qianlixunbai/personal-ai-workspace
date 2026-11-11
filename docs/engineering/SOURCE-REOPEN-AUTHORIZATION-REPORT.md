@@ -11,3 +11,9 @@
 直接验证：`npm run check` 通过；只选择 MemorySourceReview 的两个原场景和 ConversationReferences 的正常参考流程，**3 passed / 1 skipped**，4.06 秒。Memory 夹具增加与 Native 相同的“先列表才能详情”约束，并在 session 更换时清除资格；验证归档回查、已删除 ID 不请求详情、编辑后迟到列表不继续，以及原版本／范围、错误／session／草稿保护。原只读操作断言增加必要的列表调用。没有跑历史全套或新增验证框架。
 
 本节证据是前端合成流程与类型检查，不是实际应用重开、磁盘持久化或原生准入验收。资料底层 C# 在本轮整合基线普通配置已编译；本修复只改前端。
+
+提交 `7e7332e` 已纳入全新独立目录的最终前端及正式 Core／Desktop 构建，退出 0、0 警告／0 错误，4.08 秒。没有 restore 或实际应用运行。对应 [最终整合回执](WORKSPACE-INTEGRATION-COMPILE-REPORT.md) 保留源码版本与日志。
+
+## 对话出处尚存的缺口
+
+`readConversationSource` 仍直接调用 `getConversation`，而 Native `WorkspaceConversations.GetAsync` 要求当前 session 的 Known 集合已经包含该会话。Memory 中的可编辑会话／轮次／消息定位不具有该资格；原消息、角色、范围检查虽已存在，尚缺受控列表的准确 ID 定位。这条链路本轮未修改、未新增验证，不宣称重开问题全部解决。

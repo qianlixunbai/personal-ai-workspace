@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 `7e7332e` 的[最终整合构建](../engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)通过，资料出处资格修复已编入当前前端并经正式桌面资源校验。下一步集中 Java 正式纯编译输入／独立输出及实际运行链路；对话出处资格仍未修复，真实桌面／打包／候选部署边界保持。
+
 2026-11-11 [资料出处临时资格恢复](../engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)修复已有记忆与会话参考的跨页／重开接线：准确 ID 经列表定位后读取原版本，保留失效、迟到响应与草稿边界。3 项直接合成检查及类型通过；无 Native 门禁变更，不作为真实重开验收。
 
 2026-11-11 [整合与最小纯编译](../engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)先收敛未编译源码：`27db39f` 当前前端 production 与普通 Debug Core／Desktop 正式构建通过，无 restore、原生准入或产品运行。输出独立，旧中断标记按窄条件归档。Java 待明确的 Finance/Lombok 输入与独立目录条件；后续修已证实的接线缺口，保持真实桌面／后端／打包独立验收。

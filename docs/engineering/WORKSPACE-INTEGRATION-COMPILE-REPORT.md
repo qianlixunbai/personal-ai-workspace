@@ -45,3 +45,11 @@ dotnet.exe build desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Des
 ## 验收边界
 
 普通 Debug C# 编译未启用 MMF3/Profile 条件源码；不证明这些配置已编译，也不证明原生文件选择、真实 HTTP、重开持久化、WPF/WebView 交互或模型链路通过。Java、真实后端、实际桌面、打包与候选部署仍未完成；`productionGo=false`、`nativeValidation=NOT_RUN`。图形主机身份未知及既有具体拒绝保持原边界。
+
+## 资料出处修复后的最终整合
+
+产品提交 `7e7332e` 修复资料出处读取资格后，类型检查和三个直接相关场景通过，详见 [出处接线记录](SOURCE-REOPEN-AUTHORIZATION-REPORT.md)。没有继续追加未编译功能。基于这个已提交且产品源码无未提交差异的版本，在全新 `artifacts/integration-compile-20261111-7e7332e` 目录复用上文相同正式构建命令，完成一次必要的最终前端 bundle、资源清单及 Core／Desktop 整合构建：退出 0，**0 警告、0 错误，4.08 秒**。未重复已通过的类型／测试场景。
+
+最终目录保留 `source-head.txt`、`frontend-build.log`、`frontend/dist/workspace-assets.json`、`dotnet-build.log`、`dotnet-build.exit` 和普通 Debug 输出。最终前端清单 SHA256 `dcd0c7bd67232aa268315276b9fbd2d0b7fd027ca902a0d884bc2685d3872071`；C# 日志 SHA256 `1726b9d188b8611816255e260de79fc459e15f6380e051b2f9f93b9fe99adf79`。先前 `27db39f` 输出及原有 target/bin/obj/dist 保留，最终普通构建没有启动产品或替换旧包。
+
+当前剩余接线缺口仍包括 `ConversationSourceReview` 经 `readConversationSource` 直接读取正文 ID，未先从会话列表取得重开后的临时资格；本轮没有修改这条链路。下一步优先闭合上述 Java 正式纯编译条件和实际可运行关键链路，避免把未原生验收的源码积累写成桌面交付。本轮没有新的自动审批拒绝、未知执行结果或在途构建进程；不以提交数冒充三个新产品模块。

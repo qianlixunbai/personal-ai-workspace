@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 最终整合基线为 `7e7332e`：[资料出处修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)已进入独立前端资源与正式 Core／Desktop 普通 Debug 构建，0 警告／0 错误。没有产品运行、打包或原生准入；Java 的 Finance/Lombok 输入／独立输出和对话出处重开资格仍是明确缺口。详见 [整合回执](engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)。
+
 2026-11-11 [资料出处重开接线修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)：记忆回查与会话参考核对先用当前受控列表找到准确 ID，再读取原文档／版本，补上 Native 临时资格要求。类型检查及 3 个直接场景通过；普通 C# 整合编译已有独立记录，真实重开／桌面未验收。
 
 2026-11-11 [当前源码整合编译](engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)：`27db39f` 前端 production 构建、正式 csproj 的 Core／Desktop 普通 Debug 编译通过，0 警告／0 错误；使用原有依赖解析输入、独立输出、无 restore／产品运行。旧自有活动标记经精确核对归档，原 L 与中断证据保留。Java 完整编译仍待 Finance/Lombok 输入及独立输出条件闭合；未验收真实后端、桌面或打包，productionGo=false。
