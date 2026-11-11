@@ -1,5 +1,7 @@
 # 当前编译产物审阅与最小真实联动计划
 
+后续复核：原 Profile 的准确目标在 `C:\Users\CodexSandboxOffline\AppData\Local` 下，早期按当前环境推导的 `C:\Users\28421\AppData\Local` 不是已证实的原目标。2026-11-11 已在普通权限下完成原根目录和 model-state 的限定元数据读取，并通过一次独立 Profile 条件源码编译（0 警告／0 错误）；未启动产品或 helper。见 [准确目标、编译回执与准入边界](PROFILE-METADATA-AND-CONDITIONAL-COMPILE-REPORT.md)。下文“本轮未读取／未编译”描述前一轮审阅组装，不覆盖该后续结果。
+
 日期：2026-11-11。产品源码基线 `5a57ff76a133a4e42e90a4582c76df64af2ad6a1`；产品代码与 `7e7332e` 相同，此后仅更新构建与诊断文档。本轮不重建前端／C#／Java，不运行产品、helper 或旧拒绝入口，不读真实用户数据。
 
 ## 选定的一次真实联动
@@ -19,7 +21,7 @@
 
 ## 交父任务判断的最小下一动作
 
-**首先只申请原失败对象的限定只读诊断，而非重试登记。** 使用当前已确认解释器 `C:\Users\28421\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe`（工具 shell 选择 `powershell`），只对原 Profile 根和其 `model-state` 做 `Get-Item -LiteralPath ... -Force`、`Get-Acl -LiteralPath ...`；不枚举子文件、不读内容、不调用 Java／helper、toRealPath、注册、锁或 armGuard，不改 ACL。目标是受控 Windows KnownFolder(LocalAppData) 下 `PersonalAIWorkspace.Development\Profiles\b204c7e3cc33425e841eb1aa32d2caa2\model-state`，预期绝对地址 `C:\Users\28421\AppData\Local\PersonalAIWorkspace.Development\Profiles\b204c7e3cc33425e841eb1aa32d2caa2\model-state`；这是根据既有失败 Profile ID 与源码目录规则推导的地址，本轮未读取该对象或原登记记录，需父任务先核实它与原拒绝的绝对目标一致。若不符，停止而非换位置。元数据查询若拒绝，停止该目标。
+**当时提出的动作是原失败对象的限定只读诊断，而非重试登记。** 使用当前已确认解释器 `C:\Users\28421\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe`（工具 shell 选择 `powershell`），只对原 Profile 根和其 `model-state` 做 `Get-Item -LiteralPath ... -Force`、`Get-Acl -LiteralPath ...`；不枚举子文件、不读内容、不调用 Java／helper、toRealPath、注册、锁或 armGuard，不改 ACL。早期推导的 28421 用户目录未作为目标访问；后续按既有原始报告核实的原目标为 `C:\Users\CodexSandboxOffline\AppData\Local\PersonalAIWorkspace.Development\Profiles\b204c7e3cc33425e841eb1aa32d2caa2\model-state`，限定读取的实际结果见上方复核报告。今后准入仍须正常解析至这个原目标；不能替换目录、账户或 Profile 来迁就启动。元数据查询若拒绝，停止该目标。
 
 该动作与旧拒绝直接相关，仅用于区分文件类型、reparse/link、owner／DACL 等最基本条件，不预判根因。诊断输出只写新的仓库内 `artifacts/profile-metadata-review-<本次唯一标识>`，不处理历史目录。无产品进程或目标写入，清理仅关闭自身查询句柄；保留回执，不删除原 Profile，因此无数据库回滚需求。本轮**未提交或执行**这个诊断请求，等待父任务对原受限对象的边界作判断。
 
