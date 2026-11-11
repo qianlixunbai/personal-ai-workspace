@@ -1,5 +1,7 @@
 # 记忆到历史会话的使用记录
 
+2026-11-11 接续：[初始化失败诊断与清理修复](MEMORY-USAGE-DATABASE-BLOCKER.md)修正了失败后的附加空指针。旧 Surefire 参数缺少 Windows 原生准入必要条件，但不能据此判定旧异常的首个根因；数据库断言仍未运行，未重跑或降低校验。
+
 日期：2026-11-11。基线：`170652613e6c7ecca2f3c17b4ea81ab1da8b1912`，分支 `codex/knowledge-version-compare`。这是本对话继研究笔记、流水搜索后的第三个业务模块，回到 Memory／Conversations 核心链路。
 
 ## 使用缺口与交付

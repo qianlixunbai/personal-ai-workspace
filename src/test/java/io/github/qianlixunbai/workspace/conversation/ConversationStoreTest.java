@@ -19,7 +19,11 @@ class ConversationStoreTest {
         memory = new MemoryStore(temp.resolve("data"), temp.resolve("auth/token"));
         store = new ConversationStore(memory.databaseFile());
     }
-    @AfterEach void close() { store.close(); memory.close(); }
+    @AfterEach void close() {
+        // Initialization may fail before either store has been assigned.
+        try { if (store != null) store.close(); }
+        finally { if (memory != null) memory.close(); }
+    }
     private void sql(String sql) throws Exception { try (var db = jdbc(); var s = db.createStatement()) { s.execute(sql); } }
     private Connection jdbc() throws Exception { return DriverManager.getConnection("jdbc:sqlite:" + memory.databaseFile()); }
     private long count(String sql) throws Exception { try (var db = jdbc(); var s = db.createStatement(); var r = s.executeQuery(sql)) { r.next(); return r.getLong(1); } }
