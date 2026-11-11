@@ -1,0 +1,151 @@
+diff --git a/scripts/verification/candidate-build/Build.ps1 b/scripts/verification/candidate-build/Build.ps1
+index 5b84263..2b06473 100644
+--- a/scripts/verification/candidate-build/Build.ps1
++++ b/scripts/verification/candidate-build/Build.ps1
+@@ -100,7 +100,7 @@ function Prepare-BaselineInputs {
+     if(-not $manifest.ContainsKey('sourceDirty') -or $manifest.sourceDirty -isnot [bool]){throw 'Baseline source status must be stated, never inferred clean'}
+     $script:BaselineProvenance=[ordered]@{manifestCommit=$manifest.commit;manifestSourceDirty=$manifest.sourceDirty;
+         zipSha256=$script:BaselineZipHash;manifestSha256=$script:Spec.baseline.manifestSha256;
+-        reusedClassSourceAttestation='NOT_ESTABLISHED';financeResources='checked against fixed snapshot';
++        reusedClassSourceAttestation='NOT_ESTABLISHED';financeResources='new module checked against fixed snapshot';oldFinanceClasses='EXCLUDED';
+         meaning='Pinned historical bytes; unchanged Git module does not prove the historical compiled class source'}
+     Write-NewJson (Resolve-Below $Root 'evidence/baseline-provenance.json') $script:BaselineProvenance
+     $paths=@('runtime/personal-ai-workspace.jar','runtime/jna-5.17.0.jar')+
+@@ -131,11 +131,40 @@ function Assert-FinanceResources([byte[]]$Bytes) {
+             if($entry.FullName.EndsWith('/')){continue}; Assert-RelativePath $entry.FullName
+             if(-not $seen.Add($entry.FullName)){throw 'Duplicate finance module entry'}
+             if($entry.FullName.EndsWith('.class') -or $entry.FullName -cmatch '^META-INF/(MANIFEST\.MF|maven/io\.github\.qianlixunbai/finance-domain/pom\.(xml|properties))$'){continue}
+-            if(-not $expected.ContainsKey($entry.FullName) -or (Get-BytesSha (Read-ZipEntryBytes $entry)) -cne $expected[$entry.FullName].sha256){throw 'Reused finance resource differs from fixed source'}
++            if(-not $expected.ContainsKey($entry.FullName) -or (Get-BytesSha (Read-ZipEntryBytes $entry)) -cne $expected[$entry.FullName].sha256){throw 'Finance resource differs from fixed source'}
+         }
+         foreach($name in $expected.Keys){if(-not $seen.Contains($name)){throw 'Finance resource missing'}}
+     } finally {$archive.Dispose();$memory.Dispose()}
+ }
++function Read-RebuiltFinance($Rule) {
++    $jar='inputs/contracts/finance-domain-0.1.0.jar';$proof='inputs/contracts/finance-build-receipt.json'
++    if(-not $script:InputHashes.ContainsKey($jar) -or -not $script:InputHashes.ContainsKey($proof) -or
++        $script:InputHashes[$jar] -cne $Rule.sha256 -or $script:InputHashes[$proof] -cne $script:Spec.financeBuild.receiptSha256){throw 'Reviewed rebuilt finance inputs required'}
++    $receiptPath=Resolve-Below $Root $proof
++    if((Get-Sha $receiptPath) -cne $script:Spec.financeBuild.receiptSha256){throw 'Finance receipt changed'}
++    $receipt=Read-StrictJson $receiptPath
++    if($receipt.format -cne 'WORKSPACE_FINANCE_BUILD_RECEIPT_V1' -or $receipt.productRevision -cne $script:ProductRevision -or
++        $receipt.exitCode -ne 0 -or $receipt.jobCleanupConfirmed -isnot [bool] -or $receipt.oldFinanceClassesUsed -isnot [bool] -or
++        $receipt.jobCleanupConfirmed -ne $true -or $receipt.oldFinanceClassesUsed -ne $false -or
++        $receipt.output.sha256 -cne $Rule.sha256 -or $receipt.output.bytes -ne $Rule.bytes){throw 'Finance provenance is incomplete'}
++    if($receipt.javacSha256 -cne '6fe0b34e9b47d255351040c9ad5920cad9c37d5a10a60916cd2c84299d0c40af' -or
++        $receipt.jdkInventorySha256 -cne 'c9acc39c25271fae0b3af7b4af7911e9fcd12e505505273d5c1efa73ed36a95f' -or
++        $receipt.lombokSha256 -cne '01f7b1a015e33e2b62d5f5f37053306357ab1415fd181fcba7794f5d198c1126' -or
++        ($receipt.processors -join ',') -cne 'lombok.launch.AnnotationProcessorHider$AnnotationProcessor,lombok.launch.AnnotationProcessorHider$ClaimingProcessor'){throw 'Unreviewed finance compiler/processor'}
++    $inputs=@($script:SourceFiles | Where-Object { $_.path -clike 'finance-domain/src/main/java/*.java' -or $_.path -clike 'finance-domain/src/main/resources/*' })
++    if($inputs.Count -ne 75){throw 'Finance source/resource scope changed'}
++    $sourceNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
++    foreach($item in $receipt.sourceInputs){Assert-RelativePath $item.path;if(-not $sourceNames.Add($item.path)){throw 'Duplicate finance source receipt path'}}
++    Assert-SameInventory $inputs $receipt.sourceInputs
++    $dependencies=@($script:Spec.jarEntries | Where-Object role -CEQ 'dependency')
++    if($dependencies.Count -ne 77 -or ($dependencies.path -join '|') -cne ($receipt.classpath.path -join '|')){throw 'Finance classpath order differs'}
++    Assert-SameInventory $dependencies $receipt.classpath
++    $path=Resolve-Below $Root $jar
++    if((Get-Item -LiteralPath $path).Length -ne $Rule.bytes -or (Get-Sha $path) -cne $Rule.sha256){throw 'Finance output changed'}
++    $script:FinanceProvenance=@{kind='rebuilt-fixed-source';productRevision=$script:ProductRevision;receiptSha256=$script:Spec.financeBuild.receiptSha256;source=$jar;sha256=$Rule.sha256;oldFinanceClassesUsed=$false}
++    Write-NewJson (Resolve-Below $Root 'evidence/finance-source.json') $script:FinanceProvenance
++    return ,([IO.File]::ReadAllBytes($path))
++}
+ function Prepare-JarReuse {
+     $wanted=@{}; foreach($entry in $script:Spec.jarEntries){Assert-RelativePath $entry.path;if($wanted.ContainsKey($entry.path)){throw 'Duplicate JAR reuse path'};$wanted[$entry.path]=$entry}
+     $script:JarReuse=[Collections.Generic.List[object]]::new()
+@@ -149,11 +178,13 @@ function Prepare-JarReuse {
+             if($name.StartsWith('BOOT-INF/classes/') -or $name -cin @('META-INF/MANIFEST.MF','META-INF/workspace-runtime.properties','BOOT-INF/classpath.idx','BOOT-INF/layers.idx',
+                 'META-INF/maven/io.github.qianlixunbai/workspace-application/pom.xml','META-INF/maven/io.github.qianlixunbai/workspace-application/pom.properties')){continue}
+             if(-not $wanted.ContainsKey($name)){throw "Unclassified old JAR entry: $name"}
+-            $rule=$wanted[$name];$bytes=Read-ZipEntryBytes $entry
+-            if($entry.Length -ne $rule.bytes -or (Get-BytesSha $bytes) -cne $rule.sha256){throw 'JAR reuse input hash mismatch'}
++            $rule=$wanted[$name]
++            # The old finance entry supplies a position/name only. Never extract its class bytes.
++            $bytes=if($name -ceq 'BOOT-INF/lib/finance-domain-0.1.0.jar'){Read-RebuiltFinance $rule}else{Read-ZipEntryBytes $entry}
++            if($bytes.Length -ne $rule.bytes -or (Get-BytesSha $bytes) -cne $rule.sha256){throw 'JAR reuse input hash mismatch'}
+             switch -CaseSensitive ($rule.role) {
+                 'dependency' { if($name -cnotmatch '^BOOT-INF/lib/[A-Za-z0-9_.+-]+\.jar$' -or $name -clike '*finance-domain*'){throw 'Invalid third-party dependency role'} }
+-                'finance-module' {if($name -cne 'BOOT-INF/lib/finance-domain-0.1.0.jar'){throw 'Unexpected internal module'};Assert-FinanceResources $bytes}
++                'rebuilt-finance-module' {if($name -cne 'BOOT-INF/lib/finance-domain-0.1.0.jar'){throw 'Unexpected internal module'};Assert-FinanceResources $bytes}
+                 'boot-loader' {if($name -cnotmatch '^org/springframework/boot/loader/.+\.class$'){throw 'Unexpected framework class'}}
+                 'boot-service' {if($name -cne 'META-INF/services/java.nio.file.spi.FileSystemProvider' -or [Text.Encoding]::UTF8.GetString($bytes) -cne "org.springframework.boot.loader.nio.file.NestedFileSystemProvider`n"){throw 'Unknown Boot service'}}
+                 'empty-legacy-marker' {
+@@ -176,13 +207,13 @@ function Prepare-JarReuse {
+         $oldOrder=@(([Text.Encoding]::UTF8.GetString((Read-ZipEntryBytes $index))).Split("`n",[StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
+             if($_ -cnotmatch '^- "(BOOT-INF/lib/[A-Za-z0-9_.+-]+\.jar)"\r?$'){throw 'Unknown classpath index syntax'};$Matches[1]
+         })
+-        $newOrder=@($script:Spec.jarEntries | Where-Object { $_.role -cin @('dependency','finance-module') } | ForEach-Object path)
++        $newOrder=@($script:Spec.jarEntries | Where-Object { $_.role -cin @('dependency','rebuilt-finance-module') } | ForEach-Object path)
+         if(($oldOrder -join "`n") -cne ($newOrder -join "`n")){throw 'Reviewed dependency order differs from baseline'}
+         $script:JavaLibraries=@($newOrder | ForEach-Object {Resolve-Below $Root ('work/java-libraries/'+$_.Substring('BOOT-INF/lib/'.Length))})
+         $script:JarReuse=[Collections.Generic.List[object]]::new()
+         foreach($rule in $script:Spec.jarEntries){$script:JarReuse.Add($rule)}
+     } finally {$zip.Dispose()}
+-    if($reuseSeen.Count -ne $wanted.Count -or @($script:JarReuse | Where-Object role -CEQ 'finance-module').Count -ne 1){throw 'Incomplete/mismatched explicit JAR reuse inventory'}
++    if($reuseSeen.Count -ne $wanted.Count -or @($script:JarReuse | Where-Object role -CEQ 'rebuilt-finance-module').Count -ne 1){throw 'Incomplete/mismatched explicit JAR reuse inventory'}
+     Write-NewJson (Resolve-Below $Root 'evidence/jar-reuse.json') $script:JarReuse.ToArray()
+ }
+ function Build-RuntimeJar {
+@@ -222,7 +253,8 @@ function Build-RuntimeJar {
+     foreach($entry in $script:JarReuse){
+         $path=Resolve-Below $assembly $entry.path
+         Copy-PinnedFile (Resolve-Below $Root ('inputs/jar-entries/'+$entry.path)) $path $entry.sha256 $entry.bytes
+-        Record-Generated $path ('reused-'+$entry.role) @{baselineCommit=$script:BaselineRevision;entry=$entry.path;sha256=$entry.sha256;reason=$entry.reason}
++        if($entry.role -ceq 'rebuilt-finance-module'){Record-Generated $path 'rebuilt-finance-module' $script:FinanceProvenance}
++        else{Record-Generated $path ('reused-'+$entry.role) @{baselineCommit=$script:BaselineRevision;entry=$entry.path;sha256=$entry.sha256;reason=$entry.reason}}
+     }
+     $sourceList=@($script:SourceFiles | Sort-Object path -CaseSensitive | ForEach-Object {[ordered]@{Path=$_.path;Sha256=$_.sha256}})
+     $sourceBytes=[Text.UTF8Encoding]::new($false).GetBytes((ConvertTo-Json -InputObject $sourceList -Depth 4 -Compress)+"`n")
+@@ -241,7 +273,7 @@ function Build-RuntimeJar {
+         'Spring-Boot-Classes: BOOT-INF/classes/','Spring-Boot-Lib: BOOT-INF/lib/','Spring-Boot-Classpath-Index: BOOT-INF/classpath.idx','Spring-Boot-Layers-Index: BOOT-INF/layers.idx')
+     $manifestLines=foreach($line in $attributes){while($line.Length -gt 70){$line.Substring(0,70);$line=' '+$line.Substring(70)};$line}
+     Write-NewText (Resolve-Below $assembly 'META-INF/MANIFEST.MF') (($manifestLines -join "`r`n")+"`r`n`r`n")
+-    $libraries=@($script:JarReuse | Where-Object {$_.role -cin @('dependency','finance-module')} | ForEach-Object path)
++    $libraries=@($script:JarReuse | Where-Object {$_.role -cin @('dependency','rebuilt-finance-module')} | ForEach-Object path)
+     Write-NewText (Resolve-Below $assembly 'BOOT-INF/classpath.idx') (($libraries | ForEach-Object {'- "'+$_+'"'}) -join "`n")
+     $layers=@('- "dependencies":')+@($libraries | Where-Object {$_ -cne 'BOOT-INF/lib/finance-domain-0.1.0.jar'} | ForEach-Object {'  - "'+$_+'"'})+
+         @('- "spring-boot-loader":','  - "org/"','- "snapshot-dependencies":','- "application":','  - "BOOT-INF/classes/"','  - "BOOT-INF/classpath.idx"','  - "BOOT-INF/layers.idx"','  - "BOOT-INF/lib/finance-domain-0.1.0.jar"','  - "META-INF/"')
+@@ -254,7 +286,7 @@ function Build-RuntimeJar {
+     try {foreach($file in Get-Inventory $assembly){Add-ZipFile $zip $file.path (Resolve-Below $assembly $file.path)}}finally{$zip.Dispose()}
+     # Reopen every entry; compare exactly with the empty assembly tree, including resources.
+     Assert-ZipMatches $script:RuntimeJar (Get-Inventory $assembly)
+-    Record-Generated $script:RuntimeJar 'assembled-runtime' @{productRevision=$script:ProductRevision;internalFinance='explicit unchanged module reuse';nativeValidation='NOT_RUN'}
++    Record-Generated $script:RuntimeJar 'assembled-runtime' @{productRevision=$script:ProductRevision;internalFinance='rebuilt-fixed-source; pinned independent receipt';nativeValidation='NOT_RUN'}
+ }
+ function Prepare-RuntimePayload {
+     $script:RuntimeInputs=@{};$pins=[Collections.Generic.List[object]]::new()
+diff --git a/scripts/verification/candidate-build/inputs.schema.json b/scripts/verification/candidate-build/inputs.schema.json
+index 600e0c0..ed56eef 100644
+--- a/scripts/verification/candidate-build/inputs.schema.json
++++ b/scripts/verification/candidate-build/inputs.schema.json
+@@ -2,9 +2,9 @@
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "title": "Reviewed candidate build inputs; not an execution authorization",
+   "type": "object", "additionalProperties": false,
+-  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "buildCodeReview", "jarEntries", "publishFiles", "noticeFiles", "runtimeFiles"],
++  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "buildCodeReview", "financeBuild", "jarEntries", "publishFiles", "noticeFiles", "runtimeFiles"],
+   "properties": {
+-    "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V2"},
++    "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V3"},
+     "repository": {"type": "string", "minLength": 3},
+     "productRevision": {"$ref": "#/$defs/revision"},
+     "buildToolsRevision": {"$ref": "#/$defs/revision"},
+@@ -64,13 +64,17 @@
+         }
+       }
+     },
++    "financeBuild": {
++      "type": "object", "additionalProperties": false, "required": ["kind", "receiptSha256"],
++      "properties": {"kind": {"const": "rebuilt-fixed-source"}, "receiptSha256": {"$ref": "#/$defs/hash"}}
++    },
+     "jarEntries": {
+       "type": "array", "minItems": 1,
+       "items": {
+         "type": "object", "additionalProperties": false, "required": ["path", "sha256", "bytes", "role", "reason"],
+         "properties": {
+           "path": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}, "bytes": {"type": "integer", "minimum": 0},
+-          "role": {"enum": ["dependency", "finance-module", "boot-loader", "boot-service", "empty-legacy-marker"]},
++          "role": {"enum": ["dependency", "rebuilt-finance-module", "boot-loader", "boot-service", "empty-legacy-marker"]},
+           "reason": {"type": "string", "minLength": 20}
+         }
+       }

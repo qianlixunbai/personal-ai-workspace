@@ -1,0 +1,129 @@
+{
+  "format": "WORKSPACE_LOCK_ONLY_INPUTS_V1",
+  "productRevision": "2ca50415cc6752288110fb31aa0abff6af7d4ed9",
+  "repository": "D:\\IDEA\\Daima\\personal-ai-workspace",
+  "root": "D:\\IDEA\\Daima\\personal-ai-workspace\\artifacts\\candidate-lock-inputs-06d179db0e54442abf3ebcc5f865808f",
+  "sdk": "10.0.401",
+  "common": {
+    "bytes": 24538,
+    "sha256": "ad86946901ac238ca8f63b66d712f3ce5bb60603d206a14169eb9df4d03a4e8f"
+  },
+  "support": {
+    "bytes": 18750,
+    "sha256": "f285a6d4e39e947af46d01132b94d84599a59a015b5cec26d7fe0eade5485700"
+  },
+  "trees": [
+    {
+      "id": "pwsh",
+      "source": "C:\\Users\\28421\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell",
+      "inventory": {
+        "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/pwsh-tree.json",
+        "bytes": 92257,
+        "sha256": "29c634fa41db939bf66657b1439bda369af905fce0a2835c8034f5f370a6fd2f"
+      },
+      "count": 658
+    },
+    {
+      "id": "git",
+      "source": "C:\\Program Files\\Git",
+      "inventory": {
+        "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/git-tree.json",
+        "bytes": 1313504,
+        "sha256": "bb932b0f90181a79f6416f2bda5a726b7d92ae81d5fa9400a169a1f10ce9d459"
+      },
+      "count": 9305
+    },
+    {
+      "id": "dotnet",
+      "source": "C:\\Program Files\\dotnet",
+      "inventory": {
+        "path": ".verification/candidate-input-audit-7b04d09125794129a0f634bf7a6fd23d/continued/dotnet-tree.json",
+        "bytes": 1266121,
+        "sha256": "de85a10b4d5a4a7b8f0d776a139a1b62db274ba248dab997b92b7cde738c1078"
+      },
+      "count": 6778
+    }
+  ],
+  "packages": [
+    {
+      "id": "DocumentFormat.OpenXml",
+      "version": "3.5.1",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\documentformat.openxml\\3.5.1\\documentformat.openxml.3.5.1.nupkg",
+      "archive": "documentformat.openxml.3.5.1.nupkg",
+      "bytes": 15375355,
+      "sha256": "71375a11a53eeb554005477ce6ca127909aebed474900e92298360b49a68307f",
+      "archiveSha512": "KujkUMySBytPfAHwwXnU0z8LvCLWUjG3kGqeO8xMb2fSmVaOcF7IAnUNXMrjvxiAO5DvCEpxAUUEVzJxBiYG9g==",
+      "contentHash": "zxdOf5VVCe/uNklbRhj8dVBzQGj3DoqkUuqOp9cAZVuN8mNYDjof1lvSQA2OQNr8Ptc9d7pbA7Azq/ReaI3FpA=="
+    },
+    {
+      "id": "DocumentFormat.OpenXml.Framework",
+      "version": "3.5.1",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\documentformat.openxml.framework\\3.5.1\\documentformat.openxml.framework.3.5.1.nupkg",
+      "archive": "documentformat.openxml.framework.3.5.1.nupkg",
+      "bytes": 1683829,
+      "sha256": "d317d974986a90d8f6de1832a48fb1052d771ea475a37a2f4e3be85c497fa9c5",
+      "archiveSha512": "E81n0A49xjgEtdTlQyBJ9VWEe2oqYyUwV+GCuEMNZYVi1vBMkxwyO+HdH2YM/obXQtwQa6L5bmllYe3Fpvlz+A==",
+      "contentHash": "U5txtc3ORno73xQx9Lf2gWzfaSZnZwKHfLkTAslhlew9lxe5XbUiCt0dY1fHeAf8yRqszUAe5i/+xLC9R/Xfsw=="
+    },
+    {
+      "id": "Microsoft.AspNetCore.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.14\\microsoft.aspnetcore.app.runtime.win-x64.10.0.14.nupkg",
+      "archive": "microsoft.aspnetcore.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 12784020,
+      "sha256": "91638ac8382c437e71c0739a0e3123290f9bf48bcd01e616352a86add5571089",
+      "archiveSha512": "1k8096BmENepiqExfgA3ndME94v7RqMqTqLrNMyN+FpqD7WD6jKL9tYrYWi4WKNCAgvRMFVlAidzA3s/FDmIQg==",
+      "contentHash": "aybWX2VpYNS3XMl8PgZjIpzzbsWyrs+ugjKnK/bMwSGqqlpZbWALF6f+keKqp5wsg3SoNunaFi2hH9Ql91mePA=="
+    },
+    {
+      "id": "Microsoft.NETCore.App.Host.win-x64",
+      "version": "10.0.14",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\10.0.14\\microsoft.netcore.app.host.win-x64.10.0.14.nupkg",
+      "archive": "microsoft.netcore.app.host.win-x64.10.0.14.nupkg",
+      "bytes": 5791948,
+      "sha256": "2a4547b0e6cf0dd15e723531daa5450d99d4e151105aec0d31f2b0c7cfb286db",
+      "archiveSha512": "Kn602fS/n6hsgpCW8HzykOu31D/oNrxhETNlgoou5yj7Zvvw9KWX3GnG7hevtm9R3VKdP1kPEfQ0Y3eo83YafQ==",
+      "contentHash": "Pfzs0ioxdBH2QP98yEA1RDPR1JhgrJSlMt5y6BLM4q+/jPWFVI3ZeA5Yz5leX8NYqEeNWFUsViwWgt+yg0x6bw=="
+    },
+    {
+      "id": "Microsoft.NETCore.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.14\\microsoft.netcore.app.runtime.win-x64.10.0.14.nupkg",
+      "archive": "microsoft.netcore.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 39979900,
+      "sha256": "a3ea61b4a2da6d28e562dd1cdacf80eb4dd6b9727b0a2b47f9d6aba90dbbcb1f",
+      "archiveSha512": "mLWGagTP5n7nMfJQI2XpXRYgvPcnyYvAc8ZiDfum8ShM0UcrPDyfW4Lqo45UtlCHCucERUHQuMTI6ybVweCN9A==",
+      "contentHash": "Py+9fO4oGQwPrM2SDTOCZP1CburyfXradGLj49WFXFA1/awcgTOtY9Ao01P2mYTyEMY32W2WmQyftR3KlwJFfA=="
+    },
+    {
+      "id": "Microsoft.Web.WebView2",
+      "version": "1.0.4258.31",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\microsoft.web.webview2\\1.0.4258.31\\microsoft.web.webview2.1.0.4258.31.nupkg",
+      "archive": "microsoft.web.webview2.1.0.4258.31.nupkg",
+      "bytes": 9801922,
+      "sha256": "56f7f4b8bf9aee4b8efefbbdd4f67d5f74ebd1b100ed0806da71bf76af481aa9",
+      "archiveSha512": "HlGVwvyP/IWiXAU8K57Vmg59khY3DWMOxMnH4AHusFRy0/vDAjKItXUIVNXiXXaq4CLfSZyNUic1wOIlnPLsPQ==",
+      "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+    },
+    {
+      "id": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+      "version": "10.0.14",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.14\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.14.nupkg",
+      "archive": "microsoft.windowsdesktop.app.runtime.win-x64.10.0.14.nupkg",
+      "bytes": 39195036,
+      "sha256": "a6dba3ca8b8b5b7945399545d881e0ac294746a7571f2209981934d49ecfe8cc",
+      "archiveSha512": "Hxj4llZzFIss9eBt/EKnxessXLi3/wj6Cwrqp2ZL1j74Pmg8VM+IZd9B7bWGt8flKre7z6cJwoRY5YpwJqX44Q==",
+      "contentHash": "Uzc3Ys2TYdzc7hd2Qkfdqmle8ErLJiyrmX4/iTQvva/Z9kijE+5jRE8O63iJRsie9s0KVj490XhIzf6zAFuWlA=="
+    },
+    {
+      "id": "PdfPig",
+      "version": "0.1.16",
+      "source": "C:\\Users\\28421\\.nuget\\packages\\pdfpig\\0.1.16\\pdfpig.0.1.16.nupkg",
+      "archive": "pdfpig.0.1.16.nupkg",
+      "bytes": 16710625,
+      "sha256": "d67171846ea8c28f50359137065fec4514266d7a32b23eae6c5f2ebed8ffcfc4",
+      "archiveSha512": "clPAR660u7oGMGO0+I4JAq3olrsbIcKO2m3JtAuOow+IbS62Pyfh00GFnG10Ngl2nizTS5+DsCSlndW6sLvNBQ==",
+      "contentHash": "qQcbsNMYVY+K5ELptax2S8thNMk0+rSQq3H/KdYj3LLcko8yTCz8y5KIvsKxIyAuTN0ZYNnfsZkM+0EvxTwHVA=="
+    }
+  ]
+}

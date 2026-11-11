@@ -1,0 +1,49 @@
+{
+  "format": "WORKSPACE_LOCK_RUNNER_SOURCE_REVIEW_CATALOG_V1",
+  "baseCommit": "6a5a29a3c1a09cc3385ee8a45e0b86780e631906",
+  "productRevision": "2ca50415cc6752288110fb31aa0abff6af7d4ed9",
+  "runnerExecuted": false,
+  "financePatchApplied": false,
+  "independentReview": "PENDING",
+  "testsRun": 0,
+  "restoreBuildGuardProcessorProductRuns": 0,
+  "productionGo": false,
+  "nativeValidation": "NOT_RUN",
+  "files": [
+    {
+      "path": "scripts/verification/candidate-lock/GenerateLocks.ps1",
+      "bytes": 22453,
+      "sha256": "5b01085c9b5a9cccc431ffafb05b08b9ad92df9a035d683deb2bcb4cb6a3511d"
+    },
+    {
+      "path": "scripts/verification/candidate-lock/lock-inputs.json",
+      "bytes": 6716,
+      "sha256": "6b5c069a8f5fe6256f842e2bf65f1bb5dee303a1f487c4fc370dec5de0759827"
+    },
+    {
+      "path": "docs/engineering/proposals/finance-source-selection.patch",
+      "bytes": 14565,
+      "sha256": "5da6915404be6264045bb75ae99c21abd6d3e2b68dc4e0a7a1b52ee4b7fe17db"
+    },
+    {
+      "path": "docs/engineering/CANDIDATE-LOCK-RUNNER-REVIEW.md",
+      "bytes": 18396,
+      "sha256": "0dc3a5cd3334f873a8b891ed26e6113bc9de88d7f85bfd973ef4b0c9f4ba9271"
+    },
+    {
+      "path": ".verification/candidate-lock-source-review-ceca0aa8f22c4860a65df39cf343ac56/final-static-review.json",
+      "bytes": 2558,
+      "sha256": "482eeb9d6e8dd9b1e4b6330efd391bd8ca6d235300d4c1ca7e8916d6728a3692"
+    },
+    {
+      "path": ".verification/candidate-lock-source-review-ceca0aa8f22c4860a65df39cf343ac56/finance-draft/Build.ps1",
+      "bytes": 54219,
+      "sha256": "9fa1314702058b77f4267a7544d9abfb99bac6b03f925df0a66c741ce9f40c5e"
+    },
+    {
+      "path": ".verification/candidate-lock-source-review-ceca0aa8f22c4860a65df39cf343ac56/finance-draft/inputs.schema.json",
+      "bytes": 6735,
+      "sha256": "4db16bfcecfae51261eef3c3e08bb740f567779a832567ee4025b976f40806ce"
+    }
+  ]
+}
