@@ -1,5 +1,19 @@
 # 同源候选包与最小启动范围
 
+## 后续现场核对：许可已收到，helper 验证通过
+
+用户已于 2026-11-11 09:55:12 UTC 明确同意原开发 Profile 的两次启动／退出、token 更新及 WebView 浏览数据清除；原始问答经 `user_message_read.read_messages` 核实。该许可不解除历史拒绝，不允许更换身份、目录或入口绕过。本节是后续结果，下文“未运行 helper”等描述保留为组装阶段历史。
+
+独立源码修复已提交 `0335ff49278bedf7b747486bc584e5240ce85ba7`：补齐对话出处的列表授权，类型检查和 4 个前端场景通过，见 SOURCE-REOPEN-AUTHORIZATION-REPORT。候选包仍为 `933bb20` 来源，未重新构建／打包，未纳入该新增前端修复。本地提交首次被自动审批以“与开题报告任务无关、缺少可采信授权”拒绝，命令未执行；读取用户原始 Git 回滚授权及上下文后，仅同范围重试一次并成功，没有换通道提交或改 ACL。
+
+现场证据目录为 `artifacts/live-link-preflight-20261111-4461263e58b54c4a8b9b0b0f282c659a`。只读元数据检查 P、data、credentials、evidence、model-state：均为非重解析目录，owner 匹配原有效主体且 DACL protected。准确检查的 database.dpapi、finance.dpapi、三个 sqlite 维护登记、六个模型状态／pending 文件、model-state/.lock 和 credentials/client-token **全部不存在**。未读内容、枚举目录、创建 Profile 锁或修改权限。第一次启动将生成 token，独立重开才会轮换；这是现场观察，不再仅是假设。
+
+候选 EXE/DLL/JAR 当前哈希与下表相同。正规 `require_escalated` 调用的有效主体与原 Profile 不同，前置主体比较在 helper 启动前停止，该次没有产品操作。随后普通执行通道再次确认原有效主体，固定四项 helper pins 和环境前提核对通过，实际执行包内 `NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.exe VerifyProfileNative b204c7e3cc33425e841eb1aa32d2caa2`。UTC 10:03:16.3056367Z 开始，PID 3500，退出 0，无超时；返回根与原 P 完全相同，JNA hash 与固定值相同。没有 Provision、Java、WebView、token 或数据库操作；自有 helper 退出，共享 mutex 已释放。此结果仅证明 helper 原生验证，不证明 Java NativeGate、ModelStateStore、服务或桌面已通过。
+
+证据 SHA256：metadata.json `e0d856a74248d38e31acad53dbb09c763aa4f7367ff6bfe3ffee12b64c9e2a84d`；helper-result.json `04f41e7d8d813cf84f45db15d47d5d6e63a61280da3564c6f1f088bfe7412552`；helper-stdout.txt `4082ce68d6864fc2a87c9d9cfeb123d9b9c727ae25982e66edd2ae457d463a9b`。身份前置停止另存 identity-precheck-stop.json，不输出秘密。
+
+完整闭环当前缺少已确认的正常界面操作／退出控制。候选 OnStartup 自动打开 Workspace；托盘“退出”才调用 AssistantApp.ExitAsync，依次清理 WebView、发送 owned Runtime CLOSE 并等待退出。关闭主窗口只关闭 WebView，Assistant 使用 OnExplicitShutdown，不能视为整个应用退出。现有候选无普通外部退出命令；Recovery 专用 callback 不是替代入口。CUA 主机关联仍未确认且未重试，因此没有先启动桌面再以强制结束冒充正常闭环，也未使用反射或自造消息触发退出。后续需要用户在已确认的 Windows 命令主机上执行正常界面操作，或父任务提供已确认的同主机操作途径；不是再索要已收到的 token／浏览清理许可。资料保存、真正退出、独立重开回查均尚未执行。
+
 2026-11-11。**离线候选包已实际组装并审计通过；产品、helper、NativeGate、真实服务和桌面联动均未运行。** 来源提交 `933bb20d5dad2e04c6e0a13cc243cba7fc07124a`，产品代码与 `7e7332e` 相同。`productionGo=false`，`nativeValidation=NOT_RUN`。本报告后的文档提交不改变这份包的来源提交或字节。
 
 ## 交付物与准确身份
