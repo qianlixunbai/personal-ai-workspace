@@ -14,6 +14,12 @@
 
 提交 `7e7332e` 已纳入全新独立目录的最终前端及正式 Core／Desktop 构建，退出 0、0 警告／0 错误，4.08 秒。没有 restore 或实际应用运行。对应 [最终整合回执](WORKSPACE-INTEGRATION-COMPILE-REPORT.md) 保留源码版本与日志。
 
-## 对话出处尚存的缺口
+## 对话出处：补齐重开后的列表授权
 
-`readConversationSource` 仍直接调用 `getConversation`，而 Native `WorkspaceConversations.GetAsync` 要求当前 session 的 Known 集合已经包含该会话。Memory 中的可编辑会话／轮次／消息定位不具有该资格；原消息、角色、范围检查虽已存在，尚缺受控列表的准确 ID 定位。这条链路本轮未修改、未新增验证，不宣称重开问题全部解决。
+`92a0764` 基线仍有缺口：`readConversationSource` 直接调用 `getConversation`，而 Native `WorkspaceConversations.GetAsync` 要求当前 session 的 Known 集合已经包含该会话。Memory 中的可编辑会话／轮次／消息定位不具有该资格。
+
+等待原 Profile 启动范围答复期间，现已补齐共用读取函数：先沿现有 ACTIVE／ARCHIVED 列表定位准确会话 ID，每种状态最多 100 页（现有合同每页 10 条、最多 1000 个会话），找到后才读取原轮次页，再执行原有轮次 ID、序号、消息 ID、角色及字符范围核对。每次列表请求前后检查 UI/session 是否仍有效及 30 秒预算；迟到列表不继续发详情，找不到就停止，不改查同名会话或其他消息，不缓存资格，不放宽 Native。
+
+修复共用于记忆对话出处、消息摘录核对、工作区消息阅读和跨会话参考。摘录夹具现在要求先列表授权，并在 session 变化时清除资格；归档回查前清空资格，缺失 ID 不发详情，编辑／session 更换后的迟到列表不继续读取。原有消息身份、Unicode 范围、草稿与只读约束保留。
+
+验证仅为 `npm run check` 和两个既有前端文件的 4 个场景，没有新增测试设施。类型检查通过；首次运行 3 passed / 1 failed（6.03 秒），失败是跨会话参考的旧只读调用断言遗漏新增的两次列表调用；修正该断言后仅重跑该文件，2 passed（4.03 秒）。结合首次通过的摘录文件 2 个场景，4 个场景最终均通过。检查各自持有并释放共享重型 mutex。本轮不执行 Vite build、C#/Java 编译、打包、产品/helper/NativeGate 或真实 Profile 读写。此修复尚未纳入来源 `933bb20` 的既有候选包，不把前端合成场景当作原生退出重开验收。

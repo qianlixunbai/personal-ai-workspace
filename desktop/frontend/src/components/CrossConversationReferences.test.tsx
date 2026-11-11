@@ -29,7 +29,10 @@ class HistoryService extends MemoryService {
     if (method === 'conversations.get' && payload.conversationId === this.sourceId && this.holdSource) return
     queueMicrotask(() => {
       if (method === 'knowledge.search') this.reply(index, { hits: [] })
-      else if (method === 'conversations.list') this.reply(index, { items: [this.detail(conversation.id).conversation], total: 1, page: 0, limit: 10 })
+      else if (method === 'conversations.list') {
+        const items = payload.status === 'ARCHIVED' ? (this.missing ? [] : [this.detail(this.sourceId).conversation]) : [this.detail(conversation.id).conversation]
+        this.reply(index, { items, total: items.length, page: 0, limit: 10 })
+      }
       else if (method === 'conversations.clearMemories') this.reply(index, { cleared: true })
       else if (method === 'conversations.get') {
         if (this.missing && payload.conversationId === this.sourceId) {
@@ -114,6 +117,8 @@ it('copies only explicit old-message excerpts into the current draft after revie
   expect(screen.queryByRole('dialog', { name: '准备会话参考' })).toBeNull()
   expect(screen.getByRole('heading', { name: '当前草稿会话' })).toBeTruthy()
   expect(port.sent.slice(before).map(request => ({ method: request.method, payload: request.payload }))).toEqual([
+    { method: 'conversations.list', payload: { status: 'ACTIVE', page: 0 } },
+    { method: 'conversations.list', payload: { status: 'ARCHIVED', page: 0 } },
     { method: 'conversations.get', payload: { conversationId: port.sourceId, page: 1 } },
   ])
   expect(document.querySelector('script,img,iframe')).toBeNull(); assertNoSubmission(port)
@@ -136,7 +141,7 @@ it('keeps the target draft intact for oversized, changed or deleted sources and 
   expect(port.sent.slice(before).filter(request => request.method === 'conversations.get')).toHaveLength(2)
   expect(draft.value).toBe('想继续讨论。')
   port.missing = true; await click('核对来源并插入草稿')
-  expect(within(basket()).getByRole('alert').textContent).toContain('旧会话已不存在')
+  expect(within(basket()).getByRole('alert').textContent).toContain('已删除或不可用')
   expect(draft.value).toBe('想继续讨论。')
   await click('关闭参考准备'); port.missing = false; port.body = original
   await open(); await choose(); await click('将整条命中消息加入参考')

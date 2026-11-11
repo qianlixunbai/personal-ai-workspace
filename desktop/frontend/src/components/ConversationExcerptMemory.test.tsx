@@ -10,9 +10,11 @@ import { MemorySourceReview } from './MemorySourceReview'
 class ExcerptService extends MemoryService {
   core = '需要核实😀 <script>这只是原文</script>。'
   source = '前文'.repeat(300) + this.core + ' tail'.repeat(600)
-  hold = false; missing = false; wrongMessage = false
+  hold = false; holdList = false; missing = false; wrongMessage = false
+  known = new Set<string>()
   title = '项目\n讨论'; archived = false
   constructor() { super(); this.items = [] }
+  override session(id?: string) { this.known.clear(); super.session(id) }
   detail(page = 1) {
     const detail = conversationHistory(11, page)
     detail.conversation = { ...conversation, title: this.title, status: this.archived ? 'ARCHIVED' : 'ACTIVE' }
@@ -27,11 +29,17 @@ class ExcerptService extends MemoryService {
     if (!request.method.startsWith('conversations.')) { super.postMessage(value); return }
     this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
     if (request.method === 'conversations.get' && this.hold) return
+    if (request.method === 'conversations.list' && this.holdList) return
     queueMicrotask(() => {
-      if (request.method === 'conversations.list') this.reply(index, { items: [this.detail().conversation], total: 1, page: 0, limit: 10 })
+      if (request.method === 'conversations.list') {
+        const item = this.detail().conversation
+        const items = !this.missing && item.status === request.payload.status ? [item] : []
+        for (const value of items) this.known.add(value.id)
+        this.reply(index, { items, total: items.length, page: 0, limit: 10 })
+      }
       else if (request.method === 'conversations.clearMemories') this.reply(index, { cleared: true })
       else if (request.method === 'conversations.get') {
-        if (this.missing) {
+        if (this.missing || !this.known.has(String(request.payload.conversationId))) {
           const pending = this.sent[index]!
           this.emit({ version: 1, sessionId: pending.sessionId, requestId: pending.requestId, ok: false, error: { code: 'ConversationNotFound', message: '合成消息不可用。' } })
         } else this.reply(index, this.detail(Number(request.payload.page)))
@@ -89,8 +97,11 @@ it('extracts a long historical reply into a reviewed saved memory and reads its 
   await click('新建'); await click(/带原消息位置的笔记 PROJECT_NOTE/)
   expect(content.value).toBe(port.note() + '\n人工批注：稍后核实。')
   const reads = port.sent.filter(request => request.method === 'conversations.get').length
-  port.title = '后来改名'; port.archived = true
+  port.title = '后来改名'; port.archived = true; port.known.clear()
   await click('查看对话出处')
+  expect(port.sent.filter(request => request.method === 'conversations.list').slice(-2).map(request => request.payload)).toEqual([
+    { status: 'ACTIVE', page: 0 }, { status: 'ARCHIVED', page: 0 },
+  ])
   expect(port.sent.filter(request => request.method === 'conversations.get')).toHaveLength(reads + 1)
   expect(port.sent.filter(request => request.method === 'conversations.get').at(-1)!.payload).toEqual({ conversationId: conversation.id, page: 1 })
   expect(screen.getByLabelText('对话所记范围原文').textContent).toBe(port.core)
@@ -138,8 +149,18 @@ it('blocks invalid excerpts and missing identities, and discards delayed reads a
   await click('查看对话出处')
   expect(screen.getByRole('alert').textContent).toContain('切断了字符')
   reader.rerender(<MemorySourceReview bridge={bridge} content={content} />)
+  const detailReads = port.sent.filter(request => request.method === 'conversations.get').length
   port.missing = true; await click('查看对话出处')
   expect(screen.getByRole('alert').textContent).toContain('已删除或不可用')
+  expect(port.sent.filter(request => request.method === 'conversations.get')).toHaveLength(detailReads)
+  port.missing = false; port.holdList = true; await click('查看对话出处'); pending = port.sent.length - 1
+  reader.rerender(<MemorySourceReview bridge={bridge} content={'编辑后' + content} />)
+  await act(async () => port.reply(pending, { items: [port.detail().conversation], total: 1, page: 0, limit: 10 }))
+  expect(port.sent.filter(request => request.method === 'conversations.get')).toHaveLength(detailReads)
+  await click('查看对话出处'); pending = port.sent.length - 1
+  await act(async () => { port.session(uuid(908)); port.reply(pending, { items: [port.detail().conversation], total: 1, page: 0, limit: 10 }) })
+  expect(port.sent.filter(request => request.method === 'conversations.get')).toHaveLength(detailReads)
+  port.holdList = false; reader.rerender(<MemorySourceReview bridge={bridge} content={content} />)
   port.missing = false; port.hold = true; await click('查看对话出处'); pending = port.sent.length - 1
   reader.rerender(<MemorySourceReview bridge={bridge} content={'编辑后' + content} />)
   await act(async () => port.reply(pending, port.detail()))
@@ -150,5 +171,5 @@ it('blocks invalid excerpts and missing identities, and discards delayed reads a
   const count = port.sent.length
   reader.rerender(<MemorySourceReview bridge={bridge} content={content} enabled={false} />)
   await click('查看对话出处'); expect(port.sent).toHaveLength(count)
-  expect(port.sent.every(request => request.method === 'conversations.get')).toBe(true)
+  expect(port.sent.every(request => request.method === 'conversations.list' || request.method === 'conversations.get')).toBe(true)
 })

@@ -26,11 +26,24 @@ export function conversationSourceHint(content: string): { kind: 'absent' } | { 
     || startOffset < 0 || endOffset <= startOffset || endOffset > 8192) return { kind: 'invalid' }
   return { kind: 'found', source: { title, conversationId, turnId, sequence, messageId, role: role as Message['role'], startOffset, endOffset, excerpt: content.slice(0, start) } }
 }
-export async function readConversationSource(bridge: Pick<WorkspaceClient, 'getConversation'>, source: MemoryConversationSource, check: () => void) {
-  check()
+export async function readConversationSource(bridge: Pick<WorkspaceClient, 'listConversations' | 'getConversation'>, source: MemoryConversationSource, check: () => void) {
+  const deadline = Date.now() + 30_000
+  const current = () => { check(); if (Date.now() > deadline) throw new Error('定位原会话超时，请主动重新核对。') }
+  let listed = false
+  // An editable locator grants no native session authority. The normal list must
+  // expose this exact ID before reading its original turn, including after reopen.
+  for (const status of ['ACTIVE', 'ARCHIVED'] as const) {
+    for (let page = 0; page < 100; page++) {
+      current(); const result = await bridge.listConversations(status, page); current()
+      if (result.items.some(item => item.id === source.conversationId)) { listed = true; break }
+      if ((page + 1) * result.limit >= result.total) break
+    }
+    if (listed) break
+  }
+  if (!listed) throw new Error('当前会话列表中未找到原会话，可能已删除或不可用；未改查同名会话或其他消息。请刷新后重新核对。')
   const page = Math.floor((source.sequence - 1) / 10)
   const detail = await bridge.getConversation(source.conversationId, page)
-  check()
+  current()
   const turn = detail.turns.find(item => item.turnId === source.turnId && item.sequence === source.sequence)
   const message = source.role === 'USER' ? turn?.userMessage : turn?.assistantMessage
   if (detail.conversation.id !== source.conversationId || detail.page !== page || !turn || turn.status === 'PENDING'
