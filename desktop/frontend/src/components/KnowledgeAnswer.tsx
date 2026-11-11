@@ -11,6 +11,8 @@ import { KnowledgeAnswerExcerpt } from './KnowledgeAnswerExcerpt'
 export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocument, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; open: (citation: KnowledgeAnswerCitation) => Promise<void>; currentDocument?: KnowledgeDocument | undefined; onMemoryDraft?: ((content: string, role: 'ASSISTANT') => void) | undefined }) {
   const [scope, setScope] = useState<KnowledgeScope | null>(null), [scopeTitle, setScopeTitle] = useState('')
   const [question, setQuestion] = useState(''), [query, setQuery] = useState(''), [task, setTask] = useState<KnowledgeAnswerTask | null>(null)
+  const [knownTaskId, setKnownTaskId] = useState<string | null>(null), [cancelRequested, setCancelRequested] = useState(false)
+  const cancelledIds = useRef(new Set<string>())
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [exportNotice, setExportNotice] = useState('')
   const [history, setHistory] = useState<KnowledgeAnswerHistoryPage | null>(null), [deleteId, setDeleteId] = useState<string | null>(null)
@@ -19,9 +21,9 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
   const [answerInput, setAnswerInput] = useState<{ question: string; query: string; scope: KnowledgeScope | null } | null>(null)
   const savedDraft = useRef<{ question: string; query: string; scope: KnowledgeScope | null }>({ question: '', query: '', scope: null })
   const generation = useRef(0), composing = useRef(false), actionLock = useRef(false)
-  const active = task?.status === 'QUEUED' || task?.status === 'RUNNING'
+  const active = task?.status === 'QUEUED' || task?.status === 'RUNNING' || !!knownTaskId && !task
   const dirty = question !== savedDraft.current.question || query !== savedDraft.current.query || scope?.documentId !== savedDraft.current.scope?.documentId || scope?.sourceRevision !== savedDraft.current.scope?.sourceRevision
-  const clear = () => { generation.current++; composing.current = false; actionLock.current = false; savedDraft.current = { question: '', query: '', scope: null }; setPendingHistory(null); setConfirmNew(false); setUnknownSubmission(false); setAnswerInput(null); setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null); setScope(null); setScopeTitle(''); setExportNotice('') }
+  const clear = () => { generation.current++; composing.current = false; actionLock.current = false; cancelledIds.current.clear(); setKnownTaskId(null); setCancelRequested(false); savedDraft.current = { question: '', query: '', scope: null }; setPendingHistory(null); setConfirmNew(false); setUnknownSubmission(false); setAnswerInput(null); setQuestion(''); setQuery(''); setTask(null); setBusy(false); setError(''); setHistory(null); setDeleteId(null); setScope(null); setScopeTitle(''); setExportNotice('') }
   useEffect(() => { setExportNotice('') }, [task?.taskId])
   const checked = (result: KnowledgeAnswerTask, admittedScope = answerInput?.scope ?? null) => {
     if (admittedScope && result.result?.citations.some(c => c.documentId !== admittedScope.documentId || c.sourceRevision !== admittedScope.sourceRevision)) throw new Error('返回的引用超出了所选资料范围。')
@@ -44,29 +46,41 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
   const submit = async () => {
     if (!enabled || !visible || actionLock.current || busy || active || unknownSubmission || composing.current || !question.trim() || !query.trim()) return
     const epoch = ++generation.current, input = { question, query, scope }
-    actionLock.current = true; setBusy(true); setTask(null); setAnswerInput(input); setError('')
-    try { const result = await bridge.submitKnowledgeAnswer(question, query, scope); if (epoch === generation.current) { setTask(checked(result, input.scope)); savedDraft.current = input } }
-    catch (e) { if (epoch === generation.current) { setUnknownSubmission(!(e instanceof BridgeError) || ['OutcomeUnknown', 'RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(e.code)); setError(e instanceof Error ? e.message : '基于知识回答暂时不可用。') } }
+    actionLock.current = true; setBusy(true); setTask(null); setKnownTaskId(null); setCancelRequested(false); setAnswerInput(input); setError('')
+    let accepted = false
+    try {
+      const result = await bridge.submitKnowledgeAnswer(question, query, scope)
+      if (epoch === generation.current) {
+        // The bridge has validated the receipt and ID. Preserve that identity even
+        // when the result fails the additional explicit-scope check below.
+        accepted = true; setKnownTaskId(result.taskId); savedDraft.current = input
+        setTask(checked(result, input.scope))
+      }
+    }
+    catch (e) { if (epoch === generation.current) { setUnknownSubmission(!accepted && (!(e instanceof BridgeError) || ['OutcomeUnknown', 'RuntimeUnavailable', 'ClientTimeout', 'InvalidResponse'].includes(e.code))); setError(e instanceof Error ? e.message : '基于知识回答暂时不可用。') } }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
   const cancel = async () => {
-    if (!enabled || !visible || !task || !active || busy || actionLock.current) return
+    const id = knownTaskId ?? task?.taskId
+    if (!enabled || !visible || !id || !active || busy || actionLock.current || cancelledIds.current.has(id)) return
     const epoch = ++generation.current; actionLock.current = true; setBusy(true); setError('')
-    try { const result = await bridge.cancelKnowledgeAnswer(task.taskId); if (epoch === generation.current) setTask(checked(result)) }
+    cancelledIds.current.add(id); setCancelRequested(true)
+    try { const result = await bridge.cancelKnowledgeAnswer(id); if (epoch === generation.current) setTask(checked(result)) }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '取消状态暂时无法确认。') }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
   const checkTask = async () => {
-    if (!enabled || !visible || !task || !active || actionLock.current) return
+    const id = knownTaskId ?? task?.taskId
+    if (!enabled || !visible || !id || !active || actionLock.current) return
     const epoch = ++generation.current; actionLock.current = true; setBusy(true); setError('')
-    try { const result = await bridge.getKnowledgeAnswer(task.taskId); if (epoch === generation.current) setTask(checked(result)) }
+    try { const result = await bridge.getKnowledgeAnswer(id); if (epoch === generation.current) setTask(checked(result)) }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '回答状态仍无法确认，请稍后主动核对。') }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
   const newQuestion = () => {
     if (!enabled || !visible || actionLock.current || active || unknownSubmission) return
     generation.current++; savedDraft.current = { question: '', query: '', scope: null }
-    setQuestion(''); setQuery(''); setScope(null); setScopeTitle(''); setTask(null); setAnswerInput(null); setError(''); setExportNotice(''); setConfirmNew(false)
+    setQuestion(''); setQuery(''); setScope(null); setScopeTitle(''); setTask(null); setKnownTaskId(null); setCancelRequested(false); setAnswerInput(null); setError(''); setExportNotice(''); setConfirmNew(false)
   }
   const loadHistory = async (page = 0) => {
     if (!enabled || !visible || busy || active || actionLock.current) return
@@ -78,14 +92,14 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
   const readHistory = async (id: string) => {
     if (!enabled || !visible || busy || active || actionLock.current) return
     const epoch = ++generation.current; actionLock.current = true; setBusy(true); setError(''); setDeleteId(null)
-    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { savedDraft.current = { question: result.question, query: result.query, scope: result.scope ?? null }; setAnswerInput(savedDraft.current); setQuestion(result.question); setQuery(result.query); setTask(result.task); setScope(result.scope ?? null); setScopeTitle(result.task.result?.citations[0]?.title ?? '') } }
+    try { const result = await bridge.getKnowledgeAnswerHistory(id); if (epoch === generation.current) { savedDraft.current = { question: result.question, query: result.query, scope: result.scope ?? null }; setAnswerInput(savedDraft.current); setQuestion(result.question); setQuery(result.query); setTask(result.task); setKnownTaskId(id); setCancelRequested(cancelledIds.current.has(id)); setScope(result.scope ?? null); setScopeTitle(result.task.result?.citations[0]?.title ?? '') } }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '读取历史回答失败。') }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
   const removeHistory = async () => {
     if (!deleteId || !enabled || !visible || busy || active || actionLock.current) return
     const id = deleteId, epoch = ++generation.current; actionLock.current = true; setBusy(true); setError('')
-    try { await bridge.deleteKnowledgeAnswerHistory(id); if (epoch !== generation.current) return; setDeleteId(null); if (task?.taskId === id) { setTask(null); setAnswerInput(null); savedDraft.current = { question: '', query: '', scope: null }; if (!dirty) { setQuestion(''); setQuery(''); setScope(null); setScopeTitle('') } }; const result = await bridge.knowledgeAnswerHistory(0); if (epoch === generation.current) setHistory(result) }
+    try { await bridge.deleteKnowledgeAnswerHistory(id); if (epoch !== generation.current) return; setDeleteId(null); if (task?.taskId === id) { setTask(null); setKnownTaskId(null); setCancelRequested(false); setAnswerInput(null); savedDraft.current = { question: '', query: '', scope: null }; if (!dirty) { setQuestion(''); setQuery(''); setScope(null); setScopeTitle('') } }; const result = await bridge.knowledgeAnswerHistory(0); if (epoch === generation.current) setHistory(result) }
     catch (e) { if (epoch === generation.current) setError(e instanceof Error ? e.message : '删除结果暂时无法确认，请刷新历史记录。') }
     finally { if (epoch === generation.current) { actionLock.current = false; setBusy(false) } }
   }
@@ -135,10 +149,12 @@ export function KnowledgeAnswer({ bridge, enabled, visible, open, currentDocumen
       <button type="submit" className="primary" disabled={!enabled || busy || active || unknownSubmission || !question.trim() || !query.trim()}>基于知识回答</button>
     </form>
     <p role="status" aria-live="polite">{busy ? '正在处理…' : task?.status === 'QUEUED' ? '回答任务已排队' : task?.status === 'RUNNING' ? '正在生成回答' : task?.status === 'SUCCEEDED' ? '回答完成' : task?.status === 'CANCELLED' ? '回答已取消' : task?.status === 'TIMED_OUT' ? '回答超时' : task?.status === 'FAILED' ? '回答失败' : ''}</p>
-    {active && <button disabled={!enabled || busy} onClick={() => { void cancel() }}>取消知识回答</button>}
-    {active && error && <button disabled={!enabled || busy} onClick={() => { void checkTask() }}>重新核对回答状态</button>}
+    {knownTaskId && <p className="hint">原回答任务 ID：{knownTaskId}{!task ? ' · 返回内容待核对，未采用回答或引用。' : ''}</p>}
+    {active && <button disabled={!enabled || busy || cancelRequested} onClick={() => { void cancel() }}>取消知识回答</button>}
+    {active && cancelRequested && <p className="hint">已请求取消，不会重复发送。取消请求不代表任务已结束，请核对原任务状态。</p>}
+    {active && (error || cancelRequested) && <button disabled={!enabled || busy} onClick={() => { void checkTask() }}>重新核对回答状态</button>}
     {(error || task?.error) && <p role="alert" className="error">{error || task?.error?.message}</p>}
-    {task && answerInput && <section aria-label="当前回答对应的问题"><h3>当前回答对应的问题</h3><p dir="auto">{answerInput.question}</p>
+    {(task || knownTaskId) && answerInput && <section aria-label="当前回答对应的问题"><h3>当前回答对应的问题</h3><p dir="auto">{answerInput.question}</p>
       <p>检索关键词：{answerInput.query}</p><p className="hint">回答资料范围：{answerInput.scope ? `${answerInput.scope.documentId} · 源版本 ${answerInput.scope.sourceRevision}` : '全部可用资料'}。上方草稿修改不会改变这份回答。</p></section>}
     {task?.result && <><AnswerContent key={task.taskId} text={task.result.answer} />
       <button disabled={!enabled || busy} onClick={() => { void exportAnswer() }}>导出问答笔记…</button>

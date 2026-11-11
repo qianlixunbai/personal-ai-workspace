@@ -18,6 +18,45 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.dispose()); vi.restoreAllMocks(); vi.useRealTimers(); history.replaceState(null, '', '#/assistant') })
+it('retains the accepted answer ID when scoped evidence is invalid and reconciles that task without resubmission', async () => {
+  const port = new AnswerHistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  port.document.currentReadyRevision = '1'
+  const original = port.entry().task
+  const submit = vi.spyOn(bridge, 'submitKnowledgeAnswer').mockResolvedValue({ ...original, result: { ...original.result!, citations: original.result!.citations.map(c => ({ ...c, sourceRevision: '2' })) } })
+  const get = vi.spyOn(bridge, 'getKnowledgeAnswer').mockResolvedValue(original)
+  const props = { bridge, enabled: true, open: async () => {}, currentDocument: port.document }
+  const view = render(<KnowledgeAnswer {...props} visible />); edit(); await click('限定为当前文档'); await click('基于知识回答')
+  expect(screen.getByText(/原回答任务 ID/).textContent).toContain(original.taskId)
+  expect(screen.getByRole('alert').textContent).toContain('超出了所选资料范围')
+  expect(screen.queryByRole('button', { name: '打开引用来源' })).toBeNull()
+  expect((screen.getByRole('button', { name: '基于知识回答' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: '开始新问题' }) as HTMLButtonElement).disabled).toBe(true)
+  view.rerender(<KnowledgeAnswer {...props} visible={false} />); view.rerender(<KnowledgeAnswer {...props} visible />)
+  await click('重新核对回答状态')
+  expect(get).toHaveBeenCalledExactlyOnceWith(original.taskId)
+  expect(submit).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('button', { name: '打开引用来源' })).toBeTruthy()
+  expect(screen.getByRole('region', { name: '当前回答对应的问题' }).textContent).toContain('源版本 1')
+})
+it('sends knowledge cancellation only once across uncertain replies and navigation, then reads the original terminal result', async () => {
+  const port = new AnswerHistoryService(), bridge = new WorkspaceClient(port); clients.push(bridge); port.session()
+  const done = port.entry().task, running: KnowledgeAnswerTask = { ...done, status: 'RUNNING', result: null }
+  const submit = vi.spyOn(bridge, 'submitKnowledgeAnswer').mockResolvedValue(running)
+  const cancel = vi.spyOn(bridge, 'cancelKnowledgeAnswer').mockRejectedValue(new BridgeError('OutcomeUnknown', '取消回执未知。'))
+  const get = vi.spyOn(bridge, 'getKnowledgeAnswer').mockResolvedValueOnce(running).mockResolvedValueOnce(done)
+  const props = { bridge, enabled: true, open: async () => {} }
+  const view = render(<KnowledgeAnswer {...props} visible />); vi.useFakeTimers(); edit(); await click('基于知识回答')
+  await click('取消知识回答'); await click('取消知识回答')
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(done.taskId)
+  await click('重新核对回答状态')
+  view.rerender(<KnowledgeAnswer {...props} visible={false} />); view.rerender(<KnowledgeAnswer {...props} visible />)
+  expect((screen.getByRole('button', { name: '取消知识回答' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(screen.getByText(/已请求取消，不会重复发送/)).toBeTruthy()
+  await click('取消知识回答'); await click('重新核对回答状态')
+  expect(screen.getByRole('button', { name: '打开引用来源' })).toBeTruthy()
+  expect(cancel).toHaveBeenCalledTimes(1); expect(submit).toHaveBeenCalledTimes(1)
+  expect(get.mock.calls.map(call => call[0])).toEqual([done.taskId, done.taskId])
+})
 it('knowledge continuity keeps unsent input, explicit source scope and answer identity across navigation and confirmed new-question transitions', async () => {
   const port = new AnswerHistoryService(); port.document.currentReadyRevision = '1'
   const bridge = new WorkspaceClient(port); clients.push(bridge)
