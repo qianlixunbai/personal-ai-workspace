@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reviewed candidate build inputs; not an execution authorization",
+  "type": "object", "additionalProperties": false,
+  "required": ["format", "repository", "productRevision", "buildToolsRevision", "baseline", "controlFiles", "trees", "executables", "dotnetSdkVersion", "nugetPackages", "jarEntries", "publishFiles", "runtimeFiles"],
+  "properties": {
+    "format": {"const": "WORKSPACE_CANDIDATE_INPUTS_V1"},
+    "repository": {"type": "string", "minLength": 3},
+    "productRevision": {"$ref": "#/$defs/revision"},
+    "buildToolsRevision": {"$ref": "#/$defs/revision"},
+    "dotnetSdkVersion": {"type": "string", "pattern": "^10\\.0\\.[0-9]+$"},
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["directory", "zip", "commit", "zipSha256", "manifestSha256"],
+      "properties": {
+        "directory": {"type": "string"}, "zip": {"type": "string"},
+        "commit": {"$ref": "#/$defs/revision"}, "zipSha256": {"$ref": "#/$defs/hash"}, "manifestSha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "controlFiles": {
+      "type": "array", "minItems": 6, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["name", "sha256", "bytes"],
+        "properties": {"name": {"type": "string"}, "sha256": {"$ref": "#/$defs/hash"}, "bytes": {"type": "integer", "minimum": 1}}
+      }
+    },
+    "trees": {
+      "type": "array", "minItems": 9, "maxItems": 9,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "source", "files"],
+        "properties": {
+          "id": {"enum": ["pwsh", "git", "java", "node", "dotnet", "frontend", "nuget", "locks", "contracts"]},
+          "source": {"type": "string"},
+          "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}}
+        }
+      }
+    },
+    "executables": {
+      "type": "object", "additionalProperties": false, "required": ["pwsh", "git", "javac", "node", "dotnet"],
+      "properties": {
+        "pwsh": {"const": "tools/pwsh/pwsh.exe"}, "git": {"const": "tools/git/cmd/git.exe"},
+        "javac": {"const": "tools/java/bin/javac.exe"}, "node": {"const": "tools/node/node.exe"}, "dotnet": {"const": "tools/dotnet/dotnet.exe"}
+      }
+    },
+    "nugetPackages": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "version", "sha512", "archive"],
+        "properties": {"id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}, "version": {"type": "string", "pattern": "^[0-9][A-Za-z0-9_.+-]*$"}, "sha512": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}, "archive": {"$ref": "#/$defs/path"}}
+      }
+    },
+    "jarEntries": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "sha256", "bytes", "role", "reason"],
+        "properties": {
+          "path": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}, "bytes": {"type": "integer", "minimum": 0},
+          "role": {"enum": ["dependency", "finance-module", "boot-loader", "boot-service", "empty-legacy-marker"]},
+          "reason": {"type": "string", "minLength": 20}
+        }
+      }
+    },
+    "publishFiles": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "origin"],
+        "properties": {"path": {"$ref": "#/$defs/path"}, "origin": {"$ref": "#/$defs/origin"}}
+      }
+    },
+    "runtimeFiles": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "source", "sha256"],
+        "properties": {"path": {"$ref": "#/$defs/path"}, "source": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}}
+      }
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "path": {"type": "string", "minLength": 1},
+    "file": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256", "bytes"],
+      "properties": {"path": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}, "bytes": {"type": "integer", "minimum": 0}}
+    },
+    "origin": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "generated-product"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "source", "sha256"], "properties": {"kind": {"const": "input-file"}, "source": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "source", "entry", "sha256"], "properties": {"kind": {"const": "package-entry"}, "source": {"$ref": "#/$defs/path"}, "entry": {"$ref": "#/$defs/path"}, "sha256": {"$ref": "#/$defs/hash"}}}
+      ]
+    }
+  }
+}
