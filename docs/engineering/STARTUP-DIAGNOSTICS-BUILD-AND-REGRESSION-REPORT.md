@@ -1,5 +1,7 @@
 # 启动诊断的受影响编译、候选核对与纯逻辑回归
 
+后续更正：[旧监督历史与当前资源占用已分层](SUPERVISOR-HISTORY-VS-CURRENT-RESOURCES.md)。本报告中的旧释放方式 UNKNOWN 是历史证据缺口，不代表旧调用仍持续持有共享锁；本报告保存的后续获取回执已经排除了这种持续占用。即时资源状态仍需按当次正常准入判断。
+
 2026-11-11；产品源码提交 `d27ce7a8f1763448c5eec2561a7634071ed608f2`。本轮接续[诊断源码补齐](STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)，已完成 **Desktop Profile Debug 编译、独立候选身份核对和四项纯逻辑回归**，没有停留在静态语法检查。本轮新增源码修改仅在测试项目，产品源码与该提交保持一致。
 
 没有启动产品或使用第二次额度，没有运行 helper、JVM、模型、浏览器或 UI；未创建 Profile、访问真实 Profile 或受拒目标，未强杀、全局遍历进程、推送或部署。原产品累计启动仍 **1/2**，`productionGo=false`。
@@ -54,6 +56,6 @@
 
 旧 `desktop-1.json` 仍是 UTC 14:28:26 的启动记录，没有新增退出回执。没有已保存的旧监督 PID 可做准确只读状态检查，因此不遍历进程或重试未知会话；旧监督终态和历史互斥释放仍标记 UNKNOWN。原 UIA“否”结果未知，未重试。
 
-下一项能判定首次失败根因的证据必须来自真实受控运行：原 Profile 正常准入、准确候选产生的首个协议阶段／原始码及 WebView 事件分类，以及正常退出回执。当前指令禁止产品重启，且上述旧监督安全条件尚未闭合，因此本轮止于这个实际运行边界；不以追加外围功能替代它，也不自行消费剩余一次启动。Native／数据库保存和独立重开闭环仍待验证。
+下一项能判定首次失败根因的证据必须来自真实受控运行：原 Profile 正常准入、准确候选产生的首个协议阶段／原始码及 WebView 事件分类，以及正常退出回执。当前指令禁止产品重启，当前物理内存准入也尚无有效通过结果，因此本轮止于实际运行边界；不以追加外围功能替代它，也不自行消费剩余一次启动。后续资源分层已排除旧调用持续持有协调锁，不再把丢失的历史正常退出记录本身列为永久资源门槛。原 Round=2 顺序契约与剩余额度仍须按接续报告明确。Native／数据库保存和独立重开闭环仍待验证。
 
 证据目录：`artifacts/startup-diagnostics-build-20261111-d27ce7a/`。主要文件为 `source-reuse-check.json`、`build-command.json`、`build-exit.json`、`build-cleanup.json`、`compiled-diagnostics-audit.json`、`apphost-audit.json`、`candidate-audit.json`、`regression-result.json` 和 `test-results/startup-trace-attempt3.trx`；失败回执和日志亦保留。测试修复与文档进入明确范围的本地 Git 提交，六份原始文档不变。Git 回滚只涵盖源码／文档，不涵盖用户数据或凭据。

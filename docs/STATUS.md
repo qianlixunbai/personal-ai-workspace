@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [旧监督历史与当前资源分层](engineering/SUPERVISOR-HISTORY-VS-CURRENT-RESOURCES.md)：后续独立构建／回归已在 Session 1 取得并释放准确共享锁，排除原监督一直持锁；历史正常退出和释放方式仍不能证明，但不再作为永久资源占用门槛。旧监督 OS 身份未保存，38632 实为组装 PID。原 Round=2 被第一轮正常退出回执条件阻挡，这是验收顺序问题；当前候选仍禁启、物理内存准入未有通过结果。未新开任何探针／锁／进程查询，未构建或启动，计数 **1/2**，`productionGo=false`。
+
 2026-11-11 [启动诊断编译、候选及定向回归](engineering/STARTUP-DIAGNOSTICS-BUILD-AND-REGRESSION-REPORT.md)完成：仅重编译 Desktop Profile Debug，复用同源 Core／Java／前端；新 `d27ce7a` 候选 933 文件、420 Runtime pins 核对通过，旧候选保留。四项纯逻辑回归实际通过，并补正测试 probe 的条件编译；没有运行产品、窗口、helper、JVM 或浏览器。源码诊断文件写入、真实事件与业务闭环仍待实际运行；旧监督终态／历史互斥释放未知，启动仍 **1/2**，`productionGo=false`。
 
 2026-11-11 [启动诊断源码补齐](engineering/STARTUP-DIAGNOSTICS-SOURCE-REPORT.md)：Runtime 新增固定协议阶段及首个白名单原始失败码，WebView 保留失败类型／原因／退出码，未知文本脱敏。NativeGate、失败状态映射、关闭与 fallback 行为不改；三个构建条件的语法解析及关键方法源码比对通过，尚未编译或实测。旧候选不含补丁，本轮无启动／UI 操作，计数仍 **1/2**；首次失败根因、监督终态／互斥释放和业务闭环仍未知，`productionGo=false`。
