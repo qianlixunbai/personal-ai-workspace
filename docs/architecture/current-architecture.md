@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [文本任务核对](../engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)：OperationPage 保留未知提交／已知 operation 的本页阻断，只沿既有 operations.get 查询准确 ID；同步核对锁、取消意图和终态回执避免重发与迟到取消覆盖。原生 AssistantOperation 仍拥有实际任务观察；页面暂停／session 清空不证明外部模型结束，也不解除准入。无协议、存储、Native 或 Runtime 变更。
+
 2026-11-11 [问答页面连续性](../engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)：KnowledgeAnswer 保持挂载实例内草稿／原任务与实际输入快照，visible 仅暂停轮询，Bridge session 更换仍清空并使回执失效。同步动作锁及未知提交状态不授予新执行权限；既有 Runtime／Native／模型准入与存储合同不变，没有自动持久化。
 
 2026-11-11 [历史知识回答参考](../engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)：会话参考联合类型增加临时问答快照，来源仍由原 Knowledge history API 所有；插入前逐项重读再执行原草稿 CAS。问答按页浏览与原关键词搜索分开，不新增数据仓库、索引、受信引用或模型行为。

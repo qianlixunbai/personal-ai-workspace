@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [问答／摘要／翻译的原任务核对](engineering/TEXT-OPERATION-RECONCILIATION-REPORT.md)完成未知结果阻止重发、已知任务主动核对、取消只请求一次及迟到失败隔离。类型检查与 5 项针对性合成场景通过，首次测试回执错误保留。仅为一个共用文本操作流程，不凑三模块；宿主通信故障／过期、原生与真实模型验收仍有限制，旧包与安全候选不变，完整验收继续 BLOCKED / productionGo=false。
+
 2026-11-11 [问答草稿与任务连续性](engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)完成本轮第三模块：切页保留问题／范围／回答与原任务、返回继续观察、读取失败主动核对、未知提交阻止重发、明确新问题与历史替换保护。类型检查及 6 项针对性合成场景通过；首次测试参数错误保留。三模块均为本地源码交付，按约定换同项目会话；安全候选和旧包不变，完整 EXE／WebView 验收仍 BLOCKED / productionGo=false。
 
 2026-11-11 [知识问答会话参考](engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)完成历史分页浏览、原问答／引用核对、回答选段及核对后插入当前草稿。类型检查、两项新合成流程和受影响的两项记忆流程通过；初次按钮名称定位失败已保留并修复。只加入明确选段，不自动发送或带入引用原文。仅本地源码；未部署安全候选、未更新旧包，完整验收 BLOCKED / productionGo=false。
