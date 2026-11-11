@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [问答草稿与任务连续性](engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)完成本轮第三模块：切页保留问题／范围／回答与原任务、返回继续观察、读取失败主动核对、未知提交阻止重发、明确新问题与历史替换保护。类型检查及 6 项针对性合成场景通过；首次测试参数错误保留。三模块均为本地源码交付，按约定换同项目会话；安全候选和旧包不变，完整 EXE／WebView 验收仍 BLOCKED / productionGo=false。
+
 2026-11-11 [知识问答会话参考](engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)完成历史分页浏览、原问答／引用核对、回答选段及核对后插入当前草稿。类型检查、两项新合成流程和受影响的两项记忆流程通过；初次按钮名称定位失败已保留并修复。只加入明确选段，不自动发送或带入引用原文。仅本地源码；未部署安全候选、未更新旧包，完整验收 BLOCKED / productionGo=false。
 
 2026-11-11 [知识回答摘录与出处回查](engineering/KNOWLEDGE-ANSWER-MEMORY-REPORT.md)补齐回答选段 → 核对历史 → 明确保存记忆 → 原问题／完整回答／旧版引用原文回查。两项新增合成流程及类型检查通过，无模型或原生运行；出处为可编辑定位，不能证明回答正确。仅本地源码，旧包未更新，安全候选与 BLOCKED / productionGo=false 边界不变。

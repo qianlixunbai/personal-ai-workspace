@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { App } from '../app/App'
 import { WorkspaceClient } from '../bridge/client'
@@ -32,7 +32,7 @@ it('saves a reviewed answer excerpt in Memory and reopens its question and exact
   fireEvent.change(screen.getByLabelText('记忆标题'), { target: { value: '问答摘录笔记' } })
   await click('保存'); await click('新建'); await click(/问答摘录笔记/)
   await click('查看原问答与引用'); expect(screen.getByLabelText('所记回答片段').textContent).toBe(port.answerText.slice(0, 10))
-  fireEvent.click(screen.getByText('阅读原问题与完整回答')); expect(screen.getByText(port.entry().question)).toBeTruthy()
+  fireEvent.click(screen.getByText('阅读原问题与完整回答')); expect(within(screen.getByRole('region', { name: '知识问答出处回查' })).getByText(port.entry().question)).toBeTruthy()
   await click('核对引用原文 1'); expect(screen.getByLabelText('问答引用原文').textContent).toBe(port.sourceText.slice(7))
   expect(port.sent.filter(r => r.method === 'knowledge.preview').map(r => (r.payload as Record<string, unknown>).sourceRevision)).toEqual(['1', '1'])
   fireEvent.change(content, { target: { value: '人工改写' + draft } }); await click('查看原问答与引用')

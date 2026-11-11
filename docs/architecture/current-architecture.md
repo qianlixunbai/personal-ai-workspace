@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [问答页面连续性](../engineering/KNOWLEDGE-ANSWER-CONTINUITY-REPORT.md)：KnowledgeAnswer 保持挂载实例内草稿／原任务与实际输入快照，visible 仅暂停轮询，Bridge session 更换仍清空并使回执失效。同步动作锁及未知提交状态不授予新执行权限；既有 Runtime／Native／模型准入与存储合同不变，没有自动持久化。
+
 2026-11-11 [历史知识回答参考](../engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)：会话参考联合类型增加临时问答快照，来源仍由原 Knowledge history API 所有；插入前逐项重读再执行原草稿 CAS。问答按页浏览与原关键词搜索分开，不新增数据仓库、索引、受信引用或模型行为。
 
 2026-11-11 [问答出处回查](../engineering/KNOWLEDGE-ANSWER-MEMORY-REPORT.md)：React 记忆正文中的问答 ID／偏移沿现有 answerHistoryGet 读取原记录，引用原文沿既有 get／preview 读取精确源版本。没有新增持久关系、API、schema 或权限；出处可编辑，字面比对不等于事实核验，模型与安全准入边界未变。
