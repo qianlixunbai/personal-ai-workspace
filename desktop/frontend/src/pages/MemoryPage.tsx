@@ -9,6 +9,7 @@ import { MemoryCandidatePanel } from '../components/MemoryCandidatePanel'
 import { MemoryDraftDuplicateCheck } from '../components/MemoryDraftDuplicateCheck'
 import { MemorySourceReview } from '../components/MemorySourceReview'
 import { MemoryUsageReview } from '../components/MemoryUsageReview'
+import { MemoryMergeReview } from '../components/MemoryMergeReview'
 
 export type MemoryLeaveGuard = (leave: () => void) => void
 export type MemoryDraftReceiver = (draft: MemoryDraft, accepted: () => void, role: MemoryDraftSource) => boolean
@@ -27,6 +28,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<MemoryItem | null>(null)
   const [draft, setDraft] = useState<MemoryDraft>(emptyMemory)
+  const draftRef = useRef(draft); draftRef.current = draft
   const [fromSource, setFromSource] = useState<MemoryDraftSource | null>(null)
   const [candidateEpoch, setCandidateEpoch] = useState(0)
   const [revisionReview, setRevisionReview] = useState<{ draft: MemoryDraft; target: MemoryItem | null } | null>(null)
@@ -243,6 +245,27 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         })
       } })
   }
+  const applyMergedDraft = (merged: MemoryDraft) => {
+    if (!enabled || !visible || actionLock.current || confirmation || unknown || missing || !loaded || !validDraft(merged)
+      || !currentReview || loaded.id !== currentReview.id || loaded.createdAt !== currentReview.createdAt || currentReview.status !== 'ACTIVE') return
+    const expected = currentReview, original = draft, token = revisionGeneration.current, session = generation.current
+    void run(async () => {
+      let latest: MemoryItem
+      try { latest = await bridge.getMemory(expected.id) }
+      catch (problem) { if (token === revisionGeneration.current && session === generation.current) throw problem; return }
+      if (token !== revisionGeneration.current || session !== generation.current) return
+      if (Object.entries(original).some(([key, value]) => draftRef.current[key as keyof MemoryDraft] !== value)) {
+        setNotice('草稿已继续编辑，未采用旧合并结果。请重新准备合并。'); return
+      }
+      setCurrentReview(latest)
+      if (Object.entries(expected).some(([key, value]) => latest[key as keyof MemoryItem] !== value)) {
+        setNotice('已存内容再次变化，未采用合并结果。请根据最新版本重新准备，草稿保持原样。'); return
+      }
+      setLoaded(latest); setDraft(merged); setStale(false); setCurrentReview(null)
+      setNotice('已采用合并草稿，尚未保存。请核对内容，再点击保存更新同一条记忆。')
+      focusNext.current = 'editor'
+    })
+  }
   const save = () => { if (revisionReview || blocked || !dirty || !validDraft(draft)) return; void run(async () => {
     const token = generation.current
     const item = loaded ? await bridge.updateMemory(loaded.id, loaded.revision, draft) : await bridge.createMemory(draft)
@@ -323,7 +346,7 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
         </section>}
         <p className="memory-state" aria-live="polite">{loaded ? `${loaded.status === 'ACTIVE' ? '使用中' : '已归档'} · 版本 ${loaded.revision}` : '尚未保存'}{dirty && ' · 未保存'}{stale && ' · 已变更，请核对最新内容'}{missing && ' · 已不存在'}{unknown && ' · 操作结果待确认'}</p>
         {loaded && <p className="hint">保存方式：由你确认保存（MANUAL），不代表内容已经核实。草稿来源角色不会持久保存；正文中的出处仅为可编辑定位文字，不建立受信的会话、问答或引用关联。</p>}
-        {stale && <p className="error">Memory 已被其他客户端修改。可“对照最新”，手工合并到当前草稿，再确认继续编辑；重新加载会丢弃修改。</p>}
+        {stale && <p className="error">Memory 已被其他客户端修改。可“对照最新”，准备三方合并或手工合并后继续编辑；重新加载会丢弃修改。</p>}
         {missing && <p className="error">原记录当前不存在。草稿保持原样。{unknown ? '此前的写入结果仍待确认，不能据此另存。' : '可选择“保留草稿，另存为新记忆”，再点击保存创建新记录；原记录不会恢复。'}</p>}
         {unknown && <p className="error">无法确认操作是否已提交。不会自动重试。请刷新检查列表，再重新加载；新建结果不明时请先检查，再新建。</p>}
         {currentReview && <section className="memory-revision-review" aria-label="当前记忆最新内容对照">
@@ -332,6 +355,8 @@ export function MemoryPage({ bridge, enabled, visible, registerLeave, registerDr
           <pre aria-label="当前记忆已存正文" dir="auto">{currentReview.content}</pre>
           <p className="hint">下方草稿仍可编辑。请手工合并需要保留的内容；对照不会自动替换或保存草稿。{currentReview.status === 'ARCHIVED' && '已归档记录仅供对照，不能采用为继续编辑的版本。'}</p>
           <button disabled={disabled || unknown || missing || currentReview.status !== 'ACTIVE'} onClick={continueReviewed}>保留草稿，以此版本继续编辑</button>
+          {loaded && loaded.id === currentReview.id && loaded.createdAt === currentReview.createdAt && currentReview.status === 'ACTIVE' && <MemoryMergeReview
+            base={loaded} draft={draft} latest={currentReview} enabled={enabled && visible && !busy && !confirmation && !unknown && !missing} apply={applyMergedDraft} />}
         </section>}
         <div className="memory-fields"><div><label htmlFor="memory-editor-type">记忆类型</label><select id="memory-editor-type" value={draft.type} disabled={disabled || !!revisionReview} onChange={event => setDraft(previous => ({ ...previous, type: event.target.value as MemoryType }))}>
           <option value="PREFERENCE">个人偏好</option><option value="PROJECT_NOTE">项目笔记</option></select></div>

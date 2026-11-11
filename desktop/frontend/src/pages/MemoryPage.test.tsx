@@ -622,6 +622,70 @@ it('compares and merges a conflicted draft before explicitly saving the same rec
     .toEqual(['9007199254740993', '9007199254740995', '9007199254740996'])
   expect(screen.queryByRole('region', { name: '当前记忆最新内容对照' })).toBeNull()
 })
+it('reviews a three-way memory merge, adopts only a checked draft and saves separately without retrying unknown writes', async () => {
+  const service = new MemoryService()
+  service.items[0] = { ...service.items[0]!, content: '计划\n预算：10\n日期：周一\n结尾\n' }
+  const { port, title, content } = await setup(service); await click(/Synthetic Memory 1/)
+  const original = port.items[0]!
+  edit(title, '本地项目标题'); edit(content, original.content.replace('10', '12'))
+  port.items[0] = { ...original, title: '最新项目标题', type: 'PREFERENCE', revision: '9007199254740994', content: original.content.replace('10', '15').replace('结尾', '已存备注') }
+  await click('保存'); await click('对照最新'); await click('准备三方合并')
+  expect(screen.getByRole('button', { name: '重新核对并采用合并草稿' }).hasAttribute('disabled')).toBe(true)
+  await click('取消合并预览'); expect(content.value).toBe(original.content.replace('10', '12'))
+  await click('准备三方合并')
+  await act(async () => fireEvent.click(within(screen.getByRole('region', { name: '记忆标题冲突' })).getByRole('button', { name: '保留本地修改' })))
+  const conflict = screen.getByRole('region', { name: /正文片段 \d+冲突/ })
+  expect(within(conflict).getByText('预算：12')).toBeTruthy(); expect(within(conflict).getByText('预算：15')).toBeTruthy()
+  edit(within(conflict).getByRole('textbox'), '预算：13\n')
+  const merged = '计划\n预算：13\n日期：周一\n已存备注\n'
+  expect(screen.getByRole('region', { name: '完整合并预览' }).querySelector('pre')?.textContent).toBe(merged)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+  await click('重新核对并采用合并草稿')
+  expect(content.value).toBe(merged); expect(title.value).toBe('本地项目标题')
+  expect((screen.getByLabelText('记忆类型') as HTMLSelectElement).value).toBe('PREFERENCE')
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+  await click('保存')
+  expect(port.items[0]).toMatchObject({ id: original.id, revision: '9007199254740995', content: merged, title: '本地项目标题', type: 'PREFERENCE' })
+  expect(port.sent.filter(x => x.method === 'memory.update').map(x => (x.payload as { expectedRevision: string }).expectedRevision)).toEqual([original.revision, '9007199254740994'])
+  expect(port.sent.filter(x => x.method === 'memory.create')).toHaveLength(0)
+  edit(content, merged + '后续修改'); port.error = 'OutcomeUnknown'
+  await click('保存'); await click('对照最新')
+  expect(screen.getByRole('button', { name: '准备三方合并' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(3)
+})
+
+it('invalidates three-way memory proposals on new edits, changed saved versions and late hidden reads', async () => {
+  const service = new MemoryService(); service.items[0] = { ...service.items[0]!, content: '本地行\n中间行\n远端行\n' }
+  const { port, bridge, view, content } = await setup(service); await click(/Synthetic Memory 1/)
+  const original = port.items[0]!, local = original.content.replace('本地行', '本地修改')
+  edit(content, local); port.items[0] = { ...original, revision: '9007199254740994', content: original.content.replace('远端行', '最新修改') }
+  await click('保存'); await click('对照最新'); await click('准备三方合并')
+  edit(content, local.replace('本地修改', '继续修改'))
+  expect(screen.queryByRole('region', { name: '完整合并预览' })).toBeNull()
+  await click('准备三方合并')
+  let complete: (item: ReturnType<typeof memoryItem>) => void = () => {}
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('重新核对并采用合并草稿')
+  const editedAgain = local.replace('本地修改', '核对期间的修改'); edit(content, editedAgain)
+  await act(async () => complete(port.items[0]!))
+  expect(content.value).toBe(editedAgain); expect(screen.getByText(/草稿已继续编辑，未采用旧合并结果/)).toBeTruthy()
+  await click('准备三方合并')
+  port.items[0] = { ...port.items[0]!, revision: '9007199254740995', content: original.content.replace('远端行', '远端再次修改') }
+  await click('重新核对并采用合并草稿')
+  expect(content.value).toBe(editedAgain); expect(screen.getByText(/已存内容再次变化，未采用合并结果/)).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '完整合并预览' })).toBeNull()
+  await click('准备三方合并')
+  vi.spyOn(bridge, 'getMemory').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  await click('重新核对并采用合并草稿')
+  view.rerender(<MemoryPage bridge={bridge} enabled visible={false} registerLeave={() => () => {}} openBackup={() => {}} />)
+  await act(async () => complete(port.items[0]!))
+  view.rerender(<MemoryPage bridge={bridge} enabled visible registerLeave={() => () => {}} openBackup={() => {}} />)
+  expect(content.value).toBe(editedAgain)
+  expect(screen.queryByRole('region', { name: '记忆冲突合并' })).toBeNull()
+  expect(port.sent.filter(x => x.method === 'memory.update')).toHaveLength(1)
+})
+
 it('keeps archived and missing current comparisons read only and drops late hidden results', async () => {
   const { port, bridge, view, content } = await setup(); await click(/Synthetic Memory 1 /)
   edit(content, 'Synthetic retained comparison draft')
