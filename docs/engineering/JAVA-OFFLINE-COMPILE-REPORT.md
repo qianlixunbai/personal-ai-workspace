@@ -73,6 +73,90 @@ org.codehaus.plexus.compiler.javac.JavaxToolsCompiler.compileInProcess:177
 
 ## 留存与验收边界
 
+### 2026-11-11 后续精确诊断：未重跑构建
+
+诊断仅读取原执行记录、原 Maven 日志、本地同版本 JDK 的 `lib/src.zip`，并查询精确目标及其祖先的普通元数据。没有重新调用目标的 `toRealPath`、重读 JAR 内容、遍历 `.m2`、改 ACL、复制／改名依赖、换仓库或执行 Maven。以下事实补充前述失败记录，不将失败中间产物提升为成功构建。
+
+**原执行面及审批证据。** 本线程 `6af41af1-0f14-8191-ad41-5e56c4f4b01c` 的 `read_thread` 原命令记录 `exec-aa71843b-7e98-4fc5-a57a-5b657d5ba0b5` 确认：外层解释器为 `C:\Users\28421\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe -Command`；cwd 为上述 `R/source`，不是原仓库根；Maven 可执行文件、全部参数、JAVA_HOME 与开始／退出回执一致。前一条 `exec-2d3650fe-1473-4b80-b589-6455c918d0df` 是解析期失败，不是第二次构建。
+
+实际 Maven 命令完整展开为：
+
+```powershell
+& 'C:\Users\28421\.m2\wrapper\dists\apache-maven-3.9.16\0daed3be3ebd1c706f0e69e8b07c6b73f5cc4ea3dfce72a8d0ec2e849ca2ddb0\bin\mvn.cmd' -o -B -ntp -X -s 'D:\IDEA\Daima\personal-ai-workspace\artifacts\java-compile-20261111-fec9222/settings.xml' -gs 'D:\IDEA\Daima\personal-ai-workspace\artifacts\java-compile-20261111-fec9222/settings.xml' -l 'D:\IDEA\Daima\personal-ai-workspace\artifacts\java-compile-20261111-fec9222/maven-compile.log' -Dmaven.test.skip=true compile
+```
+
+Java 可执行文件为 `D:\IDEA\Daima\personal-ai-workspace\artifacts\PersonalAiWorkspace-knowledge-conversation-workflows-20261110\runtime\java\bin\java.exe`。日志第 3／514 行确认该运行时，第 852 行 `fork = false`；javac 是该 JVM 内的编译器，未启动单独 javac.exe。日志第 378 行记录 `COMSPEC=C:\windows\system32\cmd.exe`。正常 `mvn.cmd` 第 180 行先调用同一 java.exe 的 `--enable-native-access=ALL-UNNAMED -version` 探测，第 185–195 行启动 Classworlds；日志第 399 行确认本次 INTERNAL_MAVEN_OPTS 包含该选项，第 670 行确认 launcher 参数与上述 Maven 参数一致。按已读取的 launcher 源码及回执展开，主 Java 调用结构如下（用于说明执行面，未在诊断中执行；没有单独保存 OS 进程命令行采样）：
+
+```text
+<上述 java.exe> --enable-native-access=ALL-UNNAMED
+  -Xmx512m -XX:ActiveProcessorCount=2
+  -Djava.io.tmpdir=<R>/tmp -Duser.home=<R>/home -Djava.awt.headless=true
+  -classpath <Maven根>/boot/plexus-classworlds-2.11.0.jar
+  -Dclassworlds.conf=<Maven根>/bin/m2.conf -Dmaven.home=<Maven根>
+  -Dlibrary.jansi.path=<Maven根>/lib/jansi-native
+  -Dmaven.multiModuleProjectDirectory=<R>/source
+  org.codehaus.plexus.classworlds.launcher.Launcher <上述全部 Maven 参数>
+```
+
+**工具权限模式仍有一项记录缺口，不能猜测。** 原 `maven-compile-start.json` 不含 sandbox 权限字段；`read_thread` 返回该条记录的字段仅为 type/id/command/cwd/status/exitCode/durationMs/output，没有原 `exec_command` 的 `sandbox_permissions`、justification 或审批决定。针对本线程 ID 的本地当天 rollout 文件名精确查找也未命中，未扩大搜索。因此当前证据不能确认该次 Maven 是 `use_default` 还是 `require_escalated`，也不能确认 Maven 的正式审批是否已经使用或覆盖范围。此前正常 Git 暂存／提交使用过正式审批，不等于审批覆盖 Maven。已确定的是 Maven 实际执行后发生 Windows 文件访问异常；现有回执没有 auto-review 拒绝 Maven 的消息。本轮元数据查询明确使用默认执行模式且全部成功。
+
+**文件及目录。** `2026-11-11T08:19:40.8813467Z` 查询结果保存在 `R/jar-metadata-diagnostic.json`：目标是普通 `System.IO.FileInfo`，594187 字节，属性 Archive，创建和最后写入时间均为 `2026-10-23T18:38:12.8363140Z`，LinkType/Target 为空。目标及路径上逐个精确查询到 `C:\` 的所有祖先均无 ReparsePoint 属性；没有枚举这些目录的子项。`C:\Users` 为 ReadOnly/Directory，`C:\` 为 Hidden/System/Directory，其余祖先为 Directory；这些属性不能独立推导有效访问权。
+
+目标、`2.21.5` 及 `jackson-core` 两级目录的 owner 均为 `千里寻白\28421`，ACL 继承开启，普通 DACL 读取均成功；读到的 5 条 ACE 全为继承的 Allow，没有 Deny：`SYSTEM`、`Administrators`、`千里寻白\28421` 为 FullControl；`千里寻白\CodexSandboxUsers` 和 `S-1-5-21-2401927692-4182424708-3186836709-906716766` 为 Modify/Synchronize/DeleteSubdirectoriesAndFiles。完整 SDDL 留在上述 JSON。没有读取 SACL／有效令牌，也没有对更上级目录读取 ACL；这些结果不能证明原 Java 进程拥有相同的有效权限。
+
+**读取与关闭顺序。** 这是由本地同一 JDK 源码及堆栈共同支持的结论：`JavacFileManager.ArchiveContainer` 第 559–580 行先成功创建 ZIP 文件系统并建立包索引，之后才会出现在 file manager 的容器关闭循环；`ZipFileSystem` 第 170–179 行依次做读取检查、以 READ 打开字节通道并读取 central directory。此次堆栈已经进入该容器的 close，故支持编译器曾成功打开该 JAR 并读取 ZIP 目录；不能据此声称每个 class 条目都读过，也没有逐条加载日志。已有依赖回执另记录此前只读哈希成功，SHA256 为 `b64b5874162b503a0e58a8f7758266e8dd9f91bf49e3a59ae0b5f47589a231b7`；本轮没有重读目标内容。
+
+`ZipFileSystem.close` 第 467–526 行先关闭剩余流、完成 sync／`ch.close()` 及压缩器清理，然后调用 `provider.removeFileSystem`；后者第 324–330 行先 `toRealPath`，成功才移除内部映射。本次失败发生在该映射移除之前，不是初始 JAR 打开，也不是删除依赖文件。`WindowsLinkSupport.getRealPath` 第 255–288 行对各路径段调用 `FindFirstFile`，捕获异常后使用完整原路径重新抛出。因此日志里的完整 JAR 路径不证明被拒的是末尾文件这一段；确切失败的路径段、文件占用、受限令牌、安全软件及有效权限均仍未知。没有安装诊断软件、扫描未知进程或重现该操作。
+
+完整异常链保存在 `R/access-denied-full-stack.txt`，逐行来自原日志 1040–1166 行，包含 Maven／Plexus 包装异常。根因 AccessDeniedException 的全部堆栈如下，无省略：
+
+```text
+Caused by: java.nio.file.AccessDeniedException: C:\Users\28421\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.21.5\jackson-core-2.21.5.jar
+    at sun.nio.fs.WindowsException.translateToIOException (WindowsException.java:89)
+    at sun.nio.fs.WindowsException.rethrowAsIOException (WindowsException.java:96)
+    at sun.nio.fs.WindowsLinkSupport.getRealPath (WindowsLinkSupport.java:288)
+    at sun.nio.fs.WindowsPath.toRealPath (WindowsPath.java:947)
+    at sun.nio.fs.WindowsPath.toRealPath (WindowsPath.java:42)
+    at jdk.nio.zipfs.ZipFileSystemProvider.lambda$removeFileSystem$0 (ZipFileSystemProvider.java:324)
+    at java.security.AccessController.doPrivileged (AccessController.java:571)
+    at jdk.nio.zipfs.ZipFileSystemProvider.removeFileSystem (ZipFileSystemProvider.java:326)
+    at jdk.nio.zipfs.ZipFileSystem.close (ZipFileSystem.java:526)
+    at com.sun.tools.javac.file.JavacFileManager$ArchiveContainer.close (JavacFileManager.java:657)
+    at com.sun.tools.javac.file.JavacFileManager.close (JavacFileManager.java:735)
+    at org.codehaus.plexus.compiler.javac.JavaxToolsCompiler.compileInProcess (JavaxToolsCompiler.java:177)
+    at org.codehaus.plexus.compiler.javac.JavacCompiler.performCompile (JavacCompiler.java:337)
+    at org.apache.maven.plugin.compiler.AbstractCompilerMojo.executeReal (AbstractCompilerMojo.java:1236)
+    at org.apache.maven.plugin.compiler.AbstractCompilerMojo.execute (AbstractCompilerMojo.java:708)
+    at org.apache.maven.plugin.compiler.CompilerMojo.execute (CompilerMojo.java:235)
+    at org.apache.maven.plugin.DefaultBuildPluginManager.executeMojo (DefaultBuildPluginManager.java:126)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute2 (MojoExecutor.java:328)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute (MojoExecutor.java:316)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:212)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:174)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.access$000 (MojoExecutor.java:75)
+    at org.apache.maven.lifecycle.internal.MojoExecutor$1.run (MojoExecutor.java:162)
+    at org.apache.maven.plugin.DefaultMojosExecutionStrategy.execute (DefaultMojosExecutionStrategy.java:39)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:159)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:105)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:73)
+    at org.apache.maven.lifecycle.internal.builder.singlethreaded.SingleThreadedBuilder.build (SingleThreadedBuilder.java:53)
+    at org.apache.maven.lifecycle.internal.LifecycleStarter.execute (LifecycleStarter.java:118)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:261)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:173)
+    at org.apache.maven.DefaultMaven.execute (DefaultMaven.java:101)
+    at org.apache.maven.cli.MavenCli.execute (MavenCli.java:919)
+    at org.apache.maven.cli.MavenCli.doMain (MavenCli.java:285)
+    at org.apache.maven.cli.MavenCli.main (MavenCli.java:207)
+    at jdk.internal.reflect.DirectMethodHandleAccessor.invoke (DirectMethodHandleAccessor.java:103)
+    at java.lang.reflect.Method.invoke (Method.java:580)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launchEnhanced (Launcher.java:255)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launch (Launcher.java:201)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.mainWithExitCode (Launcher.java:362)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.main (Launcher.java:314)
+```
+
+**最小后续方案，尚未申请／执行。** 本线程的 `exec_command` 提供正常 `sandbox_permissions="require_escalated"` 和 justification 审批入口，无需改 ACL／全局配置。该接口审批的是所提交命令，不提供一个只为该 JAR 增加 Read 权限的独立参数，不能宣称技术上仅放开单文件。先补齐上述原调用的权限模式与审批记录：若确认原来仅为默认沙盒执行，且有针对本次失败的新相关授权／条件证据，才可把同一绝对 Maven／JDK、同一原 JAR／仓库、同一离线 compile 范围交正常审批评估；不得申请宽泛 Maven 永久前缀。输入／源代码／插件不变，新执行输出须使用新的独立根以保全本次失败证据，不能覆盖 R，也不能单独复用这 85 个 class 跳过 Finance。若查明此前已正式批准仍然失败，或原模式仍不明，则保留阻塞，不换入口重复。这里仅提出审批边界，并不把可用通道、DACL 的 Allow 或诊断任务授权当成已批准重试。
+
 R 中保留配置、源文件清单、依赖清单、完整 Maven 日志、开始／退出回执和全部失败中间输出。`maven-compile.log` SHA256：`1176422d63800e0741d47caa552917dd4be1169bcc7648ef322d15bb9cc0883e`；`maven-compile-exit.json`：`46aea82f172ff6bc8d6e40ac30f355b1df26f7ae68a0f5a2453057da9008ac22`。源清单 SHA256 `c84e71454a58c35cc5a51f21dfda026906e93ba3a04eed818888e3a918be7d44`，依赖清单 `a1933c1463dc83be59397ab8ea30f56ecdfc0851040130988714df880c81931b`。
 
 没有应用 class 输出、Finance JAR、测试执行、Java 产品启动、模型/helper/原生准入、Profile 构建、候选 EXE、部署或新包。此前通过的前端／普通 C# 编译证据保持，不扩大为真实后端或桌面验收。main、六份用户文档、真实资料、旧包和旧中断记录保持；`productionGo=false`、`nativeValidation=NOT_RUN`。
