@@ -37,6 +37,7 @@ function Set-LockEnvironment {
         PATH=((@('tools/dotnet','tools/pwsh','tools/git/cmd') | ForEach-Object {Resolve-Below $Root $_}) + (Join-Path $env:SystemRoot 'System32') -join ';')
         MSBuildSDKsPath=(Resolve-Below $Root 'tools/dotnet/sdk/10.0.401/Sdks')
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1';DOTNET_ADD_GLOBAL_TOOLS_TO_PATH='0';MSBuildEnableWorkloadResolver='false'
+        DOTNET_GENERATE_ASPNET_CERTIFICATE='false'
     }
     foreach($entry in $values.GetEnumerator()){[Environment]::SetEnvironmentVariable($entry.Key,$entry.Value,'Process')}
 }
