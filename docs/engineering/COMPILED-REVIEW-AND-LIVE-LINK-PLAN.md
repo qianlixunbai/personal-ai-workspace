@@ -6,7 +6,7 @@
 
 ## 选定的一次真实联动
 
-验证 `7e7332e` 的资料出处重新授权链：准备一份只有两句文字的合成 UTF-8 文档，通过正常资料导入创建 v1；从原文选区建立带 documentId／revision／范围的记忆草稿并按正常流程保存。关闭工作区来源页，重新进入该记忆并回查原文，观察当前受控列表先找到准确 ID，再读取详情与原版本片段。仅一个文档／记忆、一次关闭重开；不生成问答、不调用模型、不测试批量导入或其他历史场景。
+验证 `7e7332e` 的资料出处重新授权链：准备一份只有两句文字的合成 UTF-8 文档，通过正常资料导入创建 v1；从原文选区建立带 documentId／revision／范围的记忆草稿并按正常流程保存。正常退出工作区客户端并独立重开，从正常记忆列表重新进入该记忆并回查原文，观察新会话的受控资料列表先找到准确 ID，再读取详情与原版本片段。仅一个文档／记忆、一次退出重开；不生成问答、不调用模型、不测试批量导入或其他历史场景。仅关闭来源页不足以证明 Native session 的读取资格已清空，不以同进程切页代替这次重开。
 
 实际链路为 `MemorySourceReview -> readAuthorizedKnowledge -> Bridge listKnowledge/getKnowledge -> WorkspaceKnowledge.ListAsync/GetAsync -> RuntimeClient -> KnowledgeController -> KnowledgeStore`。前端会先查询 ACTIVE，未找到才查 ARCHIVED；Native 列表响应授予当前会话 Documents 集合的资格，GetAsync 先 Require(session,id)；后端的 `/api/v1/knowledge/documents`、`/documents/{id}`、`/documents/{id}/preview?revision=...` 仍要求 native 客户端身份。验收证据应包含真实 Desktop／Runtime 的 PID 和版本、请求方法与脱敏 ID／revision、页面实际显示内容、退出与锁释放；不记录 token 或数据库凭据。仅用 HTTP 调用或 Mock 不算上述三层联动已通过。
 
