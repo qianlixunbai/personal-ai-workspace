@@ -1,6 +1,6 @@
 # V1 Roadmap
 
-2026-11-11 [正常退出实测的范围前置条件](../engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)尚未闭合：普通执行通道当前逻辑用户目录与批准原 Profile 绝对目标不同，且未取得原主体／canonical 对应证据。新候选构建、helper 和产品均未启动；不得换身份／路径或创建 Profile 绕过。下一步先恢复／确认原执行范围，再做准确候选与一次正常退出，不新增外围功能。
+2026-11-11 [正常退出前置诊断](../engineering/LIVE-EXIT-SCOPE-PREFLIGHT-STOP.md)已确认当前有效主体和解释器与旧原 Profile 记录相同，无需据目录名要求换账户／重登。逻辑 Known Folder 与实际句柄绑定根必须分开；下一阶段仍需正常准入精确绑定原绝对目标，再做准确同源候选和自有窗口正常退出。本轮仅公开身份元数据／旧记录／源码，不查询 Profile、不构建候选或运行 helper／产品，启动额度仍为 0/2；不新增外围功能，也不放宽任何拒绝或 NativeGate。
 
 2026-11-11 优先处理实际使用关卡：[可见正常退出入口及官方 UI Automation 调查](../engineering/VISIBLE-WORKSPACE-EXIT-REPORT.md)。主窗口原生按钮与托盘共用安全关闭链，普通 WPF 编译通过；本轮严格不启动产品／测试窗口或调用 UIA。下一步只按准确候选、原准入和可人工退出兜底的条件进行一次实际验证，不继续累积业务功能、不用强杀关闭关卡。
 
