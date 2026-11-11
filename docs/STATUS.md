@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [知识问答会话参考](engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)完成历史分页浏览、原问答／引用核对、回答选段及核对后插入当前草稿。类型检查、两项新合成流程和受影响的两项记忆流程通过；初次按钮名称定位失败已保留并修复。只加入明确选段，不自动发送或带入引用原文。仅本地源码；未部署安全候选、未更新旧包，完整验收 BLOCKED / productionGo=false。
+
 2026-11-11 [知识回答摘录与出处回查](engineering/KNOWLEDGE-ANSWER-MEMORY-REPORT.md)补齐回答选段 → 核对历史 → 明确保存记忆 → 原问题／完整回答／旧版引用原文回查。两项新增合成流程及类型检查通过，无模型或原生运行；出处为可编辑定位，不能证明回答正确。仅本地源码，旧包未更新，安全候选与 BLOCKED / productionGo=false 边界不变。
 
 2026-11-10 [跨会话历史参考准备](engineering/CROSS-CONVERSATION-REFERENCES-REPORT.md)完成本会话第三项完整模块：旧对话命中消息选段／整条显式加入、精确来源回查、逐项核对后一次插入当前问题草稿，不复制历史记忆权限、不自动发送。两项新合成场景及两项受影响的参考准备场景、类型检查通过，前两模块未重跑。仅本地检查点，下一轮换同项目新会话；main、用户文档及安全候选不变，无真实 Profile／原生准入／模型、打包或 EXE 验收，旧包不含本会话三模块，BLOCKED / productionGo=false 保持。

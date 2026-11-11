@@ -8,10 +8,11 @@ export class AnswerHistoryService extends KnowledgeService {
   answerText = '仅用于😀本项目。\n<script>回答仍需核实。</script>'
   sourceText = '# 旧版资料\n仅用于本项目，旧预算五百元。'
   holdHistory = false; missingHistory = false; missingSource = false; holdPreview = false
+  historySize = 1
   constructor() { super(); this.memory.items = []; this.memory.sent = this.sent; this.memory.listener = event => this.emit(event.data); this.document.currentReadyRevision = '2' }
-  entry(): KnowledgeAnswerHistoryEntry {
+  entry(taskId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'): KnowledgeAnswerHistoryEntry {
     return { question: '原始问题：适用范围？', query: '本项目', scope: { documentId: this.document.documentId, sourceRevision: '1' }, task: {
-      taskId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', status: 'SUCCEEDED', error: null,
+      taskId, status: 'SUCCEEDED', error: null,
       result: { answer: this.answerText, citations: [{ documentId: this.document.documentId, title: this.document.title, sourceRevision: '1', sourceType: 'MARKDOWN',
         startOffset: 7, endOffset: this.sourceText.length, startLine: 2, endLine: 2, heading: '旧版资料',
         locator: { type: 'MARKDOWN_SECTION_LINES', startOffset: 0, endOffset: this.sourceText.length, startLine: 1, endLine: 2, section: 'line-1' } }] } } }
@@ -24,10 +25,16 @@ export class AnswerHistoryService extends KnowledgeService {
     this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
     if (method === 'knowledge.answerHistoryGet' && this.holdHistory || method === 'knowledge.preview' && this.holdPreview) return
     queueMicrotask(() => {
-      if (method === 'knowledge.answerHistory') this.reply(index, { items: this.missingHistory ? [] : [{ taskId: this.entry().task.taskId, question: this.entry().question, status: 'SUCCEEDED', createdAt: '2026-11-11T00:00:00Z' }], total: this.missingHistory ? 0 : 1, page: payload.page, limit: 20 })
+      if (method === 'knowledge.answerHistory') {
+        const rows = Array.from({ length: this.missingHistory ? 0 : this.historySize }, (_, i) => ({
+          taskId: i === 0 ? this.entry().task.taskId : `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          question: this.entry().question + (i > 0 ? ` ${i + 1}` : ''), status: 'SUCCEEDED', createdAt: '2026-11-11T00:00:00Z' }))
+        const page = Number(payload.page)
+        this.reply(index, { items: rows.slice(page * 20, (page + 1) * 20), total: rows.length, page, limit: 20 })
+      }
       else if (method === 'knowledge.answerHistoryGet') {
         if (this.missingHistory) { const request = this.sent[index]!; this.emit({ version: 1, sessionId: request.sessionId, requestId: request.requestId, ok: false, error: { code: 'KnowledgeNotFound', message: '原问答已删除或不可用。' } }) }
-        else this.reply(index, this.entry())
+        else this.reply(index, this.entry(String(payload.taskId)))
       } else if (method === 'knowledge.answerSubmit' || method === 'knowledge.answerGet') this.reply(index, this.entry().task)
       else if (method === 'knowledge.preview') {
         const offset = Number(payload.offset), end = Math.min(offset + 10, this.sourceText.length)

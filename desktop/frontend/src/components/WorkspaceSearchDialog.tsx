@@ -11,6 +11,7 @@ import { searchReadError, WorkspaceConversationReader, WorkspaceKnowledgeReader 
 import { messageWithReferences, referenceKey, referenceLocation, referenceText, referenceTitle, verifyReferences } from './conversationReferences'
 import type { ContextPreparation, ConversationReference } from './conversationReferences'
 import type { MemoryConversationSource } from './memoryConversationSource'
+import { WorkspaceAnswerHistory, type AnswerSelection } from './WorkspaceAnswerHistory'
 
 type Group<T> = { data: T | null; busy: boolean; error: string }
 const empty = <T,>(): Group<T> => ({ data: null, busy: false, error: '' })
@@ -33,6 +34,7 @@ export function WorkspaceSearchDialog({ bridge, close, preparation }: {
   const [knowledge, setKnowledge] = useState<Group<KnowledgeSearchResult>>(empty)
   const [memoryPage, setMemoryPage] = useState(0), [conversationPage, setConversationPage] = useState(0)
   const [selection, setSelection] = useState<Selection | null>(null)
+  const [answerSelection, setAnswerSelection] = useState<AnswerSelection | null>(null)
   const [references, setReferences] = useState<ConversationReference[]>([])
   const referencesRef = useRef(references)
   const [readerVersion, setReaderVersion] = useState(0)
@@ -164,6 +166,8 @@ export function WorkspaceSearchDialog({ bridge, close, preparation }: {
         </>}
       </div></div>
     </>}
+    <WorkspaceAnswerHistory bridge={bridge} selected={answerSelection} choose={setAnswerSelection} disabled={preparing}
+      prepare={preparation && !preparing ? addReference : undefined} />
     {preparation && <section className="conversation-reference-review" aria-label="待插入的会话参考" aria-busy={preparing}>
       <h3>准备给：<bdi>{preparation.title}</bdi></h3>
       <details><summary>目标会话标识</summary><p>{preparation.conversationId}</p></details>
@@ -172,6 +176,7 @@ export function WorkspaceSearchDialog({ bridge, close, preparation }: {
         <h4 dir="auto">{referenceTitle(reference)}</h4><p className="hint">{referenceLocation(reference)}</p>
         <pre tabIndex={0} dir="auto">{referenceText(reference)}</pre>
         <div className="operation-actions"><button disabled={preparing} onClick={event => {
+          if (reference.kind === 'answer') { setAnswerSelection({ taskId: reference.source.taskId, reference }); return }
           choose(reference.kind === 'memory' ? { kind: 'memory', item: reference.item } : reference.kind === 'conversation'
             ? { kind: 'conversation', hit: reference.hit, source: reference.source } : { kind: 'knowledge', hit: reference.hit, excerpt: true }, event.currentTarget)
         }}>回查来源</button>

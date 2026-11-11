@@ -1,5 +1,7 @@
 # 当前架构
 
+2026-11-11 [历史知识回答参考](../engineering/KNOWLEDGE-ANSWER-REFERENCES-REPORT.md)：会话参考联合类型增加临时问答快照，来源仍由原 Knowledge history API 所有；插入前逐项重读再执行原草稿 CAS。问答按页浏览与原关键词搜索分开，不新增数据仓库、索引、受信引用或模型行为。
+
 2026-11-11 [问答出处回查](../engineering/KNOWLEDGE-ANSWER-MEMORY-REPORT.md)：React 记忆正文中的问答 ID／偏移沿现有 answerHistoryGet 读取原记录，引用原文沿既有 get／preview 读取精确源版本。没有新增持久关系、API、schema 或权限；出处可编辑，字面比对不等于事实核验，模型与安全准入边界未变。
 
 2026-11-10 [知识／记忆／会话整合包](../engineering/KNOWLEDGE-CONVERSATION-DELIVERY-REPORT.md)：来源 `b4ae52e`，以已审计 r2 工具链和未变依赖离线重编译完整 Java、Desktop 和 React，实际资源与 420 条内嵌 Runtime pin 核对通过。未调整架构、准入／权限、Profile 或持久化合同；当前累计五项流程首次纳入同一新开发包。包完整性不等于完整 EXE／WebView 或真实模型验收，productionGo=false。
