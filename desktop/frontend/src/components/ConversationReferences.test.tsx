@@ -92,7 +92,7 @@ async function mount() {
   return { port, draft }
 }
 function readOnly(port: ContextService, from: number) {
-  expect(port.sent.slice(from).every(request => ['memory.list', 'memory.get', 'conversations.search', 'conversations.get', 'knowledge.search', 'knowledge.get', 'knowledge.preview', 'knowledge.previewBefore'].includes(String(request.method)))).toBe(true)
+  expect(port.sent.slice(from).every(request => ['memory.list', 'memory.get', 'conversations.list', 'conversations.search', 'conversations.get', 'knowledge.list', 'knowledge.search', 'knowledge.get', 'knowledge.preview', 'knowledge.previewBefore'].includes(String(request.method)))).toBe(true)
 }
 
 it('prepares explicit source copies, reviews/removes them, and inserts the exact preview into the original conversation draft without sending', async () => {

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [资料出处重开接线修复](engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)：记忆回查与会话参考核对先用当前受控列表找到准确 ID，再读取原文档／版本，补上 Native 临时资格要求。类型检查及 3 个直接场景通过；普通 C# 整合编译已有独立记录，真实重开／桌面未验收。
+
 2026-11-11 [当前源码整合编译](engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)：`27db39f` 前端 production 构建、正式 csproj 的 Core／Desktop 普通 Debug 编译通过，0 警告／0 错误；使用原有依赖解析输入、独立输出、无 restore／产品运行。旧自有活动标记经精确核对归档，原 L 与中断证据保留。Java 完整编译仍待 Finance/Lombok 输入及独立输出条件闭合；未验收真实后端、桌面或打包，productionGo=false。
 
 2026-11-11 [问答历史查找](engineering/KNOWLEDGE-ANSWER-HISTORY-SEARCH-REPORT.md)接通本地问题／检索词／回答正文的字面查找、分页和现有引用／会话参考流程；Native-only 新只读接口保持当前历史页授权，未变更存储格式。前端类型及针对性合成检查完成，Java／C# 仅静态核对，未编译／真实桌面／打包验收。本会话三个实质模块到此交接，资料与对话出处重开授权仍是明确后续缺口，productionGo=false。

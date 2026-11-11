@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-11 [资料出处临时资格恢复](../engineering/SOURCE-REOPEN-AUTHORIZATION-REPORT.md)修复已有记忆与会话参考的跨页／重开接线：准确 ID 经列表定位后读取原版本，保留失效、迟到响应与草稿边界。3 项直接合成检查及类型通过；无 Native 门禁变更，不作为真实重开验收。
+
 2026-11-11 [整合与最小纯编译](../engineering/WORKSPACE-INTEGRATION-COMPILE-REPORT.md)先收敛未编译源码：`27db39f` 当前前端 production 与普通 Debug Core／Desktop 正式构建通过，无 restore、原生准入或产品运行。输出独立，旧中断标记按窄条件归档。Java 待明确的 Finance/Lombok 输入与独立目录条件；后续修已证实的接线缺口，保持真实桌面／后端／打包独立验收。
 
 2026-11-11 [已保存问答本地查找](../engineering/KNOWLEDGE-ANSWER-HISTORY-SEARCH-REPORT.md)补齐结果积累后的找回流程：问题／检索词／回答正文连续匹配，按原时间分页，选中后沿已有精确回查与会话草稿流程复用。源码与前端合成验证完成，Native／Runtime 编译和实际桌面未运行。三个模块已交接，下一轮优先资料／对话出处的跨重开授权断点或明确解锁后的真实验收，不重复造导航入口。

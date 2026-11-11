@@ -15,6 +15,8 @@ class SourceService extends KnowledgeService {
   end = this.source.indexOf('\n后文')
   split = this.source.indexOf('<script>')
   missing = false; missingRevision = false; wrongVersion = false; holdDetail = false; failTail = false
+  authorized = false; holdList = false
+  override session(id?: string) { this.authorized = false; super.session(id) }
   constructor() {
     super(); this.document.currentReadyRevision = '2'
     this.memory.items = [{ ...memoryItem(), content: this.note(), title: '摘录笔记' }]
@@ -43,10 +45,17 @@ class SourceService extends KnowledgeService {
       if (method === 'conversations.clearMemories') this.reply(index, { cleared: true })
       return
     }
+    if (method === 'knowledge.list') {
+      this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
+      if (this.holdList) return
+      const items = !this.deleted && payload.status === this.document.status ? [{ ...this.document }] : []
+      if (items.length) this.authorized = true
+      this.reply(index, { items, total: items.length, page: payload.page, limit: 20 }); return
+    }
     if (method === 'knowledge.get') {
       this.sent.push(value as Record<string, unknown>); const index = this.sent.length - 1
       if (this.holdDetail) return
-      if (this.missing) this.reject(index, 'KnowledgeNotFound'); else this.reply(index, this.detail())
+      if (this.missing || !this.authorized) this.reject(index, 'KnowledgeNotFound'); else this.reply(index, this.detail())
       return
     }
     if (method === 'knowledge.preview' || method === 'knowledge.previewBefore') {
@@ -86,7 +95,7 @@ it('reads the exact saved source from Memory preview, edited draft and conversat
   expect(title.value).toBe('保留中的草稿'); expect(content.value).toBe('未保存的正文')
   fireEvent.click(within(reader).getByText('阅读原文上下文'))
   await click('下一页文本', reader); await click('阅读前文', reader); await click('返回所记范围', reader)
-  expect(sourceReads(port).filter(request => request.method !== 'knowledge.get').every(request => (request.payload as { sourceRevision: string }).sourceRevision === '1')).toBe(true)
+  expect(sourceReads(port).filter(request => String(request.method).startsWith('knowledge.preview')).every(request => (request.payload as { sourceRevision: string }).sourceRevision === '1')).toBe(true)
   await click('收起预览')
   fireEvent.change(content, { target: { value: port.note().replace('适用', '不适用') } })
   const editor = screen.getByRole('region', { name: '新记忆' })
@@ -96,6 +105,7 @@ it('reads the exact saved source from Memory preview, edited draft and conversat
   expect(title.value).toBe('保留中的草稿')
   view.unmount()
 
+  port.document.status = 'ARCHIVED'; port.session('dddddddd-dddd-4ddd-8ddd-dddddddddddd')
   const conversationView = render(<ConversationsPage bridge={bridge} enabled visible />)
   await screen.findByLabelText('会话消息')
   await click('查看记忆引用'); await click('查看记忆 1')
@@ -104,6 +114,9 @@ it('reads the exact saved source from Memory preview, edited draft and conversat
   const draft = screen.getByLabelText('会话消息') as HTMLTextAreaElement
   fireEvent.change(draft, { target: { value: '仍未发送的问题' } })
   await click('查看资料出处', reference)
+  expect(sourceReads(port).filter(request => request.method === 'knowledge.list').slice(-2).map(request => request.payload)).toEqual([
+    { status: 'ACTIVE', page: 0 }, { status: 'ARCHIVED', page: 0 },
+  ])
   expect(within(reference).getByLabelText('所记范围原文').textContent).toBe(port.source.slice(port.start, port.end))
   expect(draft.value).toBe('仍未发送的问题')
   const before = sourceReads(port).length
@@ -128,6 +141,15 @@ it('rejects ambiguous source hints, missing versions and incomplete reads, and s
   }
   expect(sourceReads(port)).toHaveLength(0)
   view.rerender(<MemorySourceReview bridge={bridge} content={content} />)
+  port.deleted = true; await click('查看资料出处')
+  expect(screen.getByRole('alert').textContent).toContain('未找到原资料')
+  expect(port.sent.filter(request => request.method === 'knowledge.get')).toHaveLength(0)
+  port.deleted = false; port.holdList = true; await click('查看资料出处')
+  const heldList = port.sent.length - 1
+  view.rerender(<MemorySourceReview bridge={bridge} content={'编辑后' + content} />)
+  await act(async () => port.reply(heldList, { items: [port.document], total: 1, page: 0, limit: 20 }))
+  expect(port.sent.filter(request => request.method === 'knowledge.get')).toHaveLength(0)
+  port.holdList = false; view.rerender(<MemorySourceReview bridge={bridge} content={content} />)
   port.missingRevision = true; await click('查看资料出处')
   expect(screen.getByRole('alert').textContent).toContain('未回退到当前版本')
   expect(port.sent.filter(request => request.method === 'knowledge.preview')).toHaveLength(0)
@@ -157,5 +179,5 @@ it('rejects ambiguous source hints, missing versions and incomplete reads, and s
   const count = sourceReads(port).length; await click('查看资料出处')
   expect(sourceReads(port)).toHaveLength(count)
   expect(screen.queryByLabelText('所记范围原文')).toBeNull()
-  expect(sourceReads(port).every(request => ['knowledge.get', 'knowledge.preview'].includes(String(request.method)))).toBe(true)
+  expect(sourceReads(port).every(request => ['knowledge.list', 'knowledge.get', 'knowledge.preview'].includes(String(request.method)))).toBe(true)
 })

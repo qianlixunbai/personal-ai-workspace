@@ -1,7 +1,7 @@
 import type { WorkspaceClient } from '../bridge/client'
 import type { MemoryItem } from '../bridge/memory'
 import type { KnowledgeSearchHit } from '../bridge/knowledgeSearch'
-import { readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
+import { readAuthorizedKnowledge, readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
 import type { ConversationSearchHit } from '../bridge/conversations'
 import { conversationSourceTitle, readConversationSource, type MemoryConversationSource } from './memoryConversationSource'
 import type { KnowledgeAnswerHistoryEntry } from '../bridge/knowledgeAnswer'
@@ -58,7 +58,7 @@ export async function verifyReferences(bridge: WorkspaceClient, references: Conv
       if (original.original !== reference.source.excerpt || conversationSourceTitle(original.conversation.title) !== reference.source.title)
         throw new Error('所选历史消息内容或会话名称已变化，未插入任何内容。请移除后重新选择。')
     } else {
-      const { source } = reference, detail = await bridge.getKnowledge(source.documentId)
+      const { source } = reference, detail = await readAuthorizedKnowledge(bridge, source.documentId, check)
       check()
       if (detail.document.documentId !== source.documentId || detail.document.title !== source.title
         || !detail.revisions.some(revision => revision.sourceRevision === source.sourceRevision))

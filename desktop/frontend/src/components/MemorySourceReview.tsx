@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeDocument, KnowledgePreview } from '../bridge/knowledge'
 import { KnowledgeSourcePreview } from './KnowledgeSourcePreview'
-import { memorySourceHint, readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
+import { memorySourceHint, readAuthorizedKnowledge, readMemorySource, type MemoryKnowledgeSource } from './memoryKnowledgeSource'
 import { ConversationSourceReview } from './ConversationSourceReview'
 import { KnowledgeAnswerSourceReview } from './KnowledgeAnswerSourceReview'
 
@@ -40,7 +40,7 @@ function KnowledgeMemorySourceReview({ bridge, content, enabled = true }: { brid
     if (hint.kind !== 'found') return
     const source = hint.source
     setReview(null); setPreview(null); offsets.current = []
-    const detail = await bridge.getKnowledge(source.documentId)
+    const detail = await readAuthorizedKnowledge(bridge, source.documentId, check)
     check()
     if (detail.document.documentId !== source.documentId) throw new Error('返回的资料身份与正文记录不符，未显示原文。')
     if (!detail.revisions.some(revision => revision.sourceRevision === source.sourceRevision))

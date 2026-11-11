@@ -26,6 +26,25 @@ export function memorySourceHint(content: string): SourceHint {
   return { kind: 'found', source: { title, documentId, sourceRevision, startOffset, endOffset, excerpt: content.slice(0, start) } }
 }
 
+export async function readAuthorizedKnowledge(bridge: Pick<WorkspaceClient, 'listKnowledge' | 'getKnowledge'>, documentId: string, check: () => void) {
+  const deadline = Date.now() + 30_000
+  const current = () => { check(); if (Date.now() > deadline) throw new Error('定位原资料超时，请主动重新核对。') }
+  // A body/file locator is editable and carries no native session authority.
+  // Stop at the exact listed ID; never substitute a title match or newer version.
+  for (const status of ['ACTIVE', 'ARCHIVED'] as const) {
+    for (let page = 0; page < 25; page++) {
+      current(); const result = await bridge.listKnowledge(status, page); current()
+      if (result.items.some(item => item.documentId === documentId)) {
+        const detail = await bridge.getKnowledge(documentId); current()
+        if (detail.document.documentId !== documentId) throw new Error('返回的资料身份与正文记录不符，未显示原文。')
+        return detail
+      }
+      if ((page + 1) * result.limit >= result.total) break
+    }
+  }
+  throw new Error('当前资料列表中未找到原资料，可能已删除或不可用；未改查同名资料或新版。请刷新后重新核对。')
+}
+
 // At most one original preview's worth of selected text, read through section boundaries.
 // No partial prefix is returned as a completed comparison.
 export async function readMemorySource(bridge: Pick<WorkspaceClient, 'previewKnowledge'>, source: MemoryKnowledgeSource, check: () => void) {
