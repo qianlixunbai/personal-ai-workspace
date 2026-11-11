@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-11 [编译输出审阅包与真实联动方案](engineering/COMPILED-REVIEW-AND-LIVE-LINK-PLAN.md)：生成 9.6 MB REVIEW_ONLY ZIP，737 个条目逐项哈希通过，未重建／运行／加载产品程序集。它保留普通 Debug 与原 Java classes 的真实状态，不是可运行发行包。选定“资料出处重开后重新获得受控读取资格”的真实三层场景，但正常 Java 必经 NativeGate，现有普通桌面不带隔离 Profile；已列明原 model-state 目标的最小只读诊断及后续准入条件，未重演受拒动作。
+
 2026-11-11 最新：[Java 完整 reactor 离线编译通过](engineering/JAVA-OFFLINE-COMPILE-REPORT.md)。源码 `0b7d969` 的 280 个输入与前轮一致，通过正常 require_escalated 审批路径实际编译 Finance 54 个／应用 194 个 Java 文件，退出 0，输出 85／569 个 class；75 条既有内部 API 警告。保持原 Maven/JDK/依赖路径，独立输出、未改 ACL，锁已释放；前轮失败证据保留。前端／普通 C# 既有通过结果保持，真实服务／桌面／新包仍未验收。
 
 2026-11-11 [Java 正式离线构建](engineering/JAVA-OFFLINE-COMPILE-REPORT.md)已完成当前 POM／依赖／Lombok 和独立源快照输出核对，并实际执行一次 compile。Finance 生成 85 个 class、复制 21 份资源后，JDK 关闭 jackson-core JAR 时 `toRealPath` 返回 AccessDeniedException，Maven 退出 1，应用模块 SKIPPED；保留失败输出，未换路重试。这是具体文件系统访问拒绝，不是缺依赖或新审批拒绝。前端／普通 C# 既有通过结果保持，真实后端／桌面未验收。
