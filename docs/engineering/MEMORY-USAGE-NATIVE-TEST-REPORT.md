@@ -1,6 +1,6 @@
 # 记忆使用记录：单场景原生测试执行与宿主修复
 
-最新：父任务明确授权同一 Profile 的一次续跑后，`run-2` 也在 Java 启动前退出 10；此次为 INPUT 阶段通用 IOException。仅已保存回执复核将疑点收窄到根路径字符串比对，但实际返回根路径未记录，不能当作已证实根因。未放松检查或再次执行，详见末节。
+最新：`run-2` 在 Java 启动前以 INPUT / IOException 退出。其后检查准备回执与实际源码输入一致，但对同一 Profile 根的精确只读元数据调用遭到操作系统拒绝访问，已停止该诊断和数据库续跑。根路径比较仍只是疑点，没有证实启动器契约缺陷；详见末节。
 
 2026-11-11。运行来源 `a8b68a123da9de8210a09e0a305d5fd14e24dfcb`，分支 `codex/knowledge-version-compare`。[审阅方案](MEMORY-USAGE-NATIVE-TEST-PLAN.md)随后得到父任务明确授权：新建专用合成 Profile、私有 SQLite、固定 helper/JNA，以及正常自有测试进程与限定超时清理；不外推原产品启动许可。
 
@@ -62,3 +62,15 @@ Prepare、Provision 和 Profile pin 已返回后才进入 JAVA 阶段，因此�
 - `run-2/post-run-observation.json`：只检查本次已记录根下固定位置；runtime-admission.lock、data/memory.db、credentials/client-token 仍不存在。本次未创建另一 Profile、未重复 provision，无 Java 子进程/租约需要清理；宿主退出已确认，无在途动作。
 
 本轮无自动审批拒绝。INPUT 检查未通过是已知失败，不能误报为 Java NativeGate/OS 拒绝，也不能说通过了原生数据库验证。单次续跑已停止；如继续，需先明确当前根绑定与原准备回执之间的实际对应，保持同一 Profile 及全部原生验证，不以第三次碰运气执行或放宽路径条件替代诊断。旧 Surefire 根因、SQLite 查询断言和完整桌面闭环继续未解决。
+
+## 根绑定诊断停止：精确元数据读取被拒绝
+
+父任务随后允许先查现有日志、源码和正常精确只读元数据。实际源码 `MemoryRecallIntegrationProbe.cs` 的 SHA-256 为 `26a9e5ed425d875218a15e80e5c3d9cb6fc6b3b0f81f94dca2ea674098770c3d`，宿主 DLL 为 `0cbce4a739013391c03ce7bc382064f4200c2a2ea71c71e9ab964535cc20c89c`，均与 run-2 输入回执一致。原准备根字符串长度 102，等于 `Path.GetFullPath` 的结果，无末尾或重复分隔符；这没有证明实际绑定根相同或不同。
+
+源码中的 INPUT / IOException 可由证据目录已含 owned-profile、续跑目录不满足同级不同目录、前次 synthetic/失败/退出/无 Java 回执契约不符、或当前 Root 与 preparedRoot 不等触发。现存回执排除了前面的文件条件；Root 对已存在目录走 BindRoot，首次创建前则返回 LogicalRoot。没有当次 Root 值，不能把最后一个条件报告为已直接观察的失败。
+
+随后仅针对原回执根，调用独立的纯元数据读取代码：CreateFileW 请求 FILE_READ_ATTRIBUTES，READ/WRITE/DELETE 共享，OPEN_EXISTING、BACKUP_SEMANTICS 与 OPEN_REPARSE_POINT；然后准备读取 FileAttributeTagInfo 和 GetFinalPathNameByHandleW。未执行产品、helper、NativeGate，未写目标或改权限。工具回执 `e97370` 退出 1，`WorkspaceProfileMetadataRead.Read(owned.root)` 抛出 `Exception calling "Read" with "1" argument(s): "拒绝访问。"`。未返回内部阶段或原生错误码，不能断言具体哪个原生调用失败。计划中的 `profile-root-metadata.json` 写入位于调用之后，未执行。
+
+这是本次新增的 **OS 访问拒绝**，不是自动审批拒绝，也不能倒推 run-2 或旧 Surefire 的根因。拒绝后读取父线程最近消息，未发现对该拒绝操作的新相关授权证据；没有提权、替换 API/路径/身份或执行 helper 来重试。`artifacts/memory-usage-native-20261111/profile-root-metadata-denial.json` 只依据已返回工具错误补记，不再次访问目标。
+
+当前未决边界是：无法在允许的读取范围内确认当前绑定根与原准备回执的对应，也未证明可修复的启动器契约缺陷。因此不再 provision、不改路径比较、不创建新 Profile、不第三次启动宿主。Java、NativeGate、MemoryStore 初始化及数据库查询断言仍未运行；没有新增产品/helper/Java 进程或租约需要清理。停止该验证路径，转做独立的资料逐份问答源码改进。

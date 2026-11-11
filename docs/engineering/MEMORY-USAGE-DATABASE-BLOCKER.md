@@ -2,6 +2,8 @@
 
 2026-11-11，基线 `0a96dda9f0e93ca3a8cb813cade685ca372e5623`，分支 `codex/knowledge-version-compare`。
 
+最新状态：同一合成 Profile 的 run-2 在 Java 启动前失败；随后精确只读根绑定元数据调用遭 OS 拒绝访问，已停止诊断和续跑。现有回执不足以证实启动器契约缺陷，数据库断言仍未运行。具体目标、错误与停止边界见[原生单场景报告末节](MEMORY-USAGE-NATIVE-TEST-REPORT.md#根绑定诊断停止精确元数据读取被拒绝)。
+
 ## 已完成修复与证据边界
 
 修正 `ConversationStoreTest.close()`：仅关闭成功构造的对象，用 finally 保证 ConversationStore 关闭发生异常时仍尝试释放 MemoryStore。这消除初始化失败后的附加空指针，不改变产品、安全检查或数据库查询。
