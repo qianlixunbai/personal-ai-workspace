@@ -23,6 +23,9 @@ public final class KnowledgeStore implements AutoCloseable {
     }
     private FileChannel lockChannel;
     private FileLock processLock;
+    // A terminal job can still own an upload stream or queued cleanup. Keep its
+    // durable recovery identity until the ingestion caller/worker has drained.
+    private final Map<String,String> activeImports=new HashMap<>();
     private volatile Runnable corpusChanged=()->{};
     void onCorpusChanged(Runnable listener){corpusChanged=listener;}
     private void changed(){try{corpusChanged.run();}catch(Exception ignored){/* Derived failure never rolls back truth. */}}
@@ -182,12 +185,30 @@ public final class KnowledgeStore implements AutoCloseable {
         if(!r.next())throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);return new Job(r.getString("id"),r.getString("doc_id"),r.getString("state"),r.getString("error"),
                 r.getString("state").equals("READY")?r.getString("revision"):null);}});}
     public synchronized Job findJob(String value){try{return job(value);}catch(WorkspaceException e){if(e.error().code()==ErrorCode.KNOWLEDGE_NOT_FOUND)return null;throw e;}}
+    synchronized Job admitUpload(String request,String existing,String expected,String filename,long size) {
+        var job=admit(request,existing,expected,filename,size);
+        activeImports.put(request,job.documentId());return job;
+    }
+    synchronized void finishImport(String request) {
+        cleanupCandidate(request);activeImports.remove(request);
+    }
+    static void pruneFinishedJobs(Connection connection,boolean postgresql,Set<String> retained)throws SQLException {
+        String select="SELECT id FROM jobs WHERE state NOT IN ('PENDING','PARSING') AND id NOT IN (SELECT last_job FROM documents WHERE last_job IS NOT NULL)";
+        List<String> obsolete=new ArrayList<>();
+        try(var s=connection.prepareStatement(postgresql?KnowledgePostgresql.sql(select):select);var r=s.executeQuery()) {
+            while(r.next()){String request=r.getString(1);if(!retained.contains(request))obsolete.add(request);}
+        }
+        String delete="DELETE FROM jobs WHERE id=?";
+        try(var s=connection.prepareStatement(postgresql?KnowledgePostgresql.sql(delete):delete)) {
+            for(String request:obsolete){s.setString(1,request);s.executeUpdate();}
+        }
+    }
     synchronized Job admit(String request,String existing,String expected,String filename,long size) {
         id(request);KnowledgeParser.filename(filename);String type=KnowledgeParser.type(filename);
         if(size<1)throw error(ErrorCode.KNOWLEDGE_INVALID_SOURCE);if(size>SOURCE_BYTES)throw error(ErrorCode.KNOWLEDGE_SOURCE_TOO_LARGE);
         return transaction(()->{
             if(findJob(request)!=null)throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);
-            exec("DELETE FROM jobs WHERE state NOT IN ('PENDING','PARSING') AND id NOT IN (SELECT last_job FROM documents WHERE last_job IS NOT NULL)");
+            pruneFinishedJobs(db,postgresql(),activeImports.keySet());
             if(scalar("SELECT count(*) FROM jobs")>=DOCUMENTS+5)throw error(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED);
             if(existing==null&&(scalar("SELECT count(*) FROM revisions")+scalar("SELECT count(*) FROM jobs WHERE state IN ('PENDING','PARSING')")>=REVISIONS
                     ||scalar("SELECT coalesce(sum(bytes),0) FROM revisions")+scalar("SELECT coalesce(sum(size),0) FROM jobs WHERE state IN ('PENDING','PARSING')")+size>CORPUS_BYTES))
@@ -293,7 +314,7 @@ public final class KnowledgeStore implements AutoCloseable {
             exec("UPDATE documents SET status=?,version=version+1,updated=? WHERE id=?",status,Instant.now().toString(),doc);return get(doc);});
         changed();return result;
     }
-    private boolean busy(String doc)throws SQLException {return scalar("SELECT count(*) FROM jobs WHERE doc_id=? AND state IN ('PENDING','PARSING')",doc)>0||scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0;}
+    private boolean busy(String doc)throws SQLException {return activeImports.containsValue(doc)||scalar("SELECT count(*) FROM jobs WHERE doc_id=? AND state IN ('PENDING','PARSING')",doc)>0||scalar("SELECT count(*) FROM deletes WHERE doc_id=?",doc)>0;}
     public synchronized void delete(String doc,String expected) {
         root();publication(()->{deleteWithFiles(doc,expected);return null;});
     }

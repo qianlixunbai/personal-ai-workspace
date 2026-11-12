@@ -29,7 +29,7 @@ public final class KnowledgeIngestion implements AutoCloseable {
         if(closed||!capacity.tryAcquire())throw error(ErrorCode.KNOWLEDGE_QUEUE_FULL);
         boolean admitted=false,queued=false;
         try {
-            var job=store.admit(request,doc,expected,filename,size);admitted=true;
+            var job=store.admitUpload(request,doc,expected,filename,size);admitted=true;
             Path path=store.upload(request);PrivateKnowledgeDirectory.file(path);
             try(var output=FileChannel.open(path,StandardOpenOption.WRITE)) {
                 byte[] buffer=new byte[65536];int n;long length=0;
@@ -47,7 +47,7 @@ public final class KnowledgeIngestion implements AutoCloseable {
         }catch(WorkspaceException e){if(admitted)fail(request,e.error().code());throw e;}
         catch(RejectedExecutionException e){if(admitted)fail(request,ErrorCode.KNOWLEDGE_QUEUE_FULL);throw error(ErrorCode.KNOWLEDGE_QUEUE_FULL);}
         catch(Exception e){if(admitted)fail(request,ErrorCode.KNOWLEDGE_INTERRUPTED);throw error(ErrorCode.KNOWLEDGE_INTERRUPTED);}
-        finally{if(!queued)capacity.release();}
+        finally{if(!queued){try{if(admitted)store.finishImport(request);}catch(Exception failed){cleanupFailed();}capacity.release();}}
     }
     private void process(String request) {
         try {
@@ -62,7 +62,7 @@ public final class KnowledgeIngestion implements AutoCloseable {
             store.complete(request,p,digest);
         }catch(WorkspaceException e){fail(request,e.error().code());}
         catch(Exception e){fail(request,ErrorCode.KNOWLEDGE_INGESTION_FAILED);}
-        finally{try{store.cleanupCandidate(request);}catch(Exception failed){cleanupFailed();}capacity.release();}
+        finally{try{store.finishImport(request);}catch(Exception failed){cleanupFailed();}capacity.release();}
     }
     private void fail(String request,ErrorCode code){try{store.failed(request,code);}catch(Exception failed){cleanupFailed();}}
     private void cleanupFailed(){synchronized(lifecycle){shutdownFailed=true;}}
