@@ -18,6 +18,7 @@ export const decimal = (v: unknown): v is string => typeof v === 'string' && /^[
 const revision = (v: unknown): v is string => decimal(v) && BigInt(v) <= 10n
 const integer = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max
 const unicode = (s: string) => !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(s)
+export const validKnowledgeDocumentQuery = (query: string) => [...query].length <= 128 && unicode(query) && !/[\x00-\x1f\x7f-\x9f]/.test(query)
 const filename = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && [...v].length <= 160 && unicode(v) && !/[\x00-\x1f\x7f-\x9f/\\:]/.test(v) && /\.(txt|md|markdown)$/i.test(v)
 const time = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v))
 export function isKnowledgeFileSelection(v: unknown): v is KnowledgeFileSelection {

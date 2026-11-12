@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BridgeError, type WorkspaceClient } from '../bridge/client'
 import type { KnowledgeDetail, KnowledgeImport, KnowledgeJob, KnowledgeList, KnowledgePreview } from '../bridge/knowledge'
+import { validKnowledgeDocumentQuery } from '../bridge/knowledge'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { KnowledgeSearch } from '../components/KnowledgeSearch'
 import { KnowledgeAnswer } from '../components/KnowledgeAnswer'
@@ -22,13 +23,14 @@ type ReadingPosition = { documentId: string; revision: string; offset: number; t
 const labels = { PENDING: '等待处理', PARSING: '正在解析', READY: '可用', FAILED: '导入失败', CANCELLED: '已取消', INTERRUPTED: '已中断' }
 export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bridge: WorkspaceClient; enabled: boolean; visible: boolean; onMemoryDraft?: (content: string, role: 'ASSISTANT' | 'KNOWLEDGE') => void }) {
   const [status, setStatus] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE'), [page, setPage] = useState(0)
+  const [nameDraft, setNameDraft] = useState(''), [nameQuery, setNameQuery] = useState(''), [nameError, setNameError] = useState('')
   const [list, setList] = useState<KnowledgeList | null>(null), [detail, setDetail] = useState<KnowledgeDetail | null>(null)
   const [preview, setPreview] = useState<KnowledgePreview | null>(null), [revision, setRevision] = useState('')
   const [sourceTarget, setSourceTarget] = useState<KnowledgeSourceTarget | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false), [stale, setStale] = useState(false), [importReceipt, setImportReceipt] = useState<KnowledgeImport | null>(null)
   const [listLoading, setListLoading] = useState(false), [listError, setListError] = useState('')
-  const listView = useRef({ status, page }), listRequest = useRef(0)
+  const listView = useRef({ status, page, query: nameQuery }), listRequest = useRef(0)
   const listActive = useRef(enabled && visible); listActive.current = enabled && visible
   const generation = useRef(0), selection = useRef(0), offsets = useRef<number[]>([]), selected = useRef<string | null>(null)
   const trail = useRef<{ back: ReadingPosition[]; forward: ReadingPosition[] }>({ back: [], forward: [] })
@@ -52,10 +54,10 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     trail.current.forward = []
   }
   const report = (e: unknown) => { setError(e instanceof Error ? e.message : 'Knowledge 操作暂时不可用。'); if (e instanceof BridgeError && ['KnowledgeRevisionConflict', 'OutcomeUnknown', 'KnowledgeDeleteIncomplete'].includes(e.code)) setStale(true) }
-  const changeListView = (nextStatus: typeof status, nextPage: number) => {
-    if (listView.current.status === nextStatus && listView.current.page === nextPage) return
-    listRequest.current++; listView.current = { status: nextStatus, page: nextPage }
-    setStatus(nextStatus); setPage(nextPage); setList(null); setListError(''); setListLoading(false)
+  const changeListView = (nextStatus: typeof status, nextPage: number, nextQuery = listView.current.query) => {
+    if (listView.current.status === nextStatus && listView.current.page === nextPage && listView.current.query === nextQuery) return
+    listRequest.current++; listView.current = { status: nextStatus, page: nextPage, query: nextQuery }
+    setStatus(nextStatus); setPage(nextPage); setNameQuery(nextQuery); setList(null); setListError(''); setListLoading(false)
   }
   const refreshList = async (corpusChanged = true) => {
     if (!listActive.current) return
@@ -63,7 +65,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     const current = () => epoch === generation.current && request === listRequest.current && listActive.current
     setListLoading(true); setListError('')
     try {
-      const result = await bridge.listKnowledge(view.status, view.page)
+      const result = await bridge.listKnowledge(view.status, view.page, view.query)
       if (!current()) return
       if (corpusChanged) setCorpusEpoch(n => n + 1)
       // Deleting/archiving the final item of a page must not look like an empty library.
@@ -74,6 +76,13 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     } catch (e) {
       if (current()) { setList(null); setListError(e instanceof Error ? e.message : '文档列表读取失败，请刷新列表。') }
     } finally { if (current()) setListLoading(false) }
+  }
+  const findByName = (query = nameDraft) => {
+    if (!listActive.current || busy) return
+    if (!validKnowledgeDocumentQuery(query)) { setNameError('请输入最多 128 个 Unicode 字符，不能包含控制字符。'); return }
+    const next = query.trim(); setNameError(''); setNameDraft(next)
+    if (listView.current.query === next && listView.current.page === 0) { void refreshList(false); return }
+    changeListView(listView.current.status, 0, next)
   }
   const load = async (id: string, reset = true) => {
     const epoch = generation.current, pick = ++selection.current
@@ -91,7 +100,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     finally { if (epoch === generation.current) setBusy(false) }
   }
   useEffect(() => {
-    const clear = () => { generation.current++; selection.current++; listRequest.current++; selected.current = null; offsets.current = []; trail.current = { back: [], forward: [] }; setList(null); setListLoading(false); setListError(''); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setImportReceipt(null); setConfirmDelete(false) }
+    const clear = () => { generation.current++; selection.current++; listRequest.current++; selected.current = null; offsets.current = []; trail.current = { back: [], forward: [] }; listView.current = { status: listView.current.status, page: 0, query: '' }; setPage(0); setNameQuery(''); setNameDraft(''); setNameError(''); setList(null); setListLoading(false); setListError(''); setDetail(null); setPreview(null); setSourceTarget(null); setRevision(''); setError(''); setNotice(''); setBusy(false); setStale(false); setImportReceipt(null); setConfirmDelete(false) }
     const unsubscribe = bridge.onSession(clear); return () => { clear(); unsubscribe() }
   }, [bridge])
   useEffect(() => {
@@ -104,7 +113,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     if (!enabled || !visible) { setListLoading(false); return }
     void refreshList(false)
     return () => { listRequest.current++ }
-  }, [bridge, enabled, visible, status, page])
+  }, [bridge, enabled, visible, status, page, nameQuery])
   useEffect(() => {
     if (!enabled || !visible || !processing || !document) return
     const epoch = generation.current, pick = selection.current, id = document.documentId
@@ -113,7 +122,7 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
   }, [bridge, enabled, visible, document, processing, revision])
   const readAcceptedImport = async (job: KnowledgeJob, epoch: number) => {
     if (epoch !== generation.current || !listActive.current) return
-    changeListView('ACTIVE', 0)
+    changeListView('ACTIVE', 0, ''); setNameDraft(''); setNameError('')
     const loaded = await load(job.documentId)
     if (epoch !== generation.current || !loaded) return
     setImportReceipt(null); setNotice('导入已接收，资料详情已读取。处理状态见文档详情。')
@@ -239,12 +248,21 @@ export function KnowledgePage({ bridge, enabled, visible, onMemoryDraft }: { bri
     <details className="advanced-section"><summary>向知识库提问</summary><KnowledgeAnswer bridge={bridge} enabled={enabled && !busy} visible={visible} open={hit => openHit(hit, 'citation')} currentDocument={document} onMemoryDraft={onMemoryDraft} /></details>
     <div className="knowledge-layout">
       <section className="card knowledge-list" aria-labelledby="knowledge-list-title"><h2 id="knowledge-list-title">文档列表</h2>
+        <form onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault() }} onSubmit={e => { e.preventDefault(); findByName() }}>
+          <label htmlFor="knowledge-document-name">按文档名称查找</label>
+          <div className="knowledge-list-tools"><input id="knowledge-document-name" value={nameDraft} disabled={!enabled || busy} autoComplete="off" spellCheck={false} aria-describedby="knowledge-document-name-help" onChange={e => { setNameDraft(e.target.value); setNameError('') }} />
+            <button type="submit" disabled={!enabled || busy}>查找名称</button>
+            <button type="button" disabled={!enabled || busy || (!nameDraft && !nameQuery)} onClick={() => findByName('')}>清除名称筛选</button></div>
+        </form>
+        <p id="knowledge-document-name-help" className="hint">按名称中的连续文字匹配，忽略大小写；覆盖所选状态下的全部文档，包括未完成导入的资料。正文内容请使用上方检索。</p>
+        {nameError && <p role="alert" className="error">{nameError}</p>}
+        {nameQuery && <p role="status">名称筛选：<bdi>{nameQuery}</bdi>{list ? ` · ${list.total} 份` : ''}</p>}
         <div className="knowledge-list-tools"><label className="sr-only" htmlFor="knowledge-status">文档状态</label><select id="knowledge-status" ref={filter} value={status} disabled={busy} onChange={e => changeListView(e.target.value as typeof status, 0)}><option value="ACTIVE">使用中</option><option value="ARCHIVED">已归档</option></select>
           <button disabled={!enabled || busy || listLoading} onClick={() => { void run(refreshList) }}>刷新列表</button></div>
         {listLoading && <p role="status">正在读取文档列表…</p>}
         {listError && <p role="alert" className="error">{listError}</p>}
         <ul tabIndex={0} aria-label="文档列表" aria-busy={listLoading}>{list?.items.map(d => <li key={d.documentId}><button className="memory-select" disabled={busy || listLoading} aria-pressed={document?.documentId === d.documentId} onClick={() => { void run(async () => { await load(d.documentId) }) }}>{d.title}<span>{labels[d.processingState]} · 源版本 {d.currentReadyRevision ?? '无'}</span></button></li>)}</ul>
-        {list?.items.length === 0 && <p className="empty-state">{status === 'ACTIVE' ? '还没有文档。点击上方「导入文档」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
+        {list?.items.length === 0 && <p className="empty-state">{nameQuery ? '当前状态下没有名称匹配的文档。可修改名称、切换状态或清除筛选。' : status === 'ACTIVE' ? '还没有文档。点击上方「导入文档」，添加第一份参考资料。' : '没有已归档的文档。'}</p>}
         <div className="pagination"><button disabled={!enabled || busy || listLoading || page === 0} onClick={() => changeListView(status, page - 1)}>上一页文档</button><span>{page + 1} / {Math.max(page + 1, Math.ceil((list?.total ?? 0) / 20))}</span><button disabled={!enabled || busy || listLoading || !list || (page + 1) * 20 >= list.total} onClick={() => changeListView(status, page + 1)}>下一页文档</button></div>
       </section>
       <section className="card knowledge-detail" aria-labelledby="knowledge-detail-title"><h2 id="knowledge-detail-title">{document?.title ?? '选择一个文档'}</h2>

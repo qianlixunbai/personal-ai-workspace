@@ -16,7 +16,7 @@ public class KnowledgeController {
     private final KnowledgeStore store;private final KnowledgeIngestion ingestion;
     public KnowledgeController(KnowledgeStore store,KnowledgeIngestion ingestion){this.store=store;this.ingestion=ingestion;}
     static void nativeOnly(){if(!ClientIdentity.current().clientType().equals("native"))throw new WorkspaceException(ErrorCode.POLICY_DENIED,"KNOWLEDGE");}
-    @GetMapping("/documents") KnowledgeStore.Page list(@RequestParam(defaultValue="ACTIVE") String status,@RequestParam(defaultValue="0") int page){nativeOnly();return store.list(status,page);}
+    @GetMapping("/documents") KnowledgeStore.Page list(@RequestParam(defaultValue="ACTIVE") String status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="") String query){nativeOnly();return store.list(status,page,query);}
     @GetMapping("/documents/{id}") KnowledgeStore.Detail detail(@PathVariable String id){nativeOnly();return store.detail(id);}
     @GetMapping("/imports/{id}") KnowledgeStore.Job outcome(@PathVariable String id){nativeOnly();return store.job(id);}
     @PostMapping(value="/imports",consumes="application/octet-stream") KnowledgeStore.Job upload(HttpServletRequest request)throws IOException {

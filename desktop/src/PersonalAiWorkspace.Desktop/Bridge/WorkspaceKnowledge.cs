@@ -203,8 +203,8 @@ internal sealed partial class WorkspaceKnowledge(RuntimeClient runtime,IKnowledg
         if(!known.Documents.Contains(document)&&known.Documents.Count>=500)known.Documents.Remove(known.Documents.First());known.Documents.Add(document);
         if(request is not null){if(known.Imports.Count>=505)known.Imports.Remove(known.Imports.First());known.Imports.Add(request);}
     }
-    internal async Task<KnowledgeList> ListAsync(string session,string status,int page,CancellationToken ct)
-    {Authority known;lock(sync)known=Require(session);var result=await runtime.ListKnowledgeAsync(status,page,ct);lock(sync)foreach(var d in result.Items)Authorize(session,known,d.DocumentId,d.RequestId);return result;}
+    internal async Task<KnowledgeList> ListAsync(string session,string status,int page,CancellationToken ct,string query="")
+    {Authority known;lock(sync)known=Require(session);var result=await runtime.ListKnowledgeAsync(status,page,ct,query);lock(sync)foreach(var d in result.Items)Authorize(session,known,d.DocumentId,d.RequestId);return result;}
     internal async Task<KnowledgeSearchResult> SearchAsync(string session,string query,int limit,CancellationToken ct,KnowledgeSourceScope? scope=null)
     {Authority known;lock(sync)known=Require(session,scope?.DocumentId);var result=await runtime.SearchKnowledgeAsync(query,limit,ct,scope);lock(sync){Current(session,known);foreach(var hit in result.Hits)Authorize(session,known,hit.DocumentId);return result;}}
     internal Task<KnowledgeSearchStatus> SearchStatusAsync(string session,CancellationToken ct)

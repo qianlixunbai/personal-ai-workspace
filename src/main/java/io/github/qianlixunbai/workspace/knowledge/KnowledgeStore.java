@@ -160,9 +160,10 @@ public final class KnowledgeStore implements AutoCloseable {
         catch(Exception e){throw error(ErrorCode.KNOWLEDGE_REVISION_CONFLICT);}
     }
     public synchronized Page list(String status,int page) {
-        if(!Set.of("ACTIVE","ARCHIVED").contains(status)||page<0||page>=25)throw error(ErrorCode.INVALID_REQUEST);
-        return sql(()->{List<KnowledgeDocument> items=new ArrayList<>();try(var s=statement("SELECT * FROM documents WHERE status=? ORDER BY updated DESC,id LIMIT 20 OFFSET ?",status,page*20);var r=s.executeQuery())
-            {while(r.next())items.add(document(r));}return new Page(List.copyOf(items),scalar("SELECT count(*) FROM documents WHERE status=?",status),page,20);});
+        return list(status,page,"");
+    }
+    public synchronized Page list(String status,int page,String query) {
+        return sql(()->KnowledgeDocumentListing.read(db,postgresql(),status,page,query));
     }
     public synchronized KnowledgeDocument get(String value) {id(value);return sql(()->{try(var s=statement("SELECT * FROM documents WHERE id=?",value);var r=s.executeQuery()){
         if(!r.next())throw error(ErrorCode.KNOWLEDGE_NOT_FOUND);return document(r);}});}

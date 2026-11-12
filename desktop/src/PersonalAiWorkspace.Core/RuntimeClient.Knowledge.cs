@@ -26,10 +26,15 @@ public sealed partial class RuntimeClient
     public const int MaximumKnowledgeSourceBytes=8*1024*1024;
     public static void ValidateKnowledgeFilename(string filename)=>KFilename(filename);
     private static readonly string[] KnowledgeStates=["PENDING","PARSING","READY","FAILED","CANCELLED","INTERRUPTED"];
-    public async Task<KnowledgeList> ListKnowledgeAsync(string status,int page,CancellationToken token)
+    public static bool ValidKnowledgeDocumentQuery(string? query)
     {
-        if(status is not ("ACTIVE" or "ARCHIVED")||page is <0 or >=25)throw new DesktopException(DesktopError.InvalidRequest);
-        using var body=await KnowledgeJson(HttpMethod.Get,$"/documents?status={status}&page={page}",null,token);
+        if(query is null||query.EnumerateRunes().Count()>128||query.Any(char.IsControl))return false;
+        try{ValidateUnicode(query);return true;}catch(DesktopException){return false;}
+    }
+    public async Task<KnowledgeList> ListKnowledgeAsync(string status,int page,CancellationToken token,string query="")
+    {
+        if(status is not ("ACTIVE" or "ARCHIVED")||page is <0 or >=25||!ValidKnowledgeDocumentQuery(query))throw new DesktopException(DesktopError.InvalidRequest);
+        using var body=await KnowledgeJson(HttpMethod.Get,$"/documents?status={status}&page={page}"+(query.Length==0?"":"&query="+Uri.EscapeDataString(query)),null,token);
         var root=body.RootElement;MemoryFields(root,"items","total","page","limit");var items=Property(root,"items");
         if(items.ValueKind!=JsonValueKind.Array||items.GetArrayLength()>20||MemoryInteger(root,"page")!=page||MemoryInteger(root,"limit")!=20)throw Invalid();
         long total=KNumber(root,"total",0,500);var rows=items.EnumerateArray().Select(KDocument).ToArray();

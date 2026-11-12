@@ -6,7 +6,7 @@ import { isFinanceHistoryQuery, isFinanceHistoryPage, isFinanceHistoryDetail, is
 import { isFinancePortfolio, type FinancePortfolio } from './financePortfolio'
 import { isFinanceMarketStatus, type FinanceMarketStatus } from './financeMarketData'
 import { businessMethods, conversationMethods, memoryMethods, exactFields, isId, isMemoryChoice, isObject, isOperation, isSafeError, isStatus, nativeMethods } from './contracts'
-import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob, isKnowledgeFileSelection } from './knowledge'
+import { knowledgeMethods, isKnowledgeDocument, isKnowledgeDetail, isKnowledgeList, isKnowledgePreview, isKnowledgeImport, isKnowledgeJob, isKnowledgeFileSelection, validKnowledgeDocumentQuery } from './knowledge'
 import type { KnowledgeDocument, KnowledgeDetail, KnowledgeList, KnowledgePreview, KnowledgeImport, KnowledgeJob, KnowledgeFileSelection } from './knowledge'
 import { isKnowledgeSearchResult, isKnowledgeSearchStatus } from './knowledgeSearch'
 import type { KnowledgeSearchResult, KnowledgeSearchStatus } from './knowledgeSearch'
@@ -213,7 +213,10 @@ export class WorkspaceClient {
   restoreMemory(memoryId: string, expectedRevision: string) { return this.request('memory.restore', { memoryId, expectedRevision }) as Promise<MemoryItem> }
   deleteMemory(memoryId: string, expectedRevision: string) { return this.request('memory.delete', { memoryId, expectedRevision }) as Promise<{ deleted: true }> }
   memoryEditorState(dirty: boolean) { return this.request('memory.editorState', { dirty }) as Promise<{ acknowledged: true }> }
-  listKnowledge(status: 'ACTIVE' | 'ARCHIVED', page: number) { return this.request('knowledge.list', { status, page }) as Promise<KnowledgeList> }
+  listKnowledge(status: 'ACTIVE' | 'ARCHIVED', page: number, query = '') {
+    if (!validKnowledgeDocumentQuery(query)) return Promise.reject(new BridgeError('InvalidRequest', '文档名称关键词须为不含控制字符的 0–128 个 Unicode 字符。'))
+    return this.request('knowledge.list', query ? { status, page, query } : { status, page }) as Promise<KnowledgeList>
+  }
   submitKnowledgeAnswer(question: string, query: string, scope: KnowledgeScope | null = null) { return this.request('knowledge.answerSubmit', scope ? { question, query, scope } : { question, query }) as Promise<KnowledgeAnswerTask> }
   getKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerGet', { taskId }) as Promise<KnowledgeAnswerTask> }
   cancelKnowledgeAnswer(taskId: string) { return this.request('knowledge.answerCancel', { taskId }) as Promise<KnowledgeAnswerTask> }

@@ -25,7 +25,7 @@ public sealed class KnowledgeTests
         internal JsonElement? LastScope;
         internal string? ExportSource;internal bool ExportWrongRevision,ExportMissing;internal List<int> ExportOffsets=[];
         internal Dictionary<string,object> ResearchAnswers=[];internal int? ExportMissingAfter;
-        internal string? BeforeInvalid;
+        internal string? BeforeInvalid,ListQuery;
         internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
             startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
@@ -80,7 +80,7 @@ public sealed class KnowledgeTests
                 Assert.Equal("application/octet-stream",request.Content!.Headers.ContentType!.MediaType);Uploaded=await request.Content.ReadAsByteArrayAsync(ct);
                 if(Lost)throw new HttpRequestException();return Reply(Job());}
             if(path.Contains("/imports/")){Lookups++;return Reply(Job());}
-            if(path.EndsWith("/documents"))return Reply(new{items=Deleted?Array.Empty<object>():new[]{Doc()},total=Deleted?0:1,page=0,limit=20});
+            if(path.EndsWith("/documents")){ListQuery=request.RequestUri.Query;return Reply(new{items=Deleted?Array.Empty<object>():new[]{Doc()},total=Deleted?0:1,page=0,limit=20});}
             if(request.Method==HttpMethod.Delete){Deleted=true;return Reply(new{deleted=true});}
             if(path.EndsWith("/archive")||path.EndsWith("/restore")){using var p=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
                 Assert.Equal(Version,p.RootElement.GetProperty("expectedMetadataVersion").GetString());Version=(long.Parse(Version)+1).ToString();Status=path.EndsWith("/archive")?"ARCHIVED":"ACTIVE";return Reply(Doc());}
@@ -103,6 +103,30 @@ public sealed class KnowledgeTests
             return Malformed?Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job(),path=@"C:\private"}):Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job()});
         }
         static HttpResponseMessage Reply(object value)=>RuntimeClientTests.Response(HttpStatusCode.OK,JsonSerializer.Serialize(value));
+    }
+    [Fact]public async Task DocumentNameQueryTraversesBridgeAndEncodesOnlyItsValue()
+    {
+        using var f=new Fixture();f.Handler.Status="ARCHIVED";
+        const string query="预算 + café😀%_&?";
+        var result=await f.Send("knowledge.list",new{status="ARCHIVED",page=0,query});
+        Assert.True(result.GetProperty("ok").GetBoolean());
+        Assert.Equal("?status=ARCHIVED&page=0&query="+Uri.EscapeDataString(query),f.Handler.ListQuery);
+        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
+        Assert.True((await f.Send("knowledge.get",new{documentId=f.Handler.Id})).GetProperty("ok").GetBoolean());
+        await f.Send("knowledge.list",new{status="ARCHIVED",page=0});
+        Assert.Equal("?status=ARCHIVED&page=0",f.Handler.ListQuery);
+    }
+    [Fact]public async Task DocumentNameQueryRejectsInvalidPayloadBeforeHttp()
+    {
+        using var f=new Fixture();
+        foreach(var query in new[]{new string('a',129),"line\nfeed","\u0085"})
+            await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.list",new{status="ACTIVE",page=0,query}));
+        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.list",new{status="ACTIVE",page=0,query=(string?)null}));
+        Assert.Empty(f.Sent);
+        Assert.Equal(DesktopError.InvalidRequest,(await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.ListKnowledgeAsync("ACTIVE",0,default,"line\nfeed"))).Error);
+        Assert.False(RuntimeClient.ValidKnowledgeDocumentQuery("\ud800"));
+        Assert.True(RuntimeClient.ValidKnowledgeDocumentQuery(string.Concat(Enumerable.Repeat("😀",128))));
+        Assert.Equal(0,f.Handler.Calls);
     }
     [Theory][InlineData("knowledge-answer-v2")][InlineData("knowledge-answer-v3")]
     public async Task KnownAnswerPromptVersionsKeepSubmissionAndHistoryCompatible(string version)
