@@ -19,6 +19,7 @@ class WorksetPort extends KnowledgeService {
   holdOpen = false
   unknownSave = false
   invalidOpen = false
+  revisions = new Map<string, string[]>()
   override postMessage(value: unknown) {
     const request = value as { method: string; payload: Record<string, unknown> }
     if (!['knowledge.saveSearchWorkset', 'knowledge.openSearchWorkset', 'knowledge.list', 'knowledge.get', 'knowledge.search'].includes(request.method)) {
@@ -40,7 +41,7 @@ class WorksetPort extends KnowledgeService {
       this.reply(index, { items, total: items.length, page: request.payload.page, limit: 20 })
     } else if (request.method === 'knowledge.get') {
       const document = this.documents.find(doc => doc.documentId === request.payload.documentId)!
-      this.reply(index, { document, job: null, revisions: ['1', ...(document.currentReadyRevision === '2' ? ['2'] : [])]
+      this.reply(index, { document, job: null, revisions: (this.revisions.get(document.documentId) ?? ['1', ...(document.currentReadyRevision && document.currentReadyRevision !== '1' ? [document.currentReadyRevision] : [])])
         .map(sourceRevision => ({ sourceRevision, sourceType: 'MARKDOWN', byteLength: 20 })) })
     } else this.reply(index, { hits: [] })
   }
@@ -119,4 +120,61 @@ it('preserves newer drafts on malformed or late opens, invalidates stale review,
   await click('打开检索工作集…'); fireEvent.change(query(), { target: { value: '确认前的新草稿' } })
   await click('替换检索清单，不执行查询'); expect(query().value).toBe('确认前的新草稿')
   expect(port.requests('knowledge.search')).toHaveLength(0); expect(port.requests('knowledge.saveSearchWorkset')).toHaveLength(1)
+})
+
+it('reviews explicit version replacements and exclusions before committing one pinned scope, leaving the original file and draft intact on cancel', async () => {
+  const storage = { workset: snapshot() }, original = structuredClone(storage.workset)
+  const { port } = setup(storage)
+  port.documents = [{ ...docs[0]!, title: '已更新资料.md', currentReadyRevision: '2' }, { ...docs[2]!, status: 'ARCHIVED' }, { ...docs[3]!, createdAt: '2026-11-10T00:00:00Z' }]
+  port.revisions.set(docs[0]!.documentId, ['2']) // The saved version itself is unavailable.
+  fireEvent.change(query(), { target: { value: '保留当前草稿' } })
+  await click('打开检索工作集…')
+  let row = within(screen.getByRole('group', { name: `恢复选择：${docs[0]!.title}` }))
+  expect(row.getByRole('button', { name: '保留文件版本 1' }).getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getAllByRole('button', { name: '采用核对版本 2' })).toHaveLength(1)
+  await act(async () => fireEvent.click(row.getByRole('button', { name: '采用核对版本 2' })))
+  expect(query().value).toBe('保留当前草稿'); expect(port.requests('knowledge.search')).toHaveLength(0)
+  await click('取消')
+  expect(query().value).toBe('保留当前草稿'); expect(storage.workset).toEqual(original)
+  await click('打开检索工作集…')
+  row = within(screen.getByRole('group', { name: `恢复选择：${docs[0]!.title}` }))
+  expect(row.getByRole('button', { name: '保留文件版本 1' }).getAttribute('aria-pressed')).toBe('true')
+  await act(async () => fireEvent.click(row.getByRole('button', { name: '采用核对版本 2' })))
+  for (const doc of docs.slice(1)) {
+    const unavailable = within(screen.getByRole('group', { name: `恢复选择：${doc.title}` }))
+    expect(unavailable.queryByRole('button', { name: /采用核对版本/ })).toBeNull()
+    await act(async () => fireEvent.click(unavailable.getByRole('button', { name: '移出本次恢复' })))
+  }
+  expect(screen.getByText(/将恢复 1 \/ 4 份资料，0 项尚不可用/)).toBeTruthy()
+  // The accepted choice is the revision the user saw, even if metadata later changes.
+  port.documents[0]!.currentReadyRevision = '3'
+  await click('替换检索清单，不执行查询')
+  const selected = screen.getByRole('list', { name: '已选检索资料' })
+  expect(selected.children).toHaveLength(1); expect(selected.textContent).toContain('已更新资料.md · 源版本 2')
+  expect(port.requests('knowledge.search')).toHaveLength(0); expect(storage.workset).toEqual(original)
+  await click('检索')
+  expect(port.requests('knowledge.search').map(request => request.payload)).toEqual([{ query: '预算', limit: 10, scope: { documentId: docs[0]!.documentId, sourceRevision: '2' } }])
+  expect(port.sent.some(request => ['knowledge.saveSearchWorkset', 'knowledge.archive', 'knowledge.restore', 'knowledge.delete', 'knowledge.answerSubmit'].includes(String(request.method)))).toBe(false)
+})
+
+it('allows reversible per-row choices and an explicitly empty scope without broadening to all documents', async () => {
+  const { port } = setup({ workset: snapshot() })
+  port.documents[0]!.currentReadyRevision = '2'
+  await click('打开检索工作集…')
+  const first = within(screen.getByRole('group', { name: `恢复选择：${docs[0]!.title}` }))
+  await act(async () => fireEvent.click(first.getByRole('button', { name: '采用核对版本 2' })))
+  await act(async () => fireEvent.click(first.getByRole('button', { name: '保留文件版本 1' })))
+  expect(screen.getByText(/将恢复 4 \/ 4 份资料，1 项尚不可用/)).toBeTruthy()
+  for (const doc of docs) await act(async () => fireEvent.click(within(screen.getByRole('group', { name: `恢复选择：${doc.title}` })).getByRole('button', { name: '移出本次恢复' })))
+  expect(screen.getByText(/范围将清空，不会改成全部资料/)).toBeTruthy()
+  await act(async () => fireEvent.click(first.getByRole('button', { name: '保留文件版本 1' })))
+  expect(screen.getByText(/将恢复 1 \/ 4 份资料，1 项尚不可用/)).toBeTruthy()
+  await act(async () => fireEvent.click(first.getByRole('button', { name: '移出本次恢复' })))
+  await click('替换检索清单，不执行查询')
+  expect(screen.getByRole('list', { name: '已选检索资料' }).children).toHaveLength(0)
+  expect((screen.getByRole('button', { name: '检索' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: '准备用所选资料逐份提问' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: '保存检索工作集…' }) as HTMLButtonElement).disabled).toBe(true)
+  await act(async () => fireEvent.submit(query().closest('form')!))
+  expect(port.requests('knowledge.search')).toHaveLength(0)
 })

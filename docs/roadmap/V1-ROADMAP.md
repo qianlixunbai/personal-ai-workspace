@@ -1,5 +1,7 @@
 # V1 Roadmap
 
+2026-11-12 [检索工作集版本复核](../engineering/KNOWLEDGE-WORKSET-VERSION-REVIEW-REPORT.md)：资料更新后可在恢复预览中逐项采用明确版本或排除不可用项，一次确认继续原研究范围。默认不替换版本，取消保留草稿，原文件不改写；前端 5/5、类型检查、隔离生产资产构建通过，未运行后端或真实桌面，旧拒绝不重试。
+
 2026-11-12 [资料名称查找](../engineering/KNOWLEDGE-DOCUMENT-FINDER-REPORT.md)：沿“资料持续使用”路线补齐按名称找回可用、未完成及归档文档的完整列表分页入口，保持阅读位置和 Native-only 边界。4 项前端、2 项 Native Bridge 和 3 组合成 SQL 场景已运行通过；Java 编译日志存在明确依赖访问拒绝，干净编译仍未确认且禁止换路补验。真实桌面、PG 和新整合包未验证，累计启动仍 **1/2**，`productionGo=false`。
 
 2026-11-11 [新版回答复核页面清理](../engineering/KNOWLEDGE-ANSWER-REVISION-RECHECK-REPORT.md)：切换原问答或开始新问题时，已结束的旧对照不再留在新问题页面；运行中及未知提交仍保留核对和防重。定向合成前端 3/3、历史切换 1/1 与最终类型检查通过，未运行产品；当前诊断候选不含此变更或 `1c028840` 分页修复。首轮正常退出未证实，累计启动仍 **1/2**，`productionGo=false`。

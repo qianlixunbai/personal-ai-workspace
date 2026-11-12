@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-12 [工作集恢复版本选择](engineering/KNOWLEDGE-WORKSET-VERSION-REVIEW-REPORT.md)：恢复预览支持逐项保留文件版本、明确采用核对到的当前版本或移出范围，最终确认才替换清单；不自动查找、不改原文件、不跟随之后的新版本，空范围不扩大。5 项前端场景、类型检查及隔离生产前端构建通过，无后端／权限改动。Java 编译与桌面旧阻塞保持；自有进程退出、共享锁释放，产品启动仍 1/2，`productionGo=false`。
+
 2026-11-12 [按名称找回资料](engineering/KNOWLEDGE-DOCUMENT-FINDER-REPORT.md)：文档列表支持在全部使用中／归档元数据内先按名称筛选再分页，涵盖失败和处理中资料，不依赖正文索引；保留阅读位置和旧请求隔离。TypeScript、4 项前端场景、2 项 Native Bridge 场景通过；3 组合成内存 SQLite 查询场景已通过，但 Java 编译器退出 0 后记录 Tomcat JAR 的 `toRealPath` 访问拒绝，不能记为干净编译通过，未重试或绕过。未运行真实桌面、PostgreSQL、完整 JUnit 或新整合包；检查进程结束、共享锁释放，产品启动仍 1/2，`productionGo=false`。
 
 2026-11-12 [上传回执与后台交接](engineering/KNOWLEDGE-IMPORT-RECEIPT-HANDOFF-REPORT.md)：修复后台已完成清理、旧任务被后续准入回收时，原上传响应误报任务不存在的问题。提交前保存真实状态快照，仅在队列接受后返回；协议、任务回收和文件清理规则不变。受影响 Java 源码编译、两项隔离队列／内存 SQLite 场景通过；首次夹具缺少 Jackson 类的失败记录保留。完整上传、JUnit、PostgreSQL 和真实桌面未验证。工具已结束、共享锁已释放，产品启动仍 1/2，productionGo=false，d27ce7a 诊断候选未更新。
