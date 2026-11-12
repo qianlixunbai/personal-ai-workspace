@@ -5,6 +5,7 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 import static io.github.qianlixunbai.workspace.knowledge.KnowledgeParser.error;
 
 public final class KnowledgeIngestion implements AutoCloseable {
@@ -29,7 +30,7 @@ public final class KnowledgeIngestion implements AutoCloseable {
         if(closed||!capacity.tryAcquire())throw error(ErrorCode.KNOWLEDGE_QUEUE_FULL);
         boolean admitted=false,queued=false;
         try {
-            var job=store.admitUpload(request,doc,expected,filename,size);admitted=true;
+            store.admitUpload(request,doc,expected,filename,size);admitted=true;
             Path path=store.upload(request);PrivateKnowledgeDirectory.file(path);
             try(var output=FileChannel.open(path,StandardOpenOption.WRITE)) {
                 byte[] buffer=new byte[65536];int n;long length=0;
@@ -41,13 +42,20 @@ public final class KnowledgeIngestion implements AutoCloseable {
             }
             synchronized(lifecycle){
                 if(closed)throw error(ErrorCode.KNOWLEDGE_CANCELLED);
-                executor.execute(()->process(request));queued=true;
+                var receipt=enqueueWithReceipt(()->store.job(request),executor,()->process(request));queued=true;
+                return receipt;
             }
-            return store.job(request);
         }catch(WorkspaceException e){if(admitted)fail(request,e.error().code());throw e;}
         catch(RejectedExecutionException e){if(admitted)fail(request,ErrorCode.KNOWLEDGE_QUEUE_FULL);throw error(ErrorCode.KNOWLEDGE_QUEUE_FULL);}
         catch(Exception e){if(admitted)fail(request,ErrorCode.KNOWLEDGE_INTERRUPTED);throw error(ErrorCode.KNOWLEDGE_INTERRUPTED);}
         finally{if(!queued){try{if(admitted)store.finishImport(request);}catch(Exception failed){cleanupFailed();}capacity.release();}}
+    }
+    static KnowledgeStore.Job enqueueWithReceipt(Supplier<KnowledgeStore.Job> readReceipt,Executor executor,Runnable work) {
+        // The uploader still owns the job here. Once exposed to the worker it can
+        // finish, release ownership and be pruned by another admission before we return.
+        var receipt=readReceipt.get();
+        executor.execute(work); // Rejection must still fail the upload, never return acceptance.
+        return receipt;
     }
     private void process(String request) {
         try {
