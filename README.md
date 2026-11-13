@@ -101,12 +101,12 @@ cd personal-ai-workspace
 npm --prefix desktop/frontend ci
 dotnet restore desktop/src/PersonalAiWorkspace.Desktop/PersonalAiWorkspace.Desktop.csproj
 dotnet build bootstrap/PersonalAiWorkspace.NativeBootstrap/PersonalAiWorkspace.NativeBootstrap.csproj -c Release
-pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1 -JavaHome $env:JAVA_HOME
+pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1 -JavaHome $env:JAVA_HOME -DistributionName PersonalAiWorkspace-dev
 
-& .\desktop\src\PersonalAiWorkspace.Desktop\bin\Debug\net10.0-windows\PersonalAiWorkspace.Desktop.exe
+& .\artifacts\PersonalAiWorkspace-dev\PersonalAiWorkspace.Desktop.exe --choose-development-workspace
 ```
 
-脚本会校验已审查 Bootstrap 的固定字节，并构建 Runtime 与前端；工具链或来源不匹配时会拒绝。新机器上完整构建与启动尚未在本轮复验，不应通过修改 pin、ACL 或门禁强行启动。`start-workspace.cmd` 对应的正式启动路径当前主动阻断；不要将普通 `dotnet build` 输出等同于已配置的受信开发客户端。
+脚本校验已审查的 NativeBootstrap，构建 Runtime、前端与 Desktop，并写出开发目录及 ZIP。每次打包使用一个新名称。包内 `development-bundle.json` 记录来源 Git SHA 和文件哈希。启动还需要本机 .NET 10 x64 Runtime 供 NativeBootstrap 使用。`start-workspace.cmd` 保留正式入口的安全阻断。
 
 首次启动按原生选择器显式创建或选择开发 Profile；后续恢复上次成功工作区。数据库与 API Key 只通过既有原生设置输入，不写入聊天、前端、源码或示例配置。详细步骤、失败处理与存储位置见 [Development Guide](docs/DEVELOPMENT.md)。
 

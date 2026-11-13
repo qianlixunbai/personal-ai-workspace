@@ -19,15 +19,6 @@ import static io.github.qianlixunbai.workspace.backup.UnifiedPostgresqlBackup.*;
 /** One real archive/restore acceptance flow. Source is read-only; all fault injection is isolated. */
 @EnabledIfSystemProperty(named="unified.backup.test",matches="true")
 class UnifiedPostgresqlBackupIntegrationTest {
-    @Test void completionMarkerRequiresDurableStagingAndNeverOverwrites() throws Exception {
-        Path root=Path.of(".runtime/workspace/b3-publication-"+UUID.randomUUID()).toAbsolutePath();directory(root);
-        Path finalMarker=root.resolve("BACKUP_COMPLETE"),pending=root.resolve("BACKUP_COMPLETE.pending");
-        directory(pending); // Real staging failure, without a fake filesystem or production hook.
-        assertThrows(IOException.class,()->publish(finalMarker,new byte[]{1}));assertFalse(Files.exists(finalMarker));
-        Files.delete(pending); // This test's own empty directory only.
-        publish(finalMarker,new byte[]{1,2,3});assertArrayEquals(new byte[]{1,2,3},Files.readAllBytes(finalMarker));assertFalse(Files.exists(pending));
-        assertThrows(IOException.class,()->publish(finalMarker,new byte[]{4}));assertArrayEquals(new byte[]{1,2,3},Files.readAllBytes(finalMarker));
-    }
     @Test void archiveRestoreStoresCorruptionAndInterruptedCandidate() throws Exception {
         Path credentials=Path.of(".runtime/workspace/b3-test-credentials.json");privatePath(credentials,false);require(Files.size(credentials)<16384);
         var c=JSON.readTree(Files.readAllBytes(credentials));

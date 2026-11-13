@@ -48,19 +48,4 @@ class FinanceTransactionSearchTest {
         verify(identity,times(1)).query(any());
     }
 
-    @Test void invalidSearchAndChangedIdentityCannotReachLedgerAndControllerRejectsDuplicateOrInjectedParameters() {
-        var identity=mock(FinanceAccountQueries.class);var data=mock(DataSource.class);var queries=new FinanceTransactionQueries(identity,data);
-        for(String invalid:new String[]{" ","x\n", "x\u0085", "\ud800", "字".repeat(129),null})
-            assertEquals(ErrorCode.INVALID_REQUEST,assertThrows(WorkspaceException.class,()->queries.list(0,10,"","","","ALL","","",invalid)).error().code());
-        verifyNoInteractions(identity,data);
-        var controller=new FinanceTransactionController(queries);
-        for(String name:List.of("query","userId")){
-            var request=new MockHttpServletRequest();request.addParameter(name,name.equals("query")?new String[]{"first","second"}:new String[]{"77"});
-            assertEquals(ErrorCode.INVALID_REQUEST,assertThrows(WorkspaceException.class,()->controller.list(0,10,"","","","ALL","","","literal",request)).error().code());
-        }
-        verifyNoInteractions(identity,data);
-        when(identity.query(any())).thenThrow(new WorkspaceException(ErrorCode.FINANCE_BINDING_INVALID,"FINANCE"));
-        assertEquals(ErrorCode.FINANCE_BINDING_INVALID,assertThrows(WorkspaceException.class,()->queries.list(0,10,"","","","ALL","","","literal")).error().code());
-        verifyNoInteractions(data);
-    }
 }

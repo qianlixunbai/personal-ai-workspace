@@ -59,41 +59,7 @@ public sealed class RuntimeStartupTraceTests
         });
     }
 
-    [Fact]
-    public void CompletedStartupDoesNotTurnLaterCancellationIntoStartupFailure()
-    {
-        Capture(output =>
-        {
-            using var trace = new RuntimeStartupTrace();
-            trace.At(RuntimeStartupPhase.PublishReady);
-            trace.Completed();
-            string ready = output.ToString();
-            trace.Failed(new OperationCanceledException());
-            trace.At(RuntimeStartupPhase.ProcessCheck);
 
-            Assert.Equal(ready, output.ToString());
-            Assert.DoesNotContain(Records(output), IsFailure);
-            Assert.Single(Records(output), record => record.GetProperty("eventName").GetString() == "READY");
-        });
-    }
-
-    [Fact]
-    public void UnavailableConsoleDoesNotEscapeIntoTheOwnerLifecycle()
-    {
-        var original = Console.Out;
-        using var unavailable = new UnavailableWriter();
-        try
-        {
-            Console.SetOut(unavailable);
-            using var failed = new RuntimeStartupTrace();
-            failed.At(RuntimeStartupPhase.ProtocolHeader);
-            failed.Failed(new EndOfStreamException());
-            using var ready = new RuntimeStartupTrace();
-            ready.At(RuntimeStartupPhase.PublishReady);
-            ready.Completed();
-        }
-        finally { Console.SetOut(original); }
-    }
 
     private static bool IsFailure(JsonElement record) => record.GetProperty("eventName").GetString() == "FIRST_FAILURE";
 

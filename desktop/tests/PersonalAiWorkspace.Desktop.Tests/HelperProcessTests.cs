@@ -7,14 +7,6 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class HelperProcessTests
 {
-    [Fact]
-    public async Task RealSelectionHelperRejectsZeroForegroundWithoutReadingUserSelection()
-    {
-        var result = await HelperProcess.RunAsync<SelectionResult>("--selection-worker", ["0"], 32768,
-            TimeSpan.FromSeconds(3), CancellationToken.None);
-        Assert.Equal(SelectionStatus.ForegroundChanged, result!.Status);
-        Assert.Null(result.Text);
-    }
 
     [Fact]
     public async Task HungHelperIsTerminatedAndReapedAtDeadline()

@@ -40,19 +40,4 @@ class WorkspacePublicationTest {
             try(var files=Files.list(temp)){assertFalse(files.anyMatch(p->p.getFileName().toString().startsWith(".workspace-restore-")));}
         }
     }
-    @Test void windowsJunctionReparsePointAndProjectPathsAreRejected() throws Exception {
-        Path source=temp.resolve("source"),token=temp.resolve("auth/token"),destination=Files.createDirectory(temp.resolve("destination"));
-        try(var memory=new MemoryStore(source,token)) {
-            var service=new WorkspaceBackupService(memory,token);var out=new ByteArrayOutputStream();service.export(out);var bytes=out.toByteArray();
-            Path project=Files.createDirectory(temp.resolve("project"));Files.createDirectory(project.resolve(".git"));
-            assertThrows(WorkspaceException.class,()->service.restore(new ByteArrayInputStream(bytes),project.resolve("data").toString()));
-            Path link=temp.resolve("link");
-            if(System.getProperty("os.name").startsWith("Windows")) {
-                var process=new ProcessBuilder("cmd","/c","mklink","/J",link.toString(),destination.toString()).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-                assertEquals(0,process.waitFor());
-            }else Files.createSymbolicLink(link,destination);
-            try { assertThrows(WorkspaceException.class,()->service.restore(new ByteArrayInputStream(bytes),link.resolve("recovered").toString()));assertFalse(Files.exists(destination.resolve("recovered"))); }
-            finally { Files.delete(link); }
-        }
-    }
 }

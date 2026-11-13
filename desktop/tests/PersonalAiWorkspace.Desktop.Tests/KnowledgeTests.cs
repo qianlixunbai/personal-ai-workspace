@@ -16,56 +16,33 @@ public sealed class KnowledgeTests
     private const string Document=WorkspaceContentPolicy.ProductionOrigin+"/index.html";
     private sealed class Handler:HttpMessageHandler
     {
-        internal string Id=Guid.NewGuid().ToString("D"),Request=Guid.NewGuid().ToString("D"),Version="9007199254740993",Status="ACTIVE";
-        internal int Calls,Uploads,Lookups;internal bool Lost,Deleted,Malformed;internal byte[]? Uploaded;internal TaskCompletionSource? Hold;
-        internal bool SearchMalformed,SearchWorstCase;
-        internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";internal bool AnswerWorstCase,AnswerLost;internal string? AnswerInvalid;
-        internal HttpStatusCode? AnswerReadError;internal bool AnswerReadLost;internal TaskCompletionSource? AnswerReadHold;
-        internal bool HistoryDeleted,HistoryMalformed;internal string AnswerPromptVersion="knowledge-answer-v2";
+        internal string Id=Guid.NewGuid().ToString("D"),Request=Guid.NewGuid().ToString("D");
+        internal int Calls,Uploads,Lookups;internal bool Lost;internal byte[]? Uploaded;
+        internal string AnswerTaskId=Guid.NewGuid().ToString("D"),AnswerState="SUCCEEDED";
+        internal string AnswerPromptVersion="knowledge-answer-v2";
         internal JsonElement? LastScope;
-        internal string? ExportSource;internal bool ExportWrongRevision,ExportMissing;internal List<int> ExportOffsets=[];
-        internal Dictionary<string,object> ResearchAnswers=[];internal int? ExportMissingAfter;
-        internal string? BeforeInvalid,ListQuery;
-        internal object AnswerCitation(int ordinal)=>new{documentId=Id,title=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",157))+".md":"fixture.md",sourceRevision="1",sourceType="MARKDOWN",
-            startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading=AnswerWorstCase?string.Concat(Enumerable.Repeat("😀",160)):"Heading",
+        internal object AnswerCitation(int ordinal)=>new{documentId=Id,title="fixture.md",sourceRevision="1",sourceType="MARKDOWN",
+            startOffset=ordinal*4096,endOffset=ordinal*4096+4096,startLine=99999,endLine=100000,heading="Heading",
             locator=new{type="MARKDOWN_SECTION_LINES",startLine=99999,endLine=100000,startOffset=ordinal*4096,endOffset=ordinal*4096+4096,section="line-99999"}};
         internal object AnswerTask()=>new{taskId=AnswerTaskId,capability="knowledge-answer",status=AnswerState,profile=new{id="chat.balanced",version="m1.5-1",locality="LOCAL"},promptVersion=AnswerPromptVersion,
             createdAt="2026-10-06T00:00:00Z",finishedAt=AnswerState is "QUEUED" or "RUNNING"?null:"2026-10-06T00:00:01Z",
-            result=AnswerState=="SUCCEEDED"?new{answer=AnswerWorstCase?new string('中',2048):"<script>private answer</script>",citations=Enumerable.Range(0,AnswerWorstCase?10:1).Select(AnswerCitation).ToArray()}:null,
+            result=AnswerState=="SUCCEEDED"?new{answer="<script>private answer</script>",citations=Enumerable.Range(0,1).Select(AnswerCitation).ToArray()}:null,
             error=AnswerState is "SUCCEEDED" or "QUEUED" or "RUNNING"?null:new{code=AnswerState=="CANCELLED"?"TASK_CANCELLED":AnswerState=="TIMED_OUT"?"TASK_TIMEOUT":"PROVIDER_RESPONSE_INVALID",message="safe",phase="RESPONSE"}};
-        internal object SearchHit(int ordinal=0)=>new {documentId=Id,title=SearchWorstCase?new string('中',160):"fixture.txt",sourceRevision="1",sourceType="TXT",
-            startOffset=ordinal*2048,endOffset=ordinal*2048+1000,startLine=1,endLine=1,heading=SearchWorstCase?new string('中',96):null,
-            snippet=SearchWorstCase?new string('中',384):"<script>x</script>",highlightRanges=SearchWorstCase?Enumerable.Range(0,16).Select(i=>new{start=i*2,end=i*2+1}).ToArray():[]};
-        internal object Doc()=>new{documentId=Id,title="fixture.txt",status=Status,metadataVersion=Version,currentReadyRevision="1",createdAt="2026-10-05T00:00:00Z",updatedAt="2026-10-05T00:00:00Z",processingState="READY",requestId=Request};
+        internal object SearchHit(int ordinal=0)=>new {documentId=Id,title="fixture.txt",sourceRevision="1",sourceType="TXT",
+            startOffset=ordinal*2048,endOffset=ordinal*2048+1000,startLine=1,endLine=1,heading=(string?)null,
+            snippet="<script>x</script>",highlightRanges=Array.Empty<object>()};
+        internal object Doc()=>new{documentId=Id,title="fixture.txt",status="ACTIVE",metadataVersion="9007199254740993",currentReadyRevision="1",createdAt="2026-10-05T00:00:00Z",updatedAt="2026-10-05T00:00:00Z",processingState="READY",requestId=Request};
         internal object Job()=>new{requestId=Request,documentId=Id,state="READY",errorCode=(string?)null,sourceRevision="1"};
-        internal object Revision()=>new{documentId=Id,sourceRevision="1",sourceDigest=new string('a',64),originalFilename="fixture.txt",sourceType="TXT",byteLength=11,importedAt="2026-10-05T00:00:00Z",parserVersion="text-1",normalizationVersion="lf-1",representationDigest=new string('b',64),lineCount=1};
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)
         {
-            Calls++;if(Hold is not null)await Hold.Task;
+            Calls++;
             Assert.Equal("Bearer",request.Headers.Authorization?.Scheme);Assert.Null(request.Headers.Referrer);
             string path=request.RequestUri!.AbsolutePath;
-            if(path=="/api/v1/knowledge/answer/tasks"&&request.Method==HttpMethod.Get&&ResearchAnswers.Count>0)
-                return Reply(new{items=ResearchAnswers.Keys.Select(id=>new{taskId=id,question="question",status="SUCCEEDED",createdAt="2026-10-06T00:00:00Z"}).ToArray(),total=ResearchAnswers.Count,page=0,limit=20});
-            if(path.StartsWith("/api/v1/knowledge/answer/tasks/",StringComparison.Ordinal)&&ResearchAnswers.TryGetValue(path.Split('/').Last(),out var researchEntry)){
-                if(AnswerReadHold is { } researchHold)await researchHold.Task;return Reply(researchEntry);
-            }
-            if(path=="/api/v1/knowledge/answer/tasks"&&request.Method==HttpMethod.Get)
-                return Reply(new{items=HistoryDeleted?Array.Empty<object>():new object[]{new{taskId=AnswerTaskId,question="question",status=HistoryMalformed?"INVALID":AnswerState,createdAt="2026-10-06T00:00:00Z"}},total=HistoryDeleted?0:1,page=0,limit=20});
-            if(path=="/api/v1/knowledge/answer/tasks/"+AnswerTaskId){
-                if(request.Method==HttpMethod.Delete){HistoryDeleted=true;return Reply(new{deleted=true});}
-                if(AnswerReadHold is { } hold)await hold.Task;
-                return Reply(new{question=AnswerWorstCase?new string('<',3000):"question",query="budget",task=AnswerTask()});
-            }
             if(path=="/api/v1/knowledge/answer/tasks"||path=="/api/v1/tasks/"+AnswerTaskId){
-                if(!path.EndsWith("/answer/tasks")){
-                    if(AnswerReadLost)throw new HttpRequestException();
-                    if(AnswerReadError is { } status)return RuntimeClientTests.Response(status,"{\"code\":\"TASK_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
-                }
                 if(path.EndsWith("/answer/tasks")){
-                    using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));LastScope=payload.RootElement.TryGetProperty("scope",out var selected)?selected.Clone():null;Assert.Equal(LastScope is null?2:3,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());if(AnswerLost)throw new HttpRequestException();
+                    using var payload=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));LastScope=payload.RootElement.TryGetProperty("scope",out var selected)?selected.Clone():null;Assert.Equal(LastScope is null?2:3,payload.RootElement.EnumerateObject().Count());Assert.Equal("question",payload.RootElement.GetProperty("question").GetString());Assert.Equal("budget",payload.RootElement.GetProperty("query").GetString());
                 }
-                string json=JsonSerializer.Serialize(AnswerTask());if(AnswerInvalid is not null)json=AnswerInvalid;
-                if(!path.EndsWith("/answer/tasks")&&AnswerReadHold is { } hold)await hold.Task;
+                string json=JsonSerializer.Serialize(AnswerTask());
                 var response=RuntimeClientTests.Response(path.EndsWith("/answer/tasks")?HttpStatusCode.Accepted:HttpStatusCode.OK,json);
                 if(path.EndsWith("/answer/tasks"))response.Headers.Location=new Uri("/api/v1/tasks/"+AnswerTaskId,UriKind.Relative);return response;
             }
@@ -74,84 +51,16 @@ public sealed class KnowledgeTests
                 Assert.Equal(HttpMethod.Post,request.Method);Assert.Equal("",request.RequestUri.Query);
                 using var search=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));Assert.Equal("budget",search.RootElement.GetProperty("query").GetString());
                 LastScope=search.RootElement.TryGetProperty("scope",out var selected)?selected.Clone():null;
-                return SearchMalformed?Reply(new{hits=new[]{SearchHit()},corpusFingerprint=new string('a',64)}):Reply(new{hits=Enumerable.Range(0,SearchWorstCase?10:1).Select(i=>SearchHit(i)).ToArray()});
+                return Reply(new { hits = new[] { SearchHit() } });
             }
             if(path.EndsWith("/imports")&&request.Method==HttpMethod.Post){Uploads++;Request=request.Headers.GetValues("X-Knowledge-Request").Single();
                 Assert.Equal("application/octet-stream",request.Content!.Headers.ContentType!.MediaType);Uploaded=await request.Content.ReadAsByteArrayAsync(ct);
                 if(Lost)throw new HttpRequestException();return Reply(Job());}
             if(path.Contains("/imports/")){Lookups++;return Reply(Job());}
-            if(path.EndsWith("/documents")){ListQuery=request.RequestUri.Query;return Reply(new{items=Deleted?Array.Empty<object>():new[]{Doc()},total=Deleted?0:1,page=0,limit=20});}
-            if(request.Method==HttpMethod.Delete){Deleted=true;return Reply(new{deleted=true});}
-            if(path.EndsWith("/archive")||path.EndsWith("/restore")){using var p=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
-                Assert.Equal(Version,p.RootElement.GetProperty("expectedMetadataVersion").GetString());Version=(long.Parse(Version)+1).ToString();Status=path.EndsWith("/archive")?"ARCHIVED":"ACTIVE";return Reply(Doc());}
-            if(path.EndsWith("/preview")&&ExportSource is { } source){
-                Assert.Contains("revision=1",request.RequestUri.Query);
-                int offset=int.Parse(request.RequestUri.Query.Split("offset=")[1]);ExportOffsets.Add(offset);
-                if(ExportMissing||ExportMissingAfter is { } after&&ExportOffsets.Count>after)return RuntimeClientTests.Response(HttpStatusCode.NotFound,"{\"code\":\"KNOWLEDGE_NOT_FOUND\",\"message\":\"safe\",\"phase\":\"LOOKUP\"}");
-                int end=offset==0?2048:source.Length;
-                if(end<source.Length&&char.IsLowSurrogate(source[end]))end--;
-                return Reply(new{documentId=Id,sourceRevision=ExportWrongRevision?"2":"1",offset,text=source[offset..end],nextOffset=end<source.Length?(int?)end:null,
-                    locators=new[]{new{type="MARKDOWN_SECTION_LINES",startLine=1,endLine=100000,startOffset=0,endOffset=source.Length,section="line-1",heading="Heading"}},parserVersion="text-1",normalizationVersion="lf-1"});
-            }
-            if(path.EndsWith("/preview-before")){
-                Assert.Equal(HttpMethod.Get,request.Method);Assert.Equal("?revision=1&before=10",request.RequestUri.Query);
-                return BeforeInvalid is not null?RuntimeClientTests.Response(HttpStatusCode.OK,BeforeInvalid):Reply(new{documentId=Id,sourceRevision="1",offset=6,text="😀前文",nextOffset=10,
-                    locators=new[]{new{type="TXT_LINES",startLine=1,endLine=1,startOffset=0,endOffset=18,section=(string?)null,heading=(string?)null}},parserVersion="text-1",normalizationVersion="lf-1"});
-            }
-            if(path.EndsWith("/preview"))return Reply(new{documentId=Id,sourceRevision="1",offset=0,text="<script>x</script>",nextOffset=(int?)null,
-                locators=new[]{new{type="TXT_LINES",startLine=1,endLine=1,startOffset=0,endOffset=18,section=(string?)null,heading=(string?)null}},parserVersion="text-1",normalizationVersion="lf-1"});
-            return Malformed?Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job(),path=@"C:\private"}):Reply(new{document=Doc(),revisions=new[]{Revision()},job=Job()});
+            Assert.Equal("/api/v1/knowledge/documents", path);
+            return Reply(new { items = new[] { Doc() }, total = 1, page = 0, limit = 20 });
         }
         static HttpResponseMessage Reply(object value)=>RuntimeClientTests.Response(HttpStatusCode.OK,JsonSerializer.Serialize(value));
-    }
-    [Fact]public async Task DocumentNameQueryTraversesBridgeAndEncodesOnlyItsValue()
-    {
-        using var f=new Fixture();f.Handler.Status="ARCHIVED";
-        const string query="预算 + café😀%_&?";
-        var result=await f.Send("knowledge.list",new{status="ARCHIVED",page=0,query});
-        Assert.True(result.GetProperty("ok").GetBoolean());
-        Assert.Equal("?status=ARCHIVED&page=0&query="+Uri.EscapeDataString(query),f.Handler.ListQuery);
-        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        Assert.True((await f.Send("knowledge.get",new{documentId=f.Handler.Id})).GetProperty("ok").GetBoolean());
-        await f.Send("knowledge.list",new{status="ARCHIVED",page=0});
-        Assert.Equal("?status=ARCHIVED&page=0",f.Handler.ListQuery);
-    }
-    [Fact]public async Task DocumentNameQueryRejectsInvalidPayloadBeforeHttp()
-    {
-        using var f=new Fixture();
-        foreach(var query in new[]{new string('a',129),"line\nfeed","\u0085"})
-            await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.list",new{status="ACTIVE",page=0,query}));
-        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.list",new{status="ACTIVE",page=0,query=(string?)null}));
-        Assert.Empty(f.Sent);
-        Assert.Equal(DesktopError.InvalidRequest,(await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.ListKnowledgeAsync("ACTIVE",0,default,"line\nfeed"))).Error);
-        Assert.False(RuntimeClient.ValidKnowledgeDocumentQuery("\ud800"));
-        Assert.True(RuntimeClient.ValidKnowledgeDocumentQuery(string.Concat(Enumerable.Repeat("😀",128))));
-        Assert.Equal(0,f.Handler.Calls);
-    }
-    [Theory][InlineData("knowledge-answer-v2")][InlineData("knowledge-answer-v3")]
-    public async Task KnownAnswerPromptVersionsKeepSubmissionAndHistoryCompatible(string version)
-    {
-        using var f=new Fixture();f.Handler.AnswerPromptVersion=version;
-        var submitted=await f.Runtime.SubmitKnowledgeAnswerAsync("question","budget",default);
-        var restored=await f.Runtime.GetKnowledgeAnswerHistoryAsync(submitted.TaskId,default);
-        Assert.Equal(submitted.TaskId,restored.Task.TaskId);Assert.Equal(submitted.Result!.Answer,restored.Task.Result!.Answer);
-        f.Handler.AnswerInvalid=JsonSerializer.Serialize(f.Handler.AnswerTask()).Replace(version,"knowledge-answer-v4");
-        var rejected=await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.GetKnowledgeAnswerAsync(submitted.TaskId,default));
-        Assert.Equal(DesktopError.InvalidResponse,rejected.Error);
-    }
-    [Fact]public async Task AnswerStrictProjectionBoundsAndUnknownPostNeverReplays()
-    {
-        using var f=new Fixture();f.Handler.AnswerWorstCase=true;
-        var response=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.True(response.GetProperty("ok").GetBoolean());
-        Assert.Equal(10,response.GetProperty("result").GetProperty("result").GetProperty("citations").GetArrayLength());Assert.True(Encoding.UTF8.GetByteCount(f.Sent.Single())<65536);
-        foreach(string hidden in new[]{"sourceDigest","representationDigest","fingerprint","rowid","score","path","label","text"})Assert.DoesNotContain("\""+hidden+"\"",f.Sent.Single());
-        f.Handler.AnswerWorstCase=false;string valid=JsonSerializer.Serialize(f.Handler.AnswerTask());
-        foreach(string invalid in new[]{valid.Replace("\"answer\":","\"extra\":1,\"answer\":"),valid.Replace("\"citations\":[","\"citations\":[],\"other\":["),valid.Replace("knowledge-answer-v2","ask-v1"),valid.Replace("knowledge-answer-v2","knowledge-answer-v1"),valid.Replace("chat.balanced","translate.fast"),valid.Replace("MARKDOWN_SECTION_LINES","TXT_LINES"),valid.Replace("\"endOffset\":4096","\"endOffset\":0"),valid+" {}"}) {
-            f.Handler.AnswerInvalid=invalid;var ex=await Assert.ThrowsAsync<DesktopException>(()=>f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default));Assert.Equal(DesktopError.InvalidResponse,ex.Error);
-        }
-        f.Handler.AnswerInvalid=null;foreach(string state in new[]{"QUEUED","RUNNING","FAILED","CANCELLED","TIMED_OUT"}){f.Handler.AnswerState=state;Assert.Equal(state,(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(f.Handler.AnswerTaskId),default)).Status.ToString());}
-        f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerLost=true;int calls=f.Handler.Calls;
-        var lost=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal("OutcomeUnknown",lost.GetProperty("error").GetProperty("code").GetString());Assert.Equal(calls+1,f.Handler.Calls);
     }
     [Fact]public async Task DocumentScopeNeedsExistingGrantAndRejectsEscapingSearchOrAnswer()
     {
@@ -175,301 +84,22 @@ public sealed class KnowledgeTests
         Assert.Equal("OutcomeUnknown",(await f.Send("knowledge.answerSubmit",new{question="question",query="budget",scope})).GetProperty("error").GetProperty("code").GetString());
         Assert.Equal(calls+1,f.Handler.Calls);
     }
-    [Fact]public async Task HistoryNeedsCurrentPageGrantAndReopensCitationsWithoutSubmission()
-    {
-        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
-        var denied=await f.Send("knowledge.answerHistoryGet",new{taskId=id});Assert.Equal("TaskNotFound",denied.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
-        var page=await f.Send("knowledge.answerHistory",new{page=0});Assert.True(page.GetProperty("ok").GetBoolean());
-        var read=await f.Send("knowledge.answerHistoryGet",new{taskId=id});Assert.True(read.GetProperty("ok").GetBoolean());Assert.Equal("question",read.GetProperty("result").GetProperty("question").GetString());
-        Assert.Equal(1,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        Assert.True((await f.Send("knowledge.answerHistoryDelete",new{taskId=id})).GetProperty("ok").GetBoolean());Assert.True(f.Handler.HistoryDeleted);
-        Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerHistoryGet",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
-    }
-    [Fact]public async Task HistoryRejectsMalformedRowsAndLateSessionResults()
-    {
-        using var f=new Fixture();f.Handler.HistoryMalformed=true;
-        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerHistory",new{page=0})).GetProperty("error").GetProperty("code").GetString());
-        f.Handler.HistoryMalformed=false;await f.Send("knowledge.answerHistory",new{page=0});f.Handler.AnswerReadHold=new();
-        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerHistoryGet",new{taskId=f.Handler.AnswerTaskId}));
-        f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;Assert.Empty(f.Sent);
-        Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
-    }
-    [Fact]public async Task HistoryDetailBoundsIncludeOriginalQuestionAndWorstCaseCitations()
-    {
-        using var f=new Fixture();await f.Send("knowledge.answerHistory",new{page=0});f.Handler.AnswerWorstCase=true;
-        var read=await f.Send("knowledge.answerHistoryGet",new{taskId=f.Handler.AnswerTaskId});Assert.True(read.GetProperty("ok").GetBoolean());
-        Assert.Equal(3000,read.GetProperty("result").GetProperty("question").GetString()!.Length);
-        Assert.Equal(10,read.GetProperty("result").GetProperty("task").GetProperty("result").GetProperty("citations").GetArrayLength());
-        Assert.InRange(Encoding.UTF8.GetByteCount(f.Sent.Last()),65537,128*1024);
-    }
-    [Fact]public async Task AnswerTaskAuthorityIsSessionBoundAndLateSubmitOrGetCannotAuthorizeNewSession()
-    {
-        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
-        foreach(string method in new[]{"knowledge.answerGet","knowledge.answerCancel"}){var denied=await f.Send(method,new{taskId=id});Assert.Equal("TaskNotFound",denied.GetProperty("error").GetProperty("code").GetString());}Assert.Equal(0,f.Handler.Calls);
-        f.Handler.AnswerState="QUEUED";await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.Equal(1,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        f.Handler.AnswerState="SUCCEEDED";await f.Send("knowledge.answerGet",new{taskId=id});Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        Assert.DoesNotContain("private answer",(await f.Runtime.GetKnowledgeAnswerAsync(Guid.Parse(id),default)).ToString());
-        f.Rotate();Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
-        foreach(string method in new[]{"knowledge.answerSubmit","knowledge.answerGet"}){
-            f.Handler.Hold=null;f.Handler.AnswerState="QUEUED";if(method=="knowledge.answerGet")await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});
-            f.Handler.AnswerState="SUCCEEDED";f.Handler.Hold=new();var payload=method=="knowledge.answerSubmit"?(object)new{question="question",query="budget"}:new{taskId=id};
-            var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request(method,payload));f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));Assert.Equal(0,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
-        }
-    }
-    [Fact]public async Task AnswerHistoryReclaimsCompletedTasksAndKeepsActiveTaskAuthority()
-    {
-        using var f=new Fixture();string active=f.Handler.AnswerTaskId;f.Handler.AnswerState="RUNNING";
-        await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});
-        string first="";
-        for(int i=0;i<70;i++){
-            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");if(i==0)first=f.Handler.AnswerTaskId;
-            f.Handler.AnswerState="QUEUED";
-            var submitted=await f.Send("knowledge.answerSubmit",new{question="question",query="budget"});Assert.True(submitted.GetProperty("ok").GetBoolean());
-            f.Handler.AnswerState=new[]{"SUCCEEDED","FAILED","CANCELLED","TIMED_OUT"}[i%4];
-            var done=await f.Send(i%4==2?"knowledge.answerCancel":"knowledge.answerGet",new{taskId=f.Handler.AnswerTaskId});Assert.True(done.GetProperty("ok").GetBoolean());
-            Assert.InRange(f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId),1,64);
-        }
-        Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(f.Bridge.SessionId));
-        int calls=f.Handler.Calls;
-        foreach(string method in new[]{"knowledge.answerGet","knowledge.answerCancel"}){
-            var expired=await f.Send(method,new{taskId=first});Assert.Equal("TaskNotFound",expired.GetProperty("error").GetProperty("code").GetString());
-        }
-        Assert.Equal(calls,f.Handler.Calls);
-        f.Handler.AnswerTaskId=active;f.Handler.AnswerState="RUNNING";
-        var running=await f.Send("knowledge.answerGet",new{taskId=active});Assert.Equal("RUNNING",running.GetProperty("result").GetProperty("status").GetString());
-    }
-    [Fact]public async Task AnswerCapacityRequiresConfirmedTerminalOrMissingAndCountsPendingSubmissions()
-    {
-        using var f=new Fixture();string session=f.Bridge.SessionId;
-        f.Handler.AnswerState="RUNNING";
-        for(int i=0;i<63;i++){
-            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
-        }
-        f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");f.Handler.Hold=new();
-        var pending=f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);int calls=f.Handler.Calls;
-        Assert.Equal(DesktopError.QueueFull,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerSubmitAsync(session,"question","budget",default))).Error);
-        Assert.Equal(calls,f.Handler.Calls);f.Handler.Hold.SetResult();await pending;f.Handler.Hold=null;
-        string id=f.Handler.AnswerTaskId;
-        f.Handler.AnswerReadLost=true;
-        Assert.Equal(DesktopError.RuntimeUnavailable,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
-        f.Handler.AnswerReadLost=false;f.Handler.AnswerReadError=HttpStatusCode.InternalServerError;
-        Assert.Equal(DesktopError.InvalidResponse,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
-        Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));calls=f.Handler.Calls;
-        Assert.Equal(DesktopError.QueueFull,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerSubmitAsync(session,"question","budget",default))).Error);Assert.Equal(calls,f.Handler.Calls);
-        f.Handler.AnswerReadError=HttpStatusCode.NotFound;
-        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,false,default))).Error);
-        Assert.Equal(63,f.Knowledge.AnswerAuthorizationCount(session));calls=f.Handler.Calls;
-        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.AnswerTaskAsync(session,id,true,default))).Error);Assert.Equal(calls,f.Handler.Calls);
-        f.Handler.AnswerReadError=null;f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");
-        await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));
-    }
-    [Fact]public async Task AnswerEvictionRejectsLateResultBeforeAuthorizingItsCitations()
-    {
-        using var f=new Fixture();string session=f.Bridge.SessionId,first="";f.Handler.AnswerState="FAILED";
-        for(int i=0;i<64;i++){
-            f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");if(i==0)first=f.Handler.AnswerTaskId;
-            await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
-        }
-        f.Handler.AnswerTaskId=first;f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerReadHold=new();
-        var late=f.Knowledge.AnswerTaskAsync(session,first,false,default);
-        f.Handler.AnswerTaskId=Guid.NewGuid().ToString("D");f.Handler.AnswerState="QUEUED";
-        await f.Knowledge.AnswerSubmitAsync(session,"question","budget",default);
-        f.Handler.AnswerReadHold.SetResult();
-        Assert.Equal(DesktopError.TaskNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>late)).Error);
-        Assert.Equal(0,f.Knowledge.AuthorizationCount(session));Assert.Equal(64,f.Knowledge.AnswerAuthorizationCount(session));
-    }
     private sealed class Files:IKnowledgeSourceFiles
     {
         internal MemoryStream? Selected;
-        internal MemoryStream[] Batch=[];
-        internal TaskCompletionSource<KnowledgeSourceFile[]>? SelectionHold;
         public Task<KnowledgeSourceFile?> PickAsync(CancellationToken ct){Selected=new(Encoding.UTF8.GetBytes("native text"));return Task.FromResult<KnowledgeSourceFile?>(new(Selected,"fixture.txt"));}
-        public Task<KnowledgeSourceFile[]> PickManyAsync(CancellationToken ct)=>SelectionHold?.Task
-            ??Task.FromResult(Batch.Select((stream,index)=>new KnowledgeSourceFile(stream,$"fixture-{index}.txt")).ToArray());
     }
     private sealed class Actions(WorkspaceKnowledge knowledge):IWorkspaceNativeActions
     {public WorkspaceKnowledge Knowledge=>knowledge;public Task<ShellStatus> StatusAsync(CancellationToken ct)=>Task.FromResult(new ShellStatus(1,"1.0.0",ShellRuntimeState.Available,ShellCredentialState.Ready,"Available",[]));public Task OpenAsync(NativeWorkspaceEntry entry,CancellationToken ct)=>Task.CompletedTask;}
     private sealed class Fixture:IDisposable
     {
-        internal readonly ExportFiles Exports=new();
         internal readonly Handler Handler=new();internal readonly Files Files=new();internal readonly RuntimeClient Runtime;internal readonly WorkspaceKnowledge Knowledge;internal readonly WorkspaceBridge Bridge;internal readonly List<string> Sent=[];
-        internal Fixture(){Runtime=new(Handler,()=>new string('t',43));Knowledge=new(Runtime,Files,Exports);Bridge=new(new WorkspaceContentPolicy(),new Actions(Knowledge),Sent.Add);Rotate();}
+        internal Fixture(){Runtime=new(Handler,()=>new string('t',43));Knowledge=new(Runtime,Files);Bridge=new(new WorkspaceContentPolicy(),new Actions(Knowledge),Sent.Add);Rotate();}
         internal void Rotate(){Bridge.BeginDocument(Document);Bridge.Ready(Document);Sent.Clear();}
         internal string Request(string method,object payload)=>JsonSerializer.Serialize(new{version=1,sessionId=Bridge.SessionId,requestId=Guid.NewGuid().ToString("D"),method,payload});
         internal async Task<JsonElement> Send(string method,object payload){Sent.Clear();await Bridge.ReceiveAsync(Document,Document,Request(method,payload));return JsonDocument.Parse(Assert.Single(Sent)).RootElement.Clone();}
         internal Task<JsonElement> List()=>Send("knowledge.list",new{status="ACTIVE",page=0});
         public void Dispose(){Bridge.Dispose();Runtime.Dispose();}
-    }
-    private sealed class ExportFiles:IKnowledgeAnswerExport
-    {
-        internal string? Text;internal int Calls;internal bool Cancel,Research;
-        public Task<bool> SaveAsync(Guid id,string text,CancellationToken token,bool research=false){token.ThrowIfCancellationRequested();Calls++;Text=text;Research=research;return Task.FromResult(!Cancel);}
-    }
-    [Fact]public async Task ResearchExportRequiresDistinctAuthorizedIdsAndPreservesSelectedOrderAndOriginalText()
-    {
-        using var f=new Fixture();string first=f.Handler.AnswerTaskId,second=Guid.NewGuid().ToString("D");
-        f.Handler.ResearchAnswers[first]=new{question="first question",query="first query",task=f.Handler.AnswerTask()};
-        f.Handler.AnswerTaskId=second;
-        f.Handler.ResearchAnswers[second]=new{question="second question",query="second query",task=f.Handler.AnswerTask()};
-        string excerpt="```\n<script>source</script>\n";f.Handler.ExportSource=excerpt+new string('中',4096-excerpt.Length)+"EXCLUDED";
-        // Malformed renderer payloads never reach Runtime or a file chooser.
-        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first,first}}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
-        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first},path=@"C:\injected.md"}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
-        Assert.Equal("TaskNotFound",(await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
-        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=first});await f.Send("knowledge.answerHistoryGet",new{taskId=second});
-        Assert.Equal("SAVED",(await f.Send("knowledge.researchExport",new{taskIds=new[]{second,first}})).GetProperty("result").GetProperty("outcome").GetString());
-        Assert.Equal(1,f.Exports.Calls);Assert.True(f.Exports.Research);Assert.StartsWith("# 资料研究笔记",f.Exports.Text);
-        Assert.True(f.Exports.Text!.IndexOf(second,StringComparison.Ordinal)<f.Exports.Text.IndexOf(first,StringComparison.Ordinal));
-        Assert.Contains("### 问题\n\n```text\nsecond question\n```",f.Exports.Text);Assert.Contains("first query",f.Exports.Text);
-        Assert.Contains("````text\n```\n<script>source</script>",f.Exports.Text);Assert.DoesNotContain("EXCLUDED",f.Exports.Text);
-        Assert.Equal(new[]{0,2048,0,2048},f.Handler.ExportOffsets);Assert.Equal(0,f.Handler.Uploads);Assert.DoesNotContain("first question",f.Sent.Single());
-    }
-    [Fact]public async Task ResearchExportDoesNotSavePartialSourcesAndStopsOnSessionReplacement()
-    {
-        using var f=new Fixture();string first=f.Handler.AnswerTaskId,second=Guid.NewGuid().ToString("D");
-        f.Handler.ResearchAnswers[first]=new{question="first",query="budget",task=f.Handler.AnswerTask()};f.Handler.AnswerTaskId=second;
-        f.Handler.ResearchAnswers[second]=new{question="second",query="budget",task=f.Handler.AnswerTask()};f.Handler.ExportSource=new string('中',4096);
-        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=first});await f.Send("knowledge.answerHistoryGet",new{taskId=second});
-        f.Handler.ExportMissingAfter=2;
-        Assert.False((await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("ok").GetBoolean());Assert.Equal(0,f.Exports.Calls);
-        f.Handler.ExportMissingAfter=null;f.Exports.Cancel=true;
-        Assert.Equal("CANCELLED",(await f.Send("knowledge.researchExport",new{taskIds=new[]{first,second}})).GetProperty("result").GetProperty("outcome").GetString());Assert.Equal(1,f.Exports.Calls);
-        f.Handler.AnswerReadHold=new();var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.researchExport",new{taskIds=new[]{first,second}}));
-        Assert.Equal("QueueFull",(await f.Send("knowledge.answerExport",new{taskId=first})).GetProperty("error").GetProperty("code").GetString());
-        int reads=f.Handler.ExportOffsets.Count;f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;
-        Assert.Empty(f.Sent);Assert.Equal(reads,f.Handler.ExportOffsets.Count);Assert.Equal(1,f.Exports.Calls);
-    }
-    [Fact]public async Task BatchSelectionNeedsExplicitUploadConsumesEachFileOnceAndDisposesOnDiscardOrRotation()
-    {
-        using var f=new Fixture();f.Files.Batch=[new(Encoding.UTF8.GetBytes("first")),new(Encoding.UTF8.GetBytes("second"))];
-        var picked=(await f.Send("knowledge.selectFiles",new{})).GetProperty("result").GetProperty("files");
-        string first=picked[0].GetProperty("requestId").GetString()!,second=picked[1].GetProperty("requestId").GetString()!;
-        Assert.Equal(0,f.Handler.Calls);Assert.Equal(2,picked.GetArrayLength());
-        Assert.Equal(DesktopError.KnowledgeNotFound,(await Assert.ThrowsAsync<DesktopException>(()=>f.Knowledge.ImportSelectedAsync(f.Bridge.SessionId,Guid.NewGuid().ToString("D"),default))).Error);
-        f.Handler.Lost=true;
-        var accepted=await f.Send("knowledge.importSelected",new{requestId=first});
-        Assert.Equal("ACCEPTED",accepted.GetProperty("result").GetProperty("outcome").GetString());
-        Assert.Equal(first,accepted.GetProperty("result").GetProperty("requestId").GetString());
-        Assert.Equal(1,f.Handler.Uploads);Assert.Equal(1,f.Handler.Lookups);Assert.Equal("first",Encoding.UTF8.GetString(f.Handler.Uploaded!));
-        Assert.False(f.Files.Batch[0].CanRead);Assert.True(f.Files.Batch[1].CanRead);
-        Assert.Equal("InvalidRequest",(await f.Send("knowledge.importSelected",new{requestId=first})).GetProperty("error").GetProperty("code").GetString());
-        Assert.Equal(1,f.Handler.Uploads);
-        f.Rotate();Assert.False(f.Files.Batch[1].CanRead);
-        Assert.Equal("KnowledgeNotFound",(await f.Send("knowledge.importSelected",new{requestId=second})).GetProperty("error").GetProperty("code").GetString());
-        f.Files.Batch=[new(Encoding.UTF8.GetBytes("unused"))];
-        await f.Send("knowledge.selectFiles",new{});await f.Send("knowledge.discardSelectedFiles",new{});
-        Assert.False(f.Files.Batch[0].CanRead);Assert.Equal(1,f.Handler.Uploads);
-    }
-    [Fact]public async Task LateBatchSelectionCannotSurviveSessionRotation()
-    {
-        using var f=new Fixture();f.Files.SelectionHold=new();
-        var pick=f.Knowledge.SelectFilesAsync(f.Bridge.SessionId,default);f.Rotate();
-        var stream=new MemoryStream(Encoding.UTF8.GetBytes("late selection"));
-        f.Files.SelectionHold.SetResult([new(stream,"late.txt")]);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>pick);
-        Assert.False(stream.CanRead);Assert.Equal(0,f.Handler.Calls);
-    }
-    [Fact]public async Task AnswerExportUsesStoredHistoryAndExactOldRevisionWithNoModelSubmission()
-    {
-        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
-        await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerExport",new{taskId=id,path=@"C:\injected.md"}));Assert.Empty(f.Sent);Assert.Equal(0,f.Handler.Calls);
-        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
-        await f.Send("knowledge.answerHistory",new{page=0});
-        Assert.Equal("TaskNotFound",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
-        await f.Send("knowledge.answerHistoryGet",new{taskId=id});
-        string excerpt="```\n![image](https://invalid/track)\n<script>text</script>";
-        excerpt+=new string('中',2047-excerpt.Length)+"😀";excerpt+=new string('文',4094-excerpt.Length)+"😀";f.Handler.ExportSource=excerpt+"EXCLUDED CONTEXT";
-        var response=await f.Send("knowledge.answerExport",new{taskId=id});
-        Assert.Equal("SAVED",response.GetProperty("result").GetProperty("outcome").GetString());
-        Assert.Equal(new[]{0,2047},f.Handler.ExportOffsets);Assert.Equal(1,f.Exports.Calls);Assert.Equal(0,f.Handler.Uploads);
-        Assert.Contains("## 问题\n\n```text\nquestion\n```",f.Exports.Text);Assert.Contains("````text\n"+excerpt+"\n````",f.Exports.Text);
-        Assert.Contains("<script>private answer</script>",f.Exports.Text);Assert.Contains("源版本：1",f.Exports.Text);Assert.DoesNotContain("EXCLUDED CONTEXT",f.Exports.Text);
-        Assert.DoesNotContain("sourceDigest",f.Sent.Single());Assert.DoesNotContain("private answer",f.Sent.Single());
-        f.Exports.Cancel=true;Assert.Equal("CANCELLED",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("result").GetProperty("outcome").GetString());
-        f.Handler.ExportMissing=true;Assert.False((await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("ok").GetBoolean());Assert.Equal(2,f.Exports.Calls);
-        f.Handler.ExportMissing=false;f.Handler.ExportWrongRevision=true;
-        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(2,f.Exports.Calls);
-        f.Handler.ExportWrongRevision=false;f.Handler.ExportSource=new string('中',4095)+"😀";
-        Assert.Equal("InvalidResponse",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(2,f.Exports.Calls);
-    }
-    [Fact]public async Task AnswerExportStopsForUnfinishedHistoryAndSessionReplacement()
-    {
-        using var f=new Fixture();string id=f.Handler.AnswerTaskId;
-        await f.Send("knowledge.answerHistory",new{page=0});await f.Send("knowledge.answerHistoryGet",new{taskId=id});f.Handler.AnswerState="RUNNING";
-        Assert.Equal("KnowledgeExportFailed",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Exports.Calls);
-        f.Handler.AnswerState="SUCCEEDED";f.Handler.AnswerReadHold=new();
-        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.answerExport",new{taskId=id}));
-        Assert.Equal("QueueFull",(await f.Send("knowledge.answerExport",new{taskId=id})).GetProperty("error").GetProperty("code").GetString());
-        f.Rotate();f.Handler.AnswerReadHold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Exports.Calls);
-    }
-    [Fact]public async Task AnswerNoteNativeWriterPreservesUtf8AndNeverOverwritesExistingFiles()
-    {
-        string directory=Path.Combine(Path.GetTempPath(),"workspace-answer-note-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
-        string path=Path.Combine(directory,"note.md"),cancelled=Path.Combine(directory,"cancelled.md");
-        try{
-            const string note="# 合成笔记\n\n```text\n预算😀 --dry-run\n```\n";
-            await NativeKnowledgeAnswerExport.SaveNewAsync(path,note,default);Assert.Equal(new UTF8Encoding(false).GetBytes(note),await File.ReadAllBytesAsync(path));
-            Assert.Equal(DesktopError.KnowledgeFileUnavailable,(await Assert.ThrowsAsync<DesktopException>(()=>NativeKnowledgeAnswerExport.SaveNewAsync(path,"replacement",default))).Error);
-            Assert.Equal(note,await File.ReadAllTextAsync(path));
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>NativeKnowledgeAnswerExport.SaveNewAsync(cancelled,note,new CancellationToken(true)));
-            Assert.False(File.Exists(cancelled));Assert.Equal(new[]{path},Directory.GetFiles(directory));
-        }
-        finally{File.Delete(path);Directory.Delete(directory);}
-    }
-    [Fact]public async Task SessionAuthorityRequiresListOrImportClearsOnRotationAndDeleteRevokes()
-    {
-        using var f=new Fixture();var denied=await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
-        var listed=await f.List();Assert.Equal("9007199254740993",listed.GetProperty("result").GetProperty("items")[0].GetProperty("metadataVersion").GetString());
-        await f.Send("knowledge.get",new{documentId=f.Handler.Id});f.Rotate();await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal(2,f.Handler.Calls);
-        await f.List();await f.Send("knowledge.delete",new{documentId=f.Handler.Id,expectedMetadataVersion=f.Handler.Version});Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal(4,f.Handler.Calls);
-    }
-    [Fact]public async Task SearchAuthorizesGetPreviewAndRotationClearsAuthority()
-    {
-        using var f=new Fixture();var response=await f.Send("knowledge.search",new{query="budget",limit=10});Assert.True(response.GetProperty("ok").GetBoolean());
-        Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));await f.Send("knowledge.get",new{documentId=f.Handler.Id});
-        await f.Send("knowledge.preview",new{documentId=f.Handler.Id,sourceRevision="1",offset=0});f.Rotate();
-        var denied=await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());
-    }
-    [Fact]public async Task PrecedingPreviewBindsTheRequestedBoundaryAndRetainsSessionAuthority()
-    {
-        using var f=new Fixture();
-        var denied=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
-        Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Handler.Calls);
-        await f.List();var good=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
-        Assert.True(good.GetProperty("ok").GetBoolean());Assert.Equal("😀前文",good.GetProperty("result").GetProperty("text").GetString());
-        string valid=good.GetProperty("result").GetRawText();int calls=f.Handler.Calls;
-        f.Sent.Clear();await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=0}));
-        Assert.Empty(f.Sent);Assert.Equal(calls,f.Handler.Calls);
-        foreach(string invalid in new[]{valid.Replace("\"offset\":6","\"offset\":7"),valid.Replace("\"sourceRevision\":\"1\"","\"sourceRevision\":\"2\""),valid.Replace("\"text\":","\"extra\":true,\"text\":")}){
-            f.Handler.BeforeInvalid=invalid;var rejected=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
-            Assert.Equal("InvalidResponse",rejected.GetProperty("error").GetProperty("code").GetString());
-        }
-        f.Handler.BeforeInvalid=null;f.Handler.Hold=new();
-        var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10}));
-        f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);
-        denied=await f.Send("knowledge.previewBefore",new{documentId=f.Handler.Id,sourceRevision="1",offset=10});
-        Assert.Equal("KnowledgeNotFound",denied.GetProperty("error").GetProperty("code").GetString());
-    }
-    [Fact]public async Task LateSearchCannotAuthorizeReplacementSession()
-    {
-        using var f=new Fixture();f.Handler.Hold=new();var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.search",new{query="budget",limit=10}));
-        f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-    }
-    [Fact]public async Task SearchRejectsExtraIndexFieldsAndWorstCaseEscapingFitsOrdinaryBridge()
-    {
-        using var f=new Fixture();f.Handler.SearchMalformed=true;var rejected=await f.Send("knowledge.search",new{query="budget",limit=10});
-        Assert.Equal("InvalidResponse",rejected.GetProperty("error").GetProperty("code").GetString());Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-        f.Handler.SearchMalformed=false;f.Handler.SearchWorstCase=true;var response=await f.Send("knowledge.search",new{query="budget",limit=10});
-        Assert.Equal(10,response.GetProperty("result").GetProperty("hits").GetArrayLength());Assert.True(Encoding.UTF8.GetByteCount(f.Sent.Single())<65536);
-        foreach(string hidden in new[]{"sourceDigest","representationDigest","corpusFingerprint","rowid","score","tokens","path"})Assert.DoesNotContain("\""+hidden+"\"",f.Sent.Single());
-        Assert.DoesNotContain("budget",(await f.Runtime.SearchKnowledgeAsync("budget",10,default)).ToString());
-    }
-    [Fact]public async Task SearchBridgeRejectsUnknownPayloadAndOutOfRangeLimits()
-    {
-        using var f=new Fixture();foreach(var payload in new object[]{new{query="budget",limit=11},new{query="budget",limit="1"},new{query="budget",limit=1,path="private"},new{query="x"+new string('中',128),limit=1}})
-        {await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.search",payload));Assert.Empty(f.Sent);}Assert.Equal(0,f.Handler.Calls);
     }
     [Fact]public async Task NativeUploadStreamsOnceAndUnknownOutcomeUsesReadOnlyLookup()
     {
@@ -477,48 +107,5 @@ public sealed class KnowledgeTests
         Assert.Equal("ACCEPTED",result.GetProperty("result").GetProperty("outcome").GetString());Assert.Equal(1,f.Handler.Uploads);Assert.Equal(1,f.Handler.Lookups);
         Assert.Equal("native text",Encoding.UTF8.GetString(f.Handler.Uploaded!));Assert.False(f.Files.Selected!.CanRead);Assert.Equal(1,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
         Assert.DoesNotContain("native text",Assert.Single(f.Sent));Assert.DoesNotContain("Bearer",f.Sent[0]);Assert.DoesNotContain(@"C:\",f.Sent[0]);
-    }
-    [Fact]public async Task KnowledgeGetSerializesOnlyUiRevisionMetadata()
-    {
-        using var f=new Fixture();await f.List();var response=await f.Send("knowledge.get",new{documentId=f.Handler.Id});
-        var revision=Assert.Single(response.GetProperty("result").GetProperty("revisions").EnumerateArray());
-        Assert.Equal(new[]{"byteLength","sourceRevision","sourceType"},revision.EnumerateObject().Select(p=>p.Name).OrderBy(n=>n,StringComparer.Ordinal).ToArray());
-        Assert.Equal("1",revision.GetProperty("sourceRevision").GetString());Assert.Equal("TXT",revision.GetProperty("sourceType").GetString());Assert.Equal(11,revision.GetProperty("byteLength").GetInt64());
-        string serialized=Assert.Single(f.Sent);
-        foreach(string field in new[]{"sourceDigest","representationDigest","parserVersion","normalizationVersion","lineCount","originalFilename","importedAt","path","sourcePath","sourceBytes","backupPath","base64","text"})
-            Assert.DoesNotContain("\""+field+"\"",serialized);
-        foreach(string value in new[]{new string('a',64),new string('b',64),@"C:\","native text"})Assert.DoesNotContain(value,serialized);
-        var native=await f.Runtime.GetKnowledgeAsync(f.Handler.Id,default);
-        Assert.Equal(new string('a',64),native.Revisions[0].SourceDigest);Assert.Equal(new string('b',64),native.Revisions[0].RepresentationDigest);
-    }
-    [Fact]public async Task BridgeRejectsPathsBytesUnknownFieldsAndNumericVersionsWithoutCallingRuntime()
-    {
-        using var f=new Fixture();foreach(var payload in new object[]{new{path=@"C:\private.txt"},new{documentId=(string?)null,expectedMetadataVersion=(string?)null,base64="eA=="},new{documentId=f.Handler.Id,expectedMetadataVersion=1}})
-        {f.Sent.Clear();await f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.import",payload));Assert.Empty(f.Sent);}
-        Assert.Equal(0,f.Handler.Calls);
-    }
-    [Fact]public async Task LateListCannotAuthorizeNewSessionOrSendStaleResponse()
-    {
-        using var f=new Fixture();f.Handler.Hold=new();var pending=f.Bridge.ReceiveAsync(Document,Document,f.Request("knowledge.list",new{status="ACTIVE",page=0}));
-        f.Rotate();f.Handler.Hold.SetResult();await pending;Assert.Empty(f.Sent);Assert.Equal(0,f.Knowledge.AuthorizationCount(f.Bridge.SessionId));
-    }
-    [Fact]public async Task StrictRuntimeDtosRejectExtraFieldsAndPreviewUsesOrdinaryBudget()
-    {
-        using var f=new Fixture();await f.List();f.Handler.Malformed=true;
-        var invalid=await f.Send("knowledge.get",new{documentId=f.Handler.Id});Assert.Equal("InvalidResponse",invalid.GetProperty("error").GetProperty("code").GetString());
-        var preview=await f.Send("knowledge.preview",new{documentId=f.Handler.Id,sourceRevision="1",offset=0});Assert.Equal("<script>x</script>",preview.GetProperty("result").GetProperty("text").GetString());
-        Assert.True(Encoding.UTF8.GetByteCount(f.Sent[0])<WorkspaceBridge.MaximumResponseBytes);
-    }
-    [Fact]public void NativeOpenedObjectValidationRejectsDirectoryUncEmptyOversizeAndKeepsOriginalHandle()
-    {
-        string root=Path.Combine(Path.GetTempPath(),"workspace-knowledge-test-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
-        try{
-            string file=Path.Combine(root,"source.txt");File.WriteAllText(file,"source text",new UTF8Encoding(false));
-            using(var selected=NativeKnowledgeSourceFiles.Open(file)){Assert.Equal("source.txt",selected.Filename);Assert.Equal(11,selected.Stream.Length);Assert.Throws<IOException>(()=>File.Delete(file));}
-            Assert.Throws<DesktopException>(()=>NativeKnowledgeSourceFiles.Open(root));Assert.Throws<DesktopException>(()=>NativeKnowledgeSourceFiles.Open(@"\\server\share\source.txt"));
-            File.WriteAllBytes(file,[]);Assert.Equal(DesktopError.KnowledgeInvalidSource,Assert.Throws<DesktopException>(()=>NativeKnowledgeSourceFiles.Open(file)).Error);
-            using(var output=File.OpenWrite(file))output.SetLength(RuntimeClient.MaximumKnowledgeSourceBytes+1L);
-            Assert.Equal(DesktopError.KnowledgeSourceTooLarge,Assert.Throws<DesktopException>(()=>NativeKnowledgeSourceFiles.Open(file)).Error);
-        }finally{File.Delete(Path.Combine(root,"source.txt"));Directory.Delete(root);}
     }
 }

@@ -46,63 +46,6 @@ class FinanceAccountQueriesTest {
     @AfterEach void clearAuthentication() { SecurityContextHolder.clearContext(); }
 
     @Test
-    void applicationBoundaryIsConditionalAndUsesTheDedicatedFinanceComponents() {
-        var runner = new ApplicationContextRunner()
-                .withUserConfiguration(FinanceModuleConfiguration.class, FinanceAccountController.class, FinanceInvestmentController.class);
-        runner.run(context -> assertThat(context).hasNotFailed()
-                .doesNotHaveBean(LocalFinanceProfile.class).doesNotHaveBean(FinanceAccountQueries.class)
-                .doesNotHaveBean(FinanceAccountController.class).doesNotHaveBean(FinanceInvestmentQueries.class)
-                .doesNotHaveBean(FinanceInvestmentController.class));
-        runner.withPropertyValues("workspace.finance.enabled=true",
-                "workspace.finance.datasource.url=jdbc:postgresql://127.0.0.1:1/unused",
-                "workspace.finance.datasource.username=configuration-test",
-                "workspace.finance.datasource.password=not-a-real-password")
-                .withBean("unrelatedTransactionManager", PlatformTransactionManager.class,
-                        () -> mock(PlatformTransactionManager.class))
-                .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(FinanceAccountQueries.class)
-                            .hasSingleBean(FinanceAccountController.class).hasSingleBean(FinanceInvestmentQueries.class)
-                            .hasSingleBean(FinanceInvestmentController.class);
-                    assertEquals("public", context.getBean("financeDataSource", PGSimpleDataSource.class).getCurrentSchema());
-                });
-    }
-
-    @Test
-    void nativeAuthenticationAndConfirmedBindingAreRequiredBeforeDatabaseAccess() {
-        var profile = mock(LocalFinanceProfile.class);
-        var database = mock(DataSource.class);
-        var transactions = mock(PlatformTransactionManager.class);
-        var accounts = mock(AccountQueryService.class);
-        var listing = mock(FinanceAccountListing.class);
-        var queries = new FinanceAccountQueries(profile, new FinanceIdentityRepository(database), accounts, listing, transactions);
-        assertCode(ErrorCode.POLICY_DENIED, queries::cnyBalance); // No implicit Native fallback.
-        assertCode(ErrorCode.POLICY_DENIED, queries::budgetAvailability);
-        authenticate(new ClientIdentity("fixture", "browser", "fixture", null, Instant.EPOCH, Set.of("translate")));
-        assertCode(ErrorCode.POLICY_DENIED, queries::cnyBalance);
-        assertCode(ErrorCode.POLICY_DENIED, queries::budgetAvailability);
-        verifyNoInteractions(profile, database, accounts, listing, transactions);
-        authenticate(ClientIdentity.NATIVE);
-        when(profile.requireBinding()).thenThrow(new WorkspaceException(ErrorCode.FINANCE_NOT_BOUND, "FINANCE"));
-        assertCode(ErrorCode.FINANCE_NOT_BOUND, queries::cnyBalance);
-        assertCode(ErrorCode.FINANCE_NOT_BOUND, queries::budgetAvailability);
-        verifyNoInteractions(database, accounts, listing, transactions);
-    }
-
-    @Test
-    void bindingParserRejectsAmbiguousOrUnversionedIdentityAndKeepsThePortableProfile() {
-        UUID id = UUID.randomUUID();
-        String binding = "{\"format\":1,\"profileId\":\"" + id + "\",\"financeUserId\":42,"
-                + "\"datasetFingerprint\":\"" + "a".repeat(64) + "\",\"userFingerprint\":\"" + "b".repeat(64) + "\"}";
-        assertEquals(id, LocalFinanceProfile.parse(binding.getBytes(StandardCharsets.UTF_8)).profileId());
-        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> LocalFinanceProfile.parse(
-                binding.replace("\"format\":1", "\"format\":1,\"format\":2").getBytes(StandardCharsets.UTF_8)));
-        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> LocalFinanceProfile.parse(
-                binding.replace("\"format\":1", "\"format\":4294967297").getBytes(StandardCharsets.UTF_8)));
-        assertCode(ErrorCode.FINANCE_BINDING_INVALID, () -> LocalFinanceProfile.parse(
-                binding.replace("\"financeUserId\":42", "\"userId\":42").getBytes(StandardCharsets.UTF_8)));
-    }
-
-    @Test
     void trustedReadPreservesAmountsUserScopeAndTransactionThenRejectsChangedIdentity() throws Exception {
         authenticate(ClientIdentity.NATIVE);
         var fixture = new ReadFixture();

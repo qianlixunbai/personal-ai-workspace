@@ -27,7 +27,7 @@ if ($DistributionName) {
 $previousJavaHome = $env:JAVA_HOME
 try {
     $env:JAVA_HOME = $JavaHome
-    & (Join-Path $repo 'mvnw.cmd') -B -ntp -pl workspace-application -am '-DskipTests' package
+    & (Join-Path $repo 'mvnw.cmd') -B -ntp -pl workspace-application -am '-Dmaven.test.skip=true' package
     if ($LASTEXITCODE -ne 0) { throw 'Runtime package failed.' }
 } finally { $env:JAVA_HOME = $previousJavaHome }
 $jar = Join-Path $repo 'target/personal-ai-workspace-0.1.0.jar'

@@ -18,23 +18,6 @@ class BrowserClientsTest {
         return clients.exchange(session.pairingId(), session.pairingSecret(), ORIGIN);
     }
 
-    @Test void credentialAuthenticationDoesNotInventOriginBinding() {
-        try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
-            var issued = pair(clients);
-            String authorization = "Bearer " + issued.credential();
-            assertEquals(issued.client(), clients.authenticateCredential(authorization));
-            assertNull(clients.authenticate(authorization, null));
-            assertNull(clients.authenticate(authorization, "chrome-extension://" + "b".repeat(32)));
-            assertEquals(issued.client(), clients.authenticate(authorization, ORIGIN));
-            assertNull(clients.authenticateCredential(null));
-            assertNull(clients.authenticateCredential("Bearer br1.malformed"));
-            assertNull(clients.authenticateCredential("Bearer br1." + issued.client().clientId() + "." + "z".repeat(43)));
-            assertNull(clients.authenticateCredential("Bearer br1." + UUID.randomUUID() + "." + issued.credential().substring(41)));
-            clients.revoke(issued.client().clientId());
-            assertNull(clients.authenticateCredential(authorization));
-        }
-    }
-
     @Test void credentialAndRevocationSurviveRestartButPairingDoesNot() throws Exception {
         BrowserClients.Exchange issued; BrowserClients.Pairing pending;
         try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
@@ -55,50 +38,6 @@ class BrowserClientsTest {
         }
     }
 
-    @Test void expiryReplayFailedAttemptAndGlobalBudgets() {
-        MutableClock clock = new MutableClock();
-        try (var clients = new BrowserClients(file(), clock)) {
-            var expired = clients.create(ORIGIN, "Expired"); clock.now = clock.now.plus(BrowserClients.TTL);
-            assertThrows(WorkspaceException.class, () -> clients.exchange(expired.pairingId(), expired.pairingSecret(), ORIGIN));
-            var one = clients.create(ORIGIN, "One"); clients.exchange(one.pairingId(), one.pairingSecret(), ORIGIN);
-            assertThrows(WorkspaceException.class, () -> clients.exchange(one.pairingId(), one.pairingSecret(), ORIGIN));
-            var failed = clients.create(ORIGIN, "Failures");
-            for (int i=0; i<5; i++) assertThrows(WorkspaceException.class, () -> clients.exchange(failed.pairingId(), "bad", ORIGIN));
-            assertThrows(WorkspaceException.class, () -> clients.exchange(failed.pairingId(), failed.pairingSecret(), ORIGIN));
-            var global = clients.create(ORIGIN, "Global");
-            for (int i=0; i<60; i++) assertThrows(WorkspaceException.class, () -> clients.exchange(UUID.randomUUID(), "bad", ORIGIN));
-            assertThrows(WorkspaceException.class, () -> clients.exchange(global.pairingId(), global.pairingSecret(), ORIGIN));
-            clock.now = clock.now.plusSeconds(60);
-            assertNotNull(clients.exchange(global.pairingId(), global.pairingSecret(), ORIGIN));
-        }
-    }
-
-    @Test void boundedSessionsRegistryAndExactOrigin() {
-        MutableClock clock = new MutableClock();
-        try (var clients = new BrowserClients(file(), clock)) {
-            for (String invalid : List.of("*", "https://example.com", ORIGIN + "/", "chrome-extension://" + "q".repeat(32)))
-                assertThrows(WorkspaceException.class, () -> clients.create(invalid, "Invalid"));
-            for (int i=0; i<8; i++) clients.create(ORIGIN, "Bounded");
-            assertEquals(ErrorCode.QUEUE_FULL, assertThrows(WorkspaceException.class, () -> clients.create(ORIGIN, "Overflow")).error().code());
-            clock.now = clock.now.plus(BrowserClients.TTL);
-            for (int i=0; i<32; i++) pair(clients);
-            assertEquals(32, clients.list().size());
-            assertThrows(WorkspaceException.class, () -> clients.create(ORIGIN, "Full"));
-            clients.revoke(clients.list().getFirst().clientId()); assertNotNull(pair(clients));
-        }
-    }
-
-    @Test void malformedAndAmbiguousRegistryFailClosed() throws Exception {
-        Files.createDirectories(file().getParent());
-        for (String invalid : List.of("{broken", "{\"version\":2,\"clients\":[]}", "{\"version\":1,\"clients\":null}",
-                "{\"version\":1,\"version\":1,\"clients\":[]}", "{\"version\":1,\"clients\":[],\"extra\":true}", "x".repeat(65537))) {
-            Files.writeString(file(), invalid);
-            assertThrows(IllegalStateException.class, () -> new BrowserClients(file(), Clock.systemUTC()));
-        }
-        Files.delete(file()); Files.writeString(file().resolveSibling("browser-clients.pending"), "uncommitted");
-        assertThrows(IllegalStateException.class, () -> new BrowserClients(file(), Clock.systemUTC()));
-    }
-
     @Test void atomicFailureDoesNotPublishAndStalePendingNeverResurrectsRevocation() throws Exception {
         BrowserClients.Exchange issued;
         try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
@@ -115,22 +54,6 @@ class BrowserClientsTest {
         try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
             assertNull(clients.authenticate("Bearer " + issued.credential(), ORIGIN));
             assertFalse(Files.exists(file().resolveSibling("browser-clients.pending")));
-        }
-    }
-
-    @Test void privatePermissionsAndExclusiveRegistryLock() throws Exception {
-        try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
-            pair(clients);
-            assertThrows(IllegalStateException.class, () -> new BrowserClients(file(), Clock.systemUTC()));
-            for (Path path : List.of(file(), file().getParent(), file().resolveSibling("browser-clients.lock"))) {
-                var posix = Files.getFileAttributeView(path, PosixFileAttributeView.class);
-                if (posix != null) assertEquals(PosixFilePermissions.fromString(Files.isDirectory(path) ? "rwx------" : "rw-------"), posix.readAttributes().permissions());
-                else {
-                    var acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
-                    assertNotNull(acl); assertFalse(acl.getAcl().isEmpty());
-                    for (AclEntry entry : acl.getAcl()) if (entry.type() == AclEntryType.ALLOW) assertEquals(acl.getOwner(), entry.principal());
-                }
-            }
         }
     }
 

@@ -7,6 +7,7 @@ import io.github.qianlixunbai.workspace.task.TaskManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.support.GenericApplicationContext;
+import java.io.InputStream;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
@@ -32,14 +33,24 @@ public class RuntimeWorkShutdownTest {
         }
         public void close(){context.close();}
     }
+    private static void held(CountDownLatch latch){
+        boolean interrupted=false;
+        for(;;)try{latch.await();break;}catch(InterruptedException ignored){interrupted=true;}
+        if(interrupted)Thread.currentThread().interrupt();
+    }
+    private static final class Upload extends InputStream {
+        final CountDownLatch reading=new CountDownLatch(1),release=new CountDownLatch(1);
+        public int read(){reading.countDown();held(release);return 'x';}
+        public int read(byte[] bytes,int offset,int length){bytes[offset]=(byte)read();return 1;}
+    }
     @Test void coordinatorClosesContextOnlyAfterActualUploadDrainAndRejectsStickyFailure()throws Exception{
         for(boolean interrupt:List.of(false,true))try(var runtime=new Runtime(root,"runtime-work-"+interrupt)){
-            var input=new KnowledgeIngestionShutdownTest.Upload();String request=UUID.randomUUID().toString();
+            var input=new Upload();String request=UUID.randomUUID().toString();
             var failure=new AtomicReference<Throwable>();var returned=new AtomicBoolean();var interrupted=new AtomicBoolean();
             var uploader=Executors.newSingleThreadExecutor();
             var receiving=uploader.submit(()->assertThrows(WorkspaceException.class,
                     ()->runtime.ingestion.upload(request,null,null,"held.txt",1,input)));
-            KnowledgeIngestionShutdownTest.entered(input.reading);
+            assertTrue(input.reading.await(2, TimeUnit.SECONDS));
             Thread closer=Thread.ofPlatform().unstarted(()->{
                 try{RuntimeWorkShutdown.closeContext(runtime.context);returned.set(true);}catch(Throwable e){failure.set(e);}
                 interrupted.set(Thread.currentThread().isInterrupted());

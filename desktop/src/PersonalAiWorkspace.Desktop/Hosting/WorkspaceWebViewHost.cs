@@ -67,24 +67,25 @@ internal sealed class WorkspaceWebViewHost
 #endif
     }
 
-    private void DiagnoseProcessFailure(CoreWebView2ProcessFailedEventArgs args)
+    private bool RequiresFallback(CoreWebView2ProcessFailedEventArgs args)
     {
-#if DEBUG
-        int? kind = null, reason = null, exitCode = null;
+        CoreWebView2ProcessFailedKind? kind = null;
+        int? reason = null, exitCode = null;
         int detailsHresult = 0;
         bool available = false;
         try
         {
-            kind = (int)args.ProcessFailedKind;
+            kind = args.ProcessFailedKind;
+#if DEBUG
             reason = (int)args.Reason;
             exitCode = args.ExitCode;
             available = true;
+#endif
         }
         catch (Exception error) { detailsHresult = error.HResult; }
-        // Reading event details must not prevent the existing fallback. No descriptions,
-        // module paths, frame information, URLs or exception text enter this record.
-        Diagnose("BROWSER_PROCESS_FAILED", detailsHresult, kind, reason, exitCode, available);
-#endif
+        Diagnose("BROWSER_PROCESS_FAILED", detailsHresult, (int?)kind, reason, exitCode, available);
+        // WebView2 recreates these auxiliary processes. Keep waiting for React's READY handshake.
+        return kind is not (CoreWebView2ProcessFailedKind.GpuProcessExited or CoreWebView2ProcessFailedKind.UtilityProcessExited);
     }
 
 #if MMF3_ACCEPTANCE && DEBUG
@@ -191,8 +192,8 @@ internal sealed class WorkspaceWebViewHost
             core.ProcessFailed += (_, args) =>
             {
                 if (closing || failed) return;
+                if (!RequiresFallback(args)) return;
                 if (!ready.Task.IsCompleted) StartupFailureCode ??= "BROWSER_PROCESS_FAILED";
-                DiagnoseProcessFailure(args);
                 Fail("工作区浏览器进程已停止。原生功能仍可使用，请关闭后重新打开工作区。");
             };
             Stage("PROFILE_CLEAR_START");

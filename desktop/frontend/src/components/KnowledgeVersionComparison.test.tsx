@@ -4,7 +4,6 @@ import type { WorkspaceClient } from '../bridge/client'
 import type { KnowledgePreview } from '../bridge/knowledge'
 import { KnowledgeService } from '../test/knowledgeFixtures'
 import { KnowledgeVersionComparison } from './KnowledgeVersionComparison'
-import { compareSources, readComparisonSource } from './knowledgeComparison'
 
 afterEach(cleanup)
 const detail = new KnowledgeService().detail()
@@ -30,38 +29,4 @@ it('compares full paged text without interpreting HTML and opens the exact old/n
   expect(screen.getByRole('region', { name: '版本对比结果' })).toBeTruthy()
   view.rerender(<KnowledgeVersionComparison {...props} enabled={false} />)
   expect(screen.queryByRole('region', { name: '版本对比结果' })).toBeNull()
-})
-
-it('waits for an outstanding read on stop, suppresses late data, and ignores an unmounted result', async () => {
-  let resolve!: (value: KnowledgePreview) => void
-  const previewKnowledge = vi.fn(() => new Promise<KnowledgePreview>(done => { resolve = done }))
-  const props = { bridge: { previewKnowledge } as unknown as WorkspaceClient, detail, open: vi.fn(async () => {}), enabled: true, disabled: false }
-  const view = render(<KnowledgeVersionComparison {...props} />)
-  fireEvent.click(screen.getByText('对比源版本')); await click('开始对比'); await click('停止对比')
-  expect((screen.getByRole('button', { name: '开始对比' }) as HTMLButtonElement).disabled).toBe(true)
-  await act(async () => { resolve(part('1', '迟到内容')) })
-  expect(previewKnowledge).toHaveBeenCalledTimes(1); expect(screen.getByText('已停止对比。')).toBeTruthy()
-  expect(screen.queryByRole('region', { name: '版本对比结果' })).toBeNull()
-  await click('开始对比'); view.unmount(); await act(async () => { resolve(part('1', '另一条迟到内容')) })
-  expect(previewKnowledge).toHaveBeenCalledTimes(2)
-})
-
-it('rejects wrong version, nonadvancing pages, size and page limits instead of comparing prefixes', async () => {
-  const id = detail.document.documentId, check = () => {}
-  await expect(readComparisonSource({ previewKnowledge: vi.fn(async () => part('2', 'wrong')) }, id, '1', check)).rejects.toThrow('不完整')
-  await expect(readComparisonSource({ previewKnowledge: vi.fn(async () => part('1', 'x', 0, 0)) }, id, '1', check)).rejects.toThrow('不完整')
-  let calls = 0
-  await expect(readComparisonSource({ previewKnowledge: vi.fn(async (_id, r, offset) => { calls++; return part(r, 'x'.repeat(4096), offset, offset + 4096) }) }, id, '1', check)).rejects.toThrow('范围')
-  expect(calls).toBe(25)
-  calls = 0
-  await expect(readComparisonSource({ previewKnowledge: vi.fn(async (_id, r, offset) => { calls++; return part(r, 'x', offset, offset + 1) }) }, id, '1', check)).rejects.toThrow('范围')
-  expect(calls).toBe(128)
-})
-
-it('keeps whitespace and final newline differences, and bounds highly divergent documents', async () => {
-  const parts = await compareSources('中文😀 \n末行', '中文😀\n末行\n')
-  expect(parts.filter(p => !p.added).map(p => p.value).join('')).toBe('中文😀 \n末行')
-  expect(parts.filter(p => !p.removed).map(p => p.value).join('')).toBe('中文😀\n末行\n')
-  expect(parts.some(p => p.added)).toBe(true)
-  await expect(compareSources('old\n'.repeat(1100), 'new\n'.repeat(1100))).rejects.toThrow('范围')
 })

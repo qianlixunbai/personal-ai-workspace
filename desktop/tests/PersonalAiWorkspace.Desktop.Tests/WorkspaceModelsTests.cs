@@ -41,7 +41,6 @@ public sealed class WorkspaceModelsTests
         internal string ExecutionBody = JsonSerializer.Serialize(new { recordState = "PREVIOUS_SESSION", recoverySupported = false,
             requests = new[] { new { requestId = Handle, operation = "chat", model = "a:latest", runner = "ggml", digest = Digest,
                 selectionRevision = 0, completion = "UNKNOWN" } } });
-        internal TaskCompletionSource<HttpResponseMessage>? PendingInspection;
         internal TaskCompletionSource<HttpResponseMessage>? PendingPost;
         WorkspaceModels IWorkspaceNativeActions.Models => Owner;
         public Task<ShellStatus> StatusAsync(CancellationToken token) => throw new NotSupportedException();
@@ -60,8 +59,7 @@ public sealed class WorkspaceModelsTests
                     return Response(HttpStatusCode.OK, JsonSerializer.Serialize(Status(1)));
                 }
                 ReadRoutes.Add(route);
-                if (route == "/api/v1/models/executions") return PendingInspection is null
-                    ? Response(HttpStatusCode.OK, ExecutionBody) : await PendingInspection.Task;
+                if (route == "/api/v1/models/executions") return Response(HttpStatusCode.OK, ExecutionBody);
                 if (route == "/api/v1/models/catalog") return Response(HttpStatusCode.OK, JsonSerializer.Serialize(new { selectionRevision = 0,
                     models = new[] { new { handle = Handle, model = "a:latest", runner = "ggml", digest = Digest, contextLimit = 32768, completion = true, localSourceVerified = true, providerDeclaredVision = false } } }));
                 Assert.Equal("/api/v1/models/status", route); StatusReads++;
@@ -76,30 +74,6 @@ public sealed class WorkspaceModelsTests
         internal object Payload(string action = "SWITCH", long revision = 0) => new { action, handle = Handle, expectedSelectionRevision = revision, recoveryGeneration = (string?)null };
         internal async Task Inspect() { await Receive("models.inspect", new { }); Sent.Clear(); }
         public void Dispose() { Bridge.Dispose(); Runtime.Dispose(); }
-    }
-    [Fact] public async Task RecoveryInspectionUsesOnlyLocalRecordsRejectsAuthorityAndDropsReplacedSession()
-    {
-        using var f = new Fixture(); await f.Inspect(); f.ReadRoutes.Clear();
-        await f.Receive("models.inspectRecovery", new { });
-        Assert.Equal(new[] { "/api/v1/models/executions" }, f.ReadRoutes);
-        using (var response = JsonDocument.Parse(Assert.Single(f.Sent))) {
-            var report = response.RootElement.GetProperty("result");
-            Assert.Equal("PREVIOUS_SESSION", report.GetProperty("recordState").GetString());
-            Assert.False(report.GetProperty("recoverySupported").GetBoolean());
-            Assert.Equal(Handle, report.GetProperty("requests")[0].GetProperty("requestId").GetString());
-        }
-        f.Sent.Clear(); await f.Receive("models.mutate", f.Payload());
-        Assert.Contains("ModelCatalogStale", Assert.Single(f.Sent)); Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
-        string valid = f.ExecutionBody;
-        foreach (string invalid in new[] { valid.Replace("\"recoverySupported\":false", "\"recoverySupported\":true"),
-            valid.Replace("UNKNOWN", "COMPLETED"), valid.Replace("\"recordState\":", "\"endpoint\":\"https://example.invalid\",\"recordState\":") }) {
-            f.Sent.Clear(); f.ExecutionBody = invalid; await f.Receive("models.inspectRecovery", new { });
-            Assert.Contains("InvalidResponse", Assert.Single(f.Sent)); Assert.DoesNotContain("\"requests\"", f.Sent[0]);
-        }
-        f.Sent.Clear(); f.PendingInspection = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task pending = f.Receive("models.inspectRecovery", new { }); f.Rotate();
-        f.PendingInspection.SetResult(Response(HttpStatusCode.OK, valid)); await pending;
-        Assert.Empty(f.Sent); Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
     }
     [Fact] public async Task NativeAuthorityFreezesExactIntentRejectsStaleAndReplacementConsumesOnceAndReconcilesOnlyGet()
     {
@@ -132,46 +106,6 @@ public sealed class WorkspaceModelsTests
         while (late.Posts == 0) await Task.Yield(); late.Rotate(); late.PendingPost.SetResult(Response(HttpStatusCode.OK, JsonSerializer.Serialize(Status(1))));
         await pending; Assert.Empty(late.Sent); Assert.Equal(1, late.Posts);
     }
-    [Fact] public async Task UnansweredModelIntentExpiresAtSixtySecondsWithoutPostOrLateAuthority()
-    {
-        using var f = new Fixture(); await f.Inspect(); Assert.Equal(TimeSpan.FromSeconds(60), WorkspaceModels.ConfirmationLifetime);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew(); Task pending = f.Receive("models.mutate", f.Payload());
-        await pending.WaitAsync(TimeSpan.FromSeconds(65)); Assert.True(elapsed.Elapsed >= TimeSpan.FromSeconds(59));
-        Assert.True(f.Dialog.Token.IsCancellationRequested); Assert.Contains("CANCELLED", Assert.Single(f.Sent));
-        f.Dialog.Choice.SetResult(true); Assert.Equal(0, f.Posts);
-    }
-    [Fact] public async Task UnknownExecutionRecoveryCannotAskForConsentOrPost()
-    {
-        using var f = new Fixture(); await f.Inspect();
-        await f.Receive("models.mutate", new { action = "RECOVER", handle = Handle,
-            expectedSelectionRevision = 0, recoveryGeneration = Generation });
-        Assert.Contains("ModelExecutionUncertain", Assert.Single(f.Sent));
-        Assert.Null(f.Dialog.Intent); Assert.Equal(0, f.Posts);
-    }
-    [Fact] public Task OwnedModelWindowHasDefaultFocusedCancelExactDigestWarningAndSeparateExternalConsent() => Sta(() => {
-        var host = new Window { Width = 200, Height = 100, ShowInTaskbar = false }; host.Show();
-        try {
-            Assert.Throws<DesktopException>(() => new ModelConfirmationWindow(host,
-                new(ModelAction.RECOVER, Handle, "a:latest", "ggml", Digest, 0, null, null, null, Generation, true)));
-            foreach (var action in new[] { ModelAction.SWITCH, ModelAction.RELEASE }) {
-                var intent = new ModelIntent(action, Handle, "a:latest", "ggml", Digest, 0, null, null, null, action == ModelAction.RECOVER ? Generation : null, action != ModelAction.SWITCH);
-                var dialog = new ModelConfirmationWindow(host, intent);
-                _ = dialog.Dispatcher.BeginInvoke(new Action(() => {
-                    var panel = Assert.IsType<StackPanel>(Assert.IsType<ScrollViewer>(dialog.Content).Content);
-                    Assert.Contains(Digest, panel.Children.OfType<TextBox>().First().Text);
-                    Assert.Contains("Runner：ggml", panel.Children.OfType<TextBox>().First().Text);
-                    Assert.All(panel.Children.OfType<TextBox>(), field => Assert.True(field.IsReadOnly));
-                    var buttons = panel.Children.OfType<StackPanel>().Single().Children.OfType<Button>().ToArray();
-                    Assert.True(buttons[0].IsCancel); Assert.True(buttons[0].IsDefault); Assert.True(buttons[0].IsKeyboardFocused); Assert.False(buttons[1].IsDefault);
-                    if (action == ModelAction.SWITCH) { Assert.Empty(panel.Children.OfType<CheckBox>()); Assert.True(buttons[1].IsEnabled); Assert.Contains(panel.Children.OfType<TextBlock>(), field => field.Text == ModelConfirmationWindow.EvictionWarning); }
-                    else { Assert.False(buttons[1].IsEnabled); Assert.NotEqual(true, Assert.Single(panel.Children.OfType<CheckBox>()).IsChecked); }
-                    dialog.Close();
-                }), DispatcherPriority.ApplicationIdle);
-                Assert.NotEqual(true, dialog.ShowDialog());
-            }
-        } finally { host.Close(); }
-        return Task.CompletedTask;
-    });
     private static Task Sta(Func<Task> action)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

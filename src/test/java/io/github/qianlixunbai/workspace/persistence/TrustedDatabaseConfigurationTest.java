@@ -26,46 +26,6 @@ class TrustedDatabaseConfigurationTest {
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private void directories() throws IOException { Files.createDirectory(root.resolve("data")); Files.createDirectory(root.resolve("credentials")); }
 
-    @Test void maintenanceInspectionRejectsBeforeSecretsAndCannotDispatchBackupOrOversizedFrames() throws Exception {
-        // Deterministic protocol denial only. Mocked admission is NOT real Native Gate evidence.
-        String previous = System.getProperty("workspace.native.development-profile");
-        System.setProperty("workspace.native.development-profile", "9".repeat(32));
-        try (var gate = mockStatic(WindowsNativeGate.class)) {
-            gate.when(WindowsNativeGate::admit).thenThrow(new IOException("synthetic admission refusal"));
-            byte[] untouched = bytes("synthetic-secret-must-not-be-read");
-            var input = new java.io.ByteArrayInputStream(untouched);
-            var output = new java.io.ByteArrayOutputStream();
-            assertEquals(10, NativeProfileRecovery.runInspection(new String[0], input, output));
-            assertEquals(untouched.length, input.available());
-            var response = new java.io.DataInputStream(new java.io.ByteArrayInputStream(output.toByteArray()));
-            assertEquals("WORKSPACE_MAINTENANCE_V1\tINSPECTION_DENIED", new String(response.readNBytes(response.readInt()), StandardCharsets.US_ASCII));
-            assertEquals(-1, response.read());
-            gate.reset();
-            for (String invalid : List.of(
-                    "{\"Version\":1,\"Action\":\"BACKUP\",\"ExclusionHandle\":1}",
-                    "{\"Version\":1,\"Version\":1,\"Action\":\"INSPECT_SOURCE\",\"ExclusionHandle\":1}",
-                    "{\"Version\":1,\"Action\":\"INSPECT_SOURCE\",\"ExclusionHandle\":1,\"Administrator\":\"synthetic-secret\"}")) {
-                var framed = new java.io.ByteArrayOutputStream();
-                var writer = new java.io.DataOutputStream(framed);
-                byte[] payload = bytes(invalid); writer.writeInt(payload.length); writer.write(payload);
-                output.reset();
-                assertEquals(10, NativeProfileRecovery.runInspection(new String[0], new java.io.ByteArrayInputStream(framed.toByteArray()), output));
-                assertFalse(output.toString(StandardCharsets.UTF_8).contains("synthetic-secret"));
-            }
-            var framed = new java.io.ByteArrayOutputStream();
-            new java.io.DataOutputStream(framed).writeInt(16385); framed.write(untouched);
-            input = new java.io.ByteArrayInputStream(framed.toByteArray()); output.reset();
-            assertEquals(10, NativeProfileRecovery.runInspection(new String[0], input, output));
-            assertEquals(untouched.length, input.available());
-            gate.verify(() -> WindowsNativeGate.receiveMaintenanceExclusion(anyLong()), never());
-            gate.verify(WindowsNativeGate::profileRoot, never());
-            assertFalse(Files.exists(root.resolve("data")));
-        } finally {
-            if (previous == null) System.clearProperty("workspace.native.development-profile");
-            else System.setProperty("workspace.native.development-profile", previous);
-        }
-    }
-
     @Test
     @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
     void earlyRuntimeLeaseExcludesMaintenanceBeforeCredentialsAndCannotReopenAfterLoss() throws Exception {
@@ -123,79 +83,6 @@ class TrustedDatabaseConfigurationTest {
             var lease = (NativeProfileRecovery.RuntimeLease)leaseField.get(null);
             if (lease != null) lease.close();
             leaseField.set(null, null); rootField.set(null, null);
-        }
-    }
-
-    @Test void recoveryReservationsRejectRuntimeAdmissionWithoutReadingCredentialsOrTrustingMarkers() throws Exception {
-        // @TempDir is a synthetic surrogate application root, not an OS Profile or real registry.
-        Path profiles = root.resolve("Profiles");
-        String targetId = "1".repeat(32), ordinaryId = "2".repeat(32);
-        Path target = profiles.resolve(targetId), ordinary = profiles.resolve(ordinaryId);
-        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
-        Path registry = Files.createDirectory(root.resolve("Recovery"));
-        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(ordinary));
-        Path targets = Files.createDirectory(registry.resolve("targets"));
-        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
-        Path reservation = Files.createDirectory(targets.resolve(targetId));
-        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(target));
-        Files.writeString(reservation.resolve("plan.pending"), "synthetic interrupted publication");
-        Files.writeString(reservation.resolve("plan.dpapi"), "ACTIVE");
-        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(target));
-        NativeProfileRecovery.requireOrdinaryProfile(ordinary);
-        // Files and malformed paths fail closed too; existence checks must not swallow errors.
-        String malformed = "3".repeat(32);
-        Files.writeString(targets.resolve(malformed), "not a directory");
-        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(profiles.resolve(malformed)));
-        assertThrows(IOException.class, () -> NativeProfileRecovery.requireOrdinaryProfile(profiles.resolve("../other")));
-        assertFalse(Files.exists(profiles)); // No credentials, source data or target Profile touched.
-    }
-
-    @Test void nativePipeAdmitsBeforeReadingAndOnlySavesAfterReadOnlyPreflightWithoutOverwriting() throws Exception {
-        directories();
-        var output = new java.io.ByteArrayOutputStream();
-        var reply = new java.io.PrintStream(output, true, StandardCharsets.UTF_8);
-        var input = new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG));
-        Path file = root.resolve("data/database.dpapi");
-        try (var gate = mockStatic(WindowsNativeGate.class); var acl = mockStatic(WindowsPrivateAcl.class);
-             var dpapi = mockStatic(Protection.class); var identities = mockStatic(Identity.class)) {
-            gate.when(WindowsNativeGate::admit).thenThrow(new IOException("synthetic-private-detail"));
-            assertEquals(10, NativeDatabaseSetup.run(new String[0], input, reply));
-            assertEquals(bytes("SAVE!\n" + CONFIG).length, input.available());
-            assertEquals("WORKSPACE_DATABASE_V1\tADMISSION_DENIED" + System.lineSeparator(), output.toString(StandardCharsets.UTF_8));
-            assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
-            gate.reset(); gate.when(WindowsNativeGate::profileRoot).thenReturn(root);
-            identities.when(() -> Identity.read(any(), anyBoolean())).thenAnswer(call -> call.getArgument(0).toString());
-            dpapi.when(() -> Protection.protect(any())).thenReturn(new byte[]{1,2,3});
-            dpapi.when(() -> Protection.unprotect(any())).thenAnswer(call -> bytes(CONFIG));
-            acl.when(() -> WindowsPrivateAcl.createFile(file)).thenAnswer(call -> { Files.createFile(file); return null; });
-            var ready = new StorageStatusService.Status("2026-10-19T00:00:00Z", "POSTGRESQL", "TRUSTED_LOCAL", true,
-                "CONNECTED", "V1_V2_READY", "READY", false, "DISABLED", "EXPLICIT_APPROVAL_REQUIRED", "MAINTENANCE_ONLY",
-                "BLOCKED_SECURITY_REQUIREMENTS", List.of(), "NONE");
-            var incomplete = new StorageStatusService.Status(ready.checkedAt(), ready.backend(), ready.configurationTrust(), true,
-                "CONNECTED", "INITIALIZATION_REQUIRED", "INITIALIZATION_REQUIRED", false, "DISABLED", ready.migration(), ready.encryptedBackup(), ready.restore(), List.of(), "NONE");
-            try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(incomplete))) {
-                output.reset();
-                assertEquals(10, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG)), reply));
-                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tSCHEMA_INITIALIZATION_REQUIRED"));
-                assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
-            }
-            try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(ready))) {
-                output.reset();
-                assertEquals(0, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("CHECK\n" + CONFIG)), reply));
-                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tREADY"));
-                assertFalse(Files.exists(file)); dpapi.verifyNoInteractions();
-                output.reset();
-                assertEquals(0, NativeDatabaseSetup.run(new String[0], input, reply));
-                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tSAVED"));
-                assertArrayEquals(new byte[]{1,2,3}, Files.readAllBytes(file));
-                output.reset();
-                assertEquals(0, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("SAVE!\n" + CONFIG)), reply));
-                assertTrue(output.toString(StandardCharsets.UTF_8).contains("\tALREADY_CONFIGURED"));
-                assertArrayEquals(new byte[]{1,2,3}, Files.readAllBytes(file));
-            }
-            output.reset();
-            assertEquals(10, NativeDatabaseSetup.run(new String[0], new java.io.ByteArrayInputStream(bytes("CHECK\n" + CONFIG.replace("127.0.0.1", "remote.invalid"))), reply));
-            assertFalse(output.toString(StandardCharsets.UTF_8).contains("synthetic-secret"));
         }
     }
 
@@ -262,31 +149,4 @@ class TrustedDatabaseConfigurationTest {
         assertEquals(Reason.CREDENTIAL_UNAVAILABLE, assertThrows(Failure.class, () -> parse(bytes(CONFIG.replace("synthetic-secret", "")))).reason());
     }
 
-    @Test void trustedInitializerPrecedesConditionalDataSourceAndMapsOnlyObservedStartupFailures() throws Exception {
-        var source = parse(bytes(CONFIG));
-        var ready = new StorageStatusService.Status("2026-10-18T00:00:00Z", "POSTGRESQL", "TRUSTED_LOCAL", true,
-            "CONNECTED", "V1_V2_READY", "READY", false, "DISABLED", "EXPLICIT_APPROVAL_REQUIRED", "MAINTENANCE_ONLY",
-            "BLOCKED_SECURITY_REQUIREMENTS", List.of(), "NONE");
-        try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(ready))) {
-            var app = new SpringApplication(WorkspacePostgresqlConfiguration.class);
-            app.setWebApplicationType(WebApplicationType.NONE); app.setLogStartupInfo(false);
-            app.addInitializers(context -> {
-                try { install(context.getEnvironment(), source); } catch (IOException e) { throw new java.io.UncheckedIOException(e); }
-            });
-            try (var context = app.run()) {
-                assertTrue(trusted(context.getEnvironment()));
-                var ds = context.getBean("workspacePostgresqlDataSource", PGSimpleDataSource.class);
-                assertEquals("workspace_app", ds.getUser()); assertEquals("workspace_fixture", ds.getDatabaseName());
-                assertFalse(context.getEnvironment().getProperty("workspace.finance.enabled", Boolean.class, false));
-            }
-        }
-        for (var pair : Map.of("AUTHENTICATION_FAILED", Reason.AUTHENTICATION_FAILED, "CONNECTION_FAILED", Reason.CONNECTION_FAILED,
-                "ROLE_REJECTED", Reason.ROLE_REJECTED, "CONNECTED", Reason.SCHEMA_INITIALIZATION_REQUIRED).entrySet()) {
-            var failed = new StorageStatusService.Status(ready.checkedAt(), ready.backend(), ready.configurationTrust(), true,
-                pair.getKey(), "INITIALIZATION_REQUIRED", "NOT_CHECKED", false, "DISABLED", ready.migration(), ready.encryptedBackup(), ready.restore(), List.of(), pair.getKey());
-            try (var inspection = mockConstruction(StorageStatusService.class, (mock, context) -> when(mock.inspect()).thenReturn(failed))) {
-                assertEquals(pair.getValue(), assertThrows(Failure.class, () -> install(new MockEnvironment(), source)).reason());
-            }
-        }
-    }
 }

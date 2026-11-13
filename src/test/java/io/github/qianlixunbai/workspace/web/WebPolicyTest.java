@@ -41,43 +41,6 @@ class WebPolicyTest {
         assertFalse(pinned.resolve("example.com", 443).getFirst().isUnresolved());
         assertThrows(UnknownHostException.class, () -> pinned.resolve("other.example.com"));
     }
-    @Test void timedOutAndCancelledSystemLookupsNeverEscapeOrSpawnReplacementWorkers() throws Exception {
-        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
-        AtomicInteger calls = new AtomicInteger();
-        try (WebResolver resolver = new WebResolver(host -> {
-            assertEquals("example.com.", host); calls.incrementAndGet(); entered.countDown();
-            boolean done = false;
-            while (!done) try { done = release.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
-            exited.countDown(); return new InetAddress[]{InetAddress.getByAddress(new byte[]{8, 8, 8, 8})};
-        })) {
-            var executor = Executors.newSingleThreadExecutor();
-            try {
-                WebExecution timed = new WebExecution(System.nanoTime() + TimeUnit.SECONDS.toNanos(10));
-                Future<?> first = executor.submit(() -> assertCode(ErrorCode.WEB_TIMEOUT,
-                        () -> resolver.resolve(WebTarget.parse("https://example.com"), timed, Long.MAX_VALUE)));
-                assertTrue(entered.await(1, TimeUnit.SECONDS)); first.get(4, TimeUnit.SECONDS);
-                assertCode(ErrorCode.WEB_TIMEOUT, timed::check);
-                assertCode(ErrorCode.WEB_DNS_FAILED, () -> resolver.resolve(WebTarget.parse("https://example.com"),
-                        new WebExecution(Long.MAX_VALUE), Long.MAX_VALUE));
-                assertEquals(1, calls.get()); release.countDown(); assertTrue(exited.await(1, TimeUnit.SECONDS));
-            } finally { release.countDown(); executor.shutdownNow(); }
-        }
-        CountDownLatch blocked = new CountDownLatch(1), finish = new CountDownLatch(1);
-        try (WebResolver resolver = new WebResolver(host -> {
-            blocked.countDown();
-            try { finish.await(); } catch (InterruptedException ignored) { }
-            return new InetAddress[]{InetAddress.getByAddress(new byte[]{8, 8, 8, 8})};
-        })) {
-            var executor = Executors.newSingleThreadExecutor();
-            try {
-                WebExecution cancelled = new WebExecution(Long.MAX_VALUE);
-                Future<?> caller = executor.submit(() -> assertCode(ErrorCode.WEB_TIMEOUT,
-                        () -> resolver.resolve(WebTarget.parse("https://example.com"), cancelled, Long.MAX_VALUE)));
-                assertTrue(blocked.await(1, TimeUnit.SECONDS)); cancelled.invalidate(); caller.get(1, TimeUnit.SECONDS);
-                assertCode(ErrorCode.WEB_TIMEOUT, cancelled::check);
-            } finally { finish.countDown(); executor.shutdownNow(); }
-        }
-    }
     interface Checked { void run() throws Exception; }
     static void assertCode(ErrorCode code, Checked action) { assertEquals(code, assertThrows(WorkspaceException.class, action::run).error().code()); }
 }

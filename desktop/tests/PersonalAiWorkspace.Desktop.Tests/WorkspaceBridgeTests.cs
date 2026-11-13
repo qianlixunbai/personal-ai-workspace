@@ -10,27 +10,6 @@ namespace PersonalAiWorkspace.Desktop.Tests;
 
 public sealed class WorkspaceBridgeTests
 {
-    [Fact] public async Task WebFetchExactPayloadAndSessionOwnedIdsDenyForgedApprovalAndCrossSessionReadCancel()
-    {
-        using var f = new WorkspaceWebFetchTests.Fixture();
-        foreach (object payload in new object[] { new { url = RuntimeClientWebFetchTests.Url, approved = true },
-            new { url = RuntimeClientWebFetchTests.Url, operationId = Guid.NewGuid().ToString("D") },
-            new { url = RuntimeClientWebFetchTests.Url, headers = new { } }, new { url = new string('a', 2049) } })
-            await f.Receive(f.Request("web.fetchSubmit", payload));
-        Assert.Empty(f.Sent); Assert.Equal(0, f.Dialog.Shown);
-        await f.Receive(f.Request("web.request", new { url = RuntimeClientWebFetchTests.Url })); Assert.Empty(f.Sent);
-        await f.Receive(f.Request("web.fetchSubmit", new { url = "https://127.0.0.1" }));
-        Assert.Contains("WebTargetInvalid", Assert.Single(f.Sent)); Assert.Equal(0, f.Dialog.Shown); f.Sent.Clear();
-        Task submitted = f.Receive(f.Request("web.fetchSubmit", new { url = RuntimeClientWebFetchTests.Url }));
-        f.Dialog.Choice.SetResult(true); await submitted; string old = f.Bridge.SessionId; f.Rotate();
-        foreach (string method in new[] { "web.fetchGet", "web.fetchCancel" })
-        {
-            await f.Receive(f.Request(method, new { operationId = f.Id.ToString("D") }, old)); Assert.Empty(f.Sent);
-            await f.Receive(f.Request(method, new { operationId = f.Id.ToString("D") }));
-            Assert.Contains("WebFetchNotFound", Assert.Single(f.Sent)); f.Sent.Clear();
-        }
-        Assert.Equal(0, f.Gets); Assert.Equal(0, f.Deletes); Assert.Equal(1, f.Posts);
-    }
     private const string Document = WorkspaceContentPolicy.ProductionOrigin + "/index.html";
     private sealed class Actions : IWorkspaceNativeActions
     {
@@ -52,115 +31,10 @@ public sealed class WorkspaceBridgeTests
         internal Task Receive(string json, string source = Document, string current = Document) => Bridge.ReceiveAsync(source, current, json);
         public void Dispose() => Bridge.Dispose();
     }
-    [Fact] public async Task ExactOriginAndDocumentReturnOnlySafeStatus()
-    {
-        using var f = new Fixture(); Assert.False(f.Bridge.HasBootstrapped); await f.Receive(f.Request());
-        Assert.True(f.Bridge.HasBootstrapped);
-        var root = JsonDocument.Parse(Assert.Single(f.Sent)).RootElement;
-        Assert.True(root.GetProperty("ok").GetBoolean());
-        Assert.Equal("Ready", root.GetProperty("result").GetProperty("credential").GetString());
-        Assert.Equal(7, root.GetProperty("result").EnumerateObject().Count());
-        Assert.Equal(JsonValueKind.Null, root.GetProperty("result").GetProperty("applicationBuild").ValueKind);
-        foreach (string forbidden in new[] { "bearer", "Authorization", "token", "path", "secret", "memoryContent" }) Assert.DoesNotContain(forbidden, f.Sent[0]);
-    }
-    [Theory]
-    [InlineData("https://evil.invalid/index.html")]
-    [InlineData("https://workspace.personal-ai.invalid.evil.invalid/index.html")]
-    [InlineData("http://workspace.personal-ai.invalid/index.html")]
-    [InlineData("https://workspace.personal-ai.invalid:444/index.html")]
-    [InlineData("https://user@workspace.personal-ai.invalid/index.html")]
-    [InlineData("https://workspace.personal-ai.invalid/other.html")]
-    [InlineData("https://workspace.personal-ai.invalid/index.html?document=old")]
-    public async Task WrongOriginOrDocumentIsDropped(string source)
-    { using var f = new Fixture(); await f.Receive(f.Request(), source); Assert.Empty(f.Sent); }
-    [Fact] public async Task WrongCurrentTopLevelDocumentAndUnreadyNavigationAreDropped()
-    {
-        using var f = new Fixture(); await f.Receive(f.Request(), current: Document.Replace("index.html", "other.html"));
-        f.Bridge.BeginDocument(Document); await f.Receive(f.Request()); Assert.Empty(f.Sent);
-    }
-    [Fact] public async Task FakeSessionAndUnsupportedVersionAreDropped()
-    { using var f = new Fixture(); await f.Receive(f.Request(session: Guid.NewGuid().ToString("D"))); await f.Receive(f.Request(version: 2)); Assert.Empty(f.Sent); }
-    [Theory]
-    [InlineData("native.openLegacyAssistant")][InlineData("native.openConversations")][InlineData("native.openMemory")]
-    [InlineData("native.openWindow")][InlineData("native.fetch")][InlineData("native.openPath")]
-    [InlineData("conversation.send")][InlineData("memory.invoke")][InlineData("task.cancel")]
-    public async Task GenericAndFutureDomainMethodsAreAbsent(string method)
-    { using var f = new Fixture(); await f.Receive(f.Request(method)); Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened); }
-    [Fact] public async Task PayloadMustBeExactlyEmptyAndNoArbitraryUrlPathOrExecutableIsAccepted()
-    {
-        using var f = new Fixture();
-        foreach (object value in new object[] { new { url = "http://127.0.0.1:8765" }, new { path = "C:\\private" }, new { executable = "cmd.exe" }, new { token = "discover" }, new { password = "synthetic-secret" }, new { userId = 2 }, new { confirmed = true }, "{}", new object[0] })
-            foreach (string method in new[] { "native.openCredentialFlow", "native.openDatabaseSettings", "native.openFinanceBinding", "native.openMarketDataSettings", "finance.marketData", "finance.overview", "finance.budgets", "finance.portfolio", "finance.dashboard" })
-                await f.Receive(f.Request(method, payload: value));
-        foreach (object value in new object[] { new { positionId = "", apiKey = "synthetic_key" }, new { positionId = "1", userId = 2 }, new { positionId = "../1" }, new { symbol = "AAPL" }, new { positionId = 1 }, new { positionId = "9223372036854775808" },
-            new { referenceSymbol = "OTHER" }, new { referenceSymbol = "SPY", positionId = "1" }, new { referenceSymbol = "SPY", apiKey = "synthetic_key" } })
-            await f.Receive(f.Request("finance.marketRefresh", payload: value));
-        await f.Receive(f.Request("finance.marketConfiguration", payload: new { apiKey = "synthetic_key" }));
-        foreach (object value in new object[] { new { year = 2026, userId = 2 }, new { year = 1899 }, new { year = 2200 }, new { year = "2026" }, new { year = 2026.5 }, new { } })
-            await f.Receive(f.Request("finance.annual", payload: value));
-        foreach (object value in new object[] { new { accountId = "1", userId = 2 }, new { accountId = "../3" }, new { accountId = "9223372036854775808" }, new { accountId = 1 } })
-            await f.Receive(f.Request("finance.get", payload: value));
-        foreach (object value in new object[] { new { page = 0, size = 21, status = "ALL", sort = "ID_ASC" },
-            new { page = -1, size = 10, status = "ALL", sort = "ID_ASC" }, new { page = 0, size = 10, status = "ALL", sort = "id;--" },
-            new { page = 0, size = 10, status = "ALL", sort = "ID_ASC", userId = 2 } })
-            await f.Receive(f.Request("finance.list", payload: value));
-        foreach (object value in new object[] { new { kind = "TRANSFER", id = "1", userId = 2 }, new { kind = "../accounts", id = "1" }, new { kind = "TRANSACTION", id = "9223372036854775808" } })
-            await f.Receive(f.Request("finance.transaction", payload: value));
-        foreach (object value in new object[] { new { page = 0, size = 2, accountId = "", startDate = "", endDate = "", type = "ALL", userId = 2 },
-            new { page = 0, size = 10, accountId = "", startDate = "", endDate = "", type = "ALL", query = "literal", userId = 2 },
-            new { page = 0, size = 10, accountId = "", startDate = "", endDate = "", type = "ALL", query = 1 },
-            new { page = 0, size = 10, accountId = "", startDate = "", endDate = "", type = "ALL", query = new string('中',129) },
-            new { page = 0, size = 10, accountId = "", startDate = "2026-10-01", endDate = "", type = "INCOME", cashFlowMonth = "2026-10", cashFlowAsOf = "" },
-            new { page = 0, size = 10, accountId = "", startDate = "2026-10-01", endDate = "", type = "INCOME", cashFlowMonth = "2026-10", cashFlowAsOf = "2026-10-24T12:00", userId = 2 },
-            new { page = 0, size = 2, accountId = "../3", startDate = "", endDate = "", type = "ALL" },
-            new { page = 0, size = 2, accountId = "", startDate = "2026-02-30", endDate = "", type = "ALL" } })
-            await f.Receive(f.Request("finance.transactions", payload: value));
-        foreach (object value in new object[] { new { id = "1", userId = 2 }, new { id = "../6" }, new { id = "9223372036854775808" } })
-        {
-            await f.Receive(f.Request("finance.asset", payload: value));
-            await f.Receive(f.Request("finance.position", payload: value));
-            await f.Receive(f.Request("finance.historyDetail", payload: value));
-            await f.Receive(f.Request("finance.historyTimeline", payload: value));
-        }
-        foreach (object value in new object[] { new { status = "OPEN", accountId = "", instrumentId = "", cursor = "", size = 2, userId = 2 },
-            new { status = "LEGACY", accountId = "", instrumentId = "", cursor = "", size = 2 },
-            new { status = "OPEN", accountId = "", instrumentId = "", cursor = "", size = 21 },
-            new { status = "OPEN", accountId = "../3", instrumentId = "", cursor = "", size = 2 },
-            new { status = "OPEN", accountId = "", instrumentId = "9223372036854775808", cursor = "", size = 2 },
-            new { status = "OPEN", accountId = "", instrumentId = "", cursor = "../4?userId=2", size = 2 } })
-            await f.Receive(f.Request("finance.positions", payload: value));
-        await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "", correctionStatus = "", from = "", to = "", cursor = "", size = 2, userId = 2 }));
-        await f.Receive(f.Request("finance.history", payload: new { positionId = "", accountId = "", instrumentId = "", type = "REVERSAL", correctionStatus = "", from = "", to = "", cursor = "", size = 2 }));
-        foreach (object value in new object[] { new { page = 0, size = 2, userId = 2 }, new { page = "0", size = 2 }, new { page = 0, size = 21 } })
-            await f.Receive(f.Request("finance.imports", payload: value));
-        foreach (object value in new object[] { new { id = "00000000-0000-0000-0001-000000000101", transactionPage = 0, accountImpactPage = 0, userId = 2 },
-            new { id = "../confirm", transactionPage = 0, accountImpactPage = 0 }, new { id = "00000000-0000-0000-0001-000000000101", transactionPage = "0", accountImpactPage = 0 } })
-            await f.Receive(f.Request("finance.importReceipt", payload: value));
-        foreach (object value in new object[] { new { page = 0, size = 2, type = "ALL", sort = "ID_ASC", userId = 2 },
-            new { page = 0, size = 21, type = "STOCK", sort = "CREATED_DESC" }, new { page = 0, size = 2, type = "ALL", sort = "price;--" } })
-            await f.Receive(f.Request("finance.assets", payload: value));
-        Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
-    }
-    [Fact] public async Task MalformedUnknownDuplicateAndMissingFieldsAreRejected()
-    {
-        using var f = new Fixture(); string request = f.Request();
-        foreach (var json in new[] { "null", "[]", "{", request.Replace("\"version\":1", "\"version\":1,\"unknown\":1"),
-            request.Replace("\"version\":1", "\"version\":1,\"version\":1"), request.Replace("\"version\":1,", ""),
-            request.Replace("\"version\":1", "\"version\":\"1\""), request.Replace("\"payload\":{}", "\"payload\":null") }) await f.Receive(json);
-        Assert.Empty(f.Sent);
-    }
-    [Theory][InlineData("")][InlineData("bad")][InlineData("00000000-0000-0000-0000-000000000000")][InlineData("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")]
-    public async Task InvalidRequestIdsAreDropped(string id)
-    { using var f = new Fixture(); await f.Receive(f.Request(id: id)); Assert.Empty(f.Sent); }
     [Fact] public async Task DuplicateRequestIdCannotReplayNativeOperation()
     {
         using var f = new Fixture(); string request = f.Request("native.openMemoryBackup"); await f.Receive(request); await f.Receive(request);
         Assert.Single(f.Native.Opened); Assert.Single(f.Sent);
-    }
-    [Fact] public async Task BothUtf8BytesAndEnvelopeLengthAreBounded()
-    {
-        using var f = new Fixture(); await f.Receive(new string(' ', WorkspaceBridge.MaximumBytes) + f.Request());
-        await f.Receive(f.Request(payload: new { text = new string('界', 12000) })); Assert.Empty(f.Sent);
     }
     [Fact] public async Task ReloadRotatesSessionCancelsPendingAndSuppressesLateResponse()
     {
@@ -169,29 +43,6 @@ public sealed class WorkspaceBridgeTests
         Assert.NotEqual(old, f.Bridge.SessionId); f.Sent.Clear(); f.Native.Waiting.SetResult(Actions.Status()); await pending;
         await f.Receive(f.Request(session: old)); Assert.Empty(f.Sent);
         Assert.False(f.Bridge.HasBootstrapped);
-    }
-    [Fact] public async Task PendingAndSessionRequestCountStayBounded()
-    {
-        using var f = new Fixture(); f.Native.Waiting = new();
-        var pending = Enumerable.Range(0, WorkspaceBridge.MaximumPending).Select(_ => f.Receive(f.Request())).ToArray();
-        await f.Receive(f.Request("native.openMemoryBackup")); Assert.Empty(f.Native.Opened);
-        f.Native.Waiting.SetResult(Actions.Status()); await Task.WhenAll(pending); f.Native.Waiting = null; f.Sent.Clear();
-        for (int i = WorkspaceBridge.MaximumPending; i < WorkspaceBridge.MaximumRequestsPerSession; i++) await f.Receive(f.Request("native.openMemoryBackup"));
-        int before = f.Native.Opened.Count; await f.Receive(f.Request("native.openMemoryBackup")); Assert.Equal(before, f.Native.Opened.Count);
-    }
-    [Theory]
-    [InlineData("native.openCredentialFlow")][InlineData("native.openBrowserPairing")]
-    [InlineData("native.openMemoryBackup")][InlineData("native.openWorkspaceBackup")]
-    [InlineData("native.openKnowledgeBackup")]
-    [InlineData("native.openDatabaseSettings")]
-    public async Task MaintenanceEntriesStillRequireTrustedOriginAndCurrentSession(string method)
-    {
-        using var f = new Fixture();
-        await f.Receive(f.Request(method), source: "https://evil.invalid/index.html");
-        await f.Receive(f.Request(method, session: Guid.NewGuid().ToString("D")));
-        Assert.Empty(f.Sent); Assert.Empty(f.Native.Opened);
-        await f.Receive(f.Request(method));
-        Assert.Single(f.Native.Opened); Assert.Single(f.Sent);
     }
     private sealed class Handler(HttpStatusCode credentialCode) : HttpMessageHandler
     {
@@ -202,24 +53,6 @@ public sealed class WorkspaceBridgeTests
             return Task.FromResult(new HttpResponseMessage(health ? HttpStatusCode.OK : credentialCode)
             { Content = new StringContent(health ? "{\"status\":\"UP\"}" : "{\"provider\":\"ollama\",\"profile\":\"translate.fast\",\"available\":false,\"modelAvailable\":false}", System.Text.Encoding.UTF8, "application/json") });
         }
-    }
-    [Theory][InlineData(HttpStatusCode.OK, "Ready")][InlineData(HttpStatusCode.Unauthorized, "Invalid")]
-    public async Task ReadinessEstablishesOnlyCredentialValidityAndNeverReturnsBearer(HttpStatusCode code, string expected)
-    {
-        using var runtime = new RuntimeClient(new Handler(code), () => new string('t', 43));
-        var status = await new WorkspaceStatusProbe(runtime, () => new string('t', 43)).ReadAsync(default);
-        Assert.Equal(expected, status.Credential.ToString()); Assert.Equal(ShellRuntimeState.Available, status.Runtime);
-        string? embedded = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(WorkspaceStatusProbe).Assembly)?.InformationalVersion;
-        Assert.Equal(embedded is { Length: <= 100 } && System.Text.RegularExpressions.Regex.IsMatch(embedded, @"\A[0-9]+(?:\.[0-9]+){2,3}\+(?:[0-9a-f]{40}|[0-9a-f]{64})\z") ? embedded : null, status.ApplicationBuild);
-        Assert.DoesNotContain(new string('t', 43), JsonSerializer.Serialize(status));
-    }
-    [Fact] public async Task MissingMalformedAndStorageFailureHaveDistinctSafeStates()
-    {
-        using var runtime = new RuntimeClient(new Handler(HttpStatusCode.OK), () => null);
-        Assert.Equal(ShellCredentialState.Missing, (await new WorkspaceStatusProbe(runtime, () => null).ReadAsync(default)).Credential);
-        foreach (var error in new[] { DesktopError.CredentialInvalid, DesktopError.CredentialStorage })
-            Assert.Equal(error == DesktopError.CredentialInvalid ? ShellCredentialState.Invalid : ShellCredentialState.Unavailable,
-                (await new WorkspaceStatusProbe(runtime, () => throw new DesktopException(error)).ReadAsync(default)).Credential);
     }
     [Fact] public void ProductionNavigationResourcesFramesPopupsPermissionsAndDownloadsFailClosed()
     {

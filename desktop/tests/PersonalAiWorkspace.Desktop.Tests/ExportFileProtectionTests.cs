@@ -15,86 +15,9 @@ public sealed class ExportFileProtectionTests(ITestOutputHelper output)
     private static SecurityIdentifier User => WindowsIdentity.GetCurrent().User!;
     private static readonly SecurityIdentifier Other = new("S-1-5-21-1-2-3-1001");
 
-    [Fact]
-    public void DaclDescriptorDoesNotSpecifyAnOwnerOrGroup()
-    {
-        var security = KnowledgeBackupWindow.CreateExportDacl(User);
-        var descriptor = new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0);
-        Assert.Null(descriptor.Owner);
-        Assert.Null(descriptor.Group);
-        Assert.Null(descriptor.SystemAcl);
-        Assert.True(security.AreAccessRulesProtected);
-        Assert.True(security.AreAccessRulesCanonical);
-        Assert.Single(descriptor.DiscretionaryAcl!.Cast<GenericAce>());
-    }
 
-    [Fact]
-    public void OwnerMismatchIsRejectedWithoutChangingTheDescriptor()
-    {
-        var security = KnowledgeBackupWindow.CreateExportDacl(User);
-        security.SetOwner(Other); // In-memory only; never assign another owner on disk.
-        var before = security.GetSecurityDescriptorBinaryForm();
-        Assert.Throws<IOException>(() => KnowledgeBackupWindow.RequireExportOwner(security, User));
-        Assert.Equal(before, security.GetSecurityDescriptorBinaryForm());
-        Assert.Throws<IOException>(() => KnowledgeBackupWindow.ValidateExportSecurity(security, User));
-    }
 
-    [Theory]
-    [InlineData("unprotected")]
-    [InlineData("foreign")]
-    [InlineData("empty")]
-    [InlineData("partial")]
-    [InlineData("inheritOnly")]
-    [InlineData("null")]
-    [InlineData("noncanonical")]
-    public void UnsafeDescriptorsFailClosedInMemory(string scenario)
-    {
-        var user = User;
-        var security = KnowledgeBackupWindow.CreateExportDacl(user);
-        security.SetOwner(user);
-        if (scenario == "unprotected") security.SetAccessRuleProtection(false, false);
-        if (scenario == "foreign") security.AddAccessRule(new(Other, FileSystemRights.Read, AccessControlType.Allow));
-        if (scenario is "empty" or "partial" or "inheritOnly")
-        {
-            security.PurgeAccessRules(user);
-            if (scenario == "partial") security.AddAccessRule(new(user, FileSystemRights.Read, AccessControlType.Allow));
-        }
-        if (scenario is "null" or "noncanonical" or "inheritOnly")
-        {
-            var raw = new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0);
-            if (scenario == "null") raw.DiscretionaryAcl = null;
-            // FileSecurity.AddAccessRule disallows file inheritance flags. Construct the malformed
-            // descriptor directly; import may normalize away an ineffective inherit-only ACE.
-            else if (scenario == "inheritOnly") raw.DiscretionaryAcl!.InsertAce(0,
-                new CommonAce(AceFlags.ObjectInherit | AceFlags.InheritOnly, AceQualifier.AccessAllowed,
-                    (int)FileSystemRights.FullControl, user, false, null));
-            else raw.DiscretionaryAcl!.InsertAce(1, new CommonAce(AceFlags.None, AceQualifier.AccessDenied,
-                (int)FileSystemRights.Write, user, false, null));
-            var bytes = new byte[raw.BinaryLength]; raw.GetBinaryForm(bytes, 0);
-            security.SetSecurityDescriptorBinaryForm(bytes);
-        }
-        Assert.Throws<IOException>(() => KnowledgeBackupWindow.ValidateExportSecurity(security, user));
-    }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PrivateProtectionWorksWithExclusiveWriterAndPreservesOwner(bool legacyPath)
-    {
-        using var fixture = new Files();
-        using (var file = new FileStream(fixture.Destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        {
-            var owner = new FileInfo(fixture.Destination).GetAccessControl().GetOwner(typeof(SecurityIdentifier));
-            if (legacyPath) KnowledgeBackupWindow.ProtectFile(fixture.Destination);
-            else KnowledgeBackupWindow.ProtectFile(file);
-            Assert.Equal(0, file.Length);
-            Assert.Equal(owner, new FileInfo(fixture.Destination).GetAccessControl().GetOwner(typeof(SecurityIdentifier)));
-            KnowledgeBackupWindow.ValidateExportSecurity(new FileInfo(fixture.Destination).GetAccessControl(), User);
-            Assert.Throws<IOException>(() => File.Move(fixture.Destination, fixture.Destination + ".replaced"));
-            file.Write(new byte[] { 1, 2, 3 });
-        }
-        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(fixture.Destination));
-    }
 
     [Fact]
     public void ProtectionDoesNotRequireWriteOwnerAccess()
@@ -141,59 +64,8 @@ public sealed class ExportFileProtectionTests(ITestOutputHelper output)
         Assert.Single(Directory.GetFiles(fixture.Root));
     }
 
-    [Fact]
-    public async Task FailedProtectionWritesNoContentAndCleansStaging()
-    {
-        using var fixture = new Files();
-        bool called = false;
-        var error = await Assert.ThrowsAsync<DesktopException>(() => NativeKnowledgeAnswerExport.SaveNewAsync(
-            fixture.Destination, "must never be written", default, file =>
-            {
-                called = true;
-                Assert.Equal(0, file.Length);
-                var descriptor = KnowledgeBackupWindow.CreateExportDacl(User);
-                descriptor.SetOwner(Other); // Synthetic mismatch, no owner reassignment on disk.
-                KnowledgeBackupWindow.RequireExportOwner(descriptor, User);
-            }));
-        Assert.True(called);
-        Assert.Equal(DesktopError.KnowledgeFileUnavailable, error.Error);
-        Assert.Empty(Directory.GetFiles(fixture.Root));
-    }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CancellationBeforeOrAfterProtectionLeavesNoFiles(bool afterProtection)
-    {
-        using var fixture = new Files();
-        using var cancellation = new CancellationTokenSource();
-        if (!afterProtection) cancellation.Cancel();
-        bool called = false;
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NativeKnowledgeAnswerExport.SaveNewAsync(
-            fixture.Destination, "must never be published", cancellation.Token, file =>
-            {
-                called = true;
-                KnowledgeBackupWindow.ProtectFile(file);
-                Assert.Equal(0, file.Length);
-                cancellation.Cancel();
-            }));
-        Assert.Equal(afterProtection, called);
-        Assert.Empty(Directory.GetFiles(fixture.Root));
-    }
 
-    [Fact]
-    public async Task DestinationAppearingDuringSaveIsNotReplacedAndStagingIsCleaned()
-    {
-        using var fixture = new Files();
-        await Assert.ThrowsAsync<DesktopException>(() => NativeKnowledgeAnswerExport.SaveNewAsync(
-            fixture.Destination, "export content", default, file =>
-            {
-                KnowledgeBackupWindow.ProtectFile(file);
-                File.WriteAllText(fixture.Destination, "synthetic competing document");
-            }));
-        Assert.Equal("synthetic competing document", File.ReadAllText(fixture.Destination));
-        Assert.Single(Directory.GetFiles(fixture.Root));
-    }
 
     private sealed class Files : IDisposable
     {

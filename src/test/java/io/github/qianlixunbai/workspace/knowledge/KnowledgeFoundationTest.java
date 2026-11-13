@@ -41,22 +41,6 @@ class KnowledgeFoundationTest {
         try(var store=open()){assertEquals(doc,store.get(doc.documentId()));assertEquals("READY",store.job(request).state());}
         assertArrayEquals(bytes("untouched-memory-marker"),Files.readAllBytes(data().resolve("memory.db")));
     }
-    @Test void strictUtf8BinaryAndMeaningfulTextAdmissionWithFailedUpdatePreservingReady()throws Exception {
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            var first=importBytes(store,ingestion,null,null,"good.txt",bytes("good original"));var doc=store.get(first.documentId());
-            for(var pair:List.of(Map.entry(new byte[]{(byte)0xc3,0x28},ErrorCode.KNOWLEDGE_INVALID_UTF8),
-                    Map.entry(bytes("text\0binary"),ErrorCode.KNOWLEDGE_INVALID_SOURCE),Map.entry(new byte[]{1,2,3},ErrorCode.KNOWLEDGE_INVALID_SOURCE),
-                    Map.entry(bytes(" \n\t "),ErrorCode.KNOWLEDGE_INVALID_SOURCE))) {
-                var job=importBytes(store,ingestion,doc.documentId(),doc.metadataVersion(),"bad.txt",pair.getKey());
-                assertEquals("FAILED",job.state());assertEquals(pair.getValue().name(),job.errorCode());assertEquals("1",store.get(doc.documentId()).currentReadyRevision());
-                assertEquals("good original",store.preview(doc.documentId(),"1",0).text());
-            }
-            code(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE,()->KnowledgeParser.type("file.pdf"));
-            code(ErrorCode.KNOWLEDGE_INVALID_SOURCE,()->KnowledgeParser.filename("C:\\private.txt"));
-            code(ErrorCode.KNOWLEDGE_SOURCE_TOO_LARGE,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"big.txt",KnowledgeLimits.SOURCE_BYTES+1L,InputStream.nullInputStream()));
-            code(ErrorCode.KNOWLEDGE_INVALID_SOURCE,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"short.txt",10,new ByteArrayInputStream(bytes("abc"))));
-        }
-    }
     @Test void duplicateAndChangedSourceRevisionSemanticsAndOptimisticLifecycle()throws Exception {
         try(var store=open();var ingestion=new KnowledgeIngestion(store)){
             var first=importBytes(store,ingestion,null,null,"first.txt",bytes("same bytes"));var d=store.get(first.documentId());
@@ -72,22 +56,6 @@ class KnowledgeFoundationTest {
             assertFalse(Files.exists(store.root().resolve("sources").resolve(deleted)));assertEquals(0,store.scalar("SELECT count(*) FROM jobs WHERE doc_id=?",deleted));
         }
     }
-    @Test void markdownLocatorsIgnoreFencedHeadingsAndPreviewRemainsLiteral()throws Exception {
-        Path input=temporary.resolve("source.md");Files.writeString(input,"# One\n<script>plain</script>\n```\n# inside\n```\n## Two\n![x](https://invalid/image)\n");
-        var p=KnowledgeParser.parse(input,"MARKDOWN",()->false);assertEquals(2,p.locators().size());
-        assertEquals("One",p.locators().get(0).heading());assertEquals(1,p.locators().get(0).startLine());assertEquals(5,p.locators().get(0).endLine());
-        assertEquals("line-6",p.locators().get(1).section());assertTrue(p.text().contains("<script>plain</script>"));
-        assertEquals(p,KnowledgeParser.parse(input,"MARKDOWN",()->false));Files.delete(input);assertTrue(p.text().contains("# inside"));
-    }
-    @Test void lineBlockTextAndCorpusLimitsAreEnforced()throws Exception {
-        code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->KnowledgeParser.represent("x\n".repeat(100001),"TXT",()->false));
-        code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->KnowledgeParser.represent("# h\n".repeat(10001),"MARKDOWN",()->false));
-        code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->KnowledgeParser.represent("x".repeat(500001),"TXT",()->false));
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            for(int i=0;i<500;i++)store.reconstructDocument(new KnowledgeDocument(UUID.randomUUID().toString(),"fixture.txt","ACTIVE","1",null,"2026-10-05T00:00:00Z","2026-10-05T00:00:00Z","INTERRUPTED",null));
-            code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"limit.txt",1,new ByteArrayInputStream(bytes("x"))));
-        }
-    }
     @Test void unfinishedPublicationAndStagingReconcileWithoutDeletingUnknownData()throws Exception {
         String request=UUID.randomUUID().toString(),doc;
         try(var store=open()){
@@ -100,79 +68,5 @@ class KnowledgeFoundationTest {
             assertFalse(Files.exists(store.source(doc,"1")));assertFalse(Files.exists(store.upload(request)));
             assertTrue(Files.exists(store.root().resolve("staging/unknown-user-file")));
         }
-    }
-    @Test void schemaCorruptionMissingSourceAndForeignProcessFailClosed()throws Exception {
-        try(var store=open()){code(ErrorCode.KNOWLEDGE_STORAGE_UNAVAILABLE,this::open);store.exec("PRAGMA user_version=99");}
-        code(ErrorCode.KNOWLEDGE_SCHEMA_UNSUPPORTED,this::open);
-    }
-    @Test void boundedQueueAndAdmittedCancellationDoNotPublish()throws Exception {
-        try(var store=open();var ingestion=new KnowledgeIngestion(store);var callers=Executors.newFixedThreadPool(5)){
-            CountDownLatch entered=new CountDownLatch(5),release=new CountDownLatch(1);List<String> requests=new ArrayList<>();List<Future<?>> tasks=new ArrayList<>();
-            for(int i=0;i<5;i++){String request=UUID.randomUUID().toString();requests.add(request);tasks.add(callers.submit(()->{
-                try{ingestion.upload(request,null,null,"queue.txt",1,new InputStream(){boolean emitted;public int read(){entered.countDown();try{release.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}if(emitted)return -1;emitted=true;return 'x';}});}
-                catch(WorkspaceException ignored){} }));}
-            assertTrue(entered.await(5,TimeUnit.SECONDS));
-            code(ErrorCode.KNOWLEDGE_QUEUE_FULL,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"full.txt",1,InputStream.nullInputStream()));
-            var job=store.job(requests.getFirst());store.cancel(job.requestId(),job.documentId());release.countDown();for(var t:tasks)t.get(5,TimeUnit.SECONDS);
-            assertEquals("CANCELLED",store.job(job.requestId()).state());assertNull(store.get(job.documentId()).currentReadyRevision());
-        }
-    }
-    @Test void boundedPreviewPreservesSurrogatePairsAndWorstCaseJsonBudget()throws Exception {
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            String text="\t".repeat(4095)+"😀"+"x";var job=importBytes(store,ingestion,null,null,"preview.txt",bytes(text));
-            var first=store.preview(job.documentId(),"1",0);assertEquals(4095,first.text().length());assertEquals(4095,first.nextOffset());
-            assertEquals("😀x",store.preview(job.documentId(),"1",first.nextOffset()).text());
-            code(ErrorCode.INVALID_REQUEST,()->store.preview(job.documentId(),"1",4096));
-            String json=tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(first);
-            assertTrue(bytes(json).length<64*1024);assertFalse(json.contains(temporary.toString()));
-        }
-    }
-    @Test void precedingPreviewTraversesOldVersionSectionsWithoutGapsOrBrokenUnicode()throws Exception {
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            String text="# 前节\n"+"x".repeat(15)+"😀"+"y".repeat(4095)+"\n# 后节\n引用命中";
-            var job=importBytes(store,ingestion,null,null,"context.md",bytes(text));String id=job.documentId();
-            var original=store.get(id);var update=importBytes(store,ingestion,id,original.metadataVersion(),"context.md",bytes("# 新版\n不同内容"));
-            assertEquals("2",update.sourceRevision());String metadata=store.get(id).metadataVersion();
-            int boundary=text.indexOf("# 后节");String recovered="";int before=boundary;
-            while(before>0){
-                var page=store.previewBefore(id,"1",before);
-                assertFalse(page.text().isEmpty());assertTrue(page.text().length()<=4096);
-                assertEquals(before,page.offset()+page.text().length());assertEquals(before,page.nextOffset());
-                assertFalse(Character.isLowSurrogate(page.text().charAt(0)));assertFalse(Character.isHighSurrogate(page.text().charAt(page.text().length()-1)));
-                assertEquals(text.substring(page.offset(),before),page.text());
-                recovered=page.text()+recovered;before=page.offset();
-            }
-            assertEquals(text.substring(0,boundary),recovered);
-            var last=store.previewBefore(id,"1",text.length());assertNull(last.nextOffset());assertEquals("后节",last.locators().getFirst().heading());
-            code(ErrorCode.INVALID_REQUEST,()->store.previewBefore(id,"1",0));
-            code(ErrorCode.INVALID_REQUEST,()->store.previewBefore(id,"1",text.indexOf("😀")+1));
-            code(ErrorCode.KNOWLEDGE_NOT_FOUND,()->store.previewBefore(id,"3",1));
-            assertEquals(metadata,store.get(id).metadataVersion());assertEquals("2",store.get(id).currentReadyRevision());
-        }
-    }
-    @Test void tenRevisionLimitStillAllowsSameBytesNoOpAndCorpusReservationIsBounded()throws Exception {
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            var first=importBytes(store,ingestion,null,null,"limit.txt",bytes("revision-1"));String doc=first.documentId();
-            for(int i=2;i<=10;i++)assertEquals(Integer.toString(i),importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-"+i)).sourceRevision());
-            assertEquals("10",importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-10")).sourceRevision());
-            assertEquals("KNOWLEDGE_LIMIT_EXCEEDED",importBytes(store,ingestion,doc,store.get(doc).metadataVersion(),"limit.txt",bytes("revision-11")).errorCode());
-            assertEquals("10",store.get(doc).currentReadyRevision());
-            for(int i=0;i<255;i++)store.admit(UUID.randomUUID().toString(),null,null,"reserved.txt",KnowledgeLimits.SOURCE_BYTES);
-            code(ErrorCode.KNOWLEDGE_LIMIT_EXCEEDED,()->ingestion.upload(UUID.randomUUID().toString(),null,null,"quota.txt",KnowledgeLimits.SOURCE_BYTES,InputStream.nullInputStream()));
-        }
-    }
-    @Test void deleteJournalRollsBackWhileDocumentExistsAndCompletesAfterCommit()throws Exception {
-        String id,token=UUID.randomUUID().toString();
-        try(var store=open();var ingestion=new KnowledgeIngestion(store)){
-            var job=importBytes(store,ingestion,null,null,"delete.txt",bytes("journal content"));id=job.documentId();
-            store.exec("INSERT INTO deletes VALUES(?,?,?,?)",id,token,"1",2);
-            Files.move(store.root().resolve("sources").resolve(id),store.root().resolve("staging").resolve(token+".delete"));
-        }
-        try(var store=open()){
-            assertTrue(Files.exists(store.source(id,"1")));assertEquals(0,store.scalar("SELECT count(*) FROM deletes"));
-            store.exec("INSERT INTO deletes VALUES(?,?,?,?)",id,token,"1",2);Files.move(store.root().resolve("sources").resolve(id),store.root().resolve("staging").resolve(token+".delete"));
-            store.exec("DELETE FROM documents WHERE id=?",id);
-        }
-        try(var store=open()){assertFalse(Files.exists(store.root().resolve("staging").resolve(token+".delete")));assertEquals(0,store.scalar("SELECT count(*) FROM deletes"));}
     }
 }

@@ -31,8 +31,6 @@ public static partial class RuntimeLifecycleProbe
         if(args is ["--maintenance-runtime-reopen",var reopenProfile])return RunMaintenanceRuntimeHandoff(reopenProfile,reopen:true);
         if (args is ["--legacy-rule-fixture", var ruleRoot, var action]) return LegacyBoundaryTests.RunRuleFixture(ruleRoot, action);
         if (args is ["--legacy-model-fixture", var modelRoot, var mode]) return LegacyBoundaryTests.RunModelFixture(modelRoot, mode);
-        if (args is ["--x1-selection-fixture"]) return RunX1SelectionFixture();
-        if (args is ["--memory-draft-host", var draftId, var draftMode]) return RunMemoryDraftHost(draftId, draftMode);
         if (args is ["--prepare-profile"])
         {
             string preparation = "SOURCES";
@@ -62,18 +60,8 @@ public static partial class RuntimeLifecycleProbe
             }
             catch { Console.WriteLine("DEVELOPMENT_PACKAGE_SOURCES_STOP"); return 10; }
         }
-        bool postgresql = args.Length == 3 && args[1] is "gui-postgresql" or "gui-postgresql-reopen" or "gui-postgresql-storage" or "gui-postgresql-storage-reopen" or "gui-postgresql-conversation" or "gui-postgresql-conversation-reopen" or "gui-postgresql-conversation-recover"
-            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        bool memory = args.Length == 2 && args[1] is "gui-memory" or "gui-memory-reopen";
-        bool integratedNote = args.Length == 3 && args[1] is "gui-integrated-note" or "gui-integrated-note-reopen"
-            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        bool wordImport = args.Length == 3 && args[1] is "gui-docx-import" or "gui-docx-import-reopen" or "gui-docx-compare" or "gui-docx-compare-reopen" or "gui-pdf-import" or "gui-pdf-import-reopen"
-            && System.Text.RegularExpressions.Regex.IsMatch(args[2], "\\A[a-f0-9]{12}\\z");
-        bool webKnowledge = wordImport || integratedNote || args.Length == 2 && args[1] is "gui-web-knowledge" or "gui-web-knowledge-reopen" or "gui-web-knowledge-citations"
-            or "gui-document-scope" or "gui-document-scope-reopen" or "gui-document-scope-history"
-            or "gui-knowledge-quality-baseline" or "gui-knowledge-quality" or "gui-knowledge-quality-inspect"
-            or "gui-knowledge-quality-unseen" or "gui-knowledge-quality-unseen-inspect";
-        if (!postgresql && !memory && !webKnowledge && (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout" or "gui-x1" or "gui-x1-native" or "gui-finance" or "gui-finance-reopen" or "gui-finance-isolation" or "gui-finance-next2" or "gui-finance-next3" or "gui-finance-next4" or "gui-finance-next5" or "gui-finance-next6" or "gui-finance-next6-bob" or "gui-finance-next7" or "gui-finance-next7-bob" or "gui-finance-next8" or "gui-finance-next8-bob" or "gui-finance-next8-ui" or "gui-finance-next9" or "gui-finance-next9-bob" or "gui-finance-next10" or "gui-finance-next10-bob"))) return 2;
+        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] is not
+            ("close" or "restart" or "configuration-failure" or "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout")) return 2;
         string phase = "PROFILE_PARSE";
         try
         {
@@ -87,17 +75,7 @@ public static partial class RuntimeLifecycleProbe
             try
             {
                 phase = "GUI_OR_OWNER";
-                if (wordImport) VerifyWordImport(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2], args[1].StartsWith("gui-docx-compare", StringComparison.Ordinal), args[1].StartsWith("gui-pdf-", StringComparison.Ordinal));
-                else if (integratedNote) VerifyIntegratedNote(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[2]);
-                else if (webKnowledge && args[1].StartsWith("gui-knowledge-quality", StringComparison.Ordinal)) VerifyKnowledgeQuality(app, launch, args[1]);
-                else if (webKnowledge) VerifyWebKnowledgeGui(app, launch, args[1]);
-                else if (memory) VerifyMemoryGui(app, launch, args[1] == "gui-memory-reopen");
-                else if (args.Length == 2 && args[1] is "gui-x1" or "gui-x1-native") VerifyX1Gui(app, args[1] == "gui-x1-native");
-                else if (args.Length == 2 && args[1] is "gui-finance-next2" or "gui-finance-next4") VerifyFinanceNextGui(app, launch);
-                else if (args.Length == 2 && args[1].StartsWith("gui-finance", StringComparison.Ordinal)) VerifyFinanceGui(app, launch, args[1]);
-                else if (postgresql && args[1].StartsWith("gui-postgresql-conversation", StringComparison.Ordinal)) VerifyPostgresqlConversationGui(app, launch, args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].EndsWith("-recover", StringComparison.Ordinal));
-                else if (postgresql) VerifyPostgresqlGui(app, launch, args[2], args[1].EndsWith("-reopen", StringComparison.Ordinal), args[1].StartsWith("gui-postgresql-storage", StringComparison.Ordinal));
-                else if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
+                if (args.Length == 2 && args[1] is "gui" or "gui-close" or "gui-database" or "gui-environment-failure" or "gui-ready-timeout") VerifyGui(app, launch, args[1]);
                 else VerifyAsync(app, launch, args.Length == 2 ? args[1] : "authentication-failure").GetAwaiter().GetResult();
             }
             finally { app.Cleanup(); }

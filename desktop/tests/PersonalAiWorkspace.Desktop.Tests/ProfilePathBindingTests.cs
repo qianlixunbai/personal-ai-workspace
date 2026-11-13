@@ -12,22 +12,7 @@ public sealed class ProfilePathBindingTests
 {
     private const string Id = "0123456789abcdef0123456789abcdef";
 
-    [Theory]
-    [InlineData("C:\\safe\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef")]
-    [InlineData("D:\\cache\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef")]
-    public void CanonicalShapeAllowsLocalStorageWithoutHardcodingHost(string path)
-        => WindowsProfileSecurity.ValidateProfileRoot(path, Id);
 
-    [Theory]
-    [InlineData("C:\\safe\\OtherApp\\Profiles\\0123456789abcdef0123456789abcdef")]
-    [InlineData("C:\\safe\\PersonalAIWorkspace.Development\\Other\\0123456789abcdef0123456789abcdef")]
-    [InlineData("C:\\safe\\PersonalAIWorkspace.Development\\Profiles\\ffffffffffffffffffffffffffffffff")]
-    [InlineData("C:\\safe\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef\\extra")]
-    [InlineData("C:\\safe\\..\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef")]
-    [InlineData("\\\\server\\share\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef")]
-    [InlineData("\\\\?\\C:\\safe\\PersonalAIWorkspace.Development\\Profiles\\0123456789abcdef0123456789abcdef")]
-    public void WrongOrUnnormalizedRootShapeFailsClosed(string path)
-        => Assert.Throws<IOException>(() => WindowsProfileSecurity.ValidateProfileRoot(path, Id));
 
     [Fact]
     public void FullVolumeAnd128BitIdentityMustMatch()

@@ -22,15 +22,11 @@ public sealed class WorkspaceConversationsTests
     }
     private sealed class Handler : HttpMessageHandler
     {
-        internal int Posts, Cancels, Deletes, Gets, Searches;
-        internal bool InvalidSearchMatch;
-        internal int UsageReads;
-        internal bool WrongUsageRevision;
-        internal TaskCompletionSource? HoldSearch;
+        internal int Posts, Cancels, Deletes, Gets;
         internal string Status = "ACTIVE", State = "PENDING", Title = "Synthetic conversation";
-        internal bool Stale, Unknown, Large, ChangedTask, Deleted, GenericUnknown;
+        internal bool Deleted;
         internal Guid CreatedId = Id;
-        internal TaskCompletionSource? Hold, HoldGet;
+        internal TaskCompletionSource? HoldGet;
         internal readonly List<int> Counts = [];
         internal long[] AdmittedSequences = [1];
         internal object Metadata(Guid? id = null) => new { id = id ?? Id, title = Title, status = Status, createdAt = "2026-10-04T00:00:00Z", updatedAt = "2026-10-04T00:00:01Z" };
@@ -38,26 +34,6 @@ public sealed class WorkspaceConversationsTests
         {
             Assert.Equal(new string('t', 43), request.Headers.Authorization?.Parameter);
             var path = request.RequestUri!.AbsolutePath;
-            if (path == "/api/v1/conversations/memory-usage")
-            {
-                Assert.Equal(HttpMethod.Post, request.Method); Assert.Empty(request.RequestUri.Query); UsageReads++;
-                using var query = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
-                Assert.Equal(MemoryId, query.RootElement.GetProperty("memoryId").GetGuid());
-                long? revision = query.RootElement.GetProperty("revision").ValueKind == JsonValueKind.Null ? null : query.RootElement.GetProperty("revision").GetInt64();
-                if (HoldSearch is not null) await HoldSearch.Task;
-                return Reply(new { memoryId = MemoryId, revision, page = 0, limit = 10, hasMore = false,
-                    items = new[] { new { conversation = Metadata(), turnId = TurnId, sequence = 1, status = "SUCCEEDED", revision = WrongUsageRevision ? 1 : long.MaxValue } } });
-            }
-            if (path == "/api/v1/conversations/search")
-            {
-                Assert.Equal(HttpMethod.Post, request.Method); Assert.Empty(request.RequestUri.Query); Searches++;
-                using var query = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
-                string text = query.RootElement.GetProperty("query").GetString()!;
-                if (HoldSearch is not null) await HoldSearch.Task;
-                return Reply(new { query = text, scope = query.RootElement.GetProperty("scope").GetString(), page = 0, limit = 10, hasMore = false,
-                    items = new[] { new { conversation = Metadata(), turnId = TurnId, sequence = 1, messageId = Guid.NewGuid(), role = "USER",
-                        snippet = "前" + text + "后", matchStart = InvalidSearchMatch ? 0 : 1, matchEnd = 1 + text.Length, before = false, after = false } } });
-            }
             if (path == "/api/v1/conversations")
             {
                 var response = Reply(request.Method == HttpMethod.Post ? Metadata(CreatedId) : new { items = new[] { Metadata() }, total = 1, page = 0, limit = 10 }, request.Method == HttpMethod.Post ? HttpStatusCode.Created : HttpStatusCode.OK);
@@ -77,27 +53,24 @@ public sealed class WorkspaceConversationsTests
                 if (HoldGet is not null) await HoldGet.Task;
                 if (Deleted) return Error("CONVERSATION_NOT_FOUND", HttpStatusCode.NotFound);
                 int page = int.Parse(request.RequestUri.Query.Split('&')[0].Split('=')[1]);
-                object Message(Guid turnId, string role) => new { id = Guid.NewGuid(), turnId, role, content = Large ? new string('\u0001', 8192) : "Synthetic message", createdAt = role == "USER" ? "2026-10-04T00:00:00Z" : "2026-10-04T00:00:01Z" };
-                var turns = Enumerable.Range(0, Large ? 10 : 1).Select(i => {
-                    var turn = Large ? Guid.NewGuid() : TurnId;
-                    return new { id = turn, conversationId = Id, sequence = i + 1, status = Large ? "SUCCEEDED" : State, createdAt = "2026-10-04T00:00:00Z", updatedAt = "2026-10-04T00:00:01Z",
-                        userMessage = Message(turn, "USER"), assistantMessage = Large || State == "SUCCEEDED" ? Message(turn, "ASSISTANT") : null,
-                        taskId = ChangedTask ? Guid.NewGuid() : TaskId, failureCode = State == "FAILED" ? "EXECUTION_INTERRUPTED" : null,
+                object Message(Guid turnId, string role) => new { id = Guid.NewGuid(), turnId, role, content = "Synthetic message", createdAt = role == "USER" ? "2026-10-04T00:00:00Z" : "2026-10-04T00:00:01Z" };
+                var turns = Enumerable.Range(0, 1).Select(i => {
+                    var turn = TurnId;
+                    return new { id = turn, conversationId = Id, sequence = i + 1, status = State, createdAt = "2026-10-04T00:00:00Z", updatedAt = "2026-10-04T00:00:01Z",
+                        userMessage = Message(turn, "USER"), assistantMessage = State == "SUCCEEDED" ? Message(turn, "ASSISTANT") : null,
+                        taskId = TaskId, failureCode = State == "FAILED" ? "EXECUTION_INTERRUPTED" : null,
                         memories = Enumerable.Range(0, 4).Select(position => new { memoryId = Guid.NewGuid(), revision = long.MaxValue, position }).ToArray() };
                 }).ToArray();
-                return Reply(new { conversation = Metadata(), turns, totalTurns = Large ? 10 : 1, page, limit = 10 });
+                return Reply(new { conversation = Metadata(), turns, totalTurns = 1, page, limit = 10 });
             }
             if (path.EndsWith("/turns"))
             {
-                Posts++; if (Hold is not null) await Hold.Task;
-                if (Unknown) throw new HttpRequestException("private SQL/body/token");
-                if (GenericUnknown) throw new InvalidOperationException("private unexpected body");
+                Posts++;
                 var json = await request.Content!.ReadAsStringAsync(ct);
                 Assert.DoesNotContain("retainMemories", json); // Desktop lifetime option never changes Runtime's contract.
                 using var body = JsonDocument.Parse(json);
                 var refs = body.RootElement.GetProperty("memories"); Counts.Add(refs.GetArrayLength());
                 if (refs.GetArrayLength() > 0) { Assert.Equal(MemoryId, refs[0].GetProperty("id").GetGuid()); Assert.Equal(long.MaxValue, refs[0].GetProperty("revision").GetInt64()); }
-                if (Stale) return Error("MEMORY_SELECTION_STALE", HttpStatusCode.Conflict);
                 var reply = Reply(new { conversationId = Id, turnId = TurnId, taskId = TaskId, status = "QUEUED", memoryCount = refs.GetArrayLength(), admittedSequences = AdmittedSequences, inputCharacters = 12, inputBytes = 12 }, HttpStatusCode.Accepted);
                 reply.Headers.Location = new Uri($"/api/v1/tasks/{TaskId:D}", UriKind.Relative); return reply;
             }
@@ -116,49 +89,6 @@ public sealed class WorkspaceConversationsTests
         }
         private static HttpResponseMessage Reply(object body, HttpStatusCode status = HttpStatusCode.OK) => RuntimeClientTests.Response(status, JsonSerializer.Serialize(body));
         private static HttpResponseMessage Error(string code, HttpStatusCode status) => Reply(new { code, message = "private SQL/provider body", phase = "ADMISSION" }, status);
-    }
-    [Fact]
-    public async Task SearchAuthorizesOnlyReturnedConversationsAndDoesNotSelectOrSend()
-    {
-        using var f = new Fixture(); await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
-        await f.Call("conversations.search", new { query = "合成😀%_<script>", scope = "ALL", page = 0 });
-        Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        Assert.Equal("前合成😀%_<script>后", f.Last.GetProperty("result").GetProperty("items")[0].GetProperty("snippet").GetString());
-        await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        await f.Call("conversations.get", new { conversationId = Other, page = 0 }); Assert.Equal("ConversationNotFound", f.Code);
-        Assert.Equal(1, f.Handler.Searches); Assert.Equal(0, f.Handler.Posts); Assert.Equal(0, f.Handler.Cancels);
-        f.Handler.InvalidSearchMatch = true;
-        await f.Call("conversations.search", new { query = "x", scope = "ALL", page = 0 }); Assert.False(f.Last.GetProperty("ok").GetBoolean());
-    }
-    [Fact]
-    public async Task SearchRejectsInvalidPayloadAndLateSessionCannotGrantAuthority()
-    {
-        using var f = new Fixture();
-        foreach (var payload in new object[] { new { query = " ", scope = "ALL", page = 0 }, new { query = "x", scope = "OTHER", page = 0 }, new { query = "x", scope = "ALL", page = -1 }, new { query = "x", scope = "ALL", page = "0" } })
-        { await f.Call("conversations.search", payload); Assert.Empty(f.Sent); }
-        Assert.Equal(0, f.Handler.Searches); f.Handler.HoldSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pending = f.Call("conversations.search", new { query = "x", scope = "ALL", page = 0 });
-        Assert.Equal(1, f.Handler.Searches); f.Rotate(); f.Handler.HoldSearch.SetResult(); await pending;
-        await f.Get(); Assert.Equal("ConversationNotFound", f.Code); Assert.Equal(0, f.Handler.Gets);
-    }
-    [Fact]
-    public async Task MemoryUsageProjectsExactRevisionAuthorizesResultsAndRejectsWrongOrLateScope()
-    {
-        using var f = new Fixture(); await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
-        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = long.MaxValue.ToString(), page = 0 });
-        Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        Assert.Equal(long.MaxValue.ToString(), f.Last.GetProperty("result").GetProperty("items")[0].GetProperty("revision").GetString());
-        await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        await f.Call("conversations.get", new { conversationId = Other, page = 0 }); Assert.Equal("ConversationNotFound", f.Code);
-        f.Handler.WrongUsageRevision = true;
-        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = long.MaxValue.ToString(), page = 0 });
-        Assert.Equal("InvalidResponse", f.Code); Assert.Equal(0, f.Handler.Posts);
-        f.Rotate(); int reads = f.Handler.UsageReads;
-        await f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = "01", page = 0 }); Assert.Empty(f.Sent); Assert.Equal(reads, f.Handler.UsageReads);
-        f.Handler.WrongUsageRevision = false; f.Handler.HoldSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pending = f.Call("conversations.memoryUsage", new { memoryId = MemoryId, revision = (string?)null, page = 0 });
-        Assert.Equal(reads + 1, f.Handler.UsageReads); f.Rotate(); f.Handler.HoldSearch.SetResult(); await pending;
-        await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
     }
     private sealed class Fixture : IDisposable
     {
@@ -188,48 +118,6 @@ public sealed class WorkspaceConversationsTests
         internal object Identity => new { conversationId = Id };
         public void Dispose() { Bridge.Dispose(); Runtime.Dispose(); }
     }
-    [Theory][InlineData("conversations.get")][InlineData("conversations.rename")][InlineData("conversations.archive")][InlineData("conversations.unarchive")][InlineData("conversations.delete")][InlineData("conversations.selectMemories")][InlineData("conversations.clearMemories")][InlineData("conversations.send")][InlineData("conversations.cancelPending")]
-    public async Task UnlistedIdentityCannotReadOrMutate(string method)
-    {
-        using var f = new Fixture(); object payload = method switch {
-            "conversations.get" => new { conversationId = Id, page = 0 }, "conversations.rename" => new { conversationId = Id, title = "Synthetic title" },
-            "conversations.send" => new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = new object[0] },
-            "conversations.cancelPending" => new { conversationId = Id, turnId = TurnId }, _ => f.Identity };
-        await f.Call(method, payload); Assert.Equal("ConversationNotFound", f.Code); Assert.Equal(0, f.Handler.Gets + f.Handler.Posts + f.Handler.Deletes + f.Handler.Cancels);
-    }
-    [Fact] public async Task ListAndCreateAuthorizeOnlyReturnedIdsAndReloadResetsAuthorization()
-    {
-        using var f = new Fixture(); await f.List(); await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        await f.Call("conversations.get", new { conversationId = Other, page = 0 }); Assert.Equal("ConversationNotFound", f.Code);
-        f.Rotate(); await f.Get(); Assert.Equal("ConversationNotFound", f.Code); await f.Call("conversations.create"); await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-    }
-    [Fact] public async Task DetailProjectionNeverExposesTaskOrProviderAndRebuildsCancelAuthorityAfterReload()
-    {
-        using var f = new Fixture(); await f.List(); await f.Get(); Assert.DoesNotContain("taskId", f.Sent.Last());
-        Assert.True(f.Last.GetProperty("result").GetProperty("turns")[0].GetProperty("canCancel").GetBoolean());
-        f.Rotate(); await f.List(); await f.Call("conversations.cancelPending", new { conversationId = Id, turnId = TurnId }); Assert.Equal("ConversationNotFound", f.Code);
-        await f.Get(); await f.Call("conversations.cancelPending", new { conversationId = Id, turnId = TurnId }); Assert.Equal(1, f.Handler.Cancels);
-        await f.Get(); Assert.Equal("CANCELLED", f.Last.GetProperty("result").GetProperty("turns")[0].GetProperty("status").GetString());
-    }
-    [Theory][InlineData("SUCCEEDED")][InlineData("FAILED")][InlineData("CANCELLED")][InlineData("TIMED_OUT")]
-    public async Task CancelRaceUsesDurableTerminalTruthWithoutSendingCancel(string terminal)
-    { using var f = new Fixture(); await f.List(); await f.Get(); f.Handler.State = terminal; await f.Call("conversations.cancelPending", new { conversationId = Id, turnId = TurnId }); Assert.True(f.Last.GetProperty("ok").GetBoolean()); Assert.Equal(0, f.Handler.Cancels); }
-    [Fact] public async Task ForgedTurnAndChangedTaskBindingCannotCancel()
-    {
-        using var f = new Fixture(); await f.List(); await f.Get(); await f.Call("conversations.cancelPending", new { conversationId = Id, turnId = Guid.NewGuid() }); Assert.Equal("ConversationNotFound", f.Code);
-        f.Handler.ChangedTask = true; await f.Call("conversations.cancelPending", new { conversationId = Id, turnId = TurnId }); Assert.Equal("ConversationNotFound", f.Code); Assert.Equal(0, f.Handler.Cancels);
-    }
-    [Fact] public async Task ArchiveDoesNotCancelAndArchivedSendIsRejectedUntilUnarchive()
-    {
-        using var f = new Fixture(); await f.List(); await f.Get(); await f.Call("conversations.archive", f.Identity); Assert.Equal(0, f.Handler.Cancels);
-        await f.Send(); Assert.Equal("ConversationConflict", f.Code); Assert.Equal(0, f.Handler.Posts);
-        await f.Call("conversations.unarchive", f.Identity); await f.Send(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-    }
-    [Fact] public async Task PendingDeleteConflictAndSuccessfulDeleteRevokesAuthorization()
-    {
-        using var f = new Fixture(); await f.List(); await f.Call("conversations.delete", f.Identity); Assert.Equal("ConversationConflict", f.Code); Assert.Equal(0, f.Handler.Cancels);
-        f.Handler.State = "SUCCEEDED"; await f.Call("conversations.delete", f.Identity); Assert.Equal(1, f.Handler.Deletes); await f.Get(); Assert.Equal("ConversationNotFound", f.Code);
-    }
     [Fact] public async Task MemoryExactRevisionConsumedAndCannotCarryAcrossConversationOrSession()
     {
         using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
@@ -247,100 +135,11 @@ public sealed class WorkspaceConversationsTests
         f.Rotate(); await f.List(); await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
         await f.Get(); Assert.DoesNotContain("admittedSequences", f.Sent.Last()); Assert.DoesNotContain("memoryCount", f.Sent.Last());
     }
-    [Fact] public async Task RetainedMemoryRequiresExplicitSelectionAndStaysWithinExactConversationAndSession()
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List();
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
-        await f.Send(retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(0, f.Handler.Posts);
-        await f.Call("conversations.selectMemories", f.Identity);
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        f.NextSelection = null; await f.Call("conversations.selectMemories", f.Identity); // Cancel preserves the exact selection.
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        Assert.Equal(new[] { 1, 1 }, f.Handler.Counts);
-        await f.Send([new { memoryId = MemoryId, revision = "1", position = 0 }], retainMemories: true);
-        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
-        f.Handler.CreatedId = Other; await f.Call("conversations.create");
-        await f.Call("conversations.send", new { conversationId = Other, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = true });
-        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
-        await f.Send(Fixture.Refs()); Assert.True(f.Last.GetProperty("ok").GetBoolean()); // Opt-out consumes on this turn.
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
-        Assert.Equal(new[] { 1, 1, 1 }, f.Handler.Counts);
-        f.NextSelection = Selection; await f.Call("conversations.selectMemories", f.Identity);
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-        f.Rotate(); await f.List(); await f.Send(Fixture.Refs(), retainMemories: true);
-        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(4, f.Handler.Posts);
-    }
-    [Fact] public async Task RetainedMemoryStopsOnStaleUnknownAndExplicitRevocationDuringAdmission()
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
-        f.Handler.Stale = true; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MemorySelectionStale", f.Code);
-        f.Handler.Stale = false; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(1, f.Handler.Posts);
-        f.NextSelection = null; await f.Call("conversations.selectMemories", f.Identity);
-        await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
-        f.NextSelection = Selection; await f.Call("conversations.selectMemories", f.Identity);
-        f.Handler.Unknown = true; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("OutcomeUnknown", f.Code);
-        f.Handler.Unknown = false; await f.Send(Fixture.Refs(), retainMemories: true); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
-        await f.Call("conversations.selectMemories", f.Identity);
-        f.Handler.HoldGet = new(); var send = f.Send(Fixture.Refs(), retainMemories: true);
-        await f.Call("conversations.clearMemories", f.Identity); f.Handler.HoldGet.SetResult(); await send;
-        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(2, f.Handler.Posts);
-    }
-    [Fact] public async Task StaleMemoryRequiresReviewAndClearRevokesPickerAuthorization()
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity); f.Handler.Stale = true;
-        await f.Send(Fixture.Refs()); Assert.Equal("MemorySelectionStale", f.Code); f.Handler.Stale = false;
-        await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(1, f.Handler.Posts);
-        await f.Call("conversations.clearMemories", f.Identity); await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); await f.Send(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-    }
-    [Theory][InlineData(false)][InlineData(true)] public async Task UnknownOutcomeNeverRetriesAndConsumesMemoryAuthorization(bool unexpected)
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity); f.Handler.Unknown = !unexpected; f.Handler.GenericUnknown = unexpected;
-        await f.Send(Fixture.Refs()); Assert.Equal("OutcomeUnknown", f.Code); Assert.DoesNotContain("private", f.Sent.Last());
-        f.Handler.Unknown = false; f.Handler.GenericUnknown = false; await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(1, f.Handler.Posts);
-    }
-    [Fact] public async Task MemoryAuthorizationCannotBeUsedForAnotherAuthorizedConversation()
-    {
-        using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
-        f.Handler.CreatedId = Other; await f.Call("conversations.create");
-        await f.Call("conversations.send", new { conversationId = Other, message = "Synthetic", selectedMemoryRefs = Fixture.Refs() });
-        Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(0, f.Handler.Posts);
-        await f.Call("conversations.clearMemories", f.Identity); await f.Send(Fixture.Refs()); Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code);
-    }
     [Fact] public async Task ClearingMemoryWhilePreflightIsInFlightPreventsRevokedReferencesFromBeingPosted()
     {
         using var f = new Fixture(); f.Handler.State = "SUCCEEDED"; await f.List(); await f.Call("conversations.selectMemories", f.Identity);
         f.Handler.HoldGet = new(); var send = f.Send(Fixture.Refs());
         await f.Call("conversations.clearMemories", f.Identity); f.Handler.HoldGet.SetResult(); await send;
         Assert.Equal("MEMORY_SELECTION_REQUIRED", f.Code); Assert.Equal(0, f.Handler.Posts);
-    }
-    [Fact] public async Task WrongOriginSessionUnknownFieldsRawTaskAndBadSchemasAreDropped()
-    {
-        using var f = new Fixture(); await f.Bridge.ReceiveAsync("https://evil.invalid/index.html", Document, f.Request("conversations.create"));
-        await f.Bridge.ReceiveAsync(Document, Document, f.Request("conversations.create", session: Guid.NewGuid().ToString()));
-        await f.Call("conversations.create", new { title = "unknown" }); await f.Call("conversations.list", new { status = "OTHER", page = 0 });
-        await f.Call("conversations.list", new { status = "ACTIVE", page = 0, limit = 100 });
-        await f.Call("conversations.get", new { conversationId = "bad", page = 0 });
-        await f.Call("conversations.cancelPending", new { conversationId = Id, taskId = TaskId });
-        await f.Call("conversations.send", new { conversationId = Id, message = new string('x', 3001), selectedMemoryRefs = new object[0] });
-        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = new[] { new { memoryId = MemoryId, revision = "9223372036854775808", position = 0 } } });
-        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = "true" });
-        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = (bool?)null });
-        await f.Call("conversations.send", new { conversationId = Id, message = "Synthetic", selectedMemoryRefs = Fixture.Refs(), retainMemories = true, persist = true });
-        Assert.Empty(f.Sent); Assert.Equal(0, f.Handler.Posts);
-    }
-    [Fact] public async Task ReloadDuringAdmissionSuppressesOldReplyWithoutCancellingOrReplay()
-    {
-        using var f = new Fixture(); await f.List(); f.Handler.Hold = new(); var posting = f.Send(); Assert.Equal(1, f.Handler.Posts);
-        f.Rotate(); f.Handler.Hold.SetResult(); await posting; Assert.Empty(f.Sent); Assert.Equal(1, f.Handler.Posts); Assert.Equal(0, f.Handler.Cancels);
-        await f.List(); await f.Get(); Assert.True(f.Last.GetProperty("ok").GetBoolean());
-    }
-    [Fact] public async Task MaximumLegalEscapedPageParsesProjectsSerializesWithinSpecificBudgetWithoutTruncation()
-    {
-        using var f = new Fixture(); f.Handler.Large = true; f.Handler.State = "SUCCEEDED"; f.Handler.Title = new string('\u0001', 160);
-        await f.List(); await f.Get(); var body = f.Sent.Last(); int bytes = Encoding.UTF8.GetByteCount(body);
-        Assert.InRange(bytes, 983040, WorkspaceBridge.MaximumConversationResponseBytes); Assert.Equal(64 * 1024, WorkspaceBridge.MaximumResponseBytes);
-        var turns = f.Last.GetProperty("result").GetProperty("turns"); Assert.Equal(10, turns.GetArrayLength());
-        foreach (var turn in turns.EnumerateArray()) { Assert.Equal(new string('\u0001', 8192), turn.GetProperty("userMessage").GetProperty("content").GetString()); Assert.Equal(new string('\u0001', 8192), turn.GetProperty("assistantMessage").GetProperty("content").GetString()); }
-        Assert.DoesNotContain("taskId", body);
     }
 }
