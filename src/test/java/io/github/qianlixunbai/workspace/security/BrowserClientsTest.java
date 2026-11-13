@@ -49,7 +49,10 @@ class BrowserClientsTest {
             assertThrows(WorkspaceException.class, () -> clients.revoke(issued.client().clientId()));
             assertNotNull(clients.authenticate("Bearer " + issued.credential(), ORIGIN));
             Files.delete(file().resolveSibling("browser-clients.pending")); clients.revoke(issued.client().clientId());
-            Files.writeString(file().resolveSibling("browser-clients.pending"), committed);
+            Path pending = file().resolveSibling("browser-clients.pending");
+            if (WindowsPrivateAcl.isWindows()) WindowsPrivateAcl.createFile(pending);
+            else Files.createFile(pending);
+            Files.writeString(pending, committed);
         }
         try (var clients = new BrowserClients(file(), Clock.systemUTC())) {
             assertNull(clients.authenticate("Bearer " + issued.credential(), ORIGIN));
@@ -57,10 +60,4 @@ class BrowserClientsTest {
         }
     }
 
-    static class MutableClock extends Clock {
-        Instant now = Instant.parse("2026-10-02T00:00:00Z");
-        public ZoneId getZone() { return ZoneOffset.UTC; }
-        public Clock withZone(ZoneId zone) { return this; }
-        public Instant instant() { return now; }
-    }
 }

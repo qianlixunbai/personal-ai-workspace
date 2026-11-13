@@ -95,7 +95,7 @@ WPF 负责生命周期、快捷键、原生确认和凭据边界；Runtime 负�
 先阅读 [开发指南](docs/DEVELOPMENT.md)，将 `JAVA_HOME` 配置为你已审查的本机 JDK 21，再在 PowerShell 7.4+ 执行：
 
 ```powershell
-git clone https://github.com/qianlixunbai/personal-ai-workspace.git
+git clone --branch codex/knowledge-version-compare https://github.com/qianlixunbai/personal-ai-workspace.git
 cd personal-ai-workspace
 
 npm --prefix desktop/frontend ci

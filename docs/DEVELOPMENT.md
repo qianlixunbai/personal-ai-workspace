@@ -44,7 +44,7 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 实际 [开发构建脚本](../scripts/verification/build-trusted-development-runtime.ps1)：
 
 1. 要求显式本机 JDK 21，并校验 [development-bundle.ps1](../scripts/distribution/development-bundle.ps1) 中已审查 NativeBootstrap 固定文件 hash。
-2. 在 Maven reactor 构建 Runtime（`-DskipTests`），执行现有 Runtime JAR 审计，构建 frontend。
+2. 在 Maven reactor 构建 Runtime（`-Dmaven.test.skip=true`），执行 Runtime JAR 审计，再构建 frontend。
 3. 在本机 `.verification/` 写入来源 manifest，绑定工具链／JAR／JNA 等文件身份。
 4. 以 `Mmf3ProfileAcceptanceBuild=true` 的 Debug 身份构建 Desktop，嵌入受信 manifest。`--no-restore` 说明此前需完成 .NET restore。
 
@@ -85,7 +85,7 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 | Frontend 依赖／类型／资产 | `npm --prefix desktop/frontend ci`、`npm --prefix desktop/frontend run check`、`npm --prefix desktop/frontend run build` | 只改文档时不执行这些生产构建 |
 | Java | `.\mvnw.cmd -pl workspace-application -am '-Dtest=OwningTest' '-Dsurefire.failIfNoSpecifiedTests=false' test` | 将 OwningTest 换成真实 owning-layer 测试；只在相关生产行为变化时运行 |
 | Desktop | `dotnet test desktop/tests/PersonalAiWorkspace.Desktop.Tests/PersonalAiWorkspace.Desktop.Tests.csproj --filter 'FullyQualifiedName~OwningTest'` | 复用合适的既有 fixture 与构建参数；不默认跑完整 suite |
-| Windows 综合验收 | [WorkspaceSanity project](../desktop/acceptance/PersonalAiWorkspace.WorkspaceSanity/PersonalAiWorkspace.WorkspaceSanity.csproj) | 显式需要时使用合成、隔离环境；不可当作无副作用日常 smoke |
+| Windows 综合验收 | 用同一个新建合成 SQLite Profile 启动开发包，核对 Runtime 与界面 READY，点击「退出工作区」，确认直属 Java 退出后重开 | 保留两次启动日志与退出证据。设置页的「重新检查存储」可验证 Bridge、原生认证与 SQLite 读通 |
 | 专项历史证据 | [工程报告索引](README.md#engineering) | 按报告的基线、工具链、来源 pin、命令和包身份理解；不是任意提交可直接复用的 PASS |
 
 生产配置默认 Runtime `127.0.0.1:8765`、Ollama `127.0.0.1:11434`，见 [application.yml](../src/main/resources/application.yml)。不能因 loopback 端口存在就复用未知服务、读取 Token 或假定 Native Bearer 有效。单独 `spring-boot:run` 或 `java -jar` 不等同于受信 Windows 产品启动。

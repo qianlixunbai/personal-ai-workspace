@@ -23,7 +23,10 @@ class KnowledgeFoundationTest {
         fail("Ingestion did not terminate");return null;
     }
     @Test void independentDatabasePrivateOriginalAndExactVersionedRepresentationSurviveRestart()throws Exception {
-        Files.createDirectories(data());Files.write(data().resolve("memory.db"),bytes("untouched-memory-marker"));
+        PrivateKnowledgeDirectory.directory(data());
+        Path memory = data().resolve("memory.db");
+        PrivateKnowledgeDirectory.file(memory);
+        Files.write(memory,bytes("untouched-memory-marker"));
         KnowledgeDocument doc;String request;byte[] source=bytes("\uFEFF中文\r\nline two\rthree\n");
         try(var store=open();var ingestion=new KnowledgeIngestion(store)){
             var job=importBytes(store,ingestion,null,null,"fixture.txt",source);assertEquals("READY",job.state());request=job.requestId();doc=store.get(job.documentId());
@@ -35,11 +38,10 @@ class KnowledgeFoundationTest {
             var preview=store.preview(doc.documentId(),"1",0);assertEquals("中文\nline two\nthree\n",preview.text());
             assertEquals(new KnowledgeParser.Locator("TXT_LINES",1,3,0,preview.text().length(),null,null),preview.locators().getFirst());
             assertFalse(preview.toString().contains("line two"));assertFalse(doc.toString().contains("fixture"));
-            var acl=Files.getFileAttributeView(store.root(),java.nio.file.attribute.AclFileAttributeView.class);
-            if(acl!=null){var owner=Files.getOwner(store.root());assertTrue(acl.getAcl().stream().allMatch(e->e.principal().equals(owner)));}
+            PrivateKnowledgeDirectory.protect(store.root(),true);
         }
         try(var store=open()){assertEquals(doc,store.get(doc.documentId()));assertEquals("READY",store.job(request).state());}
-        assertArrayEquals(bytes("untouched-memory-marker"),Files.readAllBytes(data().resolve("memory.db")));
+        assertArrayEquals(bytes("untouched-memory-marker"),Files.readAllBytes(memory));
     }
     @Test void duplicateAndChangedSourceRevisionSemanticsAndOptimisticLifecycle()throws Exception {
         try(var store=open();var ingestion=new KnowledgeIngestion(store)){

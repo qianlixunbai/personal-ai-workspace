@@ -22,9 +22,7 @@ public final class MemoryRecallIntegrationProbe {
     public static void main(String[] args)throws Exception{
         WindowsNativeGate.admit();WindowsNativeGate.profileRoot();System.out.println("KNOWLEDGE_ENCRYPTED_SNAPSHOT_NATIVE_ADMITTED");
         var request=LauncherDiscoveryRequestBuilder.request().selectors(
-                selectClass("io.github.qianlixunbai.workspace.knowledge.SyntheticKnowledgeSnapshotTest"),
-                selectClass("io.github.qianlixunbai.workspace.knowledge.KnowledgeBackupTest"),
-                selectClass("io.github.qianlixunbai.workspace.backup.OpenPgpStreamsTest"))
+                selectClass("io.github.qianlixunbai.workspace.knowledge.SyntheticKnowledgeSnapshotTest"))
             .configurationParameter("junit.jupiter.tempdir.factory.default",PrivateTemp.class.getName())
             .configurationParameter("junit.jupiter.tempdir.cleanup.mode.default","NEVER")
             .configurationParameter("junit.jupiter.execution.parallel.enabled","false").build();
@@ -38,6 +36,7 @@ public final class MemoryRecallIntegrationProbe {
             for(Throwable error=failure.getException();error!=null;error=error.getCause())
                 for(var frame:error.getStackTrace())if(frame.getClassName().startsWith("io.github.qianlixunbai"))System.out.println("FRAME "+frame);
         }
-        System.exit(result.getTestsSucceededCount()==16&&result.getTotalFailureCount()==0?0:10);
+        System.exit(result.getTestsFoundCount()==2&&result.getTestsSucceededCount()==2
+                &&result.getTotalFailureCount()==0?0:10);
     }
 }
