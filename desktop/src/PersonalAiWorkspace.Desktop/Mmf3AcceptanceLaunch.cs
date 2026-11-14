@@ -36,7 +36,8 @@ internal sealed class Mmf3AcceptanceLaunch
     internal string Profile => Path.Combine(Root, "webview2-profile");
     internal string TokenFile => Path.Combine(Root, "credentials", "client-token");
     internal string CredentialTarget => $"PersonalAiWorkspace/Desktop/MMF3/{RunId}/Runtime/127.0.0.1:18765";
-    internal string InstanceSuffix => ".MMF3." + RunId;
+    internal string InstanceSuffix => InstanceSuffixFor(RunId);
+    internal static string InstanceSuffixFor(string runId) => ".MMF3." + runId;
 
     private Mmf3AcceptanceLaunch(string runId)
     {

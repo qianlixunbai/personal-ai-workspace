@@ -69,11 +69,7 @@ public sealed partial class RuntimeClient
     }
     private HttpRequestMessage WorkspaceRequest(HttpMethod method, string suffix)
     {
-        string? secret = credential();
-        if (secret is null) throw new DesktopException(DesktopError.CredentialMissing);
-        if (!CredentialFormat.Valid(secret)) throw new DesktopException(DesktopError.CredentialInvalid);
-        var request = new HttpRequestMessage(method, "/api/v1/workspace/backup" + suffix);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", secret);
+        var request = CreateRequest(method, "/api/v1/workspace/backup" + suffix, authenticate: true);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json")); return request;
     }
     private static async Task<JsonDocument> WorkspaceSmallResponse(HttpResponseMessage response, CancellationToken token)

@@ -121,32 +121,39 @@ public sealed partial class RuntimeClient : IDisposable
         return ParseTask(body.RootElement, id, capability, promptVersion);
     }
 
-    private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
-        HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
-        Func<JsonElement, DesktopError>? errorMap = null,
-        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse, TimeSpan? requestTimeout = null)
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path, bool authenticate)
     {
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         var generation = Volatile.Read(ref ownedEndpoint);
         if (ownedEndpointRequired && generation is null) throw new DesktopException(DesktopError.RuntimeUnavailable);
-        using var request = new HttpRequestMessage(method, generation is null ? new Uri(path, UriKind.Relative) : new Uri(generation.Address, path));
+        Uri address = generation is null ? new Uri(path, UriKind.Relative) : new Uri(generation.Address, path);
 #else
-        using var request = new HttpRequestMessage(method, path);
+        Uri address = new(path, UriKind.Relative);
 #endif
-        // Actuator defaults to a vendor media type unless the client negotiates JSON.
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        string? token = null;
         if (authenticate)
         {
-            var token = credential();
-            if (token is null) throw new DesktopException(DesktopError.CredentialMissing);
+            token = credential() ?? throw new DesktopException(DesktopError.CredentialMissing);
             if (!CredentialFormat.Valid(token)) throw new DesktopException(DesktopError.CredentialInvalid);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 #if MMF3_PROFILE_ACCEPTANCE && DEBUG
         // A credential from a replacement child cannot be sent to the preceding child's port.
         if (ownedEndpointRequired && !ReferenceEquals(generation, Volatile.Read(ref ownedEndpoint)))
             throw new DesktopException(DesktopError.RuntimeUnavailable);
 #endif
+        var request = new HttpRequestMessage(method, address);
+        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return request;
+    }
+
+    private async Task<JsonDocument> SendAsync(HttpMethod method, string path, byte[]? payload, bool authenticate,
+        HttpStatusCode expected, CancellationToken cancellationToken, Action<HttpResponseMessage, JsonDocument>? validate = null,
+        Func<JsonElement, DesktopError>? errorMap = null,
+        Func<HttpStatusCode, JsonElement, DesktopError>? endpointErrorMap = null, int maximumResponse = MaximumResponse, TimeSpan? requestTimeout = null)
+    {
+        using var request = CreateRequest(method, path, authenticate);
+        // Actuator defaults to a vendor media type unless the client negotiates JSON.
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (payload is not null)
         {
             request.Content = new ByteArrayContent(payload);

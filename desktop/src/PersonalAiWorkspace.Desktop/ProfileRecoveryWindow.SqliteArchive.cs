@@ -75,6 +75,13 @@ internal sealed partial class ProfileRecoveryWindow
             {
                 window.status.Text = "无法核对来源工作区的正常退出记录，备份已停止。";
             }
+            catch (ProfileRecoveryCoordinator.ArchiveCleanupIncomplete failure)
+            {
+                if (failure.RestoredId is not null) profileId = failure.RestoredId;
+                window.status.Text = failure.Published
+                    ? "数据已发布，私有暂存目录清理未完成。请从目标位置核对已发布的结果。"
+                    : "操作已停止，私有暂存目录清理未完成。";
+            }
             catch (Exception)
             {
                 window.status.Text = recovering

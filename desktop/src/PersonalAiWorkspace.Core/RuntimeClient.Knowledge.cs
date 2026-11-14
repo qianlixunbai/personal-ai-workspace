@@ -116,10 +116,7 @@ public sealed partial class RuntimeClient
     private Task<JsonDocument> KnowledgeJson(HttpMethod method,string suffix,object? payload,CancellationToken token)=>SendAsync(method,"/api/v1/knowledge"+suffix,
         payload is null?null:JsonSerializer.SerializeToUtf8Bytes(payload),true,HttpStatusCode.OK,token,endpointErrorMap:KnowledgeError);
     private HttpRequestMessage KnowledgeRequest(HttpMethod method,string suffix)
-    {
-        var secret=credential();if(secret is null)throw new DesktopException(DesktopError.CredentialMissing);if(!CredentialFormat.Valid(secret))throw new DesktopException(DesktopError.CredentialInvalid);
-        var request=new HttpRequestMessage(method,"/api/v1/knowledge"+suffix);request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",secret);return request;
-    }
+        => CreateRequest(method, "/api/v1/knowledge" + suffix, authenticate: true);
     private static async Task<JsonDocument> KnowledgeSmallResponse(HttpResponseMessage response,CancellationToken token)
     {
         if(response.StatusCode==HttpStatusCode.Unauthorized)throw new DesktopException(DesktopError.Unauthorized);

@@ -58,6 +58,8 @@ internal sealed partial class ProfileRecoveryCoordinator
         }
         using var sources = TrustedDevelopmentRuntimeSources.Open();
         WindowsProfileSecurity.CreateDirectory(stage, user.User!);
+        bool published = false;
+        string? restoredId = null;
         try
         {
             using var stagePin = WindowsProfileSecurity.HoldDirectories(stage);
@@ -65,10 +67,13 @@ internal sealed partial class ProfileRecoveryCoordinator
             if (!restore)
             {
                 await PublishArchiveAsync(Path.Combine(stage, "backup.pgp"), file);
+                published = true;
                 return (summary, null);
             }
             if (!confirmRestore(summary)) return (summary, null);
             var id = Guid.NewGuid().ToString("N");
+            using var targetInstance = new SingleInstance(Mmf3AcceptanceLaunch.InstanceSuffixFor(id));
+            if (!targetInstance.IsPrimary) throw Stop();
             string target = Mmf3ProfileState.Prepare(id);
             using var targetPin = Mmf3ProfileState.Pin(id);
             string data = Path.Combine(target, "data");
@@ -78,9 +83,26 @@ internal sealed partial class ProfileRecoveryCoordinator
             Directory.Move(Path.Combine(stage, "verified"), data);
             Mmf3ProfileNative.Provision(id, sources.JnaJar);
             _ = Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.OpenOnceArgument, id]);
+            restoredId = id;
+            published = true;
             return (summary, id);
         }
-        finally { CleanupArchiveStage(stage); }
+        finally
+        {
+            // A cleanup failure must not turn an already published archive/Profile into a
+            // reported rollback. Staging stays under the pinned private evidence directory.
+            try { CleanupArchiveStage(stage); }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+            {
+                throw new ArchiveCleanupIncomplete(published, restoredId);
+            }
+        }
+    }
+
+    internal sealed class ArchiveCleanupIncomplete(bool published, string? restoredId) : IOException
+    {
+        internal bool Published { get; } = published;
+        internal string? RestoredId { get; } = restoredId;
     }
 
     private static async Task<ArchiveSummary> RunArchiveChildAsync(Mmf3AcceptanceLaunch profile,
