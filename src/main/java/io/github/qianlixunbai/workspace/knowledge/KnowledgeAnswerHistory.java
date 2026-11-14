@@ -97,6 +97,33 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
     public synchronized void begin(UUID id, String question, String query, ModelProfile.PublicProfile profile, String prompt) {
         begin(id,question,query,profile,prompt,null);
     }
+
+    public static long verifyArchive(java.sql.Connection db) throws SQLException {
+        try (var s = db.createStatement()) {
+            try (var rows = s.executeQuery("PRAGMA user_version")) {
+                if (!rows.next() || rows.getInt(1) != 2) throw new SQLException("Unsupported answer history version");
+            }
+            Map<String,String> definitions = new HashMap<>();
+            try (var rows = s.executeQuery("SELECT name,sql FROM sqlite_schema WHERE sql IS NOT NULL")) {
+                while (rows.next()) definitions.put(rows.getString(1), rows.getString(2).strip());
+            }
+            if (!definitions.equals(Map.of("answers", DDL.strip(), "answer_scopes", SCOPE_DDL)))
+                throw new SQLException("Unsupported answer history schema");
+            try (var rows = s.executeQuery("PRAGMA integrity_check")) {
+                if (!rows.next() || !"ok".equals(rows.getString(1)) || rows.next()) throw new SQLException();
+            }
+            try (var rows = s.executeQuery("PRAGMA foreign_key_check")) {
+                if (rows.next()) throw new SQLException();
+            }
+            try (var rows = s.executeQuery("SELECT count(*) FROM answers WHERE status='QUEUED'")) {
+                if (!rows.next() || rows.getLong(1) != 0) throw new SQLException();
+            }
+            try (var rows = s.executeQuery("SELECT count(*) FROM answers")) {
+                if (!rows.next() || rows.getLong(1) > LIMIT) throw new SQLException();
+                return rows.getLong(1);
+            }
+        }
+    }
     public synchronized void begin(UUID id, String question, String query, ModelProfile.PublicProfile profile, String prompt, KnowledgeScope scope) {
         if (question == null || question.isBlank() || question.length() > 3000 || query == null || query.length() > 256)
             throw failure(ErrorCode.INVALID_REQUEST);

@@ -110,6 +110,14 @@ pwsh -NoProfile -File scripts/verification/build-trusted-development-runtime.ps1
 
 首次启动按原生选择器显式创建或选择开发 Profile；后续恢复上次成功工作区。数据库与 API Key 只通过既有原生设置输入，不写入聊天、前端、源码或示例配置。详细步骤、失败处理与存储位置见 [Development Guide](docs/DEVELOPMENT.md)。
 
+### SQLite Profile 备份与恢复
+
+正常退出工作区，再用 `--choose-development-workspace` 进入「备份与恢复维护」。选择已关闭的来源 Profile，输入两次至少 16 字符的口令，将备份保存为新的 `.workspace-profile.pgp` 文件。已有文件会保留。
+
+恢复时可用已关闭且能通过原生准入的开发工作区进入维护。选择备份并输入口令，核对记忆、对话、知识资料版本与问答历史数量后确认。恢复发布到一个独立 Profile，可仅本次打开或稍后在选择器中打开。
+
+SQLite 档案包含数据库中的权威记录与已保存 Knowledge 原文。客户端重建词法索引。另存为文件的工作集、笔记和原始 Word/PDF、Finance、数据库和 API 凭据、模型、系统设置需分别保管。个人 PostgreSQL 恢复仍待开放。
+
 ## 开发状态与限制
 
 - **X1 Windows Acceptance — PARTIAL**：已有一次文本问答成功的历史记录，完整跨应用选区到结果与物理流程仍待验收。

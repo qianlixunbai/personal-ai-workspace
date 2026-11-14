@@ -7,6 +7,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class PersonalAiWorkspaceApplication {
 
 	public static void main(String[] args) {
+		if (args.length > 0 && args[0].equals("--native-sqlite-profile-archive-v1")) {
+			System.exit(io.github.qianlixunbai.workspace.persistence.SqliteProfileArchive.run(
+				java.util.Arrays.copyOfRange(args, 1, args.length), System.in, System.out));
+			return;
+		}
 		if(args.length>0&&args[0].equals("--native-runtime-lifecycle-v1")){
 			System.exit(NativeRuntimeLifecycle.run(java.util.Arrays.copyOfRange(args,1,args.length),System.in,System.out));return;
 		}

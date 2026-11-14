@@ -3,6 +3,15 @@ Personal AI Workspace - Windows 原生安全开发包
 DEVELOPMENT ONLY / UNSIGNED / Production GO PENDING
 此 ZIP 使用经本机审查的构建和工具链，不是安装器或正式发布。
 
+SQLite Profile 备份与恢复：
+正常退出开发工作区，用 PersonalAiWorkspace.Desktop.exe --choose-development-workspace 打开选择器，
+进入“备份与恢复维护”，选择已关闭的来源工作区。
+输入两次至少 16 字符的口令，保存新 .workspace-profile.pgp 文件。请另行保管口令。
+恢复时选同类文件并输入口令，核对内容数量后确认。新工作区可仅本次打开，或稍后通过选择器打开。
+备份包含记忆、对话、知识资料版本、已保存原文和知识问答历史。知识词法索引在启动时重建。
+另存的工作集、Markdown 笔记及原始 Word/PDF 请单独保管。Finance、模型、凭据和系统设置不随包迁移。
+PostgreSQL 个人 Profile 的备份与恢复仍待开放。恢复需要一个已关闭并可通过安全检查的开发工作区作为维护入口。
+
 2026-11-10 知识、记忆与会话流程整合开发版（最新产品改动 1e65271）：
 准确构建提交及全部文件哈希见本包 development-bundle.json；仅供本地开发使用，旧包保留。
 本次纳入此前尚未打包的五项流程：
@@ -113,7 +122,7 @@ Windows 打包宿主可能将 AppData 写入重定向到宿主包的实际数据
 Java 21/JAR/JNA、.NET 10.0.14 Desktop 和 React 资产随包提供。
 NativeBootstrap 仍要求本机 Microsoft.NETCore.App 10.0.x x64；界面要求 Microsoft Edge WebView2 Evergreen。
 此包不下载或安装先决组件，不提供更新、卸载、发布者签名或正式来源授信。
-仅替换应用文件不能恢复用户数据。个人 Profile 恢复尚未开放，现有问答笔记也不是完整备份。
+更换应用文件后，SQLite 数据可通过上述备份入口恢复。问答笔记是单独导出的 Markdown 文件。
 先在合成资料中确认所需流程；不要把旧包的模型 Ready 或验收结论当成本次状态。
 
 用一次合成流程验收：创建 Profile -> 设置页“重新检查存储”显示 SQLite/原生认证 ->

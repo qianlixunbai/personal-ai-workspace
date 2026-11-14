@@ -61,7 +61,7 @@ public final class MemoryStore implements AutoCloseable {
                     // v0 is an empty database only. Never infer or overwrite an unversioned existing schema.
                     if (number("SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'") != 0)
                         throw error(ErrorCode.MEMORY_SCHEMA_UNSUPPORTED);
-                    createSource();
+                    createSource(connection);
                     rebuildIndex(); // Verifies actual driver FTS5 + trigram availability inside migration.
                     execute("PRAGMA user_version = 1");
                 } else {
@@ -102,8 +102,8 @@ public final class MemoryStore implements AutoCloseable {
         } catch (SQLException failure) { db.close(); throw failure; }
     }
 
-    private void createSource() throws SQLException {
-        execute("""
+    private static void createSource(Connection db) throws SQLException {
+        executeSchema(db, """
             CREATE TABLE memory_items (
               id TEXT NOT NULL UNIQUE,
               type TEXT NOT NULL CHECK(type IN ('PREFERENCE','PROJECT_NOTE')),
@@ -114,29 +114,57 @@ public final class MemoryStore implements AutoCloseable {
               created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
             )
             """);
-        execute("CREATE INDEX memory_items_order ON memory_items(status, updated_at DESC, id ASC)");
+        executeSchema(db, "CREATE INDEX memory_items_order ON memory_items(status, updated_at DESC, id ASC)");
     }
 
     private void rebuildIndex() throws SQLException {
         if (postgresql != null) return; // Bounded literal substring search uses source rows directly.
-        execute("DROP TRIGGER IF EXISTS memory_insert");
-        execute("DROP TRIGGER IF EXISTS memory_update");
-        execute("DROP TRIGGER IF EXISTS memory_delete");
-        execute("DROP TABLE IF EXISTS memory_fts");
-        execute("CREATE VIRTUAL TABLE memory_fts USING fts5(title, content, tokenize='trigram case_sensitive 1')");
-        execute("INSERT INTO memory_fts(rowid,title,content) SELECT rowid,title,content FROM memory_items");
-        execute("""
+        rebuildIndex(connection);
+    }
+
+    public static void verifyArchiveSchema(Connection db) throws SQLException {
+        try (var expected = DriverManager.getConnection("jdbc:sqlite::memory:")) {
+            createSource(expected);
+            rebuildIndex(expected);
+            WorkspaceSchema.upgrade(expected, SCHEMA_VERSION);
+            if (!definitions(expected).equals(definitions(db))) throw new SQLException("Unsupported Workspace archive schema");
+        }
+    }
+
+    private static List<String> definitions(Connection db) throws SQLException {
+        var definitions = new ArrayList<String>();
+        try (var statement = db.createStatement();
+             var rows = statement.executeQuery("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY type,name")) {
+            while (rows.next()) {
+                definitions.add(rows.getString(1) + "\n" + rows.getString(2) + "\n" + rows.getString(3) + "\n" + rows.getString(4).strip());
+            }
+        }
+        return definitions;
+    }
+
+    private static void executeSchema(Connection db, String sql) throws SQLException {
+        try (var statement = db.createStatement()) { statement.execute(sql); }
+    }
+
+    private static void rebuildIndex(Connection db) throws SQLException {
+        executeSchema(db, "DROP TRIGGER IF EXISTS memory_insert");
+        executeSchema(db, "DROP TRIGGER IF EXISTS memory_update");
+        executeSchema(db, "DROP TRIGGER IF EXISTS memory_delete");
+        executeSchema(db, "DROP TABLE IF EXISTS memory_fts");
+        executeSchema(db, "CREATE VIRTUAL TABLE memory_fts USING fts5(title, content, tokenize='trigram case_sensitive 1')");
+        executeSchema(db, "INSERT INTO memory_fts(rowid,title,content) SELECT rowid,title,content FROM memory_items");
+        executeSchema(db, """
             CREATE TRIGGER memory_insert AFTER INSERT ON memory_items BEGIN
               INSERT INTO memory_fts(rowid,title,content) VALUES(new.rowid,new.title,new.content);
             END
             """);
-        execute("""
+        executeSchema(db, """
             CREATE TRIGGER memory_update AFTER UPDATE OF title,content ON memory_items BEGIN
               DELETE FROM memory_fts WHERE rowid=old.rowid;
               INSERT INTO memory_fts(rowid,title,content) VALUES(new.rowid,new.title,new.content);
             END
             """);
-        execute("""
+        executeSchema(db, """
             CREATE TRIGGER memory_delete AFTER DELETE ON memory_items BEGIN
               DELETE FROM memory_fts WHERE rowid=old.rowid;
             END

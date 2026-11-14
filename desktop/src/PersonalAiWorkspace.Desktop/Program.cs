@@ -190,8 +190,7 @@ internal static class Program
             try
             {
                 string? id = choose ? null : DevelopmentWorkspaceSelection.Read();
-                id ??= ChooseDevelopmentProfile();
-                if (id is null) return null;
+                if (id is null) return ChooseDevelopmentProfile();
                 return Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, id]);
             }
             catch (Exception error)
@@ -227,7 +226,7 @@ internal static class Program
         };
     }
 
-    private static string? ChooseDevelopmentProfile()
+    private static Mmf3AcceptanceLaunch? ChooseDevelopmentProfile()
     {
         string? choice = ProfileRecoveryWindow.ChooseAction();
         if (choice is null) return null;
@@ -244,16 +243,21 @@ internal static class Program
                 throw new System.IO.IOException();
             if (choice == "recovery")
             {
-                ShowRecoveryMaintenance(Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, runId]));
-                return null; // Maintenance is terminal; closing must never start the authority.
+                using var coordinator = ProfileRecoveryCoordinator.OpenForPlanning(
+                    Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, runId]));
+                string? restored = ProfileRecoveryWindow.ShowSqliteArchive(coordinator);
+                // Explicit open is temporary. The previous development selection stays in place.
+                if (restored is not null)
+                    return Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.OpenOnceArgument, restored]);
+                return null;
             }
-            return runId;
+            return Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, runId]);
         }
         using var sources = TrustedDevelopmentRuntimeSources.Open();
         string fresh = Guid.NewGuid().ToString("N");
         Mmf3ProfileState.Prepare(fresh); // Original CREATE_NEW contract; no history or receipt edits.
         Mmf3ProfileNative.Provision(fresh, sources.JnaJar);
-        return fresh;
+        return Mmf3AcceptanceLaunch.Parse([Mmf3AcceptanceLaunch.Argument, fresh]);
     }
 #endif
 }

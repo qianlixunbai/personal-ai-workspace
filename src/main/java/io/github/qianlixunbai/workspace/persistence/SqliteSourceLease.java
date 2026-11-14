@@ -40,6 +40,11 @@ public final class SqliteSourceLease implements AutoCloseable {
         return new SqliteSourceLease(exclusion, root);
     }
 
+    static SqliteSourceLease acquireForArchive(MaintenanceExclusion exclusion) throws IOException {
+        Path root = WindowsNativeGate.maintenanceProfileRoot(exclusion);
+        return new SqliteSourceLease(exclusion, root, null, true);
+    }
+
     private SqliteSourceLease(MaintenanceExclusion exclusion, Path root) throws IOException {
         this(exclusion,root,null);
     }
@@ -49,12 +54,23 @@ public final class SqliteSourceLease implements AutoCloseable {
         return new SqliteSourceLease(exclusion,root,publication);
     }
     private SqliteSourceLease(MaintenanceExclusion exclusion,Path root,MaintenanceConfiguration.ConfigurationProof publication)throws IOException {
+        this(exclusion, root, publication, false);
+    }
+
+    private SqliteSourceLease(MaintenanceExclusion exclusion, Path root,
+            MaintenanceConfiguration.ConfigurationProof publication, boolean includeHistory) throws IOException {
         this.exclusion = exclusion; this.root = root; data = root.resolve("data");
         this.publication=publication;
         try {
             pinDirectory(data); pinDirectory(data.resolve("knowledge"));
             requireSqliteSource();
             pinFile(data.resolve("memory.db")); pinFile(data.resolve("knowledge/knowledge.db"));
+            if (includeHistory) {
+                Path history = data.resolve(SqliteProfileArchive.HISTORY);
+                pinDirectory(history.getParent());
+                for (String suffix : List.of("-journal", "-wal", "-shm")) absent(history.resolveSibling("history.db" + suffix));
+                pinFile(history);
+            }
             // Pin the metadata first. Only then derive exact immutable-source names from it.
             pinDirectory(data.resolve("knowledge/sources"));
             try (var knowledge = readOnly(data.resolve("knowledge/knowledge.db"));
@@ -76,6 +92,7 @@ public final class SqliteSourceLease implements AutoCloseable {
                 // Existing validators reject pending turns/jobs, unknown schemas and mismatched originals.
                 knowledgeSnapshot.verifyFiles();
             }
+            if (includeHistory) SqliteProfileArchive.verifyHistory(data);
             requireHandles();
             Map<String, String> digests = new TreeMap<>();
             for (var entry : files.entrySet())
@@ -85,6 +102,32 @@ public final class SqliteSourceLease implements AutoCloseable {
     }
 
     public synchronized Fingerprint fingerprint() throws IOException { requireHeld(); return fingerprint; }
+
+    // Keep ownership with the lease while streaming the already pinned, verified snapshot.
+    synchronized void writeArchive(java.util.zip.ZipOutputStream output, Path staging) throws Exception {
+        requireHeld();
+        for (var entry : files.entrySet()) {
+            String name = data.relativize(entry.getKey()).toString().replace('\\', '/');
+            if (name.endsWith(".db")) {
+                // A compact image keeps live rows and schema while leaving deleted SQLite pages behind.
+                Path compact = staging.resolve("compacting.db");
+                WindowsPrivateAcl.createFile(compact);
+                try {
+                    try (var db = readOnly(entry.getKey());
+                         var vacuum = db.prepareStatement("VACUUM INTO ?")) {
+                        vacuum.setString(1, SqliteFileUrl.forNativeFile(compact));
+                        vacuum.execute();
+                    }
+                    try (var db = new FilePin(compact)) {
+                        SqliteProfileArchive.writeFile(output, name, db.channel);
+                    }
+                } finally { Files.delete(compact); }
+            } else {
+                SqliteProfileArchive.writeFile(output, name, entry.getValue().channel);
+            }
+        }
+        requireHeld();
+    }
 
     public synchronized void requireHeld() throws IOException {
         requireHandles();

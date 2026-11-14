@@ -17,9 +17,9 @@ internal sealed partial class ProfileRecoveryWindow : Window
 {
     internal const string Argument = "--recover-development-workspace-v1";
     internal const string SourceInspectionTitle = "Personal AI Workspace · 只读来源连接授权";
-    internal const string Scope = "范围：当前 PostgreSQL 工作区的 Memory、Conversations 和 Knowledge。\n" +
-        "Finance 不恢复；模型需重新准入；运行中任务不重放。恢复只创建全新工作区，保留原数据。\n" +
-        "同机同用户恢复需要完整的本机来源登记，以及至少一个仍可通过安全校验的工作区。";
+    internal const string Scope = "SQLite Profile 支持加密备份与恢复，包含记忆、对话、知识资料版本、原文和问答历史。\n" +
+        "恢复创建独立开发工作区。Finance、模型与凭据，以及另存的工作集和 Markdown 笔记需分别保管。\n" +
+        "PostgreSQL 的备份与恢复仍待开放。";
     internal const string RunningGuidance = "请先在原工作流处理运行中的操作，再从托盘退出。\n" +
         "使用 PersonalAiWorkspace.Desktop.exe --choose-development-workspace 打开选择器，再选择“备份与恢复维护”。\n" +
         "维护不会替您取消任务或停止已有服务。";
@@ -59,7 +59,7 @@ internal sealed partial class ProfileRecoveryWindow : Window
 
     internal static void ShowInspection(ProfileRecoveryCoordinator coordinator)
     {
-        var window = new ProfileRecoveryWindow("Personal AI Workspace · 备份与恢复维护", "正在核对原生互斥、Runtime 退出登记和模型状态文件名；尚不读取数据库配置或连接数据库…");
+        var window = new ProfileRecoveryWindow("Personal AI Workspace · PostgreSQL 恢复检查", "正在核对原生互斥、Runtime 退出登记和模型状态文件名；尚不读取数据库配置或连接数据库…");
         window.AddButton("创建备份（条件未满足）", () => { }).IsEnabled = false;
         window.AddButton("从备份恢复（来源授权未开放）", () => { }).IsEnabled = false;
         ProfileRecoveryCoordinator.SourceReadiness? latest = null;

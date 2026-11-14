@@ -223,7 +223,7 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         if(Text(value,"stage")!=expected)throw Stop();
     }
     private static void Hex(string value,int count){if(!Regex.IsMatch(value,"\\A[a-f0-9]{"+count+"}\\z"))throw Stop();}
-    private static async Task<JsonElement> Read(Process process,CancellationToken cancellation)
+    internal static async Task<JsonElement> Read(Process process,CancellationToken cancellation)
     {
         byte[] header=new byte[4];await process.StandardOutput.BaseStream.ReadExactlyAsync(header,cancellation).ConfigureAwait(false);
         int length=BinaryPrimitives.ReadInt32BigEndian(header);if(length is <1 or >16384)throw Stop();
@@ -232,7 +232,7 @@ internal sealed class MaintenanceRuntimeHandoff : IDisposable
         if(document.RootElement.EnumerateObject().GroupBy(p=>p.Name,StringComparer.Ordinal).Any(g=>g.Count()!=1))throw Stop();
         return document.RootElement.Clone();
     }
-    private static async Task Write(Process process,object value,CancellationToken cancellation)
+    internal static async Task Write(Process process,object value,CancellationToken cancellation)
     {
         byte[] bytes=JsonSerializer.SerializeToUtf8Bytes(value),header=new byte[4];
         try{if(bytes.Length is <1 or >16384)throw Stop();BinaryPrimitives.WriteInt32BigEndian(header,bytes.Length);
