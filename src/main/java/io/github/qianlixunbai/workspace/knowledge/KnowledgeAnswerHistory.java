@@ -98,7 +98,7 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
         begin(id,question,query,profile,prompt,null);
     }
 
-    public static long verifyArchive(java.sql.Connection db) throws SQLException {
+    public static long verifyArchive(Connection db) throws SQLException {
         try (var s = db.createStatement()) {
             try (var rows = s.executeQuery("PRAGMA user_version")) {
                 if (!rows.next() || rows.getInt(1) != 2) throw new SQLException("Unsupported answer history version");
@@ -115,12 +115,30 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
             try (var rows = s.executeQuery("PRAGMA foreign_key_check")) {
                 if (rows.next()) throw new SQLException();
             }
-            try (var rows = s.executeQuery("SELECT count(*) FROM answers WHERE status='QUEUED'")) {
+            try (var rows = s.executeQuery("""
+                    SELECT count(*) FROM answers WHERE status='QUEUED' OR length(id)<>36 OR length(question)>3000
+                    OR length(query)>256 OR length(profile)>4096 OR length(prompt)>128 OR length(created)>64
+                    OR length(finished)>64 OR length(cast(result AS blob))>60000 OR length(error_code)>64 OR length(error_phase)>64
+                    """)) {
                 if (!rows.next() || rows.getLong(1) != 0) throw new SQLException();
             }
-            try (var rows = s.executeQuery("SELECT count(*) FROM answers")) {
-                if (!rows.next() || rows.getLong(1) > LIMIT) throw new SQLException();
-                return rows.getLong(1);
+            try (var rows = s.executeQuery("""
+                    SELECT answers.*, answer_scopes.document_id, answer_scopes.source_revision
+                    FROM answers LEFT JOIN answer_scopes ON answers.id=answer_scopes.id LIMIT 1001
+                    """)) {
+                long count = 0;
+                while (rows.next()) {
+                    UUID id = UUID.fromString(rows.getString("id"));
+                    if (++count > LIMIT || !id.toString().equals(rows.getString("id"))) throw new SQLException();
+                    String documentId = rows.getString("document_id");
+                    KnowledgeScope scope = documentId == null ? null : new KnowledgeScope(documentId, rows.getString("source_revision"));
+                    Entry entry = readEntry(rows, id, scope);
+                    if (entry.task().finishedAt() == null || entry.task().finishedAt().isBefore(entry.task().createdAt())
+                            || entry.task().profile() == null
+                            || (entry.task().status() == TaskStatus.SUCCEEDED) != (entry.task().result() != null))
+                        throw new SQLException();
+                }
+                return count;
             }
         }
     }
@@ -152,14 +170,20 @@ public final class KnowledgeAnswerHistory implements AutoCloseable {
         return read(() -> {
             try (var s = prepare("SELECT * FROM answers WHERE id=?", id.toString()); var r = s.executeQuery()) {
                 if (!r.next()) throw failure(ErrorCode.TASK_NOT_FOUND);
-                TaskStatus status = TaskStatus.valueOf(r.getString("status"));
-                var result = r.getString("result") == null ? null : JSON.readValue(r.getString("result"), TaskResult.KnowledgeAnswer.class);
-                var error = r.getString("error_code") == null ? null : ApiError.of(ErrorCode.valueOf(r.getString("error_code")), r.getString("error_phase"));
-                var task = new TaskView(id, "knowledge-answer", status, JSON.readValue(r.getString("profile"), ModelProfile.PublicProfile.class),
-                        r.getString("prompt"), Instant.parse(r.getString("created")), r.getString("finished") == null ? null : Instant.parse(r.getString("finished")), result, error);
-                return new Entry(r.getString("question"), r.getString("query"), task,scope(id));
+                return readEntry(r, id, scope(id));
             }
         });
+    }
+    private static Entry readEntry(ResultSet row, UUID id, KnowledgeScope scope) throws SQLException {
+        TaskStatus status = TaskStatus.valueOf(row.getString("status"));
+        String rawResult = row.getString("result");
+        var result = rawResult == null ? null : JSON.readValue(rawResult, TaskResult.KnowledgeAnswer.class);
+        String errorCode = row.getString("error_code");
+        var error = errorCode == null ? null : ApiError.of(ErrorCode.valueOf(errorCode), row.getString("error_phase"));
+        String finished = row.getString("finished");
+        var task = new TaskView(id, "knowledge-answer", status, JSON.readValue(row.getString("profile"), ModelProfile.PublicProfile.class),
+                row.getString("prompt"), Instant.parse(row.getString("created")), finished == null ? null : Instant.parse(finished), result, error);
+        return new Entry(row.getString("question"), row.getString("query"), task, scope);
     }
     public synchronized Page list(int page) {
         if (page < 0 || page >= LIMIT / PAGE_SIZE) throw failure(ErrorCode.INVALID_REQUEST);
